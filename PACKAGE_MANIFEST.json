@@ -1,0 +1,22 @@
+{
+  "package_version": "v2",
+  "date": "2026-09-01",
+  "immediate_goal": "Windows x64 Unity local MP4 -> RTMDet -> tracker -> RTMPose -> HUD, then RTSP IPC",
+  "files": [
+    "01_HumanVisionSDK_快速Demo与长期架构研究方案_v2.docx",
+    "02_Codex_快速Demo开发实施方案_v2.docx",
+    "AGENTS.md",
+    "README_FIRST.md",
+    "docs/ARCHITECTURE.md",
+    "docs/CODEX_DEMO_EXECUTION_PLAN.md",
+    "docs/DEMO_SCOPE.md",
+    "docs/DEVELOPMENT_STATUS.md",
+    "docs/HUMAN_VISION_SDK_RESEARCH_V2.md",
+    "docs/LONG_TERM_ROADMAP.md",
+    "docs/MODEL_MANIFEST.md",
+    "docs/SDK_API.md",
+    "docs/TOOLCHAIN.md",
+    "models/README.md",
+    "tests/testdata/README.md"
+  ]
+}
