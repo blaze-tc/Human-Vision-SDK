@@ -4,8 +4,8 @@
 
 **Status date:** 2026-09-01  
 **Current stage:** D0 - Windows Local Video Vertical Slice  
-**Current milestone:** D0.1 Python/OpenMMLab Reference + ONNX Contract  
-**Current implementation state:** D0.0 repository/build bootstrap completed and verified.
+**Current milestone:** D0.2 Native ONNX Runtime + RTMDet  
+**Current implementation state:** D0.1 official PyTorch references, reproducible ONNX exports, model contracts, and ONNX Runtime numerical comparisons completed and verified.
 
 ## Immediate user-visible target
 
@@ -21,7 +21,7 @@ Do not start RTSP until this local-video path is visibly working.
 ## Milestone state
 
 - [x] D0.0 Repository & Build Bootstrap
-- [ ] D0.1 Python/OpenMMLab Reference + ONNX Contract
+- [x] D0.1 Python/OpenMMLab Reference + ONNX Contract
 - [ ] D0.2 Native ONNX Runtime + RTMDet
 - [ ] D0.3 RTMPose + Tracker + Native Video Benchmark
 - [ ] D0.4 Unity Local Video Demo
@@ -40,6 +40,66 @@ Until D1.2 is accepted:
 - no action recognition
 
 ## Latest verification
+
+### D0.1 Python/OpenMMLab Reference + ONNX Contract - PASS
+
+- Date: 2026-09-01
+- Implementation commit: `3990968cf0420b0bc0f6a53684642cdc34738144`
+- Host: Windows x64, CPU reference inference
+- Python: 3.10.21 (uv-managed CPython)
+- PyTorch / TorchVision: 2.1.0+cpu / 0.16.0+cpu
+- OpenMMLab: MMCV 2.1.0, MMDetection 3.2.0, MMPose 1.3.2, MMDeploy 1.3.1
+- ONNX / ONNX Runtime Python: 1.15.0 / 1.23.2
+- Reference media: official MMDeploy `demo/resources/human-pose.jpg`, SHA-256 `dd25fd8186e9ce27625520e24ac13ec6747316e51d20b124d3271c5764686d4e`
+
+Locked official sources:
+
+- MMDetection `v3.2.0`, commit `fe3f809a0a514189baf889aa358c498d51ee36cd`.
+- MMPose `v1.3.2`, commit `5408bc76f5b848cf925a0d1857899011d8c5b497`.
+- MMDeploy `v1.3.1`, commit `bc75c9d6c8940aa03d0e1e5b5962bd930478ba77`.
+- RTMDet-tiny checkpoint SHA-256: `78e30dcce0c6f594eaff0d6977b84b4103688b4aff0ad1aa16008a8cc854a7fb`.
+- RTMPose-s checkpoint SHA-256: `29dcacbb5c5f3ab2f03a67fedcb58cf7287f93b9a8a9d893f42416b63fc304ba`.
+
+Expected RED verification:
+
+```powershell
+py -3.13 -m unittest discover -s tests\reference -v
+```
+
+- Result before implementing `tools.reference.contracts`: exit 1, 4/4 tests failed because the required D0.1 contract module was absent.
+- This confirmed that model metadata completeness and model-file SHA validation could not pass without production contract code.
+
+Final reference/export/comparison verification:
+
+```powershell
+.venv-reference\Scripts\python.exe -m unittest discover -s tests\reference -v
+.venv-reference\Scripts\python.exe -m tools.reference.run_reference --device cpu
+.venv-reference\Scripts\python.exe -m tools.reference.export_models --model all --device cpu
+.venv-reference\Scripts\python.exe -m tools.reference.compare_onnx
+```
+
+- Contract unit tests: PASS, 4/4 tests, 0 failures.
+- Official PyTorch reference: PASS, 1 person detection and 17 COCO joints.
+- MMDeploy export: PASS for RTMDet-tiny and RTMPose-s; both graphs pass `onnx.checker` and load in ONNX Runtime CPU.
+- Detector comparison: PASS; count 1/1, maximum source-coordinate box error `0.000033021 px`, IoU `0.999999682`, score error `1.19209e-7` (limits: `1.5 px`, `0.99`, `0.01`).
+- Pose comparison: PASS; 17 joints, maximum restored coordinate error `0 px`, maximum score error `1.31130e-6`, maximum raw SimCC error `5.82635e-6` (limits: `0.5 px`, `0.005`, `0.002`).
+- D0.0 native regression: PASS in Debug and Release, 1/1 CTest each, 0 failures.
+
+Artifacts/contracts:
+
+- Detector ONNX: `models/detector/rtmdet_tiny_640.onnx`, 22,289,445 bytes, SHA-256 `6d0d4e5da97772cbc8d25368f7796b1250fdf12c61861b228d31b321fc519e3d`.
+- Pose ONNX: `models/pose/rtmpose_s_256x192.onnx`, 21,916,761 bytes, SHA-256 `9060b6cf176a49ba687feb993830b18293cc06b6675c5231c1e388d4e7a1c3ef`.
+- ONNX/checkpoint binaries remain Git-ignored. Reproduction commands, exact environment snapshot, official source/checkpoint locations, model contracts, golden outputs, and numerical comparison results are committed.
+- Integration/golden test: the official image PyTorch-to-ONNX comparisons above are the D0.1 golden tests.
+- Benchmark media/settings/FPS/latency: not applicable to D0.1.
+
+Known issues / environment notes:
+
+- ONNX Runtime 1.29.0 does not publish a Windows `cp310` wheel, so the Python reference environment uses the last available official Windows `cp310` wheel, 1.23.2. The native D0.2 dependency remains the plan-locked ONNX Runtime 1.29.0 CPU x64 package.
+- The MMDeploy `tools/deploy.py` CLI produced a valid detector graph, then failed only in its post-export MMDetection visualization because the exported label tensor is float. `export_models.py` uses the official `mmdeploy.apis.torch2onnx` API to omit that unrelated visualization step; the resulting graph passes structure and numerical verification.
+- Pinned OpenMMLab emits registry/deprecation/tracer warnings during export on this Windows stack. The locked source/checkpoint checks, ONNX checker, model contract hashes, and numerical comparisons all pass.
+
+Next milestone: D0.2 Native ONNX Runtime + RTMDet.
 
 ### D0.0 Repository & Build Bootstrap - PASS
 
@@ -106,8 +166,6 @@ Known issues / environment notes:
 
 - The installed Visual Studio host is Visual Studio 2026 18.9.1, while `TOOLCHAIN.md` names Visual Studio 2022 as the baseline. The verified build uses the installed v143 compiler through `VsDevCmd` plus Ninja because the VS 2026 MSBuild host does not include the v143 MSBuild platform targets.
 - The currently running UnitySkills instance reports Unity 2021.3.45f1 and project `Human-Vision-SDK-Test`. D0.0 is native-only, so this did not affect acceptance. Before D0.4, the active project must use the required Unity 2022.3 LTS baseline.
-
-Next milestone: D0.1 Python/OpenMMLab Reference + ONNX Contract.
 
 ## Advancement rule
 
