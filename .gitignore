@@ -2,3 +2,11 @@ build/
 out/
 .vs/
 CMakeUserPresets.json
+.venv-reference/
+__pycache__/
+*.py[cod]
+tools/reference/work/
+tools/reference/vendor/
+tools/reference/downloads/
+models/**/*.onnx
+models/**/*.pth

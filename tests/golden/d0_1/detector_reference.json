@@ -1,0 +1,49 @@
+{
+  "checkpoint": {
+    "filename": "rtmdet_tiny_8xb32-300e_coco_20220902_112414-78e30dcc.pth",
+    "sha256": "78e30dcce0c6f594eaff0d6977b84b4103688b4aff0ad1aa16008a8cc854a7fb",
+    "url": "https://download.openmmlab.com/mmdetection/v3.0/rtmdet/rtmdet_tiny_8xb32-300e_coco/rtmdet_tiny_8xb32-300e_coco_20220902_112414-78e30dcc.pth"
+  },
+  "config_identifier": "rtmdet_tiny_8xb32-300e_coco",
+  "config_path": "tools/reference/vendor/mmdetection/configs/rtmdet/rtmdet_tiny_8xb32-300e_coco.py",
+  "environment": {
+    "mmcv": "2.1.0",
+    "mmdeploy": "1.3.1",
+    "mmdet": "3.2.0",
+    "mmengine": "0.10.7",
+    "mmpose": "1.3.2",
+    "numpy": "1.23.5",
+    "onnx": "1.15.0",
+    "onnxruntime": "1.23.2",
+    "python": "3.10.21",
+    "torch": "2.1.0+cpu",
+    "torchvision": "0.16.0+cpu"
+  },
+  "input": {
+    "height": 346,
+    "image_path": "tools/reference/vendor/mmdeploy/demo/resources/human-pose.jpg",
+    "image_sha256": "dd25fd8186e9ce27625520e24ac13ec6747316e51d20b124d3271c5764686d4e",
+    "width": 218
+  },
+  "kind": "pytorch_reference",
+  "model_family": "RTMDet",
+  "model_role": "detector",
+  "predictions": [
+    {
+      "bbox_xyxy": [
+        0.2821427881717682,
+        0.47883784770965576,
+        215.6710205078125,
+        334.49249267578125
+      ],
+      "class_id": 0,
+      "class_name": "person",
+      "score": 0.9163370728492737
+    }
+  ],
+  "runtime": {
+    "detection_threshold": 0.35,
+    "device": "cpu"
+  },
+  "schema_version": 1
+}

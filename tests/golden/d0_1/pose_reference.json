@@ -1,0 +1,161 @@
+{
+  "checkpoint": {
+    "filename": "rtmpose-s_simcc-coco_pt-aic-coco_420e-256x192-8edcf0d7_20230127.pth",
+    "sha256": "29dcacbb5c5f3ab2f03a67fedcb58cf7287f93b9a8a9d893f42416b63fc304ba",
+    "url": "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/rtmpose-s_simcc-coco_pt-aic-coco_420e-256x192-8edcf0d7_20230127.pth"
+  },
+  "config_identifier": "rtmpose-s_8xb256-420e_coco-256x192",
+  "config_path": "tools/reference/vendor/mmpose/configs/body_2d_keypoint/rtmpose/coco/rtmpose-s_8xb256-420e_coco-256x192.py",
+  "environment": {
+    "mmcv": "2.1.0",
+    "mmdeploy": "1.3.1",
+    "mmdet": "3.2.0",
+    "mmengine": "0.10.7",
+    "mmpose": "1.3.2",
+    "numpy": "1.23.5",
+    "onnx": "1.15.0",
+    "onnxruntime": "1.23.2",
+    "python": "3.10.21",
+    "torch": "2.1.0+cpu",
+    "torchvision": "0.16.0+cpu"
+  },
+  "input": {
+    "image_path": "tools/reference/vendor/mmdeploy/demo/resources/human-pose.jpg",
+    "image_sha256": "dd25fd8186e9ce27625520e24ac13ec6747316e51d20b124d3271c5764686d4e",
+    "person_bbox_xyxy": [
+      0.2821427881717682,
+      0.47883784770965576,
+      215.6710205078125,
+      334.49249267578125
+    ]
+  },
+  "joints": [
+    {
+      "confidence": 0.9601806402206421,
+      "index": 0,
+      "name": "Nose",
+      "x_px": 86.77455139160156,
+      "y_px": 34.56520080566406
+    },
+    {
+      "confidence": 1.0133899450302124,
+      "index": 1,
+      "name": "LeftEye",
+      "x_px": 94.11371612548828,
+      "y_px": 28.0414981842041
+    },
+    {
+      "confidence": 1.0106693506240845,
+      "index": 2,
+      "name": "RightEye",
+      "x_px": 81.0663070678711,
+      "y_px": 29.67242431640625
+    },
+    {
+      "confidence": 0.9431840181350708,
+      "index": 3,
+      "name": "LeftEar",
+      "x_px": 107.16112518310547,
+      "y_px": 32.118812561035156
+    },
+    {
+      "confidence": 0.9258429408073425,
+      "index": 4,
+      "name": "RightEar",
+      "x_px": 76.17353057861328,
+      "y_px": 36.196128845214844
+    },
+    {
+      "confidence": 0.7239153385162354,
+      "index": 5,
+      "name": "LeftShoulder",
+      "x_px": 126.73223114013672,
+      "y_px": 68.81465148925781
+    },
+    {
+      "confidence": 0.801773190498352,
+      "index": 6,
+      "name": "RightShoulder",
+      "x_px": 82.69723510742188,
+      "y_px": 82.67752075195312
+    },
+    {
+      "confidence": 0.6742228865623474,
+      "index": 7,
+      "name": "LeftElbow",
+      "x_px": 165.05899047851562,
+      "y_px": 110.40325927734375
+    },
+    {
+      "confidence": 0.7632095813751221,
+      "index": 8,
+      "name": "RightElbow",
+      "x_px": 59.048805236816406,
+      "y_px": 118.55789184570312
+    },
+    {
+      "confidence": 0.690071702003479,
+      "index": 9,
+      "name": "LeftWrist",
+      "x_px": 169.1363067626953,
+      "y_px": 116.92696380615234
+    },
+    {
+      "confidence": 0.9319461584091187,
+      "index": 10,
+      "name": "RightWrist",
+      "x_px": 24.799360275268555,
+      "y_px": 134.86715698242188
+    },
+    {
+      "confidence": 0.787162184715271,
+      "index": 11,
+      "name": "LeftHip",
+      "x_px": 152.01158142089844,
+      "y_px": 166.6702117919922
+    },
+    {
+      "confidence": 0.7857329845428467,
+      "index": 12,
+      "name": "RightHip",
+      "x_px": 120.20852661132812,
+      "y_px": 171.56298828125
+    },
+    {
+      "confidence": 0.8483578562736511,
+      "index": 13,
+      "name": "LeftKnee",
+      "x_px": 152.01158142089844,
+      "y_px": 244.13919067382812
+    },
+    {
+      "confidence": 0.8263388872146606,
+      "index": 14,
+      "name": "RightKnee",
+      "x_px": 90.85186004638672,
+      "y_px": 228.64540100097656
+    },
+    {
+      "confidence": 0.8632563352584839,
+      "index": 15,
+      "name": "LeftAnkle",
+      "x_px": 192.78472900390625,
+      "y_px": 317.5308532714844
+    },
+    {
+      "confidence": 0.8212732076644897,
+      "index": 16,
+      "name": "RightAnkle",
+      "x_px": 125.10131072998047,
+      "y_px": 296.3288269042969
+    }
+  ],
+  "kind": "pytorch_reference",
+  "model_family": "RTMPose",
+  "model_role": "pose",
+  "runtime": {
+    "device": "cpu",
+    "flip_test": false
+  },
+  "schema_version": 1
+}

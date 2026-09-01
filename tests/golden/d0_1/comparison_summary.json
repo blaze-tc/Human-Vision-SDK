@@ -1,0 +1,56 @@
+{
+  "detector": {
+    "coordinate_restoration": {
+      "onnx_space": "resized/padded detector input pixels",
+      "scale_factor_xy": [
+        1.848623853211009,
+        1.8497109826589595
+      ],
+      "source_space": "original image pixels"
+    },
+    "expected_count": 1,
+    "matches": [
+      {
+        "bbox_max_abs_px": 3.3020973205566406e-05,
+        "iou": 0.999999681715137,
+        "score_abs": 1.1920928955078125e-07
+      }
+    ],
+    "onnx_count": 1,
+    "pass": true,
+    "tolerances": {
+      "bbox_max_abs_px": 1.5,
+      "iou_min": 0.99,
+      "score_abs": 0.01
+    }
+  },
+  "models": {
+    "detector_sha256": "6d0d4e5da97772cbc8d25368f7796b1250fdf12c61861b228d31b321fc519e3d",
+    "pose_sha256": "9060b6cf176a49ba687feb993830b18293cc06b6675c5231c1e388d4e7a1c3ef"
+  },
+  "pass": true,
+  "pose": {
+    "coordinate_max_abs_px": 0.0,
+    "coordinate_mean_abs_px": 0.0,
+    "joint_count": 17,
+    "pass": true,
+    "raw_outputs": [
+      {
+        "max_abs": 3.6954879760742188e-06,
+        "mean_abs": 5.904713020754571e-07
+      },
+      {
+        "max_abs": 5.826354026794434e-06,
+        "mean_abs": 6.20682556018437e-07
+      }
+    ],
+    "score_max_abs": 1.3113021850585938e-06,
+    "score_mean_abs": 6.205895367790671e-07,
+    "tolerances": {
+      "coordinate_max_abs_px": 0.5,
+      "raw_max_abs": 0.002,
+      "score_max_abs": 0.005
+    }
+  },
+  "schema_version": 1
+}
