@@ -2,10 +2,10 @@
 
 # HumanVisionSDK Development Status
 
-**Status date:** 2026-09-01  
+**Status date:** 2026-09-02  
 **Current stage:** D0 - Windows Local Video Vertical Slice  
-**Current milestone:** D0.2 Native ONNX Runtime + RTMDet  
-**Current implementation state:** D0.1 official PyTorch references, reproducible ONNX exports, model contracts, and ONNX Runtime numerical comparisons completed and verified.
+**Current milestone:** D0.3 RTMPose + Tracker + Native Video Benchmark  
+**Current implementation state:** D0.2 asynchronous native C ABI, latest-frame queueing, ONNX Runtime 1.29.0 CPU backend, RTMDet-tiny preprocessing/postprocessing, real-image golden comparisons, and runtime `MaxBodies` enforcement completed and verified.
 
 ## Immediate user-visible target
 
@@ -22,7 +22,7 @@ Do not start RTSP until this local-video path is visibly working.
 
 - [x] D0.0 Repository & Build Bootstrap
 - [x] D0.1 Python/OpenMMLab Reference + ONNX Contract
-- [ ] D0.2 Native ONNX Runtime + RTMDet
+- [x] D0.2 Native ONNX Runtime + RTMDet
 - [ ] D0.3 RTMPose + Tracker + Native Video Benchmark
 - [ ] D0.4 Unity Local Video Demo
 - [ ] D1.0 RTSP IPC Input
@@ -40,6 +40,96 @@ Until D1.2 is accepted:
 - no action recognition
 
 ## Latest verification
+
+### D0.2 Native ONNX Runtime + RTMDet - PASS
+
+- Date: 2026-09-02
+- Implementation commit: `3d2375c5548bec1a54ee2360efc33cd1a9965427`
+- Host: Windows x64, ONNX Runtime CPU execution provider
+- Generator/compiler: Ninja Multi-Config, MSVC 19.44.35228.0 (v143)
+- Native ONNX Runtime: 1.29.0 Windows x64
+- ONNX Runtime release archive SHA-256: `c9b4b7086b529ad814f428c1bad028e20a25d7dc0699836775faace4ab5b78b2`
+- ONNX Runtime package commit: `2e2543fbe9fae542f921d47a72d21d5a4ef0b710`
+- ONNX Runtime DLL SHA-256: `69d8e6d3879a3b4001cdc74c8ed9ccc7e7f799a5b847059738323404519ec471`
+
+Expected RED verification:
+
+```powershell
+cmake --preset windows-debug --fresh
+cmake --build --preset windows-debug --clean-first
+```
+
+- Configure result: exit 0.
+- Build result before implementation: exit 1 because the acceptance tests required the absent production headers `core/latest_frame_slot.h`, `core/result_snapshot_store.h`, `backend/onnx/onnx_runtime_backend.h`, and RTMDet modules.
+- This confirmed that asynchronous latest-frame behavior, immutable complete snapshots, generic ONNX execution, and RTMDet preprocessing/postprocessing could not pass through test-only stubs.
+
+Dependency setup and developer environment:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\setup\download_onnxruntime.ps1
+```
+
+```bat
+call "D:\Microsoft Visual Studio\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 -vcvars_ver=14.44
+```
+
+- The setup script verifies the existing package commit and runtime DLL hash, verifies the archive hash on download, and leaves ONNX Runtime binaries Git-ignored.
+
+Fresh Debug verification:
+
+```powershell
+cmake --preset windows-debug --fresh
+cmake --build --preset windows-debug --clean-first
+ctest --preset windows-debug
+```
+
+- Configure: PASS, exit 0.
+- Build: PASS, 22/22 build steps, exit 0.
+- CTest: PASS, 15/15 tests, 0 failures, 6.20 seconds.
+
+Fresh Release verification:
+
+```powershell
+cmake --preset windows-release --fresh
+cmake --build --preset windows-release --clean-first
+ctest --preset windows-release
+```
+
+- Configure: PASS, exit 0.
+- Build: PASS, 22/22 build steps, exit 0.
+- CTest: PASS, 15/15 tests, 0 failures, 3.95 seconds.
+- A final incremental Release regression after documentation/setup refinements also passed 15/15 tests in 3.60 seconds.
+
+Acceptance and golden results:
+
+- C ABI configuration tests cover invalid config/model errors, create/destroy cycles, unsupported pixel formats, caller-buffer ownership, and runtime `MaxBodies` values 1/2/4/6/8.
+- Latest-frame tests use a deterministic slow worker and confirm that the newest frame wins while overwritten frames increment dropped-frame statistics.
+- Snapshot capacity tests confirm that insufficient destination capacity reports the required count without a partial copy.
+- The generic ONNX backend executes a mathematical add-one graph; detector acceptance never uses fixed boxes or fake joints.
+- RTMDet preprocessing matches the committed official golden tensor samples for RGBA32, BGRA32, RGB24, and BGR24 input.
+- Official-image native/Python comparison: one real detection, maximum box error `0.075927734375 px`, IoU `0.99961433162530111`, native score `0.91604882478713989`, and ONNX inference time `112.90849304199219 ms`.
+- Real two-person composite reference produces two detections. The native result returns one body at `MaxBodies=1` and two at `MaxBodies=2`, proving that body capacity is selected at runtime rather than hard-coded.
+- Concurrency stress: latest-frame tests passed 20 consecutive repetitions; asynchronous real-detector C API test passed 5 consecutive repetitions.
+- D0.1 Python reference regression: PASS, 4/4 tests, 0 failures.
+
+Artifact checks:
+
+- Release: `build/windows-release/bin/Release/humanvision.dll`, 81,920 bytes, SHA-256 `5bb16b9c9c71d646ea753bbbe071c5617f0519a543c485116a363e4966ffb81c3`.
+- Debug: `build/windows-debug/bin/Debug/humanvision.dll`, 366,592 bytes.
+- `dumpbin /headers`: x64 PE32+ DLL.
+- `dumpbin /exports`: exactly 10 public C ABI exports: `HV_Create`, `HV_Destroy`, `HV_GetBodies`, `HV_GetBodyCount`, `HV_GetLastError`, `HV_GetLatestResultMeta`, `HV_GetStats`, `HV_GetVersionString`, `HV_Reconfigure`, and `HV_SubmitFrame`.
+- The Release output contains the required `onnxruntime.dll`; its copied hash matches the verified source DLL hash above. `onnxruntime_providers_shared.dll` is also copied.
+- Model ONNX files and ONNX Runtime binaries are not staged or committed.
+- Integration/golden test: the official-image and real two-person RTMDet comparisons above are the D0.2 golden tests.
+- Milestone video benchmark: not applicable to D0.2; D0.3 owns the native video throughput/latency benchmark.
+
+Known issues / environment notes:
+
+- D0.2 intentionally publishes detector-only bodies with `track_id=-1` and invalid/zero joints. RTMPose, stable tracking, detector interval behavior, and video benchmarking belong to D0.3.
+- The installed Visual Studio host remains Visual Studio 2026 with the v143 compiler, rather than the documented Visual Studio 2022 host baseline. Both Debug and Release native outputs are verified.
+- The active UnitySkills project still needs to move from Unity 2021.3.45f1 to the required Unity 2022.3 LTS baseline before D0.4 acceptance.
+
+Next milestone: D0.3 RTMPose + Tracker + Native Video Benchmark.
 
 ### D0.1 Python/OpenMMLab Reference + ONNX Contract - PASS
 
