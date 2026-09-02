@@ -2,6 +2,7 @@
 
 #include "humanvision/humanvision_c.h"
 #include "d0_2_fixture_contract.h"
+#include "d0_3_fixture_contract.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -17,6 +18,10 @@
 
 #ifndef HV_TEST_BACKEND_MODEL_PATH
 #error HV_TEST_BACKEND_MODEL_PATH must be defined by CMake
+#endif
+
+#ifndef HV_TEST_POSE_MODEL_PATH
+#error HV_TEST_POSE_MODEL_PATH must be defined by CMake
 #endif
 
 #ifndef HV_TEST_RAW_IMAGE_PATH
@@ -45,10 +50,10 @@ inline HV_Config MakeConfig(int max_bodies = 4) {
     config.detection_threshold = 0.35F;
     config.pose_threshold = 0.30F;
     config.detection_interval = 1;
-    config.enable_tracking = 0;
+    config.enable_tracking = 1;
     config.backend = HV_BACKEND_ONNX_CPU;
     config.detector_model_path_utf8 = HV_TEST_DETECTOR_MODEL_PATH;
-    config.pose_model_path_utf8 = nullptr;
+    config.pose_model_path_utf8 = HV_TEST_POSE_MODEL_PATH;
     return config;
 }
 

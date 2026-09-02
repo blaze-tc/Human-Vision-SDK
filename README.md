@@ -20,3 +20,10 @@ Windows x64 / Unity-first multi-person RGB camera vision SDK. The current implem
    ```
 
 The native public boundary is the C ABI under `native/include/humanvision/`. Model/runtime-specific types remain internal.
+
+## D0.3 native video benchmark
+
+The build also produces `hv_video_benchmark.exe`. It invokes FFmpeg only as an
+isolated MP4 reader and sends decoded BGR24 frames through the same asynchronous
+public C ABI used by Unity. See [`tools/benchmark/README.md`](tools/benchmark/README.md)
+for regression media generation and benchmark commands.

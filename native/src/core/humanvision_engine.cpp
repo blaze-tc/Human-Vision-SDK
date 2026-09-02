@@ -1,6 +1,7 @@
 #include "core/humanvision_engine.h"
 
 #include "backend/onnx/onnx_runtime_backend.h"
+#include "tracking/center_iou_tracker.h"
 
 #include <algorithm>
 #include <chrono>
@@ -50,6 +51,11 @@ HV_Result ValidateConfig(const HV_Config* config, std::string& error) {
         error = "config.detector_model_path_utf8 is required";
         return HV_ERR_INVALID_ARGUMENT;
     }
+    if (config->pose_model_path_utf8 == nullptr ||
+        config->pose_model_path_utf8[0] == '\0') {
+        error = "config.pose_model_path_utf8 is required";
+        return HV_ERR_INVALID_ARGUMENT;
+    }
     error.clear();
     return HV_OK;
 }
@@ -72,9 +78,7 @@ HumanVisionEngine::RuntimeConfig HumanVisionEngine::CopyConfig(
 }
 
 HumanVisionEngine::HumanVisionEngine(const HV_Config& config)
-    : config_(CopyConfig(config)), started_at_(std::chrono::steady_clock::now()) {
-    stats_.struct_size = sizeof(HV_Stats);
-}
+    : config_(CopyConfig(config)) {}
 
 HumanVisionEngine::~HumanVisionEngine() {
     frame_slot_.Stop();
@@ -93,6 +97,16 @@ bool HumanVisionEngine::Initialize(std::string& error) {
         return false;
     }
     detector_ = std::move(detector);
+    auto pose = std::make_unique<RtmposeModel>(
+        std::make_unique<OnnxRuntimeBackend>());
+    const std::filesystem::path pose_model_path =
+        std::filesystem::u8path(config_.pose_model_path);
+    if (!pose->Load(pose_model_path, error)) {
+        SetLastError(error);
+        return false;
+    }
+    pose_ = std::move(pose);
+    tracker_ = std::make_unique<CenterIouTracker>();
     worker_ = std::thread(&HumanVisionEngine::WorkerLoop, this);
     error.clear();
     return true;
@@ -109,7 +123,11 @@ HV_Result HumanVisionEngine::Reconfigure(const HV_Config& config) {
     std::lock_guard<std::mutex> lock(config_mutex_);
     if (replacement.detector_model_path != config_.detector_model_path) {
         SetLastError(
-            "changing detector_model_path requires destroy/create during D0.2");
+            "changing detector_model_path requires destroy/create during D0");
+        return HV_ERR_INVALID_ARGUMENT;
+    }
+    if (replacement.pose_model_path != config_.pose_model_path) {
+        SetLastError("changing pose_model_path requires destroy/create during D0");
         return HV_ERR_INVALID_ARGUMENT;
     }
     config_ = std::move(replacement);
@@ -128,11 +146,7 @@ HV_Result HumanVisionEngine::SubmitFrame(const HV_VideoFrame* frame) {
         SetLastError(std::move(error));
         return HV_ERR_INTERNAL;
     }
-    {
-        std::lock_guard<std::mutex> lock(stats_mutex_);
-        ++stats_.submitted_frames;
-        stats_.dropped_frames = frame_slot_.dropped_frames();
-    }
+    stats_.RecordSubmitted(status == FrameSubmitStatus::kReplacedPending);
     return HV_OK;
 }
 
@@ -159,18 +173,7 @@ HV_Result HumanVisionEngine::GetStats(HV_Stats* destination) const {
         destination->struct_size < static_cast<std::int32_t>(sizeof(HV_Stats))) {
         return HV_ERR_INVALID_ARGUMENT;
     }
-    std::lock_guard<std::mutex> lock(stats_mutex_);
-    *destination = stats_;
-    destination->dropped_frames = frame_slot_.dropped_frames();
-    const float elapsed_seconds =
-        std::chrono::duration<float>(std::chrono::steady_clock::now() - started_at_)
-            .count();
-    if (elapsed_seconds > 0.0F) {
-        destination->input_fps =
-            static_cast<float>(destination->submitted_frames) / elapsed_seconds;
-        destination->inference_fps =
-            static_cast<float>(destination->processed_frames) / elapsed_seconds;
-    }
+    *destination = stats_.Snapshot(frame_slot_.dropped_frames());
     return HV_OK;
 }
 
@@ -187,58 +190,123 @@ void HumanVisionEngine::SetLastError(std::string error) {
 void HumanVisionEngine::WorkerLoop() {
     FrameBuffer frame;
     std::vector<Detection> detections;
+    std::vector<TrackedDetection> tracked_detections;
     ResultSnapshot snapshot;
+    bool tracking_state_initialized = false;
+    bool previous_tracking_state = false;
     while (frame_slot_.WaitTake(frame)) {
         int max_bodies = 0;
         float detection_threshold = 0.0F;
+        float pose_threshold = 0.0F;
+        int detection_interval = 1;
+        bool enable_tracking = false;
         {
             std::lock_guard<std::mutex> lock(config_mutex_);
             max_bodies = config_.max_bodies;
             detection_threshold = config_.detection_threshold;
+            pose_threshold = config_.pose_threshold;
+            detection_interval = config_.detection_interval;
+            enable_tracking = config_.enable_tracking;
+        }
+        if (!tracking_state_initialized ||
+            enable_tracking != previous_tracking_state) {
+            tracker_->Reset();
+            previous_tracking_state = enable_tracking;
+            tracking_state_initialized = true;
+            processed_input_frames_ = 0;
         }
 
         const auto total_start = std::chrono::steady_clock::now();
-        detections.clear();
-        float inference_ms = 0.0F;
+        StageTimings timings;
         std::string error;
-        if (!detector_->Detect(
-                frame,
-                detection_threshold,
-                max_bodies,
-                detections,
-                inference_ms,
-                error)) {
-            SetLastError(std::move(error));
-            continue;
+        const bool run_detector = !enable_tracking || processed_input_frames_ == 0 ||
+                                  processed_input_frames_ % detection_interval == 0;
+        if (run_detector) {
+            const auto detection_start = std::chrono::steady_clock::now();
+            detections.clear();
+            float detector_inference_ms = 0.0F;
+            if (!detector_->Detect(
+                    frame,
+                    detection_threshold,
+                    max_bodies,
+                    detections,
+                    detector_inference_ms,
+                    error)) {
+                SetLastError(std::move(error));
+                continue;
+            }
+            timings.detection_ms = std::chrono::duration<float, std::milli>(
+                                       std::chrono::steady_clock::now() -
+                                       detection_start)
+                                       .count();
         }
+
+        const auto tracking_start = std::chrono::steady_clock::now();
+        if (enable_tracking) {
+            if (run_detector) {
+                tracker_->Update(detections, frame.timestamp_us, tracked_detections);
+            } else {
+                tracker_->Predict(frame.timestamp_us, tracked_detections);
+            }
+        } else {
+            tracked_detections.clear();
+            tracked_detections.reserve(detections.size());
+            for (const Detection& detection : detections) {
+                tracked_detections.push_back(TrackedDetection{detection, -1});
+            }
+        }
+        if (tracked_detections.size() > static_cast<std::size_t>(max_bodies)) {
+            tracked_detections.resize(static_cast<std::size_t>(max_bodies));
+        }
+        timings.tracking_ms = std::chrono::duration<float, std::milli>(
+                                  std::chrono::steady_clock::now() - tracking_start)
+                                  .count();
 
         snapshot.bodies.clear();
         snapshot.meta.struct_size = sizeof(HV_ResultMeta);
         snapshot.meta.result_sequence = ++result_sequence_;
         snapshot.meta.source_frame_id = frame.frame_id;
         snapshot.meta.source_timestamp_us = frame.timestamp_us;
-        snapshot.bodies.reserve(detections.size());
-        for (const Detection& detection : detections) {
+        snapshot.bodies.reserve(tracked_detections.size());
+        const auto pose_start = std::chrono::steady_clock::now();
+        bool pose_succeeded = true;
+        for (const TrackedDetection& tracked : tracked_detections) {
             HV_Body body{};
             body.struct_size = sizeof(HV_Body);
-            body.track_id = -1;
+            body.track_id = tracked.track_id;
+            const Detection& detection = tracked.detection;
             body.bbox_px.x = detection.x1;
             body.bbox_px.y = detection.y1;
             body.bbox_px.width = std::max(0.0F, detection.x2 - detection.x1);
             body.bbox_px.height = std::max(0.0F, detection.y2 - detection.y1);
             body.detection_confidence = detection.score;
+            std::array<HV_Joint, HV_JOINT_COUNT> joints{};
+            float pose_inference_ms = 0.0F;
+            if (!pose_->Estimate(
+                    frame,
+                    detection,
+                    pose_threshold,
+                    joints,
+                    pose_inference_ms,
+                    error)) {
+                pose_succeeded = false;
+                break;
+            }
+            std::copy(joints.begin(), joints.end(), std::begin(body.joints));
             snapshot.bodies.push_back(body);
         }
-        const float total_ms = std::chrono::duration<float, std::milli>(
-                                   std::chrono::steady_clock::now() - total_start)
-                                   .count();
-        {
-            std::lock_guard<std::mutex> lock(stats_mutex_);
-            ++stats_.processed_frames;
-            stats_.detection_ms = inference_ms;
-            stats_.total_ms = total_ms;
-            stats_.dropped_frames = frame_slot_.dropped_frames();
+        if (!pose_succeeded) {
+            SetLastError(std::move(error));
+            continue;
         }
+        timings.pose_ms = std::chrono::duration<float, std::milli>(
+                              std::chrono::steady_clock::now() - pose_start)
+                              .count();
+        timings.total_ms = std::chrono::duration<float, std::milli>(
+                               std::chrono::steady_clock::now() - total_start)
+                               .count();
+        ++processed_input_frames_;
+        stats_.RecordProcessed(timings);
         result_store_.Publish(snapshot);
     }
 }

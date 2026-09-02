@@ -33,8 +33,20 @@ Do not commit customer-sensitive or personally sensitive video unless repository
 - `add_one.onnx` is a 180-byte float32 `output = input + 1` backend fixture generated with ONNX opset 11. It tests generic ONNX Runtime load/run only and is never used as a detector result.
 - `d0_2_fixture_contract.h` is generated from the official D0.1 PyTorch reference and feeds native preprocessing and detector golden tests without a runtime JSON dependency.
 
-Regenerate all three with:
+## D0.3 committed fixtures
+
+- `d0_3_one_person.mp4` and `d0_3_two_people.mp4` are 10-frame H.264 clips encoded from the real raw fixtures for the isolated native video benchmark. They contain no fixed detector or pose results.
+- `d0_3_fixture_contract.h` and `d0_3_fixtures.json` contain the pose affine, normalized input samples, and COCO-17 golden joints derived from the locked official D0.1 reference.
+- `d0_3_video_manifest.json` records clip dimensions, FPS, frame count, source hashes, encoded hashes, codec settings, and FFmpeg version.
+
+Regenerate the raw/model/golden fixtures with:
 
 ```powershell
 .venv-reference\Scripts\python.exe -m tools.reference.create_native_fixtures
+```
+
+Regenerate the MP4 fixtures with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/benchmark/create_regression_media.ps1
 ```

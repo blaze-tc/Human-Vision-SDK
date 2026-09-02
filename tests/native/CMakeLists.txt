@@ -32,8 +32,13 @@ add_executable(humanvision_native_tests
     test_c_api.cpp
     test_latest_frame_slot.cpp
     test_onnx_runtime_backend.cpp
+    test_pose_affine.cpp
     test_result_snapshot_store.cpp
-    test_rtmdet_model.cpp)
+    test_rtmdet_model.cpp
+    test_rtmpose_model.cpp
+    test_simcc_decoder.cpp
+    test_stats_collector.cpp
+    test_tracker.cpp)
 
 target_link_libraries(humanvision_native_tests
     PRIVATE
@@ -47,12 +52,14 @@ target_include_directories(humanvision_native_tests
         ${PROJECT_SOURCE_DIR}/tests/testdata)
 
 file(TO_CMAKE_PATH "${PROJECT_SOURCE_DIR}/models/detector/rtmdet_tiny_640.onnx" HV_TEST_DETECTOR_MODEL_PATH)
+file(TO_CMAKE_PATH "${PROJECT_SOURCE_DIR}/models/pose/rtmpose_s_256x192.onnx" HV_TEST_POSE_MODEL_PATH)
 file(TO_CMAKE_PATH "${PROJECT_SOURCE_DIR}/tests/testdata/add_one.onnx" HV_TEST_BACKEND_MODEL_PATH)
 file(TO_CMAKE_PATH "${PROJECT_SOURCE_DIR}/tests/testdata/d0_1_human_pose.bgr" HV_TEST_RAW_IMAGE_PATH)
 file(TO_CMAKE_PATH "${PROJECT_SOURCE_DIR}/tests/testdata/d0_2_two_people.bgr" HV_TEST_MULTI_RAW_IMAGE_PATH)
 target_compile_definitions(humanvision_native_tests
     PRIVATE
         HV_TEST_DETECTOR_MODEL_PATH="${HV_TEST_DETECTOR_MODEL_PATH}"
+        HV_TEST_POSE_MODEL_PATH="${HV_TEST_POSE_MODEL_PATH}"
         HV_TEST_BACKEND_MODEL_PATH="${HV_TEST_BACKEND_MODEL_PATH}"
         HV_TEST_RAW_IMAGE_PATH="${HV_TEST_RAW_IMAGE_PATH}"
         HV_TEST_MULTI_RAW_IMAGE_PATH="${HV_TEST_MULTI_RAW_IMAGE_PATH}")

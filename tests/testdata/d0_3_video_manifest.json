@@ -1,0 +1,30 @@
+﻿{
+    "schema_version":  1,
+    "generator":  "tools/benchmark/create_regression_media.ps1",
+    "ffmpeg_version":  "ffmpeg version 8.1.1-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+    "official_reference_image_sha256":  "dd25fd8186e9ce27625520e24ac13ec6747316e51d20b124d3271c5764686d4e",
+    "clips":  [
+                  {
+                      "filename":  "d0_3_one_person.mp4",
+                      "sha256":  "20806434a5620aca9e6198782d6882beb6fc53f1e5a0725e48abf128b46f2f94",
+                      "source_raw":  "d0_1_human_pose.bgr",
+                      "source_raw_sha256":  "f4315fd48a3df2105a7409e52baecf0fb991eeeab1d543c3c29cc8dc812baaf6",
+                      "width":  218,
+                      "height":  346,
+                      "fps":  5,
+                      "frames":  10,
+                      "codec":  "H.264/libx264 CRF 18 yuv420p"
+                  },
+                  {
+                      "filename":  "d0_3_two_people.mp4",
+                      "sha256":  "62cff448ff24d793b4e06d6776438eb64f5d24cb25ff3c928dcd8cb78f3f513b",
+                      "source_raw":  "d0_2_two_people.bgr",
+                      "source_raw_sha256":  "5e9ca009e2b8764e4ea95f44b3014f0699d0eb61ba71f769e0fdd5432fa06aff",
+                      "width":  436,
+                      "height":  346,
+                      "fps":  5,
+                      "frames":  10,
+                      "codec":  "H.264/libx264 CRF 18 yuv420p"
+                  }
+              ]
+}

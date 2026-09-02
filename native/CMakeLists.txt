@@ -37,7 +37,13 @@ add_library(humanvision_internal STATIC
     src/core/humanvision_engine.cpp
     src/core/latest_frame_slot.cpp
     src/core/result_snapshot_store.cpp
-    src/models/rtmdet/rtmdet_model.cpp)
+    src/core/stats_collector.cpp
+    src/models/rtmdet/rtmdet_model.cpp
+    src/models/rtmpose/pose_affine.cpp
+    src/models/rtmpose/rtmpose_preprocess.cpp
+    src/models/rtmpose/rtmpose_model.cpp
+    src/models/rtmpose/simcc_decoder.cpp
+    src/tracking/center_iou_tracker.cpp)
 
 add_library(HumanVision::Internal ALIAS humanvision_internal)
 

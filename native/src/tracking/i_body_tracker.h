@@ -1,0 +1,28 @@
+#pragma once
+
+#include "models/rtmdet/rtmdet_model.h"
+
+#include <cstdint>
+#include <vector>
+
+namespace humanvision {
+
+struct TrackedDetection {
+    Detection detection;
+    int track_id = -1;
+};
+
+class IBodyTracker {
+public:
+    virtual ~IBodyTracker() = default;
+    virtual void Reset() = 0;
+    virtual void Update(
+        const std::vector<Detection>& detections,
+        std::int64_t timestamp_us,
+        std::vector<TrackedDetection>& output) = 0;
+    virtual void Predict(
+        std::int64_t timestamp_us,
+        std::vector<TrackedDetection>& output) = 0;
+};
+
+}  // namespace humanvision

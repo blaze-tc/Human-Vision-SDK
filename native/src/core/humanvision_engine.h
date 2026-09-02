@@ -2,10 +2,12 @@
 
 #include "core/latest_frame_slot.h"
 #include "core/result_snapshot_store.h"
+#include "core/stats_collector.h"
 #include "humanvision/humanvision_types.h"
 #include "models/rtmdet/rtmdet_model.h"
+#include "models/rtmpose/rtmpose_model.h"
+#include "tracking/i_body_tracker.h"
 
-#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -53,15 +55,16 @@ private:
     LatestFrameSlot frame_slot_;
     ResultSnapshotStore result_store_;
     std::unique_ptr<RtmdetModel> detector_;
+    std::unique_ptr<RtmposeModel> pose_;
+    std::unique_ptr<IBodyTracker> tracker_;
     std::thread worker_;
 
-    mutable std::mutex stats_mutex_;
-    HV_Stats stats_{};
-    std::chrono::steady_clock::time_point started_at_;
+    StatsCollector stats_;
 
     mutable std::mutex error_mutex_;
     std::string last_error_;
     std::int64_t result_sequence_ = 0;
+    std::int64_t processed_input_frames_ = 0;
 };
 
 }  // namespace humanvision

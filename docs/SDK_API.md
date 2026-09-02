@@ -69,6 +69,9 @@ Rules:
 
 - `max_bodies >= 1`.
 - Default Demo value is 4, not a hard maximum.
+- Detector and pose model paths are required for the D0 detector/tracker/pose pipeline.
+- `detection_interval >= 1`. With tracking enabled, intermediate frames use tracker velocity prediction and still run pose on the predicted ROIs; a value of 1 runs detection on every processed frame.
+- With tracking disabled, detection runs on every processed frame and returned `track_id` values are `-1`.
 - `struct_size` supports future backward-compatible extension.
 
 ## 4. Frame input
@@ -169,6 +172,10 @@ typedef struct HV_Stats {
     int64_t dropped_frames;
 } HV_Stats;
 ```
+
+`detection_ms`, `pose_ms`, and `tracking_ms` are the latest completed frame's
+full stage times. A deliberately skipped detector stage reports `0` for
+`detection_ms`; `pose_ms` is the total across all selected bodies.
 
 ## 8. Functions
 
