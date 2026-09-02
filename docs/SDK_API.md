@@ -191,6 +191,8 @@ const char* HV_GetLastError(HV_Handle handle);
 void HV_Destroy(HV_Handle handle);
 ```
 
+`HV_GetBodies` never performs a partial copy. If `capacity` is smaller than the completed snapshot's body count, it returns `HV_ERR_INVALID_ARGUMENT`, writes the required count to `written`, and leaves `out_bodies` unchanged. A caller can then reuse or grow its buffer outside the per-frame hot path.
+
 ## 9. Snapshot consistency rule
 
 `HV_GetLatestResultMeta`, `HV_GetBodyCount`, and `HV_GetBodies` must read from a completed result snapshot. The implementation must prevent the worker from partially mutating the snapshot while Unity copies it.

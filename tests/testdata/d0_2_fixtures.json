@@ -1,0 +1,106 @@
+{
+  "backend_model": {
+    "filename": "add_one.onnx",
+    "input": {
+      "dtype": "float32",
+      "name": "input",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "operation": "output = input + [1.0, 1.0]",
+    "opset": 11,
+    "output": {
+      "dtype": "float32",
+      "name": "output",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "sha256": "6b70361318c9036c8dacf0d4af5f0d2aeb1c0a39072691bc8a5eb3c62632cbbd"
+  },
+  "detector_preprocess": {
+    "input_size_width_height": [
+      640,
+      640
+    ],
+    "resized_width_height": [
+      403,
+      640
+    ],
+    "samples": [
+      {
+        "normalized_bgr": [
+          1.9602614641189575,
+          1.605742335319519,
+          1.444044828414917
+        ],
+        "x": 0,
+        "y": 0
+      },
+      {
+        "normalized_bgr": [
+          2.0125489234924316,
+          1.7107843160629272,
+          1.5296685695648193
+        ],
+        "x": 100,
+        "y": 100
+      },
+      {
+        "normalized_bgr": [
+          -0.7412635684013367,
+          -1.0203081369400024,
+          -1.2616662979125977
+        ],
+        "x": 402,
+        "y": 639
+      },
+      {
+        "normalized_bgr": [
+          0.18248368799686432,
+          -0.03991594538092613,
+          -0.16568204760551453
+        ],
+        "x": 403,
+        "y": 100
+      },
+      {
+        "normalized_bgr": [
+          0.18248368799686432,
+          -0.03991594538092613,
+          -0.16568204760551453
+        ],
+        "x": 639,
+        "y": 639
+      }
+    ],
+    "scale_factor_xy": [
+      1.848623853211009,
+      1.8497109826589595
+    ]
+  },
+  "multi_person_raw_image": {
+    "construction": "two horizontal copies of the locked official reference image",
+    "filename": "d0_2_two_people.bgr",
+    "height": 346,
+    "pixel_format": "BGR24",
+    "sha256": "5e9ca009e2b8764e4ea95f44b3014f0699d0eb61ba71f769e0fdd5432fa06aff",
+    "source_sha256": "dd25fd8186e9ce27625520e24ac13ec6747316e51d20b124d3271c5764686d4e",
+    "stride_bytes": 1308,
+    "width": 436
+  },
+  "raw_image": {
+    "filename": "d0_1_human_pose.bgr",
+    "height": 346,
+    "pixel_format": "BGR24",
+    "sha256": "f4315fd48a3df2105a7409e52baecf0fb991eeeab1d543c3c29cc8dc812baaf6",
+    "source": "tools/reference/vendor/mmdeploy/demo/resources/human-pose.jpg",
+    "source_sha256": "dd25fd8186e9ce27625520e24ac13ec6747316e51d20b124d3271c5764686d4e",
+    "stride_bytes": 654,
+    "width": 218
+  },
+  "schema_version": 1
+}

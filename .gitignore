@@ -10,3 +10,4 @@ tools/reference/vendor/
 tools/reference/downloads/
 models/**/*.onnx
 models/**/*.pth
+third_party/onnxruntime/
