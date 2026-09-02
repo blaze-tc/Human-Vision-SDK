@@ -4,8 +4,8 @@
 
 **Status date:** 2026-09-02  
 **Current stage:** D0 - Windows Local Video Vertical Slice  
-**Current milestone:** D0.3 RTMPose + Tracker + Native Video Benchmark  
-**Current implementation state:** D0.2 asynchronous native C ABI, latest-frame queueing, ONNX Runtime 1.29.0 CPU backend, RTMDet-tiny preprocessing/postprocessing, real-image golden comparisons, and runtime `MaxBodies` enforcement completed and verified.
+**Current milestone:** D0.4 Unity Local Video Demo  
+**Current implementation state:** D0.3 native RTMPose-s preprocessing/inference/SimCC decoding, center+IoU+velocity tracking, detector-interval prediction, per-stage statistics, and real one/two-person MP4 benchmark completed and verified.
 
 ## Immediate user-visible target
 
@@ -23,7 +23,7 @@ Do not start RTSP until this local-video path is visibly working.
 - [x] D0.0 Repository & Build Bootstrap
 - [x] D0.1 Python/OpenMMLab Reference + ONNX Contract
 - [x] D0.2 Native ONNX Runtime + RTMDet
-- [ ] D0.3 RTMPose + Tracker + Native Video Benchmark
+- [x] D0.3 RTMPose + Tracker + Native Video Benchmark
 - [ ] D0.4 Unity Local Video Demo
 - [ ] D1.0 RTSP IPC Input
 - [ ] D1.1 Real 1~4 Person Field Validation
@@ -40,6 +40,114 @@ Until D1.2 is accepted:
 - no action recognition
 
 ## Latest verification
+
+### D0.3 RTMPose + Tracker + Native Video Benchmark - PASS
+
+- Date: 2026-09-02
+- Implementation commit: `68b01ae24d305755f6f1eada4772af2aca179555`
+- Host: Windows x64, ONNX Runtime 1.29.0 CPU execution provider
+- Generator/compiler: Ninja Multi-Config, MSVC 19.44.35228.0 (v143)
+- Regression media reader: FFmpeg 8.1.1, invoked only by the benchmark executable and not linked into HumanVisionCore
+
+Expected RED verification:
+
+```powershell
+cmake --preset windows-debug --fresh
+cmake --build --preset windows-debug --clean-first
+```
+
+- Configure result: exit 0.
+- Build result before implementation: exit 1; the acceptance target first reported missing production headers `models/rtmpose/simcc_decoder.h`, `models/rtmpose/pose_affine.h`, and `models/rtmpose/rtmpose_model.h`. The same test target also declared the absent tracker and stats contracts.
+- This confirmed that official ROI affine/SimCC behavior, real pose inference, stable IDs, and stage statistics could not pass through detector-only D0.2 code.
+
+Fresh Debug verification:
+
+```powershell
+cmake --preset windows-debug --fresh
+cmake --build --preset windows-debug --clean-first
+ctest --preset windows-debug
+```
+
+- Configure: PASS, exit 0.
+- Build: PASS, 35/35 build steps, exit 0.
+- CTest: PASS, 28/28 tests, 0 failures, 10.53 seconds.
+
+Fresh Release verification:
+
+```powershell
+cmake --preset windows-release --fresh
+cmake --build --preset windows-release --clean-first
+ctest --preset windows-release
+```
+
+- Configure: PASS, exit 0.
+- Build: PASS, 35/35 build steps, exit 0.
+- CTest: PASS, 28/28 tests, 0 failures, 6.86 seconds.
+- Final post-instrumentation regressions: Debug 28/28 in 10.19 seconds; Release 28/28 in 6.65 seconds.
+
+Pose/tracker/integration results:
+
+- MMPose-compatible bbox center/scale, 1.25 padding, 192x256 aspect correction, affine mapping, RGB normalization, and source-coordinate restoration pass committed golden tests.
+- Synthetic SimCC peak tensors decode 17 joints with the documented `argmax / 2.0` coordinate rule and minimum-axis confidence rule; malformed output tensor contracts are rejected.
+- Native RTMPose-s vs official PyTorch golden: 17/17 joints valid, maximum coordinate error `0.000030517578125 px`, maximum score error `0.0012398958206176758`, and ONNX inference time `10.435199737548828 ms` on the isolated official ROI.
+- Native RTMDet regression remains within tolerance: maximum box error `0.075927734375 px`, IoU `0.99961433162530111`, native score `0.91604882478713989`.
+- Tracker tests pass continuous motion, two missing detections, two-person crossing with reversed detection order, velocity prediction, and unique monotonic IDs.
+- C ABI integration returns real boxes, positive unique track IDs, 17 real joints, and stage timings. `detection_interval=2` reports a zero detector stage on the intermediate frame while preserving the ID and rerunning pose on the predicted ROI.
+- Runtime `MaxBodies=1/2/4` returns 1/2/2 bodies for the real two-person input, so pose work remains capped at the detector selection stage.
+- Official Python reference unit tests pass 4/4; the PyTorch-to-ONNX detector and pose comparison summary remains PASS.
+- Stress: all latest-frame and tracker tests passed 20 consecutive repetitions each; the asynchronous one-person, real two-person, and detector-interval C API tests passed 5 consecutive repetitions each.
+
+Native video benchmark commands:
+
+```powershell
+build/windows-release/bin/Release/hv_video_benchmark.exe `
+  --input tests/testdata/d0_3_one_person.mp4 --width 218 --height 346 `
+  --fps 5 --frames 10 --max-bodies 1 `
+  --detector-model models/detector/rtmdet_tiny_640.onnx `
+  --pose-model models/pose/rtmpose_s_256x192.onnx `
+  --output-prefix out/benchmark/d0_3_one_person_max1
+
+build/windows-release/bin/Release/hv_video_benchmark.exe `
+  --input tests/testdata/d0_3_two_people.mp4 --width 436 --height 346 `
+  --fps 5 --frames 10 --max-bodies 1 `
+  --detector-model models/detector/rtmdet_tiny_640.onnx `
+  --pose-model models/pose/rtmpose_s_256x192.onnx `
+  --output-prefix out/benchmark/d0_3_two_people_max1
+```
+
+- The two-person command was repeated with `--max-bodies 2` and `--max-bodies 4` and matching output prefixes.
+- One person / MaxBodies 1: 10/10 frames, body count 1~1, 1 unique ID, 17 minimum valid joints, averages `158.061722 ms` detection, `16.725178 ms` pose, `0.003440 ms` tracking, `174.790833 ms` total.
+- Two people / MaxBodies 1: 10/10 frames, body count 1~1, 1 unique ID, 17 minimum valid joints, averages `168.703171 ms` detection, `18.091358 ms` pose, `0.003850 ms` tracking, `186.798843 ms` total.
+- Two people / MaxBodies 2: 10/10 frames, body count 2~2, 2 unique IDs, 17 minimum valid joints, averages `167.752930 ms` detection, `34.047710 ms` pose, `0.003460 ms` tracking, `201.804367 ms` total.
+- Two people / MaxBodies 4: 10/10 frames, body count 2~2, 2 unique IDs, 17 minimum valid joints, averages `167.797073 ms` detection, `33.211170 ms` pose, `0.004400 ms` tracking, `201.013138 ms` total.
+- Each run exported per-frame CSV and a JSON summary with first-frame real boxes, IDs, and all 17 joint coordinates under `out/benchmark/`.
+
+Regression media/contracts:
+
+- `d0_3_one_person.mp4`: 10 frames, 218x346 at 5 fps, SHA-256 `20806434a5620aca9e6198782d6882beb6fc53f1e5a0725e48abf128b46f2f94`.
+- `d0_3_two_people.mp4`: 10 frames, 436x346 at 5 fps, SHA-256 `62cff448ff24d793b4e06d6776438eb64f5d24cb25ff3c928dcd8cb78f3f513b`.
+- Both clips are H.264 encodes of the real locked official-image raw fixtures. Two forced regenerations produced identical hashes; `d0_3_video_manifest.json` records source hashes, settings, and FFmpeg version.
+- D0.3 pose fixture regeneration is deterministic; D0.2 fixture hashes remain unchanged.
+
+Artifact checks:
+
+- Release `humanvision.dll`: 114,688 bytes, SHA-256 `18a05d17e6c55b1d3f7f1608fe652d801b54133c359f862f8ce51166553bdcdf`.
+- Debug `humanvision.dll`: 916,992 bytes, SHA-256 `4223122db4e6095377409b33fa0c8caa2555103e816458d85eb852d7fb0553f9`.
+- Release `hv_video_benchmark.exe`: 84,480 bytes, SHA-256 `c8196b5eae75f56fe084b2c3c944b594c18ed9098e65c7b7cf6a635f55693411`.
+- `dumpbin /headers`: Release DLL is x64 PE32+.
+- `dumpbin /exports`: public boundary remains exactly the same 10 C ABI exports recorded for D0.2; no model/backend/tracker types are exported.
+- `dumpbin /dependents`: HumanVisionCore depends on `onnxruntime.dll` plus the MSVC/UCRT runtime and has no FFmpeg/OpenCV dependency.
+- Copied `onnxruntime.dll` SHA-256 remains `69d8e6d3879a3b4001cdc74c8ed9ccc7e7f799a5b847059738323404519ec471`.
+- Model ONNX files and ONNX Runtime binaries remain Git-ignored and were not committed.
+
+Known issues / environment notes:
+
+- The sequential CPU benchmark measures deterministic pipeline latency rather than real-time playback throughput. The two-person baseline is approximately `201.8 ms/frame`; D0.4 must verify latest-frame dropping and Unity responsiveness under real playback.
+- The committed MP4s are reproducible real-image-derived regression clips, not field-motion footage. Tracker crossing/occlusion behavior is covered deterministically at the native box level; real participant motion remains part of D0.4/D1.1 visual validation.
+- The installed Visual Studio host remains Visual Studio 2026 with its v143 compiler rather than the documented Visual Studio 2022 host baseline.
+- The active UnitySkills project previously reported Unity 2021.3.45f1. D0.4 acceptance requires opening/creating the Demo with Unity 2022.3 LTS before claiming Unity verification.
+
+Next milestone: D0.4 Unity Local Video Demo.
 
 ### D0.2 Native ONNX Runtime + RTMDet - PASS
 
