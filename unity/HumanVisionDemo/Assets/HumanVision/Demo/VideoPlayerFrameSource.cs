@@ -9,6 +9,53 @@ using UnityEngine.Video;
 
 namespace HumanVision.Demo
 {
+    internal static class ReadbackRowNormalizer
+    {
+        internal static unsafe void CopyBottomUpToTopDown(
+            NativeArray<byte> source,
+            NativeArray<byte> destination,
+            int height,
+            int strideBytes)
+        {
+            if (!source.IsCreated)
+            {
+                throw new ArgumentException("The source readback buffer is not created.", nameof(source));
+            }
+
+            if (!destination.IsCreated)
+            {
+                throw new ArgumentException("The destination readback buffer is not created.", nameof(destination));
+            }
+
+            if (height <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(height));
+            }
+
+            if (strideBytes <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(strideBytes));
+            }
+
+            int byteCount = checked(height * strideBytes);
+            if (source.Length < byteCount || destination.Length < byteCount)
+            {
+                throw new ArgumentException("The readback buffers are smaller than the requested frame layout.");
+            }
+
+            byte* sourcePointer = (byte*)NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(source);
+            byte* destinationPointer = (byte*)NativeArrayUnsafeUtility.GetUnsafePtr(destination);
+            for (int destinationRow = 0; destinationRow < height; destinationRow++)
+            {
+                int sourceRow = height - destinationRow - 1;
+                UnsafeUtility.MemCpy(
+                    destinationPointer + destinationRow * strideBytes,
+                    sourcePointer + sourceRow * strideBytes,
+                    strideBytes);
+            }
+        }
+    }
+
     [DefaultExecutionOrder(-50)]
     [DisallowMultipleComponent]
     [RequireComponent(typeof(VideoPlayer))]
@@ -29,6 +76,7 @@ namespace HumanVision.Demo
         private RenderTexture _renderTexture;
         private long _lastScheduledFrame = -1;
         private bool _acceptReadbacks;
+        private bool _normalizeReadbackRows;
 
         public event Action VideoLayoutChanged;
 
@@ -204,7 +252,18 @@ namespace HumanVision.Demo
                     return;
                 }
 
-                IntPtr data = (IntPtr)NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(slot.Buffer);
+                NativeArray<byte> submissionBuffer = slot.Buffer;
+                if (_normalizeReadbackRows)
+                {
+                    ReadbackRowNormalizer.CopyBottomUpToTopDown(
+                        slot.Buffer,
+                        slot.TopLeftBuffer,
+                        SourceHeight,
+                        SourceWidth * 4);
+                    submissionBuffer = slot.TopLeftBuffer;
+                }
+
+                IntPtr data = (IntPtr)NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(submissionBuffer);
                 manager.SubmitFrame(
                     data,
                     SourceWidth,
@@ -226,6 +285,7 @@ namespace HumanVision.Demo
             ReleaseReadbackResources();
             SourceWidth = width;
             SourceHeight = height;
+            _normalizeReadbackRows = SystemInfo.graphicsUVStartsAtTop;
             int byteCount = checked(width * height * 4);
             for (int index = 0; index < _slots.Length; index++)
             {
@@ -233,6 +293,13 @@ namespace HumanVision.Demo
                     byteCount,
                     Allocator.Persistent,
                     NativeArrayOptions.UninitializedMemory);
+                if (_normalizeReadbackRows)
+                {
+                    _slots[index].TopLeftBuffer = new NativeArray<byte>(
+                        byteCount,
+                        Allocator.Persistent,
+                        NativeArrayOptions.UninitializedMemory);
+                }
                 _slots[index].Busy = false;
             }
 
@@ -305,6 +372,11 @@ namespace HumanVision.Demo
                 {
                     slot.Buffer.Dispose();
                 }
+
+                if (slot.TopLeftBuffer.IsCreated)
+                {
+                    slot.TopLeftBuffer.Dispose();
+                }
             }
 
             if (_renderTexture != null)
@@ -353,6 +425,7 @@ namespace HumanVision.Demo
         private sealed class ReadbackSlot
         {
             internal NativeArray<byte> Buffer;
+            internal NativeArray<byte> TopLeftBuffer;
             internal AsyncGPUReadbackRequest Request;
             internal Action<AsyncGPUReadbackRequest> Completion;
             internal bool Busy;

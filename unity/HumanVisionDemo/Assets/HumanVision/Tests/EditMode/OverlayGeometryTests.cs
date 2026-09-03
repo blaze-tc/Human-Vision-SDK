@@ -1,5 +1,6 @@
 using HumanVision.Demo;
 using NUnit.Framework;
+using Unity.Collections;
 using UnityEngine;
 
 namespace HumanVision.Tests
@@ -15,6 +16,32 @@ namespace HumanVision.Tests
             Assert.That(fitted.y, Is.EqualTo(0f).Within(0.001f));
             Assert.That(fitted.width, Is.EqualTo(1440f).Within(0.001f));
             Assert.That(fitted.height, Is.EqualTo(1080f).Within(0.001f));
+        }
+
+        [Test]
+        public void BottomUpGpuReadbackIsCopiedIntoTopLeftRowOrder()
+        {
+            var source = new NativeArray<byte>(
+                new byte[] { 10, 11, 20, 21, 30, 31 },
+                Allocator.Temp);
+            var destination = new NativeArray<byte>(
+                source.Length,
+                Allocator.Temp,
+                NativeArrayOptions.UninitializedMemory);
+
+            try
+            {
+                ReadbackRowNormalizer.CopyBottomUpToTopDown(source, destination, 3, 2);
+
+                CollectionAssert.AreEqual(
+                    new byte[] { 30, 31, 20, 21, 10, 11 },
+                    destination.ToArray());
+            }
+            finally
+            {
+                destination.Dispose();
+                source.Dispose();
+            }
         }
 
         [Test]

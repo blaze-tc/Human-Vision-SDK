@@ -52,6 +52,24 @@ namespace HumanVision.Tests
             Assert.That(buildScene.enabled, Is.True, "The D0.4 Demo scene must be enabled.");
         }
 
+        [Test]
+        public void DemoSceneUsesReadableSkeletonStrokeAndJointSizes()
+        {
+            EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+
+            HumanVisionOverlay overlay = Object.FindObjectOfType<HumanVisionOverlay>();
+            Assert.That(overlay, Is.Not.Null);
+
+            var serializedOverlay = new SerializedObject(overlay);
+            SerializedProperty boneThickness = serializedOverlay.FindProperty("boneThickness");
+            SerializedProperty jointSize = serializedOverlay.FindProperty("jointSize");
+
+            Assert.That(boneThickness, Is.Not.Null);
+            Assert.That(jointSize, Is.Not.Null);
+            Assert.That(boneThickness.floatValue, Is.EqualTo(4f));
+            Assert.That(jointSize.floatValue, Is.EqualTo(7f));
+        }
+
         private static void AssertReference(
             Object owner,
             string propertyName,
