@@ -5,7 +5,7 @@
 **Status date:** 2026-09-03  
 **Current stage:** D1 - RTSP IPC Integration  
 **Current milestone:** D1.0 RTSP IPC Input  
-**Current implementation state:** D0.4 Unity local-video vertical slice completed and verified in the imported AzureKinectExamples project: asynchronous frame submission, real RTMDet/RTMPose inference, stable tracking, video/box/ID/COCO-17 overlay, performance HUD, and a Windows x64 standalone build.
+**Current implementation state:** D0.4 Unity local-video vertical slice completed and verified in the imported AzureKinectExamples project: asynchronous frame submission, real RTMDet/RTMPose inference, stable tracking, video/box/ID/COCO-17 overlay with anatomical neck/spine/pelvis display topology, performance HUD, and a Windows x64 standalone build.
 
 ## Immediate user-visible target
 
@@ -84,6 +84,19 @@ Fresh Unity verification after the final DLL copy and editor restart:
 - GPU readback counters remained 0 drops / 0 errors. Unity Console contained 0 errors and 0 warnings during this run.
 - The runtime overlay visibly rendered two tracked boxes, IDs, and COCO-17 skeletons. The HUD reported input/inference FPS, detector/pose/total timing, submitted/processed/dropped frames, and readback counters.
 - Captured evidence: `E:\UnityProject\Human-Vision-SDK-Test\Assets\Screenshots\humanvision_d04_runtime.png`.
+
+Post-acceptance visual skeleton correction:
+
+- Date: 2026-09-03
+- Fix commit: `ad4011254d604e4d9f0f9ef57d6fe9a2539319f2`
+- User-visible symptom: the original bone lines formed large head/shoulder and shoulder/hip triangles, so the overlay did not read as a human skeleton even though the COCO-17 joint indices and coordinates were correct.
+- Root cause: COCO-17 has no explicit neck, spine, or pelvis-center joints. The first display topology connected nose directly to both shoulders and each shoulder directly to its corresponding hip.
+- Fix: derive a neck anchor from the shoulder midpoint and a pelvis anchor from the hip midpoint, then render a central `head -> neck -> pelvis` spine with anatomically branched shoulders, arms, hips, and legs. Model output, native ABI, tracking, and coordinate mapping remain unchanged.
+- Expected RED job `6497ca37`: 3/5 passed; the new topology and derived-anchor midpoint tests were the two expected failures.
+- Focused GREEN job `ea7a68a2`: 5/5 passed.
+- Final full EditMode job `21968242`: PASS, 30/30 tests, 0 failures, 6 seconds; Unity Console contained 0 errors.
+- Visual runtime evidence: `E:\UnityProject\Human-Vision-SDK-Test\Assets\Screenshots\humanvision_d04_skeleton_fix.png`; scene remained clean with the same three root objects.
+- Windows x64 Demo rebuild: PASS, 431,123,235 output bytes, 8.51 seconds.
 
 Windows standalone verification:
 
