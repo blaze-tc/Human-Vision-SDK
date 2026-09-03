@@ -96,17 +96,16 @@ namespace HumanVision.Demo
             for (int boneIndex = 0; boneIndex < Coco17Skeleton.Bones.Length; boneIndex++)
             {
                 Coco17Bone bone = Coco17Skeleton.Bones[boneIndex];
-                HumanVisionJoint start = joints[bone.Start];
-                HumanVisionJoint end = joints[bone.End];
-                if (!start.Valid || !end.Valid)
+                if (!Coco17Skeleton.TryResolveAnchor(joints, bone.Start, out Vector2 start) ||
+                    !Coco17Skeleton.TryResolveAnchor(joints, bone.End, out Vector2 end))
                 {
                     continue;
                 }
 
                 AddLine(
                     vertexHelper,
-                    ToOverlay(start.Pixel, videoRect),
-                    ToOverlay(end.Pixel, videoRect),
+                    ToOverlay(start, videoRect),
+                    ToOverlay(end, videoRect),
                     boneThickness,
                     bodyColor);
             }
