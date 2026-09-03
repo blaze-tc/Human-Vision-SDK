@@ -9,9 +9,13 @@ set(
 set(HV_ONNXRUNTIME_INCLUDE "${HV_ONNXRUNTIME_ROOT}/include")
 set(HV_ONNXRUNTIME_LIBRARY "${HV_ONNXRUNTIME_ROOT}/lib/onnxruntime.lib")
 set(HV_ONNXRUNTIME_DLL "${HV_ONNXRUNTIME_ROOT}/lib/onnxruntime.dll")
+set(HV_PRIVATE_ONNXRUNTIME_DLL_NAME "humanvision_onnxruntime.dll")
 set(
-    HV_ONNXRUNTIME_PROVIDERS_SHARED_DLL
-    "${HV_ONNXRUNTIME_ROOT}/lib/onnxruntime_providers_shared.dll")
+    HV_PRIVATE_ONNXRUNTIME_DEFINITION
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/backend/onnx/humanvision_onnxruntime.def")
+set(
+    HV_PRIVATE_ONNXRUNTIME_LIBRARY
+    "${CMAKE_CURRENT_BINARY_DIR}/humanvision_onnxruntime.lib")
 
 foreach(required_path
         IN ITEMS
@@ -25,9 +29,32 @@ foreach(required_path
     endif()
 endforeach()
 
+if(NOT MSVC)
+    message(FATAL_ERROR
+        "The current D0 Windows x64 ONNX Runtime isolation build requires MSVC. "
+        "Do not publish another platform until it has a verified private runtime dependency strategy.")
+endif()
+
+execute_process(
+    COMMAND "${CMAKE_AR}"
+        /nologo
+        "/def:${HV_PRIVATE_ONNXRUNTIME_DEFINITION}"
+        "/out:${HV_PRIVATE_ONNXRUNTIME_LIBRARY}"
+        /machine:x64
+    RESULT_VARIABLE HV_PRIVATE_ONNXRUNTIME_LIBRARY_RESULT
+    OUTPUT_VARIABLE HV_PRIVATE_ONNXRUNTIME_LIBRARY_OUTPUT
+    ERROR_VARIABLE HV_PRIVATE_ONNXRUNTIME_LIBRARY_ERROR)
+
+if(NOT HV_PRIVATE_ONNXRUNTIME_LIBRARY_RESULT EQUAL 0)
+    message(FATAL_ERROR
+        "Failed to create the private ONNX Runtime import library.\n"
+        "Output: ${HV_PRIVATE_ONNXRUNTIME_LIBRARY_OUTPUT}\n"
+        "Error: ${HV_PRIVATE_ONNXRUNTIME_LIBRARY_ERROR}")
+endif()
+
 add_library(hv_onnxruntime SHARED IMPORTED GLOBAL)
 set_target_properties(hv_onnxruntime PROPERTIES
-    IMPORTED_IMPLIB "${HV_ONNXRUNTIME_LIBRARY}"
+    IMPORTED_IMPLIB "${HV_PRIVATE_ONNXRUNTIME_LIBRARY}"
     IMPORTED_LOCATION "${HV_ONNXRUNTIME_DLL}"
     INTERFACE_INCLUDE_DIRECTORIES "${HV_ONNXRUNTIME_INCLUDE}")
 
@@ -87,13 +114,8 @@ endif()
 add_custom_command(TARGET humanvision POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${HV_ONNXRUNTIME_DLL}"
-        "$<TARGET_FILE_DIR:humanvision>"
+        "$<TARGET_FILE_DIR:humanvision>/${HV_PRIVATE_ONNXRUNTIME_DLL_NAME}"
+    COMMAND ${CMAKE_COMMAND} -E rm -f
+        "$<TARGET_FILE_DIR:humanvision>/onnxruntime.dll"
+        "$<TARGET_FILE_DIR:humanvision>/onnxruntime_providers_shared.dll"
     VERBATIM)
-
-if(EXISTS "${HV_ONNXRUNTIME_PROVIDERS_SHARED_DLL}")
-    add_custom_command(TARGET humanvision POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${HV_ONNXRUNTIME_PROVIDERS_SHARED_DLL}"
-            "$<TARGET_FILE_DIR:humanvision>"
-        VERBATIM)
-endif()

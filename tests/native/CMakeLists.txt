@@ -71,3 +71,16 @@ if(MSVC)
 endif()
 
 gtest_discover_tests(humanvision_native_tests)
+
+if(MSVC)
+    get_filename_component(HV_MSVC_BIN_DIRECTORY "${CMAKE_LINKER}" DIRECTORY)
+    set(HV_DUMPBIN_PATH "${HV_MSVC_BIN_DIRECTORY}/dumpbin.exe")
+
+    add_test(
+        NAME humanvision_native_dependency_isolation
+        COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+            -File "${PROJECT_SOURCE_DIR}/tools/test/test_native_dependency_isolation.ps1"
+            -DumpbinPath "${HV_DUMPBIN_PATH}"
+            -HumanVisionDll "$<TARGET_FILE:humanvision>"
+            -PrivateRuntimeDll "$<TARGET_FILE_DIR:humanvision>/humanvision_onnxruntime.dll")
+endif()

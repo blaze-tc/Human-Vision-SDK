@@ -1,0 +1,3 @@
+LIBRARY humanvision_onnxruntime.dll
+EXPORTS
+    OrtGetApiBase @1

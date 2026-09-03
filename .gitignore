@@ -11,3 +11,11 @@ tools/reference/downloads/
 models/**/*.onnx
 models/**/*.pth
 third_party/onnxruntime/
+unity/HumanVisionDemo/Library/
+unity/HumanVisionDemo/Temp/
+unity/HumanVisionDemo/Obj/
+unity/HumanVisionDemo/Logs/
+unity/HumanVisionDemo/UserSettings/
+unity/HumanVisionDemo/Builds/
+unity/HumanVisionDemo/Assets/Plugins/x86_64/*.dll
+unity/HumanVisionDemo/Assets/StreamingAssets/HumanVision/Models/*.onnx
