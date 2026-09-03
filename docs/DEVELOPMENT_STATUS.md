@@ -5,7 +5,7 @@
 **Status date:** 2026-09-03  
 **Current stage:** D1 - RTSP IPC Integration  
 **Current milestone:** D1.0 RTSP IPC Input  
-**Current implementation state:** D0.4 Unity local-video vertical slice completed and verified in the imported AzureKinectExamples project: asynchronous frame submission, real RTMDet/RTMPose inference, stable tracking, video/box/ID/COCO-17 overlay with anatomical neck/spine/pelvis display topology, performance HUD, and a Windows x64 standalone build.
+**Current implementation state:** D0.4 Unity local-video vertical slice completed and verified in the imported AzureKinectExamples project: asynchronous frame submission, real RTMDet/RTMPose inference, stable tracking, video/box/ID overlay with a Kinect-style display skeleton derived from COCO-17, performance HUD, and a Windows x64 standalone build.
 
 ## Immediate user-visible target
 
@@ -97,6 +97,23 @@ Post-acceptance visual skeleton correction:
 - Final full EditMode job `21968242`: PASS, 30/30 tests, 0 failures, 6 seconds; Unity Console contained 0 errors.
 - Visual runtime evidence: `E:\UnityProject\Human-Vision-SDK-Test\Assets\Screenshots\humanvision_d04_skeleton_fix.png`; scene remained clean with the same three root objects.
 - Windows x64 Demo rebuild: PASS, 431,123,235 output bytes, 8.51 seconds.
+
+Kinect-style skeleton hierarchy refinement:
+
+- Date: 2026-09-03
+- User references: `joint-hierarchy.png` (963x1036, SHA-256 `FF5C02424C7CCFB910F6FF79526F9C5B2D4A0A1441E7606E8E1BE651E0DA7B89`) and `Kinect.png` (1057x893, SHA-256 `632CABC733C1B210B15077E2CE075C5AA45F49324D6BE9B315C97ACCB4ED3059`).
+- Remaining symptom: the neck/pelvis-only correction still lacked the Kinect spine-navel, spine-chest, head, and clavicle hierarchy, so its silhouette remained a COCO keypoint overlay rather than a Kinect-style skeleton.
+- Root cause: the display topology exposed only two derived anchors and rendered markers for the 17 raw COCO joints. It could not express Kinect's central spine or shoulder-belt parent chain even though the source joint coordinates were correct.
+- Fix: retain the native/public COCO-17 result unchanged and derive seven display-only anchors: pelvis, spine navel, spine chest, neck, head, and left/right clavicles. The overlay now renders the supported Kinect hierarchy as 24 anchors and 23 parent-child bones, with circular markers for both measured and derived joints.
+- Unsupported Kinect endpoints are intentionally omitted: COCO-17 contains no hand, hand-tip, thumb, or foot-tip observations, so the display does not invent them or claim depth/Z tracking.
+- Expected RED job `06d3ef04`: 2/6 passed; four new hierarchy, anchor-placement, dependency-suppression, and valid-range assertions failed against the previous topology.
+- Focused GREEN job `ade54dd2`: PASS, 6/6. Post-refactor focused job `ed43236b`: PASS, 6/6.
+- Full EditMode job `63bf091a` and final pre-commit job `cfe83129`: PASS, 31/31 tests each, 0 failures, 11 seconds each. Unity compilation completed with 0 errors.
+- Play-mode verification: the real two-person clip ran at 436x346 and 5 fps with `BodyCount=2`, runtime `MaxBodies=4`, and `ResultSequence=317`; manager/frame-source errors, GPU readback drops, and GPU readback errors were all zero. Unity Console reported 0 warnings and 0 errors.
+- Visual evidence: `E:\UnityProject\Human-Vision-SDK-Test\Assets\Screenshots\humanvision_d04_kinect_style.png`, 1280x720, SHA-256 `4B52E431F9EF941D4583EA5BE109F135B8A9EF751457A307EED2A4F08EE9B634`.
+- Source-to-imported-project comparison: PASS; the modified geometry, overlay, and EditMode test files match by SHA-256.
+- Windows x64 Demo rebuild: PASS, 162 files / 431,126,373 bytes. The rebuilt `HumanVision.Demo.dll` is 24,064 bytes with SHA-256 `F411DD05E223F98C5AA7301609F9D5A422DCD9FD53DEF13423FD2EB0B75C1709`.
+- Standalone smoke run: the rebuilt player remained responsive for 12 seconds and loaded `humanvision.dll` plus the private `humanvision_onnxruntime.dll`. Its log contained no exception or crash and only the two already documented VideoPlayer timestamp/color-standard warnings.
 
 Windows standalone verification:
 

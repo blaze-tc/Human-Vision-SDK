@@ -16,23 +16,35 @@ namespace HumanVision.Demo
 
     internal static class Coco17Skeleton
     {
-        private const int NeckAnchor = 17;
-        private const int PelvisAnchor = 18;
+        private const int PelvisAnchor = 17;
+        private const int SpineNavelAnchor = 18;
+        private const int SpineChestAnchor = 19;
+        private const int NeckAnchor = 20;
+        private const int HeadAnchor = 21;
+        private const int ClavicleLeftAnchor = 22;
+        private const int ClavicleRightAnchor = 23;
+
+        internal const int AnchorCount = 24;
 
         internal static readonly Coco17Bone[] Bones =
         {
+            new Coco17Bone(PelvisAnchor, SpineNavelAnchor),
+            new Coco17Bone(SpineNavelAnchor, SpineChestAnchor),
+            new Coco17Bone(SpineChestAnchor, NeckAnchor),
+            new Coco17Bone(NeckAnchor, HeadAnchor),
+            new Coco17Bone(HeadAnchor, 0),
             new Coco17Bone(0, 1),
-            new Coco17Bone(0, 2),
             new Coco17Bone(1, 3),
+            new Coco17Bone(0, 2),
             new Coco17Bone(2, 4),
-            new Coco17Bone(0, NeckAnchor),
-            new Coco17Bone(NeckAnchor, 5),
+            new Coco17Bone(SpineChestAnchor, ClavicleLeftAnchor),
+            new Coco17Bone(ClavicleLeftAnchor, 5),
             new Coco17Bone(5, 7),
             new Coco17Bone(7, 9),
-            new Coco17Bone(NeckAnchor, 6),
+            new Coco17Bone(SpineChestAnchor, ClavicleRightAnchor),
+            new Coco17Bone(ClavicleRightAnchor, 6),
             new Coco17Bone(6, 8),
             new Coco17Bone(8, 10),
-            new Coco17Bone(NeckAnchor, PelvisAnchor),
             new Coco17Bone(PelvisAnchor, 11),
             new Coco17Bone(11, 13),
             new Coco17Bone(13, 15),
@@ -64,17 +76,80 @@ namespace HumanVision.Demo
                 return true;
             }
 
-            if (anchor == NeckAnchor)
-            {
-                return TryResolveMidpoint(joints[5], joints[6], out pixel);
-            }
-
             if (anchor == PelvisAnchor)
             {
                 return TryResolveMidpoint(joints[11], joints[12], out pixel);
             }
 
+            if (anchor == NeckAnchor)
+            {
+                return TryResolveMidpoint(joints[5], joints[6], out pixel);
+            }
+
+            if (anchor == SpineNavelAnchor)
+            {
+                return TryResolveInterpolatedAnchor(
+                    joints,
+                    PelvisAnchor,
+                    NeckAnchor,
+                    0.35f,
+                    out pixel);
+            }
+
+            if (anchor == SpineChestAnchor)
+            {
+                return TryResolveInterpolatedAnchor(
+                    joints,
+                    PelvisAnchor,
+                    NeckAnchor,
+                    0.75f,
+                    out pixel);
+            }
+
+            if (anchor == HeadAnchor)
+            {
+                return TryResolveInterpolatedAnchor(joints, NeckAnchor, 0, 0.5f, out pixel);
+            }
+
+            if (anchor == ClavicleLeftAnchor)
+            {
+                return TryResolveInterpolatedAnchor(
+                    joints,
+                    SpineChestAnchor,
+                    5,
+                    0.5f,
+                    out pixel);
+            }
+
+            if (anchor == ClavicleRightAnchor)
+            {
+                return TryResolveInterpolatedAnchor(
+                    joints,
+                    SpineChestAnchor,
+                    6,
+                    0.5f,
+                    out pixel);
+            }
+
             return false;
+        }
+
+        private static bool TryResolveInterpolatedAnchor(
+            HumanVisionJoint[] joints,
+            int firstAnchor,
+            int secondAnchor,
+            float interpolation,
+            out Vector2 pixel)
+        {
+            pixel = Vector2.zero;
+            if (!TryResolveAnchor(joints, firstAnchor, out Vector2 first) ||
+                !TryResolveAnchor(joints, secondAnchor, out Vector2 second))
+            {
+                return false;
+            }
+
+            pixel = Vector2.Lerp(first, second, interpolation);
+            return true;
         }
 
         private static bool TryResolveMidpoint(

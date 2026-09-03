@@ -23,6 +23,18 @@ namespace HumanVision.Demo
             0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F
         };
 
+        private static readonly Vector2[] JointRing =
+        {
+            new Vector2(1f, 0f),
+            new Vector2(0.7071068f, -0.7071068f),
+            new Vector2(0f, -1f),
+            new Vector2(-0.7071068f, -0.7071068f),
+            new Vector2(-1f, 0f),
+            new Vector2(-0.7071068f, 0.7071068f),
+            new Vector2(0f, 1f),
+            new Vector2(0.7071068f, 0.7071068f)
+        };
+
         [SerializeField] private HumanVisionManager manager;
         [SerializeField] private VideoPlayerFrameSource frameSource;
         [SerializeField, Min(1f)] private float boxThickness = 3f;
@@ -110,19 +122,14 @@ namespace HumanVision.Demo
                     bodyColor);
             }
 
-            for (int jointIndex = 0; jointIndex < joints.Length; jointIndex++)
+            for (int anchorIndex = 0; anchorIndex < Coco17Skeleton.AnchorCount; anchorIndex++)
             {
-                if (!joints[jointIndex].Valid)
+                if (!Coco17Skeleton.TryResolveAnchor(joints, anchorIndex, out Vector2 anchor))
                 {
                     continue;
                 }
 
-                Vector2 center = ToOverlay(joints[jointIndex].Pixel, videoRect);
-                AddQuad(
-                    vertexHelper,
-                    center + new Vector2(-jointSize, -jointSize),
-                    center + new Vector2(jointSize, jointSize),
-                    bodyColor);
+                AddCircle(vertexHelper, ToOverlay(anchor, videoRect), jointSize, bodyColor);
             }
 
             if (body.TrackId >= 0)
@@ -226,19 +233,25 @@ namespace HumanVision.Demo
             vertexHelper.AddTriangle(firstVertex, firstVertex + 2, firstVertex + 3);
         }
 
-        private static void AddQuad(
+        private static void AddCircle(
             VertexHelper vertexHelper,
-            Vector2 minimum,
-            Vector2 maximum,
-            Color32 quadColor)
+            Vector2 center,
+            float radius,
+            Color32 circleColor)
         {
-            int firstVertex = vertexHelper.currentVertCount;
-            vertexHelper.AddVert(new Vector2(minimum.x, minimum.y), quadColor, Vector2.zero);
-            vertexHelper.AddVert(new Vector2(minimum.x, maximum.y), quadColor, Vector2.zero);
-            vertexHelper.AddVert(new Vector2(maximum.x, maximum.y), quadColor, Vector2.zero);
-            vertexHelper.AddVert(new Vector2(maximum.x, minimum.y), quadColor, Vector2.zero);
-            vertexHelper.AddTriangle(firstVertex, firstVertex + 1, firstVertex + 2);
-            vertexHelper.AddTriangle(firstVertex, firstVertex + 2, firstVertex + 3);
+            int centerVertex = vertexHelper.currentVertCount;
+            vertexHelper.AddVert(center, circleColor, Vector2.zero);
+            for (int ringIndex = 0; ringIndex < JointRing.Length; ringIndex++)
+            {
+                vertexHelper.AddVert(center + JointRing[ringIndex] * radius, circleColor, Vector2.zero);
+            }
+
+            for (int ringIndex = 0; ringIndex < JointRing.Length; ringIndex++)
+            {
+                int current = centerVertex + 1 + ringIndex;
+                int next = centerVertex + 1 + (ringIndex + 1) % JointRing.Length;
+                vertexHelper.AddTriangle(centerVertex, current, next);
+            }
         }
 
         private void Subscribe()
