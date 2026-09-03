@@ -2,21 +2,21 @@
 
 # HumanVisionSDK Development Status
 
-**Status date:** 2026-09-02  
-**Current stage:** D0 - Windows Local Video Vertical Slice  
-**Current milestone:** D0.4 Unity Local Video Demo  
-**Current implementation state:** D0.3 native RTMPose-s preprocessing/inference/SimCC decoding, center+IoU+velocity tracking, detector-interval prediction, per-stage statistics, and real one/two-person MP4 benchmark completed and verified.
+**Status date:** 2026-09-03  
+**Current stage:** D1 - RTSP IPC Integration  
+**Current milestone:** D1.0 RTSP IPC Input  
+**Current implementation state:** D0.4 Unity local-video vertical slice completed and verified in the imported AzureKinectExamples project: asynchronous frame submission, real RTMDet/RTMPose inference, stable tracking, video/box/ID/COCO-17 overlay, performance HUD, and a Windows x64 standalone build.
 
 ## Immediate user-visible target
 
-The next meaningful checkpoint is **D0.4 Unity Local Video Demo**:
+The next meaningful checkpoint is **D1.0 RTSP IPC Input**:
 
 ```text
-MP4 -> Unity VideoPlayer -> HV_SubmitFrame -> RTMDet -> Tracker -> RTMPose
+RTSP IPC -> decoded RGB frame -> HV_SubmitFrame -> RTMDet -> Tracker -> RTMPose
     -> Unity video + BBox + TrackId + COCO17 skeleton + performance HUD
 ```
 
-Do not start RTSP until this local-video path is visibly working.
+The verified local MP4 path remains the regression baseline while RTSP reconnect/error behavior is added.
 
 ## Milestone state
 
@@ -24,7 +24,7 @@ Do not start RTSP until this local-video path is visibly working.
 - [x] D0.1 Python/OpenMMLab Reference + ONNX Contract
 - [x] D0.2 Native ONNX Runtime + RTMDet
 - [x] D0.3 RTMPose + Tracker + Native Video Benchmark
-- [ ] D0.4 Unity Local Video Demo
+- [x] D0.4 Unity Local Video Demo
 - [ ] D1.0 RTSP IPC Input
 - [ ] D1.1 Real 1~4 Person Field Validation
 - [ ] D1.2 Demo Stabilization & Decision Report
@@ -40,6 +40,79 @@ Until D1.2 is accepted:
 - no action recognition
 
 ## Latest verification
+
+### D0.4 Unity Local Video Demo - PASS
+
+- Date: 2026-09-03
+- Implementation commit: `058d06258cd1db25f2291ea6930542636d39033e`
+- Unity host: Windows x64, Unity 2021.3.45f1, project `E:\UnityProject\Human-Vision-SDK-Test`
+- Version decision: the user explicitly approved keeping the active Unity version. Unity 2021.3.45f1 is therefore the accepted D0.4 host exception to the original Unity 2022.3 LTS plan; no editor upgrade was performed.
+- Integration context: AzureKinectExamples remains imported in the target project. HumanVision uses a privately named ONNX Runtime DLL so its 1.29 runtime can coexist with the example package's public ONNX Runtime binaries.
+
+Expected RED verification:
+
+- Scene contract job `61db16fe`: 0/1 passed before the D0.4 scene existed.
+- Plugin isolation job `502281c0`: 0/2 passed while HumanVision and AzureKinectExamples both exposed compatible public `onnxruntime.dll` names.
+- Native-result error propagation job `272b2c74`: 0/1 passed before a failed `HV_GetLatestResultMeta` call was surfaced to managed callers.
+
+Focused GREEN verification:
+
+- Scene contract job `26746a14`: 1/1 passed after creating `Assets/Scenes/HumanVisionD04Demo.unity`.
+- Plugin isolation job `b7570548`: 2/2 passed after linking HumanVision against `humanvision_onnxruntime.dll`.
+- Native-result error propagation job `0d9e2c31`: 1/1 passed after `HumanVisionSession.PollLatestResult()` began throwing actionable native metadata failures while retaining `NoNewResult` as a non-error.
+
+Fresh native regression:
+
+```powershell
+cmake --build --preset windows-debug
+ctest --preset windows-debug
+cmake --build --preset windows-release
+ctest --preset windows-release
+```
+
+- Debug CTest: PASS, 29/29 tests, 0 failures, 11.20 seconds.
+- Release CTest: PASS, 29/29 tests, 0 failures, 7.38 seconds.
+- `humanvision_native_dependency_isolation` verifies the private runtime dependency and rejects a public ONNX Runtime dependency from `humanvision.dll`.
+
+Fresh Unity verification after the final DLL copy and editor restart:
+
+- UnitySkills instance: `HumanVisionSDKTest_F988EAA7`, Unity 2021.3.45f1.
+- Scene: `Assets/Scenes/HumanVisionD04Demo.unity`, not dirty, exactly three roots (`HumanVision Pipeline`, `HumanVision Canvas`, and `EventSystem`).
+- Full EditMode job `01dee637`: PASS, 28/28 tests, 0 failures, 7 seconds.
+- Source-to-target comparison: PASS, 65/65 committed HumanVision source/scene/project files matched the imported Unity project by SHA-256.
+- Play-mode observation: initialization succeeded; the real two-person clip played at 436x346 and 5 fps; `BodyCount=2`; runtime `MaxBodies=4`; `ResultSequence` advanced from 52 to 113; manager and video-source error strings remained empty.
+- GPU readback counters remained 0 drops / 0 errors. Unity Console contained 0 errors and 0 warnings during this run.
+- The runtime overlay visibly rendered two tracked boxes, IDs, and COCO-17 skeletons. The HUD reported input/inference FPS, detector/pose/total timing, submitted/processed/dropped frames, and readback counters.
+- Captured evidence: `E:\UnityProject\Human-Vision-SDK-Test\Assets\Screenshots\humanvision_d04_runtime.png`.
+
+Windows standalone verification:
+
+- Build command: Unity menu `HumanVision/Build Windows x64 Demo`; the builder includes only the D0.4 Demo scene.
+- Artifact: `E:\UnityProject\Human-Vision-SDK-Test\Builds\HumanVisionD04\HumanVisionD04.exe`, SHA-256 `6755298a7f8b5e2ee9ea2b3b09b7166825c5f1933b20713edf5c192dfe17baac`.
+- The launched player remained responsive after 12 seconds and loaded `humanvision.dll` plus `humanvision_onnxruntime.dll` 1.29.0. It did not load the AzureKinectExamples public `onnxruntime.dll` or provider DLL for this scene.
+- Final Release `humanvision.dll`: 114,688 bytes, SHA-256 `3c81a5b2774ea5cb2944c4dda65b3cb640423e9372465af1c54abcd3d9f178d1`.
+- Private `humanvision_onnxruntime.dll`: SHA-256 `69d8e6d3879a3b4001cdc74c8ed9ccc7e7f799a5b847059738323404519ec471`.
+- `dumpbin /dependents` confirms `humanvision.dll` depends on `humanvision_onnxruntime.dll`, not `onnxruntime.dll`.
+- Standalone model hashes match the locked detector and pose ONNX files; both committed one/two-person MP4 hashes match their D0.3 fixtures.
+- Player log contained no exception or crash. It reported two known Windows VideoPlayer warnings for the small H.264 regression clip: skewed timestamp correction and unknown color standard fallback.
+
+Behavior and architecture checks:
+
+- Unity submits frames asynchronously and polls immutable complete snapshots; it never waits for detector and pose work on the main thread.
+- Latest-frame-wins behavior and dropped-frame statistics remain owned by the native pipeline.
+- Managed body/result buffers, native frame staging, render texture, and GPU readback slots are reused after warm-up; no per-frame JSON is used.
+- Unity objects and overlay graphics are updated only on the Unity main thread.
+- `MaxBodies` remains runtime configurable and defaults to 4; only the COCO-17 joint schema has fixed per-body capacity.
+- The public managed API contains no RTMDet, RTMPose, ONNX Runtime, FFmpeg, or Azure Kinect model types.
+
+Known issues / environment notes:
+
+- The imported AzureKinectExamples package still carries its own public ONNX Runtime 1.10-era binaries. They are intentionally preserved for its features; HumanVision's private import library and renamed runtime prevent same-name loader collisions.
+- The D0.4 scene uses Screen Space Overlay UI and a VideoPlayer render texture, so no MainCamera or scene Light is required.
+- Model ONNX files and native runtime binaries remain Git-ignored and are copied into the working Unity project/build as external artifacts.
+- The two player warnings are media-container compatibility notices from Unity's Windows VideoPlayer. They do not prevent playback or HumanVision inference, but production/field media should use normalized timestamps and explicit color metadata.
+
+Next milestone: D1.0 RTSP IPC Input.
 
 ### D0.3 RTMPose + Tracker + Native Video Benchmark - PASS
 
@@ -142,10 +215,10 @@ Artifact checks:
 
 Known issues / environment notes:
 
-- The sequential CPU benchmark measures deterministic pipeline latency rather than real-time playback throughput. The two-person baseline is approximately `201.8 ms/frame`; D0.4 must verify latest-frame dropping and Unity responsiveness under real playback.
+- The sequential CPU benchmark measures deterministic pipeline latency rather than real-time playback throughput. The two-person baseline is approximately `201.8 ms/frame`; D0.4 subsequently verified latest-frame dropping and Unity responsiveness under real playback.
 - The committed MP4s are reproducible real-image-derived regression clips, not field-motion footage. Tracker crossing/occlusion behavior is covered deterministically at the native box level; real participant motion remains part of D0.4/D1.1 visual validation.
 - The installed Visual Studio host remains Visual Studio 2026 with its v143 compiler rather than the documented Visual Studio 2022 host baseline.
-- The active UnitySkills project previously reported Unity 2021.3.45f1. D0.4 acceptance requires opening/creating the Demo with Unity 2022.3 LTS before claiming Unity verification.
+- D0.4 was accepted on the active Unity 2021.3.45f1 project by explicit user decision; no editor upgrade was required.
 
 Next milestone: D0.4 Unity Local Video Demo.
 
@@ -235,7 +308,7 @@ Known issues / environment notes:
 
 - D0.2 intentionally publishes detector-only bodies with `track_id=-1` and invalid/zero joints. RTMPose, stable tracking, detector interval behavior, and video benchmarking belong to D0.3.
 - The installed Visual Studio host remains Visual Studio 2026 with the v143 compiler, rather than the documented Visual Studio 2022 host baseline. Both Debug and Release native outputs are verified.
-- The active UnitySkills project still needs to move from Unity 2021.3.45f1 to the required Unity 2022.3 LTS baseline before D0.4 acceptance.
+- D0.4 was accepted on Unity 2021.3.45f1 by explicit user decision; the historical Unity 2022.3 LTS baseline was not applied to this working project.
 
 Next milestone: D0.3 RTMPose + Tracker + Native Video Benchmark.
 
@@ -363,7 +436,7 @@ Artifact checks:
 Known issues / environment notes:
 
 - The installed Visual Studio host is Visual Studio 2026 18.9.1, while `TOOLCHAIN.md` names Visual Studio 2022 as the baseline. The verified build uses the installed v143 compiler through `VsDevCmd` plus Ninja because the VS 2026 MSBuild host does not include the v143 MSBuild platform targets.
-- The currently running UnitySkills instance reports Unity 2021.3.45f1 and project `Human-Vision-SDK-Test`. D0.0 is native-only, so this did not affect acceptance. Before D0.4, the active project must use the required Unity 2022.3 LTS baseline.
+- The UnitySkills project reports Unity 2021.3.45f1 and project `Human-Vision-SDK-Test`. D0.0 was native-only, and D0.4 later accepted this Unity version by explicit user decision.
 
 ## Advancement rule
 
