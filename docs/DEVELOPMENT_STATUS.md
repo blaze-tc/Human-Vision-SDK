@@ -2,7 +2,7 @@
 
 # HumanVisionSDK Development Status
 
-**Status date:** 2026-09-03  
+**Status date:** 2026-09-05  
 **Current stage:** D1 - RTSP IPC Integration  
 **Current milestone:** D1.0 RTSP IPC Input  
 **Current implementation state:** D0.4 Unity local-video vertical slice completed and verified in the imported AzureKinectExamples project: asynchronous frame submission, real RTMDet/RTMPose inference, stable tracking, video/box/ID overlay with a Kinect-style display skeleton derived from COCO-17, performance HUD, and a Windows x64 standalone build.
@@ -136,6 +136,21 @@ Unity GPU readback orientation and skeleton readability correction:
 - Standalone smoke run: the player remained responsive for 12 seconds, loaded `humanvision.dll` and private `humanvision_onnxruntime.dll`, and did not load public `onnxruntime.dll`. Its log contained no exception or crash and only the two known VideoPlayer timestamp/color-standard warnings.
 - Requested follow-up: after this correction is accepted, add computer USB-camera recognition through a Unity `WebCamTexture` frame source that reuses the asynchronous `HV_SubmitFrame` pipeline. This follow-up is not implemented by the orientation correction and must be scheduled explicitly against the current D1.0 RTSP milestone.
 
+RenderTexture real-time presentation synchronization follow-up:
+
+- Date: 2026-09-05
+- User-visible symptom: the VideoPlayer RenderTexture displayed the newest decoded frame while the asynchronous CPU result described an older source frame. Fast runners could therefore leave their boxes and skeletons behind even though the pose coordinates were correct for the frame that was analyzed.
+- Root cause: the 4K source was read back and submitted at its full 3840x2160 size, model results were composited over the live texture without a source-frame presentation policy, and VideoPlayer loop frame indices were reused after wraparound. The native latest-frame queue bounded backlog but could not make an old pose geometrically match a newer displayed image.
+- Fix: preserve source-frame-driven submission (`VideoPlayer.frameReady`, not Unity render-frame-driven inference), render 4K input into a 1280x720 analysis RenderTexture, and keep a preallocated GPU presentation ring. Presentation begins with a six-frame delay, advances at source-frame cadence, and re-anchors to the result source frame when video/pose skew exceeds four frames. Results more than ten presented frames old are suppressed immediately. Submission IDs are now monotonic across VideoPlayer loops, and loop-boundary readbacks/results are invalidated before they can be presented.
+- Web-camera architecture decision: a future `WebCamTexture` source must submit only when `didUpdateThisFrame` is true and reuse the same timestamped latest-frame-wins path. Unity `Update()` may render/interpolate the overlay every frame, but it must not run duplicate inference for the same camera image.
+- Expected RED evidence: Unity compilation first failed with 8 missing geometry/presentation-policy references, then 3 missing delayed-frame selector references, then 5 missing adaptive synchronization selector references.
+- Focused GREEN jobs: `e0763876` PASS 9/9; `3f5c23a9` PASS 10/10; `8c0008d1` PASS 11/11. Full EditMode jobs `dac971a2` and final `7450b839`: PASS 37/37 each, 0 failures (final run 10 seconds); Unity compilation and Console reported 0 errors.
+- Runtime validation input: `Assets\StreamingAssets\HumanVision\Media\4859224-uhd_3840_2160_25fps.mp4`, temporarily configured with `MaxBodies=8`. The source rendered for analysis at 1280x720 and 25 fps; sampled inference was 4.6-5.0 fps, Editor rendering remained above 43 fps, and GPU readback drops/errors remained 0/0.
+- Runtime visual evidence: `humanvision_adaptive_t09.png` and `humanvision_adaptive_t14.png` contain no person and no stale skeleton; `humanvision_adaptive_t19.png` contains two people with both Kinect-style skeletons on their bodies. The latter reported a four-frame video delay and an eight-frame result age. SHA-256 values are `B9C0029B22022A519F2CE8C6A74683905D08F36A832BDA83EA09E5AF94807BA7`, `11DF7FC9C6615B21020B55D0BF6237ECABAA3E78CDE5D2F62523CE0F4E8C85F8`, and `D0D54B452E92D43999621F4098BCAD08D5F23031E7CA8E87D0242C787FB7B4F8` respectively.
+- The imported scene was restored after validation; its SHA-256 is again `3091403CCBE2AB06B3472A8B5840B64CBCF13CACD9C89073446B32853B58CFBF`. The four modified source/test files match the imported Unity project by SHA-256.
+- Windows x64 Demo rebuild: PASS, BuildPipeline reported 438,964,228 bytes in 8.69 seconds; output inventory is 164 files / 438,968,167 bytes. Rebuilt `HumanVision.Demo.dll` is 29,696 bytes with SHA-256 `F921B36BA5B6564CF61C6C2C943169579D2A658BE5A7C67249368C70B311A542`.
+- Acceptance boundary: this synchronization change does not make CPU RTMDet + tracker + RTMPose inference run at 30 fps. The 4K clip still measured only 4.6-5.0 inference fps, and it contains two people, so the separate 30 fps / eight-person acceptance target remains unverified.
+
 Windows standalone verification:
 
 - Build command: Unity menu `HumanVision/Build Windows x64 Demo`; the builder includes only the D0.4 Demo scene.
@@ -162,6 +177,7 @@ Known issues / environment notes:
 - The D0.4 scene uses Screen Space Overlay UI and a VideoPlayer render texture, so no MainCamera or scene Light is required.
 - Model ONNX files and native runtime binaries remain Git-ignored and are copied into the working Unity project/build as external artifacts.
 - The two player warnings are media-container compatibility notices from Unity's Windows VideoPlayer. They do not prevent playback or HumanVision inference, but production/field media should use normalized timestamps and explicit color metadata.
+- CPU-only 30 fps inference with eight simultaneous people is not yet demonstrated. The RenderTexture presentation ring bounds visual pose/video skew and preserves a responsive render loop, but it does not remove the RTMDet/RTMPose compute bottleneck.
 
 Next milestone: D1.0 RTSP IPC Input.
 

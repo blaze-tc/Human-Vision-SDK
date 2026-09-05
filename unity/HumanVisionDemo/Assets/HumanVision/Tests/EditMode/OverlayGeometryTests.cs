@@ -57,6 +57,73 @@ namespace HumanVision.Tests
         }
 
         [Test]
+        public void AnalysisRenderTextureDownscales4KWithoutUpscalingSmallVideos()
+        {
+            Assert.That(
+                AnalysisRenderTextureGeometry.CalculateTargetSize(3840, 2160, 1280, 720),
+                Is.EqualTo(new Vector2Int(1280, 720)));
+            Assert.That(
+                AnalysisRenderTextureGeometry.CalculateTargetSize(436, 346, 1280, 720),
+                Is.EqualTo(new Vector2Int(436, 346)));
+        }
+
+        [Test]
+        public void PresentationPolicyRejectsOldOrPreLoopResults()
+        {
+            Assert.That(PresentationFramePolicy.IsUsable(100, 95, 0, 10), Is.True);
+            Assert.That(PresentationFramePolicy.IsUsable(100, 90, 0, 10), Is.True);
+            Assert.That(PresentationFramePolicy.IsUsable(100, 89, 0, 10), Is.False);
+            Assert.That(PresentationFramePolicy.IsUsable(100, 99, 100, 10), Is.False);
+            Assert.That(PresentationFramePolicy.IsUsable(100, 100, 100, 10), Is.True);
+            Assert.That(PresentationFramePolicy.IsUsable(100, 101, 100, 10), Is.False);
+        }
+
+        [Test]
+        public void DelayedPresentationStartsOnlyAfterTheLoopHasEnoughFrames()
+        {
+            Assert.That(
+                PresentationFramePolicy.TryGetDelayedFrameId(100, 0, 6, out long normalFrame),
+                Is.True);
+            Assert.That(normalFrame, Is.EqualTo(94));
+
+            Assert.That(
+                PresentationFramePolicy.TryGetDelayedFrameId(100, 98, 6, out _),
+                Is.False);
+            Assert.That(
+                PresentationFramePolicy.TryGetDelayedFrameId(104, 98, 6, out long firstPostLoopFrame),
+                Is.True);
+            Assert.That(firstPostLoopFrame, Is.EqualTo(98));
+        }
+
+        [Test]
+        public void SynchronizedPresentationAdvancesSmoothlyAndResyncsLargePoseSkew()
+        {
+            Assert.That(
+                PresentationFramePolicy.TryGetSynchronizedFrameId(100, 95, -1, 0, 4, out long firstFrame),
+                Is.True);
+            Assert.That(firstFrame, Is.EqualTo(95));
+
+            Assert.That(
+                PresentationFramePolicy.TryGetSynchronizedFrameId(101, 95, 95, 0, 4, out long smoothFrame),
+                Is.True);
+            Assert.That(smoothFrame, Is.EqualTo(96));
+
+            Assert.That(
+                PresentationFramePolicy.TryGetSynchronizedFrameId(105, 95, 99, 0, 4, out long cappedFrame),
+                Is.True);
+            Assert.That(cappedFrame, Is.EqualTo(99));
+
+            Assert.That(
+                PresentationFramePolicy.TryGetSynchronizedFrameId(113, 100, 107, 0, 4, out long resyncedFrame),
+                Is.True);
+            Assert.That(resyncedFrame, Is.EqualTo(100));
+
+            Assert.That(
+                PresentationFramePolicy.TryGetSynchronizedFrameId(205, 199, 204, 200, 4, out _),
+                Is.False);
+        }
+
+        [Test]
         public void DisplaySkeletonUsesKinectStyleSpineShoulderAndLimbHierarchy()
         {
             const int pelvis = 17;

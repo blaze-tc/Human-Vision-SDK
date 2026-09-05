@@ -9,6 +9,108 @@ using UnityEngine.Video;
 
 namespace HumanVision.Demo
 {
+    internal static class AnalysisRenderTextureGeometry
+    {
+        internal static Vector2Int CalculateTargetSize(
+            int sourceWidth,
+            int sourceHeight,
+            int maxWidth,
+            int maxHeight)
+        {
+            if (sourceWidth <= 0 || sourceHeight <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(sourceWidth), "Source dimensions must be positive.");
+            }
+
+            if (maxWidth <= 0 || maxHeight <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxWidth), "Maximum dimensions must be positive.");
+            }
+
+            if (sourceWidth <= maxWidth && sourceHeight <= maxHeight)
+            {
+                return new Vector2Int(sourceWidth, sourceHeight);
+            }
+
+            double scale = Math.Min((double)maxWidth / sourceWidth, (double)maxHeight / sourceHeight);
+            return new Vector2Int(
+                Math.Max(1, (int)Math.Floor(sourceWidth * scale)),
+                Math.Max(1, (int)Math.Floor(sourceHeight * scale)));
+        }
+    }
+
+    internal static class PresentationFramePolicy
+    {
+        internal static bool TryGetDelayedFrameId(
+            long latestFrameId,
+            long minimumFrameId,
+            int delayFrames,
+            out long presentationFrameId)
+        {
+            presentationFrameId = -1;
+            if (latestFrameId < 0 || delayFrames < 0)
+            {
+                return false;
+            }
+
+            long candidate = latestFrameId - delayFrames;
+            if (candidate < minimumFrameId)
+            {
+                return false;
+            }
+
+            presentationFrameId = candidate;
+            return true;
+        }
+
+        internal static bool TryGetSynchronizedFrameId(
+            long latestCapturedFrameId,
+            long latestResultFrameId,
+            long currentPresentationFrameId,
+            long minimumFrameId,
+            int maxPoseSkewFrames,
+            out long presentationFrameId)
+        {
+            presentationFrameId = -1;
+            if (maxPoseSkewFrames < 0 || latestCapturedFrameId < minimumFrameId ||
+                latestResultFrameId < minimumFrameId)
+            {
+                return false;
+            }
+
+            long candidate;
+            if (currentPresentationFrameId < minimumFrameId ||
+                Math.Abs(currentPresentationFrameId - latestResultFrameId) > maxPoseSkewFrames)
+            {
+                candidate = latestResultFrameId;
+            }
+            else
+            {
+                candidate = Math.Min(
+                    currentPresentationFrameId + 1,
+                    latestResultFrameId + maxPoseSkewFrames);
+            }
+
+            presentationFrameId = Math.Min(candidate, latestCapturedFrameId);
+            return presentationFrameId >= minimumFrameId;
+        }
+
+        internal static bool IsUsable(
+            long latestSubmittedFrameId,
+            long resultFrameId,
+            long minimumResultFrameId,
+            int maxLagFrames)
+        {
+            if (maxLagFrames < 0 || latestSubmittedFrameId < 0 ||
+                resultFrameId < minimumResultFrameId || resultFrameId > latestSubmittedFrameId)
+            {
+                return false;
+            }
+
+            return latestSubmittedFrameId - resultFrameId <= maxLagFrames;
+        }
+    }
+
     internal static class ReadbackRowNormalizer
     {
         internal static unsafe void CopyBottomUpToTopDown(
@@ -71,14 +173,28 @@ namespace HumanVision.Demo
         [Header("Playback")]
         [SerializeField] private bool loop = true;
 
+        [Header("Real-time analysis")]
+        [SerializeField, Min(1)] private int maxAnalysisWidth = 1280;
+        [SerializeField, Min(1)] private int maxAnalysisHeight = 720;
+        [SerializeField, Min(0)] private int presentationDelayFrames = 6;
+        [SerializeField, Min(0)] private int maxPresentationPoseSkewFrames = 4;
+        [SerializeField, Min(0)] private int maxOverlayLagFrames = 10;
+
         private readonly ReadbackSlot[] _slots = new ReadbackSlot[ReadbackPoolSize];
+        private PresentationSlot[] _presentationSlots = Array.Empty<PresentationSlot>();
         private VideoPlayer _videoPlayer;
         private RenderTexture _renderTexture;
         private long _lastScheduledFrame = -1;
+        private long _nextSubmissionFrameId;
+        private long _latestSubmittedFrameId = -1;
+        private long _minimumUsableResultFrameId;
+        private long _presentationFrameId = -1;
+        private long _latestResultFrameId = -1;
         private bool _acceptReadbacks;
         private bool _normalizeReadbackRows;
 
         public event Action VideoLayoutChanged;
+        public event Action PresentationFrameChanged;
 
         public int SourceWidth { get; private set; }
         public int SourceHeight { get; private set; }
@@ -88,6 +204,19 @@ namespace HumanVision.Demo
         public string LastError { get; private set; }
         public bool IsPlaying => _videoPlayer != null && _videoPlayer.isPlaying;
         public double VideoFrameRate => _videoPlayer != null ? _videoPlayer.frameRate : 0d;
+        public int PresentationDelayFrames => presentationDelayFrames;
+        public long LatestSubmittedFrameId => _latestSubmittedFrameId;
+        public long PresentationFrameId => _presentationFrameId;
+
+        public bool CanPresentResult(long resultFrameId)
+        {
+            return _presentationFrameId >= _minimumUsableResultFrameId &&
+                PresentationFramePolicy.IsUsable(
+                _presentationFrameId,
+                resultFrameId,
+                _minimumUsableResultFrameId,
+                maxOverlayLagFrames);
+        }
 
         private void Awake()
         {
@@ -114,11 +243,13 @@ namespace HumanVision.Demo
             _videoPlayer.prepareCompleted += OnPrepared;
             _videoPlayer.errorReceived += OnVideoError;
             _videoPlayer.frameReady += OnFrameReady;
+            SubscribeManager();
         }
 
         private void OnDisable()
         {
             _acceptReadbacks = false;
+            UnsubscribeManager();
             if (_videoPlayer != null)
             {
                 _videoPlayer.prepareCompleted -= OnPrepared;
@@ -136,9 +267,11 @@ namespace HumanVision.Demo
             RawImage display,
             AspectRatioFitter fitter)
         {
+            UnsubscribeManager();
             manager = visionManager;
             targetDisplay = display;
             aspectRatioFitter = fitter;
+            SubscribeManager();
         }
 
         public bool PlayRelativeVideo(string relativeStreamingAssetsPath)
@@ -192,7 +325,12 @@ namespace HumanVision.Demo
                 return;
             }
 
-            AllocateReadbackResources(width, height);
+            Vector2Int targetSize = AnalysisRenderTextureGeometry.CalculateTargetSize(
+                width,
+                height,
+                maxAnalysisWidth,
+                maxAnalysisHeight);
+            AllocateReadbackResources(targetSize.x, targetSize.y);
             _acceptReadbacks = true;
             source.Play();
             VideoLayoutChanged?.Invoke();
@@ -215,6 +353,13 @@ namespace HumanVision.Demo
                 return;
             }
 
+            if (_lastScheduledFrame >= 0 && frameIndex < _lastScheduledFrame)
+            {
+                _minimumUsableResultFrameId = _nextSubmissionFrameId;
+                ResetPresentationHistory();
+                PresentationFrameChanged?.Invoke();
+            }
+
             int slotIndex = FindAvailableSlot();
             if (slotIndex < 0)
             {
@@ -224,9 +369,10 @@ namespace HumanVision.Demo
 
             ReadbackSlot slot = _slots[slotIndex];
             slot.Busy = true;
-            slot.FrameId = frameIndex;
+            slot.FrameId = _nextSubmissionFrameId++;
             slot.TimestampUs = ToTimestampUs(source, frameIndex);
             _lastScheduledFrame = frameIndex;
+            CapturePresentationFrame(slot.FrameId);
             slot.Request = AsyncGPUReadback.RequestIntoNativeArray(
                 ref slot.Buffer,
                 _renderTexture,
@@ -252,6 +398,11 @@ namespace HumanVision.Demo
                     return;
                 }
 
+                if (slot.FrameId < _minimumUsableResultFrameId)
+                {
+                    return;
+                }
+
                 NativeArray<byte> submissionBuffer = slot.Buffer;
                 if (_normalizeReadbackRows)
                 {
@@ -264,7 +415,7 @@ namespace HumanVision.Demo
                 }
 
                 IntPtr data = (IntPtr)NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(submissionBuffer);
-                manager.SubmitFrame(
+                if (manager.SubmitFrame(
                     data,
                     SourceWidth,
                     SourceHeight,
@@ -272,7 +423,11 @@ namespace HumanVision.Demo
                     HumanVisionPixelFormat.Rgba32,
                     slot.FrameId,
                     slot.TimestampUs,
-                    slot.Buffer.Length);
+                    slot.Buffer.Length))
+                {
+                    _latestSubmittedFrameId = Math.Max(_latestSubmittedFrameId, slot.FrameId);
+                    PresentationFrameChanged?.Invoke();
+                }
             }
             finally
             {
@@ -315,6 +470,27 @@ namespace HumanVision.Demo
                 autoGenerateMips = false
             };
             _renderTexture.Create();
+            int presentationSlotCount = Math.Max(
+                presentationDelayFrames,
+                maxOverlayLagFrames * 2) + 4;
+            _presentationSlots = new PresentationSlot[presentationSlotCount];
+            for (int index = 0; index < _presentationSlots.Length; index++)
+            {
+                var texture = new RenderTexture(
+                    width,
+                    height,
+                    0,
+                    RenderTextureFormat.ARGB32,
+                    RenderTextureReadWrite.sRGB)
+                {
+                    name = "HumanVision Presentation Frame " + index,
+                    useMipMap = false,
+                    autoGenerateMips = false
+                };
+                texture.Create();
+                _presentationSlots[index] = new PresentationSlot { Texture = texture, FrameId = -1 };
+            }
+
             _videoPlayer.renderMode = VideoRenderMode.RenderTexture;
             _videoPlayer.targetTexture = _renderTexture;
 
@@ -331,6 +507,123 @@ namespace HumanVision.Demo
             }
         }
 
+        private void CapturePresentationFrame(long frameId)
+        {
+            if (_presentationSlots.Length == 0)
+            {
+                return;
+            }
+
+            PresentationSlot captureSlot = _presentationSlots[(int)(frameId % _presentationSlots.Length)];
+            Graphics.Blit(_renderTexture, captureSlot.Texture);
+            captureSlot.FrameId = frameId;
+
+            bool hasPresentationFrame = PresentationFramePolicy.TryGetSynchronizedFrameId(
+                frameId,
+                _latestResultFrameId,
+                _presentationFrameId,
+                _minimumUsableResultFrameId,
+                maxPresentationPoseSkewFrames,
+                out long presentationFrameId);
+            if (!hasPresentationFrame)
+            {
+                hasPresentationFrame = PresentationFramePolicy.TryGetDelayedFrameId(
+                    frameId,
+                    _minimumUsableResultFrameId,
+                    presentationDelayFrames,
+                    out presentationFrameId);
+            }
+
+            if (hasPresentationFrame)
+            {
+                PresentCapturedFrame(presentationFrameId);
+            }
+            else
+            {
+                _presentationFrameId = -1;
+                if (targetDisplay != null)
+                {
+                    targetDisplay.texture = _renderTexture;
+                }
+            }
+            PresentationFrameChanged?.Invoke();
+        }
+
+        private bool PresentCapturedFrame(long frameId)
+        {
+            if (frameId < 0 || _presentationSlots.Length == 0)
+            {
+                return false;
+            }
+
+            PresentationSlot displaySlot = _presentationSlots[(int)(frameId % _presentationSlots.Length)];
+            if (displaySlot.FrameId != frameId)
+            {
+                return false;
+            }
+
+            _presentationFrameId = frameId;
+            if (targetDisplay != null)
+            {
+                targetDisplay.texture = displaySlot.Texture;
+            }
+            return true;
+        }
+
+        private void OnManagerResultUpdated(long sequence)
+        {
+            if (manager == null || manager.SourceFrameId < _minimumUsableResultFrameId)
+            {
+                return;
+            }
+
+            _latestResultFrameId = manager.SourceFrameId;
+            long latestCapturedFrameId = _nextSubmissionFrameId - 1;
+            if (PresentationFramePolicy.TryGetSynchronizedFrameId(
+                    latestCapturedFrameId,
+                    _latestResultFrameId,
+                    _presentationFrameId,
+                    _minimumUsableResultFrameId,
+                    maxPresentationPoseSkewFrames,
+                    out long presentationFrameId))
+            {
+                PresentCapturedFrame(presentationFrameId);
+            }
+            PresentationFrameChanged?.Invoke();
+        }
+
+        private void SubscribeManager()
+        {
+            if (isActiveAndEnabled && manager != null)
+            {
+                manager.ResultUpdated -= OnManagerResultUpdated;
+                manager.ResultUpdated += OnManagerResultUpdated;
+            }
+        }
+
+        private void UnsubscribeManager()
+        {
+            if (manager != null)
+            {
+                manager.ResultUpdated -= OnManagerResultUpdated;
+            }
+        }
+
+        private void ResetPresentationHistory()
+        {
+            _presentationFrameId = -1;
+            _latestResultFrameId = -1;
+            for (int index = 0; index < _presentationSlots.Length; index++)
+            {
+                _presentationSlots[index].FrameId = -1;
+            }
+
+            if (targetDisplay != null && _renderTexture != null)
+            {
+                targetDisplay.texture = _renderTexture;
+            }
+        }
+
         private void StopCurrentVideo()
         {
             _acceptReadbacks = false;
@@ -342,8 +635,14 @@ namespace HumanVision.Demo
 
             ReleaseReadbackResources();
             _lastScheduledFrame = -1;
+            _nextSubmissionFrameId = 0;
+            _latestSubmittedFrameId = -1;
+            _minimumUsableResultFrameId = 0;
+            _presentationFrameId = -1;
+            _latestResultFrameId = -1;
             SourceWidth = 0;
             SourceHeight = 0;
+            PresentationFrameChanged?.Invoke();
         }
 
         private void ReleaseReadbackResources()
@@ -378,6 +677,24 @@ namespace HumanVision.Demo
                     slot.TopLeftBuffer.Dispose();
                 }
             }
+
+            if (targetDisplay != null)
+            {
+                targetDisplay.texture = null;
+            }
+
+            for (int index = 0; index < _presentationSlots.Length; index++)
+            {
+                PresentationSlot slot = _presentationSlots[index];
+                if (slot?.Texture == null)
+                {
+                    continue;
+                }
+
+                slot.Texture.Release();
+                Destroy(slot.Texture);
+            }
+            _presentationSlots = Array.Empty<PresentationSlot>();
 
             if (_renderTexture != null)
             {
@@ -431,6 +748,12 @@ namespace HumanVision.Demo
             internal bool Busy;
             internal long FrameId;
             internal long TimestampUs;
+        }
+
+        private sealed class PresentationSlot
+        {
+            internal RenderTexture Texture;
+            internal long FrameId;
         }
     }
 }

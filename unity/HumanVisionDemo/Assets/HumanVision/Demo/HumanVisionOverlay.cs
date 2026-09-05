@@ -78,7 +78,8 @@ namespace HumanVision.Demo
             vertexHelper.Clear();
             if (manager == null || frameSource == null ||
                 frameSource.SourceWidth <= 0 || frameSource.SourceHeight <= 0 ||
-                manager.BodyCount <= 0 || manager.Bodies == null)
+                manager.BodyCount <= 0 || manager.Bodies == null ||
+                !frameSource.CanPresentResult(manager.SourceFrameId))
             {
                 return;
             }
@@ -271,6 +272,8 @@ namespace HumanVision.Demo
             {
                 frameSource.VideoLayoutChanged -= OnVideoLayoutChanged;
                 frameSource.VideoLayoutChanged += OnVideoLayoutChanged;
+                frameSource.PresentationFrameChanged -= OnPresentationFrameChanged;
+                frameSource.PresentationFrameChanged += OnPresentationFrameChanged;
             }
         }
 
@@ -284,6 +287,7 @@ namespace HumanVision.Demo
             if (frameSource != null)
             {
                 frameSource.VideoLayoutChanged -= OnVideoLayoutChanged;
+                frameSource.PresentationFrameChanged -= OnPresentationFrameChanged;
             }
         }
 
@@ -294,6 +298,16 @@ namespace HumanVision.Demo
 
         private void OnVideoLayoutChanged()
         {
+            SetVerticesDirty();
+        }
+
+        private void OnPresentationFrameChanged()
+        {
+            if (manager == null || frameSource == null ||
+                !frameSource.CanPresentResult(manager.SourceFrameId))
+            {
+                canvasRenderer.Clear();
+            }
             SetVerticesDirty();
         }
     }

@@ -92,6 +92,15 @@ namespace HumanVision.Demo
                 .Append(" @ ").Append(frameSource.VideoFrameRate.ToString("F1")).Append(" fps\n");
             _builder.Append("Render: ").Append(renderFps.ToString("F1")).Append(" fps   Inference: ")
                 .Append(stats.InferenceFps.ToString("F1")).Append(" fps\n");
+            long resultAge = frameSource.LatestSubmittedFrameId >= manager.SourceFrameId && manager.SourceFrameId >= 0
+                ? frameSource.LatestSubmittedFrameId - manager.SourceFrameId
+                : -1;
+            long videoDelay = frameSource.LatestSubmittedFrameId >= frameSource.PresentationFrameId &&
+                frameSource.PresentationFrameId >= 0
+                ? frameSource.LatestSubmittedFrameId - frameSource.PresentationFrameId
+                : -1;
+            _builder.Append("Video delay: ").Append(videoDelay)
+                .Append(" frames   Result age: ").Append(resultAge).Append(" frames\n");
             _builder.Append("Bodies: ").Append(manager.BodyCount).Append(" / MaxBodies: ")
                 .Append(manager.MaxBodies).Append("   Sequence: ").Append(manager.ResultSequence).Append('\n');
             _builder.Append("Detector: ").Append(stats.DetectionMs.ToString("F1")).Append(" ms   Pose: ")
