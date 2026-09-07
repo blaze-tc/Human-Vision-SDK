@@ -1,3 +1,4 @@
+using System.IO;
 using System.Linq;
 using HumanVision.Demo;
 using NUnit.Framework;
@@ -11,6 +12,23 @@ namespace HumanVision.Tests
     public sealed class HumanVisionDemoSceneContractTests
     {
         private const string ScenePath = "Assets/Scenes/HumanVisionD04Demo.unity";
+
+        [Test]
+        public void DemoSceneStartupVideoExistsInStreamingAssets()
+        {
+            EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+            HumanVisionDemoBootstrap bootstrap = Object.FindObjectOfType<HumanVisionDemoBootstrap>();
+            Assert.That(bootstrap, Is.Not.Null);
+
+            var serializedBootstrap = new SerializedObject(bootstrap);
+            SerializedProperty startupVideo = serializedBootstrap.FindProperty("startupVideo");
+            Assert.That(startupVideo, Is.Not.Null);
+            Assert.That(startupVideo.stringValue, Is.Not.Empty);
+
+            string absolutePath = Path.Combine(Application.streamingAssetsPath, startupVideo.stringValue);
+            Assert.That(File.Exists(absolutePath), Is.True,
+                "The saved Demo startup video must exist: " + absolutePath);
+        }
 
         [Test]
         public void DemoSceneContainsWiredPipelineAndIsEnabledForBuild()

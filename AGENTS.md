@@ -2,6 +2,20 @@
 
 ## Project Goal
 
+### Active user-approved plan (2026-09-07)
+
+The user has prioritized independent SDK skeleton acceptance before
+AzureKinectExamples integration, targeting Windows and RK3588 Android, 1-8
+people at 30 fresh complete skeleton FPS per person, including real Hand,
+Handtip and Thumb points for both hands. Read `docs/SDK_SKELETON_REQUIREMENTS.md`
+and `docs/SDK_SKELETON_EXECUTION_PLAN.md` in addition to the mandatory documents
+below. `docs/DEVELOPMENT_STATUS.md` identifies the sole active milestone.
+
+The historical D0/D1 scope below remains the regression baseline. The active
+S-series plan supersedes its RTSP-first ordering and permits model/schema and
+platform acceleration work only in the corresponding S milestone. It does not
+authorize segmentation, vendor sensor rewrites, or early Azure integration.
+
 Build HumanVisionSDK in two layers:
 
 1. **Immediate goal:** a testable Windows x64 Unity vertical-slice Demo for multi-person RGB-camera vision.

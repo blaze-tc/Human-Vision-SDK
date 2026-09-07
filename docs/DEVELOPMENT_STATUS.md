@@ -2,10 +2,56 @@
 
 # HumanVisionSDK Development Status
 
+## User priority update - 2026-09-07
+
+**Current stage:** Independent SDK skeleton upgrade and validation.
+**Current milestone:** S1 - Wholebody model reference and measured feasibility.
+**Active plan:** `docs/SDK_SKELETON_EXECUTION_PLAN.md`.
+
+The user has requested independent SDK skeleton completion and acceptance
+before AzureKinectExamples integration. The confirmed expanded target is
+Windows + Android, 1-8 concurrent people, 30 actual complete skeleton updates
+per second per person, and both hands' Kinect-compatible hand/handtip/thumb
+outputs based on real inference. See `SDK_SKELETON_REQUIREMENTS.md` for the
+requirements, measurement rules and unresolved hardware/test conditions.
+
+Android hardware baseline is now user-confirmed as RK3588, based on the supplied
+`RK3588 Brief Datasheet.pdf`: four Cortex-A76 plus four Cortex-A55 cores and an
+INT8 NPU rated at 6 TOPS. This records the target hardware, not a performance
+pass. Exact board/RAM/firmware and sustained skeleton throughput remain to be
+verified on hardware.
+
+The D1.0 schedule below is the previous implementation plan, pending
+reconciliation with this priority. No new skeleton, hand, Android or performance
+milestone is marked complete by this update; historical D0 verification is
+preserved below. AzureKinectExamples integration is deferred until SDK acceptance.
+
+## S0 - Baseline and model feasibility - complete (2026-09-07)
+
+- Exact commands/results: `docs/validation/S0_BASELINE_REPORT.md`.
+- Native Debug and Release incremental builds passed; CTest 29/29 each,
+  12.04 and 8.07 seconds respectively, including real ONNX golden tests.
+- New scene-media contract test initially passed 1/1 (job `9a77360d`): the
+  imported startup path was already correct. No RED or production path fix is
+  claimed. Full Unity EditMode job `363c338e`: 38/38 passed in 19 seconds.
+- Windows x64 build succeeded, 438,964,244 bytes / 9.28 seconds.
+- Dynamic-video playback and native results observed, errors/readback errors
+  zero. Measured inference about 4-5 FPS. Captured frames without overlays are
+  recorded as unresolved following-quality evidence, not a visual pass.
+- Real two-person sequential means: MaxBodies 1/2/8 gave 192.348/209.285/202.313
+  ms and 1/2/2 observed bodies. No eight-person throughput claim.
+- Model assessment: `docs/validation/S0_MODEL_FEASIBILITY.md`; selected next
+  experiment is official RTMPose-s/m 133-point wholebody, with real hand/foot
+  outputs, retained ONNX baseline, and RKNN conversion still unverified.
+- Next: S1 reference/golden experiment; production native model/schema changes
+  wait for S2. Azure integration and segmentation remain deferred.
+
+## Previously verified development checkpoint
+
 **Status date:** 2026-09-05  
-**Current stage:** D1 - RTSP IPC Integration  
-**Current milestone:** D1.0 RTSP IPC Input  
-**Current implementation state:** D0.4 Unity local-video vertical slice completed and verified in the imported AzureKinectExamples project: asynchronous frame submission, real RTMDet/RTMPose inference, stable tracking, video/box/ID overlay with a Kinect-style display skeleton derived from COCO-17, performance HUD, and a Windows x64 standalone build.
+**Historical stage:** D1 - RTSP IPC Integration  
+**Historical next milestone:** D1.0 RTSP IPC Input (deferred)  
+**Historical implementation state:** D0.4 Unity local-video vertical slice completed and verified in the imported AzureKinectExamples project: asynchronous frame submission, real RTMDet/RTMPose inference, stable tracking, video/box/ID overlay with a Kinect-style display skeleton derived from COCO-17, performance HUD, and a Windows x64 standalone build.
 
 ## Immediate user-visible target
 
