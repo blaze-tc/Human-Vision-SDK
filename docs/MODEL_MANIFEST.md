@@ -70,7 +70,21 @@ If RTMDet-tiny ONNX export is blocked by a toolchain incompatibility, Codex may 
 
 If RTMPose-s is too slow on the target Windows test machine, record the benchmark first. `RTMPose-t` may be evaluated only after D0 correctness is established; do not change the baseline preemptively.
 
-## Segmentation / cutout
+## S1 wholebody evaluation — 2026-09-07
+
+The active S-series plan permits a separate wholebody experiment. Official
+RTMPose-s/m wholebody FP32 artifacts and exact hashes are pinned in
+`models/wholebody/candidates.json`; reproduction and numerical/compute results
+are in `validation/S1_MODEL_REFERENCE_REPORT.md`. Both passed the reference
+contract. Small FP32 is selected for the S2 native adapter experiment.
+
+Input is float32 `[N,3,256,192]`; actual SimCC outputs are `[N,133,384]` and
+`[N,133,512]`. These are distinct from the locked 17-joint D0 pose model and
+must never be silently interpreted using the existing ABI. No D0 model was
+replaced in S1. The artifacts are evaluation-only, not cleared release assets.
+Hand confidence/parity is not anatomical accuracy or eight-person acceptance.
+
+## Segmentation / cutout (deferred)
 
 Not part of D0/D1.
 

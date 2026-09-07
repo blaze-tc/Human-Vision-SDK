@@ -5,7 +5,7 @@
 ## User priority update - 2026-09-07
 
 **Current stage:** Independent SDK skeleton upgrade and validation.
-**Current milestone:** S1 - Wholebody model reference and measured feasibility.
+**Current milestone:** S2 - Native rich skeleton and backward-compatible result API.
 **Active plan:** `docs/SDK_SKELETON_EXECUTION_PLAN.md`.
 
 The user has requested independent SDK skeleton completion and acceptance
@@ -22,8 +22,8 @@ pass. Exact board/RAM/firmware and sustained skeleton throughput remain to be
 verified on hardware.
 
 The D1.0 schedule below is the previous implementation plan, pending
-reconciliation with this priority. No new skeleton, hand, Android or performance
-milestone is marked complete by this update; historical D0 verification is
+reconciliation with this priority. S0/S1 evidence is recorded below; SDK hand,
+Android and performance acceptance remains pending. Historical D0 verification is
 preserved below. AzureKinectExamples integration is deferred until SDK acceptance.
 
 ## S0 - Baseline and model feasibility - complete (2026-09-07)
@@ -45,6 +45,26 @@ preserved below. AzureKinectExamples integration is deferred until SDK acceptanc
   outputs, retained ONNX baseline, and RKNN conversion still unverified.
 - Next: S1 reference/golden experiment; production native model/schema changes
   wait for S2. Azure integration and segmentation remain deferred.
+
+## S1 - Wholebody reference - complete (2026-09-07)
+
+- Exact reproduction and limitations: `docs/validation/S1_MODEL_REFERENCE_REPORT.md`.
+- New contract tests started with expected missing-module RED; final reference
+  suite 9/9 passed in 0.029 seconds.
+- Official small/medium FP32 ONNX graphs checked and hashes pinned in
+  `models/wholebody/candidates.json`; real-image golden records saved in
+  `tests/golden/s1/`. Assets are evaluation-only.
+- PyTorch/ONNX comparisons passed with ORT CPU threads 1 and 4 for both models:
+  source-coordinate error zero, raw errors below 0.0000061.
+- Actual dynamic batches 2/4/8 executed and matched single-input results.
+- Small/four-thread serial eight-ROI mean 89.512 ms, medium 187.943 ms, excluding
+  detector and other stages. This is repeated-ROI compute cost, not eight-person
+  recognition or 30 FPS acceptance.
+- Real model hand endpoints present; palms explicitly derived from hand-model
+  root/MCP landmarks. Gloved reference image does not prove finger accuracy.
+- Selected small FP32 for S2 native adapter. Production runtime unchanged by S1;
+  rich native results, following quality, platform acceleration and field
+  acceptance remain pending. Azure integration remains deferred.
 
 ## Previously verified development checkpoint
 
