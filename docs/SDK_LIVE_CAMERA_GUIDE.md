@@ -6,7 +6,8 @@ Windows 摄像头、RTSP、Android 发布和区域交互等待用户实测。
 
 ## 导入与运行
 
-1. 将 `HumanVisionSDK-0.2.0-preview.unitypackage` 导入 Unity。建议先导入空项目；
+1. 使用修正版 `HumanVisionSDK-0.2.0-preview-importfix.unitypackage`，通过
+   `Assets > Import Package > Custom Package` 导入 Unity。建议先导入空项目；
    支持目标为 Windows x64 Editor/Player、Android ARM64。
    编译使用 Unity 2021.3.45f1 的程序集；推荐 2021.3/2022.3 LTS。
 2. 项目需要 UGUI、Video、ImageConversion、UnityWebRequest、IMGUI、WebCam 模块。
@@ -18,6 +19,11 @@ Windows 摄像头、RTSP、Android 发布和区域交互等待用户实测。
    按 `Start` 获取画面、推理并绘制骨骼。`Stop` 停止采集。
 5. 发布时将新场景置于 Build Settings 首位或仅勾选该场景。
    此包不替换你的 ProjectSettings，也不自动改动图形 API/发布设置。
+
+旧版包缺少 tar 中显式的 GUID 目录条目，可能导致导入时误报资源已导入。
+修正版补齐目录并保留原资源 GUID，不需要删除 Library 或现有项目资源。
+这是 Assets 资源包，导入后查看 `Assets/HumanVision`，不会作为 UPM 包显示在
+Package Manager 中。修正版完成了归档结构及资源完整性检查，实际导入待用户确认。
 
 ## 人数与区域
 

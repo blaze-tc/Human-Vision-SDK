@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / 'unity/HumanVisionDemo/Assets/HumanVision'
-OUTPUT = ROOT / 'out/releases/0.2.0-preview'
+OUTPUT = ROOT / 'out/releases/0.2.0-preview-importfix'
 NAMESPACE = uuid.UUID('9a1f16d6-9fe3-4b94-a3b2-77076251bfec')
 
 
@@ -116,16 +116,22 @@ This is a user-testing preview, not a claim of model redistribution clearance or
 ''')
     manifest = {path: hashlib.sha256(data).hexdigest() for path, (data, _) in sorted(assets.items())}
     (OUTPUT / 'asset-sha256.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    package = OUTPUT / 'HumanVisionSDK-0.2.0-preview.unitypackage'
-    with tarfile.open(package, 'w:gz', compresslevel=6) as tar:
+    package = OUTPUT / 'HumanVisionSDK-0.2.0-preview-importfix.unitypackage'
+    with tarfile.open(package, 'w:gz', compresslevel=6, format=tarfile.USTAR_FORMAT) as tar:
         for path, (data, meta) in sorted(assets.items()):
             guid = next(line.split(':', 1)[1].strip() for line in meta.decode('utf-8-sig').splitlines() if line.startswith('guid:'))
+            # Unity's package reader expects explicit GUID directories, as emitted
+            # by AssetDatabase.ExportPackage; implicit tar parents are insufficient.
+            directory = tarfile.TarInfo(guid)
+            directory.type = tarfile.DIRTYPE
+            directory.mode = 0o755
+            tar.addfile(directory)
             for leaf, payload in (('asset', data), ('asset.meta', meta), ('pathname', path.encode())):
                 info = tarfile.TarInfo(guid + '/' + leaf); info.size = len(payload); info.mode = 0o644
                 tar.addfile(info, io.BytesIO(payload))
     shutil.copy2(ROOT / 'docs/SDK_LIVE_CAMERA_GUIDE.md', OUTPUT / 'README.md')
     shutil.copy2(ROOT / 'docs/SDK_LIVE_CAMERA_PLAN.md', OUTPUT / 'IMPLEMENTATION_PLAN.md')
-    archive = OUTPUT / 'HumanVisionSDK-0.2.0-preview.zip'
+    archive = OUTPUT / 'HumanVisionSDK-0.2.0-preview-importfix.zip'
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as bundle:
         for path in (package, OUTPUT / 'README.md', OUTPUT / 'asset-sha256.json', OUTPUT / 'IMPLEMENTATION_PLAN.md'):
             bundle.write(path, path.name)

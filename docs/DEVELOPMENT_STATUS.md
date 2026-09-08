@@ -21,6 +21,14 @@ or new-package import were executed after the user's no-test instruction.
 User acceptance is pending. Deliverables live under `out/releases/0.2.0-preview/`;
 usage: `SDK_LIVE_CAMERA_GUIDE.md`. The existing imported demo was not overwritten.
 
+2026-09-08 import follow-up: the user reports an "already imported" dialog.
+The active Unity project has none of the 54 delivered asset paths. Archive
+inspection found zero explicit GUID directory entries in our generated package,
+whereas Unity's bundled TMP package has them. The packager now writes explicit
+GUID directories using USTAR format, preserving asset GUIDs, and delivers
+`out/releases/0.2.0-preview-importfix/`. Archive content/metadata comparison
+is the verification scope; Unity import and runtime acceptance remain pending.
+
 Implemented: WebCamTexture capture and Android permission flow, native FFmpeg
 RTSP TCP/UDP decoding/reconnect, common oriented frame bridge, native region
 masking/one-body-per-region selection, versioned region assignments, draggable
