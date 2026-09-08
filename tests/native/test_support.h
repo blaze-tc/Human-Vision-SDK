@@ -33,6 +33,11 @@
 #endif
 
 namespace humanvision::test {
+#if defined(HV_USE_DIRECTML)
+inline constexpr bool kUseGpu = true;
+#else
+inline constexpr bool kUseGpu = false;
+#endif
 
 inline std::vector<std::uint8_t> ReadBytes(const std::filesystem::path& path) {
     std::ifstream stream(path, std::ios::binary);
@@ -51,7 +56,7 @@ inline HV_Config MakeConfig(int max_bodies = 4) {
     config.pose_threshold = 0.30F;
     config.detection_interval = 1;
     config.enable_tracking = 1;
-    config.backend = HV_BACKEND_ONNX_CPU;
+    config.backend = kUseGpu ? HV_BACKEND_AUTO : HV_BACKEND_ONNX_CPU;
     config.detector_model_path_utf8 = HV_TEST_DETECTOR_MODEL_PATH;
     config.pose_model_path_utf8 = HV_TEST_POSE_MODEL_PATH;
     return config;

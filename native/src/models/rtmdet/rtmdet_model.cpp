@@ -24,8 +24,7 @@ constexpr std::uint8_t kPadValue = 114;
 std::array<std::uint8_t, 3> ReadBgr(
     const FrameBuffer& frame,
     const int x,
-    const int y) {
-    const int bytes_per_pixel = BytesPerPixel(frame.pixel_format);
+    const int y, const int bytes_per_pixel) {
     const std::size_t offset =
         static_cast<std::size_t>(y) * static_cast<std::size_t>(frame.stride_bytes) +
         static_cast<std::size_t>(x) * static_cast<std::size_t>(bytes_per_pixel);
@@ -42,13 +41,13 @@ std::array<std::uint8_t, 3> ReadBgr(
     }
 }
 
-std::uint8_t BilinearChannel(
+std::array<std::uint8_t, 3> BilinearPixel(
     const FrameBuffer& frame,
     const int destination_x,
     const int destination_y,
     const int resized_width,
     const int resized_height,
-    const int channel) {
+    const int bytes_per_pixel) {
     const float source_x =
         (static_cast<float>(destination_x) + 0.5F) * frame.width / resized_width -
         0.5F;
@@ -63,18 +62,22 @@ std::uint8_t BilinearChannel(
     const int y1 = std::clamp(y0_unclamped + 1, 0, frame.height - 1);
     const float fraction_x = std::clamp(source_x - x0_unclamped, 0.0F, 1.0F);
     const float fraction_y = std::clamp(source_y - y0_unclamped, 0.0F, 1.0F);
-    const auto top_left = ReadBgr(frame, x0, y0);
-    const auto top_right = ReadBgr(frame, x1, y0);
-    const auto bottom_left = ReadBgr(frame, x0, y1);
-    const auto bottom_right = ReadBgr(frame, x1, y1);
-    const float top = top_left[static_cast<std::size_t>(channel)] * (1.0F - fraction_x) +
-                      top_right[static_cast<std::size_t>(channel)] * fraction_x;
-    const float bottom =
-        bottom_left[static_cast<std::size_t>(channel)] * (1.0F - fraction_x) +
-        bottom_right[static_cast<std::size_t>(channel)] * fraction_x;
-    const float value = top * (1.0F - fraction_y) + bottom * fraction_y;
-    return static_cast<std::uint8_t>(
-        std::clamp(static_cast<int>(std::lround(value)), 0, 255));
+    const auto top_left = ReadBgr(frame, x0, y0, bytes_per_pixel);
+    const auto top_right = ReadBgr(frame, x1, y0, bytes_per_pixel);
+    const auto bottom_left = ReadBgr(frame, x0, y1, bytes_per_pixel);
+    const auto bottom_right = ReadBgr(frame, x1, y1, bytes_per_pixel);
+    std::array<std::uint8_t, 3> result{};
+    for (int channel = 0; channel < 3; ++channel) {
+        const float top = top_left[static_cast<std::size_t>(channel)] * (1.0F - fraction_x) +
+                          top_right[static_cast<std::size_t>(channel)] * fraction_x;
+        const float bottom =
+            bottom_left[static_cast<std::size_t>(channel)] * (1.0F - fraction_x) +
+            bottom_right[static_cast<std::size_t>(channel)] * fraction_x;
+        const float value = top * (1.0F - fraction_y) + bottom * fraction_y;
+        result[channel] = static_cast<std::uint8_t>(
+            std::clamp(static_cast<int>(std::lround(value)), 0, 255));
+    }
+    return result;
 }
 
 const Tensor* FindOutput(const std::vector<Tensor>& outputs, const std::string& name) {
@@ -119,6 +122,7 @@ bool RtmdetModel::Preprocess(
         return false;
     }
 
+    const int bytes_per_pixel = BytesPerPixel(frame.pixel_format);
     const float resize_ratio = std::min(
         static_cast<float>(kInputWidth) / frame.width,
         static_cast<float>(kInputHeight) / frame.height);
@@ -143,14 +147,10 @@ bool RtmdetModel::Preprocess(
 
     for (int y = 0; y < destination.resized_height; ++y) {
         for (int x = 0; x < destination.resized_width; ++x) {
+            const auto pixel = BilinearPixel(frame, x, y, destination.resized_width,
+                                               destination.resized_height, bytes_per_pixel);
             for (int channel = 0; channel < 3; ++channel) {
-                const std::uint8_t value = BilinearChannel(
-                    frame,
-                    x,
-                    y,
-                    destination.resized_width,
-                    destination.resized_height,
-                    channel);
+                const std::uint8_t value = pixel[channel];
                 const std::size_t index =
                     static_cast<std::size_t>(channel) * plane_size +
                     static_cast<std::size_t>(y) * kInputWidth + x;

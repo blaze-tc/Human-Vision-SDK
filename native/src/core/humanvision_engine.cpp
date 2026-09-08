@@ -68,8 +68,7 @@ HumanVisionEngine::RuntimeConfig HumanVisionEngine::CopyConfig(
     copy.pose_threshold = config.pose_threshold;
     copy.detection_interval = config.detection_interval;
     copy.enable_tracking = config.enable_tracking != 0;
-    copy.backend = config.backend == HV_BACKEND_AUTO ? HV_BACKEND_ONNX_CPU
-                                                     : config.backend;
+    copy.backend = config.backend;
     copy.detector_model_path = config.detector_model_path_utf8;
     if (config.pose_model_path_utf8 != nullptr) {
         copy.pose_model_path = config.pose_model_path_utf8;
@@ -88,8 +87,12 @@ HumanVisionEngine::~HumanVisionEngine() {
 }
 
 bool HumanVisionEngine::Initialize(std::string& error) {
+    bool use_gpu = false;
+#if defined(HV_USE_DIRECTML)
+    use_gpu = config_.backend == HV_BACKEND_AUTO;
+#endif
     auto detector = std::make_unique<RtmdetModel>(
-        std::make_unique<OnnxRuntimeBackend>());
+        std::make_unique<OnnxRuntimeBackend>(use_gpu));
     const std::filesystem::path model_path =
         std::filesystem::u8path(config_.detector_model_path);
     if (!detector->Load(model_path, error)) {
@@ -98,7 +101,7 @@ bool HumanVisionEngine::Initialize(std::string& error) {
     }
     detector_ = std::move(detector);
     auto pose = std::make_unique<RtmposeModel>(
-        std::make_unique<OnnxRuntimeBackend>());
+        std::make_unique<OnnxRuntimeBackend>(use_gpu));
     const std::filesystem::path pose_model_path =
         std::filesystem::u8path(config_.pose_model_path);
     if (!pose->Load(pose_model_path, error)) {
@@ -121,6 +124,10 @@ HV_Result HumanVisionEngine::Reconfigure(const HV_Config& config) {
     }
     RuntimeConfig replacement = CopyConfig(config);
     std::lock_guard<std::mutex> lock(config_mutex_);
+    if (replacement.backend != config_.backend) {
+        SetLastError("changing backend requires destroy/create");
+        return HV_ERR_INVALID_ARGUMENT;
+    }
     if (replacement.detector_model_path != config_.detector_model_path) {
         SetLastError(
             "changing detector_model_path requires destroy/create during D0");

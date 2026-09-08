@@ -1,4 +1,6 @@
 find_package(Threads REQUIRED)
+option(HV_USE_DIRECTML "Enable GPU selection for AUTO on Windows" OFF)
+set(HV_DIRECTML_ROOT "" CACHE PATH "Extracted Microsoft.AI.DirectML package")
 
 set(
     HV_ONNXRUNTIME_ROOT
@@ -75,6 +77,13 @@ add_library(humanvision_internal STATIC
 add_library(HumanVision::Internal ALIAS humanvision_internal)
 
 target_compile_features(humanvision_internal PUBLIC cxx_std_17)
+if(HV_USE_DIRECTML)
+    if(NOT EXISTS "${HV_DIRECTML_ROOT}/include/DirectML.h")
+        message(FATAL_ERROR "HV_DIRECTML_ROOT must point to Microsoft.AI.DirectML 1.15.4")
+    endif()
+    target_compile_definitions(humanvision_internal PUBLIC HV_USE_DIRECTML NOMINMAX)
+    target_include_directories(humanvision_internal PRIVATE "${HV_DIRECTML_ROOT}/include")
+endif()
 target_include_directories(humanvision_internal
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -119,3 +128,11 @@ add_custom_command(TARGET humanvision POST_BUILD
         "$<TARGET_FILE_DIR:humanvision>/onnxruntime.dll"
         "$<TARGET_FILE_DIR:humanvision>/onnxruntime_providers_shared.dll"
     VERBATIM)
+
+if(HV_USE_DIRECTML)
+    add_custom_command(TARGET humanvision POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${HV_DIRECTML_ROOT}/bin/x64-win/DirectML.dll"
+            "$<TARGET_FILE_DIR:humanvision>/hv_dml.dll"
+        VERBATIM)
+endif()

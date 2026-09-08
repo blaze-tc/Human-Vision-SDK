@@ -307,6 +307,9 @@ namespace HumanVision.Demo
                 !frameSource.CanPresentResult(manager.SourceFrameId))
             {
                 canvasRenderer.Clear();
+                // Clear removes materials as well as geometry. Restore them in the
+                // next UI rebuild, otherwise later valid skeleton meshes stay invisible.
+                SetMaterialDirty();
             }
             SetVerticesDirty();
         }

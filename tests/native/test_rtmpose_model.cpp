@@ -33,7 +33,7 @@ humanvision::Detection ReferenceDetection() {
 
 TEST(RtmposeModel, ReportsMissingModelWithActionablePath) {
     humanvision::RtmposeModel model(
-        std::make_unique<humanvision::OnnxRuntimeBackend>());
+        std::make_unique<humanvision::OnnxRuntimeBackend>(humanvision::test::kUseGpu));
     std::string error;
     EXPECT_FALSE(model.Load("missing-rtmpose.onnx", error));
     EXPECT_NE(error.find("missing-rtmpose.onnx"), std::string::npos);
@@ -44,7 +44,7 @@ TEST(RtmposeModel, MatchesOfficialPytorchGoldenJoints) {
         GTEST_SKIP() << "Run D0.1 export first: " << HV_TEST_POSE_MODEL_PATH;
     }
     humanvision::RtmposeModel model(
-        std::make_unique<humanvision::OnnxRuntimeBackend>());
+        std::make_unique<humanvision::OnnxRuntimeBackend>(humanvision::test::kUseGpu));
     std::string error;
     ASSERT_TRUE(model.Load(HV_TEST_POSE_MODEL_PATH, error)) << error;
     std::array<HV_Joint, HV_JOINT_COUNT> joints{};

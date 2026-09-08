@@ -20,6 +20,7 @@ namespace HumanVision.Demo.Editor
             EnsureScenesFolder();
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            HumanVisionGpuDemoSetup.EnsurePresentationCamera();
 
             var pipeline = new GameObject("HumanVision Pipeline");
             HumanVisionManager manager = pipeline.AddComponent<HumanVisionManager>();

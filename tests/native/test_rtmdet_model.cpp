@@ -52,7 +52,7 @@ double IntersectionOverUnion(
 }
 
 TEST(RtmdetModel, PreprocessMatchesD01GoldenSamples) {
-    humanvision::RtmdetModel model(std::make_unique<humanvision::OnnxRuntimeBackend>());
+    humanvision::RtmdetModel model(std::make_unique<humanvision::OnnxRuntimeBackend>(humanvision::test::kUseGpu));
     humanvision::DetectorInput input;
     std::string error;
 
@@ -90,7 +90,7 @@ TEST(RtmdetModel, PreprocessSupportsAllPublicColorFormats) {
         {HV_PIXEL_BGRA32, {30, 20, 10, 255}},
         {HV_PIXEL_RGBA32, {10, 20, 30, 255}},
     };
-    humanvision::RtmdetModel model(std::make_unique<humanvision::OnnxRuntimeBackend>());
+    humanvision::RtmdetModel model(std::make_unique<humanvision::OnnxRuntimeBackend>(humanvision::test::kUseGpu));
     for (const auto& test_case : cases) {
         humanvision::FrameBuffer frame;
         frame.width = 1;
@@ -112,7 +112,7 @@ TEST(RtmdetModel, RealOnnxOutputMatchesOfficialPyTorchGolden) {
     if (!std::filesystem::is_regular_file(HV_TEST_DETECTOR_MODEL_PATH)) {
         GTEST_SKIP() << "Run D0.1 export first: " << HV_TEST_DETECTOR_MODEL_PATH;
     }
-    humanvision::RtmdetModel model(std::make_unique<humanvision::OnnxRuntimeBackend>());
+    humanvision::RtmdetModel model(std::make_unique<humanvision::OnnxRuntimeBackend>(humanvision::test::kUseGpu));
     std::string error;
     ASSERT_TRUE(model.Load(HV_TEST_DETECTOR_MODEL_PATH, error)) << error;
 
@@ -148,7 +148,7 @@ TEST(RtmdetModel, RuntimeMaxBodiesCapsRealMultiPersonSelection) {
     if (!std::filesystem::is_regular_file(HV_TEST_DETECTOR_MODEL_PATH)) {
         GTEST_SKIP() << "Run D0.1 export first: " << HV_TEST_DETECTOR_MODEL_PATH;
     }
-    humanvision::RtmdetModel model(std::make_unique<humanvision::OnnxRuntimeBackend>());
+    humanvision::RtmdetModel model(std::make_unique<humanvision::OnnxRuntimeBackend>(humanvision::test::kUseGpu));
     std::string error;
     ASSERT_TRUE(model.Load(HV_TEST_DETECTOR_MODEL_PATH, error)) << error;
     const humanvision::FrameBuffer frame = LoadMultiPersonFrame();

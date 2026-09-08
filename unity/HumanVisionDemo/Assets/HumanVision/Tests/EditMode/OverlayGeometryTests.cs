@@ -96,7 +96,7 @@ namespace HumanVision.Tests
         }
 
         [Test]
-        public void SynchronizedPresentationAdvancesSmoothlyAndResyncsLargePoseSkew()
+        public void SynchronizedPresentationNeverRunsAheadOfItsSkeleton()
         {
             Assert.That(
                 PresentationFramePolicy.TryGetSynchronizedFrameId(100, 95, -1, 0, 4, out long firstFrame),
@@ -106,12 +106,12 @@ namespace HumanVision.Tests
             Assert.That(
                 PresentationFramePolicy.TryGetSynchronizedFrameId(101, 95, 95, 0, 4, out long smoothFrame),
                 Is.True);
-            Assert.That(smoothFrame, Is.EqualTo(96));
+            Assert.That(smoothFrame, Is.EqualTo(95));
 
             Assert.That(
                 PresentationFramePolicy.TryGetSynchronizedFrameId(105, 95, 99, 0, 4, out long cappedFrame),
                 Is.True);
-            Assert.That(cappedFrame, Is.EqualTo(99));
+            Assert.That(cappedFrame, Is.EqualTo(95));
 
             Assert.That(
                 PresentationFramePolicy.TryGetSynchronizedFrameId(113, 100, 107, 0, 4, out long resyncedFrame),

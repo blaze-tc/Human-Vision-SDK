@@ -5,7 +5,14 @@
 ## User priority update - 2026-09-07
 
 **Current stage:** Independent SDK skeleton upgrade and validation.
-**Current milestone:** S2 - Native rich skeleton and backward-compatible result API.
+**Current milestone:** Unity following repair and Windows performance validation
+(user priority override, 2026-09-08). S2 rich-skeleton work is temporarily queued.
+
+The user requested visible, aligned, smooth Unity skeleton following before
+continuing SDK expansion. This authorizes focused display fixes and measured
+Windows acceleration experiments now. Preserve the D0 CPU regression path;
+do not claim zero latency or fresh 30 FPS from interpolation. S1's wholebody
+models remain offline candidates until S2 resumes.
 **Active plan:** `docs/SDK_SKELETON_EXECUTION_PLAN.md`.
 
 The user has requested independent SDK skeleton completion and acceptance

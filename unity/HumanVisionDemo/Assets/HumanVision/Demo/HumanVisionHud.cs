@@ -57,14 +57,20 @@ namespace HumanVision.Demo
                 manager?.TrySetMaxBodies(manager.MaxBodies + 1);
             }
 
-            if (GUI.Button(new Rect(112f, 230f, 120f, 26f), "1 Person"))
+            if (GUI.Button(new Rect(112f, 230f, 86f, 26f), "1 Person"))
             {
                 frameSource?.PlayRelativeVideo(onePersonVideo);
             }
 
-            if (GUI.Button(new Rect(240f, 230f, 120f, 26f), "2 People"))
+            if (GUI.Button(new Rect(204f, 230f, 86f, 26f), "2 People"))
             {
                 frameSource?.PlayRelativeVideo(multiPersonVideo);
+            }
+
+            if (GUI.Button(new Rect(296f, 230f, 120f, 26f), "Camera image"))
+            {
+                if (manager != null && manager.TrySetMaxBodies(8))
+                    frameSource?.PlayRelativeVideo("HumanVision/Media/cameraImage.png");
             }
 
             GUI.Label(new Rect(26f, 262f, panelWidth - 28f, 22f),
@@ -83,7 +89,7 @@ namespace HumanVision.Demo
 
             HumanVisionStats stats = manager.Stats;
             float renderFps = Time.unscaledDeltaTime > 0f ? 1f / Time.unscaledDeltaTime : 0f;
-            _builder.Append("Video: ");
+            _builder.Append(frameSource.IsStillImage ? "Image (single inference): " : "Video: ");
             _builder.Append(string.IsNullOrWhiteSpace(frameSource.CurrentVideoPath)
                 ? "not selected"
                 : Path.GetFileName(frameSource.CurrentVideoPath));

@@ -26,6 +26,7 @@ struct Options {
     int fps = 5;
     int frames = 10;
     int max_bodies = 4;
+    HV_Backend backend = HV_BACKEND_ONNX_CPU;
 };
 
 struct FrameResult {
@@ -98,6 +99,12 @@ Options ParseOptions(const int argc, char** argv) {
             options.fps = ParsePositiveInt(value, option);
         } else if (option == "--frames") {
             options.frames = ParsePositiveInt(value, option);
+        } else if (option == "--backend") {
+            const std::string backend(value);
+            if (backend != "cpu" && backend != "auto") {
+                throw std::runtime_error("--backend requires cpu or auto");
+            }
+            options.backend = backend == "auto" ? HV_BACKEND_AUTO : HV_BACKEND_ONNX_CPU;
         } else if (option == "--max-bodies") {
             options.max_bodies = ParsePositiveInt(value, option);
         } else {
@@ -366,7 +373,7 @@ int Run(const Options& options) {
     config.pose_threshold = 0.30F;
     config.detection_interval = 1;
     config.enable_tracking = 1;
-    config.backend = HV_BACKEND_ONNX_CPU;
+    config.backend = options.backend;
     config.detector_model_path_utf8 = detector.c_str();
     config.pose_model_path_utf8 = pose.c_str();
     Handle handle;

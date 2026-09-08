@@ -78,20 +78,10 @@ namespace HumanVision.Demo
                 return false;
             }
 
-            long candidate;
-            if (currentPresentationFrameId < minimumFrameId ||
-                Math.Abs(currentPresentationFrameId - latestResultFrameId) > maxPoseSkewFrames)
-            {
-                candidate = latestResultFrameId;
-            }
-            else
-            {
-                candidate = Math.Min(
-                    currentPresentationFrameId + 1,
-                    latestResultFrameId + maxPoseSkewFrames);
-            }
-
-            presentationFrameId = Math.Min(candidate, latestCapturedFrameId);
+            // Advancing video while holding an older pose causes visible sliding.
+            // Present the actual source frame; throughput must come from inference.
+            if (latestResultFrameId > latestCapturedFrameId) return false;
+            presentationFrameId = latestResultFrameId;
             return presentationFrameId >= minimumFrameId;
         }
 
@@ -203,7 +193,8 @@ namespace HumanVision.Demo
         public string CurrentVideoPath { get; private set; }
         public string LastError { get; private set; }
         public bool IsPlaying => _videoPlayer != null && _videoPlayer.isPlaying;
-        public double VideoFrameRate => _videoPlayer != null ? _videoPlayer.frameRate : 0d;
+        public bool IsStillImage { get; private set; }
+        public double VideoFrameRate => !IsStillImage && _videoPlayer != null ? _videoPlayer.frameRate : 0d;
         public int PresentationDelayFrames => presentationDelayFrames;
         public long LatestSubmittedFrameId => _latestSubmittedFrameId;
         public long PresentationFrameId => _presentationFrameId;
@@ -303,10 +294,55 @@ namespace HumanVision.Demo
             StopCurrentVideo();
             CurrentVideoPath = Path.GetFullPath(path);
             LastError = string.Empty;
+            string extension = Path.GetExtension(path).ToLowerInvariant();
+            if (extension == ".png" || extension == ".jpg" || extension == ".jpeg")
+                return PrepareStillImage(path);
             _videoPlayer.source = VideoSource.Url;
             _videoPlayer.url = CurrentVideoPath;
             _videoPlayer.Prepare();
             return true;
+        }
+
+        private bool PrepareStillImage(string path)
+        {
+            if (!SystemInfo.supportsAsyncGPUReadback || manager == null || !manager.IsInitialized)
+            {
+                SetError("Image input requires an initialized SDK and asynchronous GPU readback.");
+                return false;
+            }
+            var image = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            try
+            {
+                if (!image.LoadImage(File.ReadAllBytes(path)))
+                {
+                    SetError("Could not decode image: " + path);
+                    return false;
+                }
+                Vector2Int size = AnalysisRenderTextureGeometry.CalculateTargetSize(
+                    image.width, image.height, maxAnalysisWidth, maxAnalysisHeight);
+                AllocateReadbackResources(size.x, size.y);
+                Graphics.Blit(image, _renderTexture);
+                IsStillImage = true;
+                _acceptReadbacks = true;
+                ReadbackSlot slot = _slots[0];
+                slot.Busy = true;
+                slot.FrameId = _nextSubmissionFrameId++;
+                slot.TimestampUs = 0;
+                CapturePresentationFrame(slot.FrameId);
+                slot.Request = AsyncGPUReadback.RequestIntoNativeArray(
+                    ref slot.Buffer, _renderTexture, 0, TextureFormat.RGBA32, slot.Completion);
+                VideoLayoutChanged?.Invoke();
+                return true;
+            }
+            catch (Exception error)
+            {
+                SetError("Image input failed: " + error.Message);
+                return false;
+            }
+            finally
+            {
+                Destroy(image);
+            }
         }
 
         private void OnPrepared(VideoPlayer source)
@@ -635,13 +671,13 @@ namespace HumanVision.Demo
 
             ReleaseReadbackResources();
             _lastScheduledFrame = -1;
-            _nextSubmissionFrameId = 0;
             _latestSubmittedFrameId = -1;
-            _minimumUsableResultFrameId = 0;
+            _minimumUsableResultFrameId = _nextSubmissionFrameId;
             _presentationFrameId = -1;
             _latestResultFrameId = -1;
             SourceWidth = 0;
             SourceHeight = 0;
+            IsStillImage = false;
             PresentationFrameChanged?.Invoke();
         }
 
