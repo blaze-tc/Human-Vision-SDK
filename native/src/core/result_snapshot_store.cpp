@@ -14,6 +14,8 @@ void ResultSnapshotStore::Publish(const ResultSnapshot& snapshot) {
     back.meta.struct_size = sizeof(HV_ResultMeta);
     back.meta.body_count = static_cast<std::int32_t>(snapshot.bodies.size());
     back.bodies.assign(snapshot.bodies.begin(), snapshot.bodies.end());
+    back.region_indices.assign(snapshot.region_indices.begin(), snapshot.region_indices.end());
+    back.region_revision = snapshot.region_revision;
     front_index_ = back_index;
     has_result_ = true;
 }
@@ -56,4 +58,15 @@ HV_Result ResultSnapshotStore::CopyBodies(
     return HV_OK;
 }
 
+HV_Result ResultSnapshotStore::CopyRegions(int64_t sequence, int32_t* destination,
+    int capacity, int64_t* revision) const {
+    if (!revision || capacity < 0 || (capacity && !destination)) return HV_ERR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!has_result_ || snapshots_[front_index_].meta.result_sequence != sequence) return HV_NO_NEW_RESULT;
+    const auto& front = snapshots_[front_index_];
+    if (capacity < static_cast<int>(front.region_indices.size())) return HV_ERR_INVALID_ARGUMENT;
+    std::copy(front.region_indices.begin(), front.region_indices.end(), destination);
+    *revision = front.region_revision;
+    return HV_OK;
+}
 }  // namespace humanvision

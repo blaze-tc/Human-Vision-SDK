@@ -198,10 +198,40 @@ namespace HumanVision.Demo
         public int PresentationDelayFrames => presentationDelayFrames;
         public long LatestSubmittedFrameId => _latestSubmittedFrameId;
         public long PresentationFrameId => _presentationFrameId;
+        public Texture PresentationTexture => targetDisplay != null ? targetDisplay.texture : _renderTexture;
+
+        public void StopFrames() => StopCurrentVideo();
+
+        public bool SubmitExternalTexture(Texture texture, long timestampUs)
+        {
+            if (texture == null || manager == null || !manager.IsInitialized) return false;
+            if (!SystemInfo.supportsAsyncGPUReadback) { SetError("Async GPU readback is unavailable."); return false; }
+            var size = AnalysisRenderTextureGeometry.CalculateTargetSize(texture.width, texture.height,
+                maxAnalysisWidth, maxAnalysisHeight);
+            if (_renderTexture == null || SourceWidth != size.x || SourceHeight != size.y) {
+                StopCurrentVideo();
+                AllocateReadbackResources(size.x, size.y);
+                VideoLayoutChanged?.Invoke();
+            }
+            _acceptReadbacks = true;
+            int index = FindAvailableSlot();
+            if (index < 0) { ReadbackDrops++; return false; }
+            Graphics.Blit(texture, _renderTexture);
+            ReadbackSlot slot = _slots[index];
+            slot.Busy = true;
+            slot.FrameId = _nextSubmissionFrameId++;
+            slot.TimestampUs = timestampUs;
+            CapturePresentationFrame(slot.FrameId);
+            slot.Request = AsyncGPUReadback.RequestIntoNativeArray(ref slot.Buffer, _renderTexture,
+                0, TextureFormat.RGBA32, slot.Completion);
+            return true;
+        }
 
         public bool CanPresentResult(long resultFrameId)
         {
             return _presentationFrameId >= _minimumUsableResultFrameId &&
+                PresentationFramePolicy.IsUsable(_latestSubmittedFrameId, resultFrameId,
+                    _minimumUsableResultFrameId, maxOverlayLagFrames * 2) &&
                 PresentationFramePolicy.IsUsable(
                 _presentationFrameId,
                 resultFrameId,
@@ -551,6 +581,7 @@ namespace HumanVision.Demo
             }
 
             PresentationSlot captureSlot = _presentationSlots[(int)(frameId % _presentationSlots.Length)];
+            if (captureSlot.FrameId == _presentationFrameId) _presentationFrameId = -1;
             Graphics.Blit(_renderTexture, captureSlot.Texture);
             captureSlot.FrameId = frameId;
 

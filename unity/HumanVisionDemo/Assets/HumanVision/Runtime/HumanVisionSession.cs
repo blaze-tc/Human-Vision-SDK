@@ -154,6 +154,24 @@ namespace HumanVision
             return false;
         }
 
+        internal void SetRegions(UnityEngine.Rect[] regions, long revision)
+        {
+            ThrowIfDisposed();
+            var native = new HVRectNative[regions.Length];
+            for (int i = 0; i < regions.Length; i++) native[i] = new HVRectNative {
+                X = regions[i].x, Y = regions[i].y, Width = regions[i].width, Height = regions[i].height };
+            ThrowIfFailed("region configuration", NativeBindings.HV_SetRegions(_handle, native, native.Length, revision), _handle);
+        }
+
+        internal bool CopyRegions(long sequence, int[] indices, out long revision)
+        {
+            ThrowIfDisposed();
+            HVResult result = NativeBindings.HV_GetRegionAssignments(_handle, sequence, indices, indices.Length, out revision);
+            if (result == HVResult.NoNewResult) return false;
+            ThrowIfFailed("region assignments", result, _handle);
+            return true;
+        }
+
         internal void RefreshStats()
         {
             ThrowIfDisposed();

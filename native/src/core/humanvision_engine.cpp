@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <cstring>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -14,6 +16,60 @@
 #include <vector>
 
 namespace humanvision {
+
+namespace {
+int RegionAt(const std::vector<HV_Rect>& regions, float x, float y) {
+    for (size_t i = 0; i < regions.size(); ++i) {
+        const auto& r = regions[i];
+        if (x >= r.x && y >= r.y && x < r.x + r.width && y < r.y + r.height)
+            return static_cast<int>(i);
+    }
+    return -1;
+}
+
+void MaskOutsideRegions(FrameBuffer& frame, const std::vector<HV_Rect>& regions) {
+    const int bpp = BytesPerPixel(frame.pixel_format);
+    for (int y = 0; y < frame.height; ++y) {
+        auto* row = frame.bytes.data() + static_cast<size_t>(y) * frame.stride_bytes;
+        for (int x = 0; x < frame.width; ++x) {
+            if (RegionAt(regions, (x + .5F) / frame.width, (y + .5F) / frame.height) < 0) {
+                std::memset(row + x * bpp, 0, bpp);
+                if (bpp == 4) row[x * bpp + 3] = 255;
+            }
+        }
+    }
+}
+}
+
+HV_Result HumanVisionEngine::SetRegions(const HV_Rect* regions, int count, int64_t revision) {
+    if (count < 0 || (count && !regions)) return HV_ERR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(config_mutex_);
+    if (count && count != config_.max_bodies) {
+        SetLastError("Region count must equal MaxBodies"); return HV_ERR_INVALID_ARGUMENT;
+    }
+    for (int i = 0; i < count; ++i) {
+        const auto& r = regions[i];
+        if (!std::isfinite(r.x) || !std::isfinite(r.y) || !std::isfinite(r.width) || !std::isfinite(r.height) ||
+            r.x < 0 || r.y < 0 || r.width <= 0 || r.height <= 0 || r.x + r.width > 1.000001F || r.y + r.height > 1.000001F) {
+            SetLastError("Regions must be positive normalized rectangles within the image"); return HV_ERR_INVALID_ARGUMENT;
+        }
+        for (int j = 0; j < i; ++j) {
+            const auto& q = regions[j];
+            if (std::min(r.x + r.width, q.x + q.width) - std::max(r.x, q.x) > .000001F &&
+                std::min(r.y + r.height, q.y + q.height) - std::max(r.y, q.y) > .000001F) {
+                SetLastError("Recognition regions must not overlap"); return HV_ERR_INVALID_ARGUMENT;
+            }
+        }
+    }
+    regions_.clear();
+    if (count) regions_.assign(regions, regions + count);
+    region_revision_ = revision;
+    return HV_OK;
+}
+
+HV_Result HumanVisionEngine::GetRegionAssignments(int64_t sequence, int32_t* indices, int capacity, int64_t* revision) const {
+    return result_store_.CopyRegions(sequence, indices, capacity, revision);
+}
 
 HV_Result ValidateConfig(const HV_Config* config, std::string& error) {
     if (config == nullptr) {
@@ -198,6 +254,10 @@ void HumanVisionEngine::WorkerLoop() {
     FrameBuffer frame;
     std::vector<Detection> detections;
     std::vector<TrackedDetection> tracked_detections;
+    std::vector<HV_Rect> regions;
+    std::vector<Detection> selected;
+    std::vector<bool> occupied;
+    int64_t previous_region_revision = -1;
     ResultSnapshot snapshot;
     bool tracking_state_initialized = false;
     bool previous_tracking_state = false;
@@ -207,6 +267,7 @@ void HumanVisionEngine::WorkerLoop() {
         float pose_threshold = 0.0F;
         int detection_interval = 1;
         bool enable_tracking = false;
+        int64_t region_revision;
         {
             std::lock_guard<std::mutex> lock(config_mutex_);
             max_bodies = config_.max_bodies;
@@ -214,19 +275,23 @@ void HumanVisionEngine::WorkerLoop() {
             pose_threshold = config_.pose_threshold;
             detection_interval = config_.detection_interval;
             enable_tracking = config_.enable_tracking;
+            regions.assign(regions_.begin(), regions_.end());
+            region_revision = region_revision_;
         }
         if (!tracking_state_initialized ||
-            enable_tracking != previous_tracking_state) {
+            enable_tracking != previous_tracking_state || previous_region_revision != region_revision) {
             tracker_->Reset();
             previous_tracking_state = enable_tracking;
             tracking_state_initialized = true;
             processed_input_frames_ = 0;
+            previous_region_revision = region_revision;
         }
 
         const auto total_start = std::chrono::steady_clock::now();
         StageTimings timings;
         std::string error;
-        const bool run_detector = !enable_tracking || processed_input_frames_ == 0 ||
+        if (!regions.empty()) MaskOutsideRegions(frame, regions);
+        const bool run_detector = !regions.empty() || !enable_tracking || processed_input_frames_ == 0 ||
                                   processed_input_frames_ % detection_interval == 0;
         if (run_detector) {
             const auto detection_start = std::chrono::steady_clock::now();
@@ -235,12 +300,25 @@ void HumanVisionEngine::WorkerLoop() {
             if (!detector_->Detect(
                     frame,
                     detection_threshold,
-                    max_bodies,
+                    regions.empty() ? max_bodies : 300,
                     detections,
                     detector_inference_ms,
                     error)) {
                 SetLastError(std::move(error));
                 continue;
+            }
+            if (!regions.empty()) {
+                selected.clear();
+                occupied.assign(regions.size(), false);
+                for (const auto& detection : detections) {
+                    const int region = RegionAt(regions, (detection.x1 + detection.x2) * .5F / frame.width,
+                        (detection.y1 + detection.y2) * .5F / frame.height);
+                    if (region >= 0 && !occupied[region]) {
+                        occupied[region] = true;
+                        selected.push_back(detection);
+                    }
+                }
+                detections.assign(selected.begin(), selected.end());
             }
             timings.detection_ms = std::chrono::duration<float, std::milli>(
                                        std::chrono::steady_clock::now() -
@@ -270,6 +348,8 @@ void HumanVisionEngine::WorkerLoop() {
                                   .count();
 
         snapshot.bodies.clear();
+        snapshot.region_indices.clear();
+        snapshot.region_revision = region_revision;
         snapshot.meta.struct_size = sizeof(HV_ResultMeta);
         snapshot.meta.result_sequence = ++result_sequence_;
         snapshot.meta.source_frame_id = frame.frame_id;
@@ -282,6 +362,9 @@ void HumanVisionEngine::WorkerLoop() {
             body.struct_size = sizeof(HV_Body);
             body.track_id = tracked.track_id;
             const Detection& detection = tracked.detection;
+            const int region = RegionAt(regions, (detection.x1 + detection.x2) * .5F / frame.width,
+                (detection.y1 + detection.y2) * .5F / frame.height);
+            if (!regions.empty() && region < 0) continue;
             body.bbox_px.x = detection.x1;
             body.bbox_px.y = detection.y1;
             body.bbox_px.width = std::max(0.0F, detection.x2 - detection.x1);
@@ -301,6 +384,7 @@ void HumanVisionEngine::WorkerLoop() {
             }
             std::copy(joints.begin(), joints.end(), std::begin(body.joints));
             snapshot.bodies.push_back(body);
+            snapshot.region_indices.push_back(region);
         }
         if (!pose_succeeded) {
             SetLastError(std::move(error));

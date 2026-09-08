@@ -33,6 +33,8 @@ public:
     HV_Result GetBodies(HV_Body* destination, int capacity, int* written) const;
     HV_Result GetStats(HV_Stats* destination) const;
     std::string LastError() const;
+    HV_Result SetRegions(const HV_Rect* regions, int count, int64_t revision);
+    HV_Result GetRegionAssignments(int64_t sequence, int32_t* indices, int capacity, int64_t* revision) const;
 
 private:
     struct RuntimeConfig {
@@ -52,6 +54,8 @@ private:
 
     mutable std::mutex config_mutex_;
     RuntimeConfig config_;
+    std::vector<HV_Rect> regions_;
+    int64_t region_revision_ = 0;
     LatestFrameSlot frame_slot_;
     ResultSnapshotStore result_store_;
     std::unique_ptr<RtmdetModel> detector_;

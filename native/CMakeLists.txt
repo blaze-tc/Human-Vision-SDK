@@ -9,6 +9,15 @@ set(
     "Path to the extracted ONNX Runtime 1.29.0 Windows x64 package")
 
 set(HV_ONNXRUNTIME_INCLUDE "${HV_ONNXRUNTIME_ROOT}/include")
+if(ANDROID)
+    if(HV_USE_DIRECTML)
+        message(FATAL_ERROR "DirectML is Windows-only")
+    endif()
+    add_library(hv_onnxruntime SHARED IMPORTED GLOBAL)
+    set_target_properties(hv_onnxruntime PROPERTIES
+        IMPORTED_LOCATION "${HV_ONNXRUNTIME_ROOT}/lib/libonnxruntime.so"
+        INTERFACE_INCLUDE_DIRECTORIES "${HV_ONNXRUNTIME_INCLUDE}")
+else()
 set(HV_ONNXRUNTIME_LIBRARY "${HV_ONNXRUNTIME_ROOT}/lib/onnxruntime.lib")
 set(HV_ONNXRUNTIME_DLL "${HV_ONNXRUNTIME_ROOT}/lib/onnxruntime.dll")
 set(HV_PRIVATE_ONNXRUNTIME_DLL_NAME "humanvision_onnxruntime.dll")
@@ -59,6 +68,7 @@ set_target_properties(hv_onnxruntime PROPERTIES
     IMPORTED_IMPLIB "${HV_PRIVATE_ONNXRUNTIME_LIBRARY}"
     IMPORTED_LOCATION "${HV_ONNXRUNTIME_DLL}"
     INTERFACE_INCLUDE_DIRECTORIES "${HV_ONNXRUNTIME_INCLUDE}")
+endif()
 
 add_library(humanvision_internal STATIC
     src/backend/onnx/onnx_runtime_backend.cpp
@@ -92,7 +102,7 @@ target_link_libraries(humanvision_internal
     PUBLIC
         hv_onnxruntime
         Threads::Threads)
-set_target_properties(humanvision_internal PROPERTIES CXX_EXTENSIONS OFF)
+set_target_properties(humanvision_internal PROPERTIES CXX_EXTENSIONS OFF POSITION_INDEPENDENT_CODE ON)
 
 add_library(humanvision SHARED
     src/core/humanvision_c.cpp
@@ -120,6 +130,7 @@ if(MSVC)
     target_compile_options(humanvision PRIVATE /W4 /permissive-)
 endif()
 
+if(NOT ANDROID)
 add_custom_command(TARGET humanvision POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${HV_ONNXRUNTIME_DLL}"
@@ -128,6 +139,7 @@ add_custom_command(TARGET humanvision POST_BUILD
         "$<TARGET_FILE_DIR:humanvision>/onnxruntime.dll"
         "$<TARGET_FILE_DIR:humanvision>/onnxruntime_providers_shared.dll"
     VERBATIM)
+endif()
 
 if(HV_USE_DIRECTML)
     add_custom_command(TARGET humanvision POST_BUILD
@@ -135,4 +147,19 @@ if(HV_USE_DIRECTML)
             "${HV_DIRECTML_ROOT}/bin/x64-win/DirectML.dll"
             "$<TARGET_FILE_DIR:humanvision>/hv_dml.dll"
         VERBATIM)
+endif()
+
+option(HV_ENABLE_RTSP "Build native RTSP capture with FFmpeg" OFF)
+set(HV_FFMPEG_INCLUDE "" CACHE PATH "FFmpeg 7.1 headers")
+set(HV_FFMPEG_LIB_DIR "" CACHE PATH "FFmpeg shared libraries and Windows import libraries")
+if(HV_ENABLE_RTSP)
+    target_sources(humanvision PRIVATE src/input/rtsp_source.cpp)
+    target_include_directories(humanvision PRIVATE "${HV_FFMPEG_INCLUDE}")
+    foreach(component avformat avcodec avutil swscale)
+        if(ANDROID)
+            target_link_libraries(humanvision PRIVATE "${HV_FFMPEG_LIB_DIR}/lib${component}.so")
+        else()
+            target_link_libraries(humanvision PRIVATE "${HV_FFMPEG_LIB_DIR}/${component}.lib")
+        endif()
+    endforeach()
 endif()

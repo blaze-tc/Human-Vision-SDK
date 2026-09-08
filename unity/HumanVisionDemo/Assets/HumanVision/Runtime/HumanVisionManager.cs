@@ -29,6 +29,19 @@ namespace HumanVision
         public HumanVisionStats Stats => _session?.Stats ?? default;
         public int MaxBodies => _session?.MaxBodies ?? config.MaxBodies;
         public string LastError { get; private set; }
+        public bool TrySetRegions(Rect[] regions, long revision)
+        {
+            if (_session == null || regions == null) return false;
+            try { _session.SetRegions(regions, revision); return true; }
+            catch (Exception e) { ReportError(e.Message); return false; }
+        }
+        public bool TryCopyRegionAssignments(int[] indices, out long revision)
+        {
+            revision = 0;
+            if (_session == null || indices == null) return false;
+            try { return _session.CopyRegions(ResultSequence, indices, out revision); }
+            catch (Exception e) { ReportError(e.Message); return false; }
+        }
 
         private void Start()
         {

@@ -150,6 +150,19 @@ extern "C" const char* HV_CALL HV_GetLastError(const HV_Handle handle) {
     return g_last_error.c_str();
 }
 
+extern "C" HV_Result HV_CALL HV_SetRegions(HV_Handle handle, const HV_Rect* regions, int32_t count, int64_t revision) {
+    auto* state = ToState(handle);
+    if (!state) return InvalidHandle();
+    try { return state->engine->SetRegions(regions, count, revision); }
+    catch (...) { g_last_error = "Failed to configure recognition regions"; return HV_ERR_INTERNAL; }
+}
+
+extern "C" HV_Result HV_CALL HV_GetRegionAssignments(HV_Handle handle, int64_t sequence,
+    int32_t* indices, int32_t capacity, int64_t* revision) {
+    auto* state = ToState(handle);
+    return state ? state->engine->GetRegionAssignments(sequence, indices, capacity, revision) : InvalidHandle();
+}
+
 extern "C" void HV_CALL HV_Destroy(const HV_Handle handle) {
     HandleState* state = ToState(handle);
     if (state == nullptr) {

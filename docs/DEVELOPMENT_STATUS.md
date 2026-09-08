@@ -5,8 +5,36 @@
 ## User priority update - 2026-09-07
 
 **Current stage:** Independent SDK skeleton upgrade and validation.
-**Current milestone:** Unity following repair and Windows performance validation
-(user priority override, 2026-09-08). S2 rich-skeleton work is temporarily queued.
+**Current milestone:** Live cameras, numbered recognition regions and independent
+Windows/Android SDK packaging (user instruction, 2026-09-08).
+The user confirmed following on `4859224-uhd_3840_2160_25fps` and explicitly
+requested code delivery without running tests; hardware/runtime acceptance is
+now user-owned. Builds needed to produce native libraries/packages are allowed;
+do not run unit, integration, Play Mode or camera tests for this new work.
+See `SDK_LIVE_CAMERA_PLAN.md`. S2 rich-hand integration remains pending.
+
+**Delivery checkpoint:** 0.2.0-preview source implementation complete; Windows
+x64 and Android ARM64 native builds completed with BUILD_TESTING=OFF. Managed
+Runtime/Demo/Editor and Android-conditional Demo compilation completed using
+Unity2021.3.45f1 references. No tests, camera connections, Play Mode, APK build,
+or new-package import were executed after the user's no-test instruction.
+User acceptance is pending. Deliverables live under `out/releases/0.2.0-preview/`;
+usage: `SDK_LIVE_CAMERA_GUIDE.md`. The existing imported demo was not overwritten.
+
+Implemented: WebCamTexture capture and Android permission flow, native FFmpeg
+RTSP TCP/UDP decoding/reconnect, common oriented frame bridge, native region
+masking/one-body-per-region selection, versioned region assignments, draggable
+settings/save-load and KinectManager-inspired image-space getters. Region
+overlap is explicitly rejected. Android uses ONNX CPU; RKNN, real hand endpoints
+and eight-person30FPS remain unimplemented/unaccepted.
+
+Build commands: `tools/setup/prepare_directml_runtime.py`,
+`tools/setup/prepare_live_dependencies.py`, `tools/setup/create_ffmpeg_imports.ps1`,
+`tools/package/build_live_native.ps1`, `tools/package/compile_managed.ps1`,
+`tools/package/package_live_sdk.py`. Build logs are `out/build-live-windows.log`,
+`out/build-android-live.log`, `out/build-managed-live.log`. Android NDK21.3's
+missing filesystem status symbol was resolved using stat on Android; both
+platforms link successfully. This is build evidence, not runtime acceptance.
 
 The user requested visible, aligned, smooth Unity skeleton following before
 continuing SDK expansion. This authorizes focused display fixes and measured

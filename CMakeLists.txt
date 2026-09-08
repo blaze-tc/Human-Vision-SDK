@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     HumanVisionSDK
-    VERSION 0.1.0
-    DESCRIPTION "Human Vision SDK Windows Unity vertical-slice"
+    VERSION 0.2.0
+    DESCRIPTION "Human Vision SDK live cameras and recognition regions"
     LANGUAGES CXX)
 
 include(CTest)
@@ -13,7 +13,9 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/$<CONFIG>")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/$<CONFIG>")
 
 add_subdirectory(native)
-add_subdirectory(tools/benchmark)
+if(NOT ANDROID)
+    add_subdirectory(tools/benchmark)
+endif()
 
 if(BUILD_TESTING)
     add_subdirectory(tests/native)

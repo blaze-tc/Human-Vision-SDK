@@ -14,6 +14,9 @@
 #include <string>
 #include <utility>
 #include <vector>
+#if defined(__ANDROID__)
+#include <sys/stat.h>
+#endif
 
 namespace humanvision {
 
@@ -85,7 +88,13 @@ OnnxRuntimeBackend::~OnnxRuntimeBackend() = default;
 bool OnnxRuntimeBackend::Load(
     const std::filesystem::path& model_path,
     std::string& error) {
-    if (!std::filesystem::is_regular_file(model_path)) {
+#if defined(__ANDROID__)
+    struct stat file_info{};
+    const bool regular_file = stat(model_path.c_str(), &file_info) == 0 && S_ISREG(file_info.st_mode);
+#else
+    const bool regular_file = std::filesystem::is_regular_file(model_path);
+#endif
+    if (!regular_file) {
         error = "ONNX model file does not exist: " + model_path.string();
         return false;
     }

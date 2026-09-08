@@ -175,6 +175,12 @@ namespace HumanVision.Interop
             CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern HVResult HV_GetStats(IntPtr handle, ref HVStatsNative stats);
 
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern HVResult HV_SetRegions(IntPtr handle, [In] HVRectNative[] regions, int count, long revision);
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern HVResult HV_GetRegionAssignments(IntPtr handle, long sequence,
+            [Out] int[] indices, int capacity, out long revision);
+
         [DllImport(LibraryName, EntryPoint = nameof(HV_GetLastError),
             CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern IntPtr HV_GetLastError(IntPtr handle);
