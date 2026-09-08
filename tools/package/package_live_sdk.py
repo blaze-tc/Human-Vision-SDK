@@ -3,6 +3,7 @@
 This serializes assets; it does not launch Unity or execute tests.
 """
 import hashlib
+import gzip
 import io
 import json
 import shutil
@@ -13,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / 'unity/HumanVisionDemo/Assets/HumanVision'
-OUTPUT = ROOT / 'out/releases/0.2.0-preview-importfix'
+OUTPUT = ROOT / 'out/releases/0.2.0-preview-importfix2'
 NAMESPACE = uuid.UUID('9a1f16d6-9fe3-4b94-a3b2-77076251bfec')
 
 
@@ -116,12 +117,15 @@ This is a user-testing preview, not a claim of model redistribution clearance or
 ''')
     manifest = {path: hashlib.sha256(data).hexdigest() for path, (data, _) in sorted(assets.items())}
     (OUTPUT / 'asset-sha256.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    package = OUTPUT / 'HumanVisionSDK-0.2.0-preview-importfix.unitypackage'
-    with tarfile.open(package, 'w:gz', compresslevel=6, format=tarfile.USTAR_FORMAT) as tar:
+    package = OUTPUT / 'HumanVisionSDK-0.2.0-preview-importfix2.unitypackage'
+    # Unity 2021's importer returns zero assets when gzip FNAME is the outer
+    # .unitypackage filename. Match Unity ExportPackage's inner tar filename.
+    with package.open('wb') as raw, gzip.GzipFile(filename='archtemp.tar', mode='wb',
+            fileobj=raw, compresslevel=6) as compressed, tarfile.open(
+            fileobj=compressed, mode='w', format=tarfile.USTAR_FORMAT) as tar:
         for path, (data, meta) in sorted(assets.items()):
             guid = next(line.split(':', 1)[1].strip() for line in meta.decode('utf-8-sig').splitlines() if line.startswith('guid:'))
-            # Unity's package reader expects explicit GUID directories, as emitted
-            # by AssetDatabase.ExportPackage; implicit tar parents are insufficient.
+            # Preserve the explicit GUID directories emitted by Unity's exporter.
             directory = tarfile.TarInfo(guid)
             directory.type = tarfile.DIRTYPE
             directory.mode = 0o755
@@ -131,7 +135,7 @@ This is a user-testing preview, not a claim of model redistribution clearance or
                 tar.addfile(info, io.BytesIO(payload))
     shutil.copy2(ROOT / 'docs/SDK_LIVE_CAMERA_GUIDE.md', OUTPUT / 'README.md')
     shutil.copy2(ROOT / 'docs/SDK_LIVE_CAMERA_PLAN.md', OUTPUT / 'IMPLEMENTATION_PLAN.md')
-    archive = OUTPUT / 'HumanVisionSDK-0.2.0-preview-importfix.zip'
+    archive = OUTPUT / 'HumanVisionSDK-0.2.0-preview-importfix2.zip'
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as bundle:
         for path in (package, OUTPUT / 'README.md', OUTPUT / 'asset-sha256.json', OUTPUT / 'IMPLEMENTATION_PLAN.md'):
             bundle.write(path, path.name)

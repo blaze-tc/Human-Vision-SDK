@@ -27,7 +27,23 @@ inspection found zero explicit GUID directory entries in our generated package,
 whereas Unity's bundled TMP package has them. The packager now writes explicit
 GUID directories using USTAR format, preserving asset GUIDs, and delivers
 `out/releases/0.2.0-preview-importfix/`. Archive content/metadata comparison
-is the verification scope; Unity import and runtime acceptance remain pending.
+was the verification scope; the user subsequently confirmed that this first
+fix still returned "Nothing to import". The directory-only diagnosis was incomplete.
+
+2026-09-08 second import repair: isolated Unity 2021.3.45f1 native
+`PackageUtility.ExtractAndPrepareAssetList` inspection reproduced zero entries
+for importfix. Changing only gzip FNAME to `archtemp.tar` (or omitting FNAME)
+made the same one-asset payload return one entry; tar format, timestamp and
+mode variants alone did not. Python tarfile had written the outer unitypackage
+filename into gzip FNAME. The packager now uses an explicit GzipFile wrapper.
+The full importfix2 package returns 54 entries, all `exists=False`, while the
+old full package returns zero in the same isolated project. Commands used
+Unity `-batchmode -nographics -quit -job-worker-count 2 -projectPath
+"E:/Project/Human Vision SDK/out/package-inspection" -executeMethod
+PackageInspection.Inspect`; evidence: `out/package-gzip.log` and
+`out/package-final-inspection.log`. No SDK runtime/Play Mode/camera tests ran.
+Deliverable: `out/releases/0.2.0-preview-importfix2/`. Interactive import in the
+user project remains user-owned; archive parsing is now verified by Unity itself.
 
 Implemented: WebCamTexture capture and Android permission flow, native FFmpeg
 RTSP TCP/UDP decoding/reconnect, common oriented frame bridge, native region
