@@ -181,15 +181,16 @@ void CenterIouTracker::Predict(
     std::vector<TrackedDetection>& output) {
     output.clear();
     output.reserve(tracks_.size());
-    for (Track& track : tracks_) {
-        const std::int64_t delta_us = std::max<std::int64_t>(
-            0, timestamp_us - track.timestamp_us);
-        track.detection = Translate(
+    for (const Track& track : tracks_) {
+        if (track.lost_frames != 0) continue;
+        // Predict only a crop, never joints; limit extrapolation after a slow detector.
+        const std::int64_t delta_us = std::min<std::int64_t>(250000, std::max<std::int64_t>(
+            0, timestamp_us - track.timestamp_us));
+        const Detection predicted = Translate(
             track.detection,
             track.velocity_x_per_us * static_cast<float>(delta_us),
             track.velocity_y_per_us * static_cast<float>(delta_us));
-        track.timestamp_us = timestamp_us;
-        output.push_back(TrackedDetection{track.detection, track.id});
+        output.push_back(TrackedDetection{predicted, track.id});
     }
 }
 

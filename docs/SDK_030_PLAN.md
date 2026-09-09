@@ -31,3 +31,32 @@ Progress: implementation, native/managed compilation and archive/hash checks com
 - Verification: Windows/Android native builds and managed conditional compilation; package and metadata/hash checks. No runtime, camera or phone tests executed per user instruction.
 
 NNAPI behavior reference: https://onnxruntime.ai/docs/execution-providers/NNAPI-ExecutionProvider.html
+
+## 0.3.0-preview.4 Detector bottleneck correction
+
+User measurements from preview.3: detector1073–1086ms, pose60–86ms, pipeline0.9FPS,
+source age1811–2311ms. The detector is the measured dominant stage. Whether NNAPI
+partitioning or another device-specific cost caused all of the regression is not established.
+The old500ms source-time detector deadline also retriggered immediately after each
+one-second detector pass, so skipping every second pass did not help.
+
+Android now uses a dedicated CPU detector thread and a separate pose thread (pose
+AUTO still requests NNAPI with CPU fallback). The pose thread refreshes the detector's
+single pending image up to5Hz; inference never holds the queue mutex. Region masks
+are applied before both branches. Detector snapshots carry source timestamp, image
+size and region revision; wrong-coordinate or older-than1200ms crops are rejected.
+The pose thread always runs the model on its current input frame; it does not reuse
+or fabricate joints. Tracker crop prediction is non-mutating and capped at250ms;
+unmatched detections are not resurrected. A valid zero-person detector result clears
+old tracks. Stop joins both workers before destroying their models.
+
+Detector/Pose milliseconds are parallel stage costs on Android and must not be added
+to interpret pose-frame latency. HUD Pose FPS is now a recent half-second processed
+rate, not the lifetime average. The core cumulative counters retain their original API.
+No30FPS claim: the provided single-body60–86ms pose timings alone exceed a33ms budget.
+This release addresses the long detector stall; phone validation is still required.
+
+Verification: Windows x64 and Android ARM64 native builds; managed Runtime/Demo/Editor
+and Android conditional compilation. No unit/integration/Unity runtime/phone tests run
+per user instruction. Rebuild the APK after updating the Git package; scenes and models
+need not be deleted or recreated.

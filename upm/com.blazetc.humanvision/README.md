@@ -1,4 +1,4 @@
-# HumanVision Live Camera SDK 0.3.0-preview.3
+# HumanVision Live Camera SDK 0.3.0-preview.4
 
 本次按用户要求只交付代码、编译和封装，**没有运行新功能测试**。
 Windows 摄像头、RTSP、Android 发布和区域交互等待用户实测。
@@ -6,7 +6,7 @@ Windows 摄像头、RTSP、Android 发布和区域交互等待用户实测。
 
 ## 导入与运行
 
-1. 使用修正版 `HumanVisionSDK-0.3.0-preview.3.unitypackage`，通过
+1. 使用修正版 `HumanVisionSDK-0.3.0-preview.4.unitypackage`，通过
    `Assets > Import Package > Custom Package` 导入 Unity。建议先导入空项目；
    支持目标为 Windows x64 Editor/Player、Android ARM64。
    编译使用 Unity 2021.3.45f1 的程序集；推荐 2021.3/2022.3 LTS。
@@ -91,7 +91,7 @@ public sealed class PlayerSlotReader : MonoBehaviour
 - Android 推理会话各限制2线程并关闭空转，减少和 Unity/摄像头竞争。尚未实机测速，
   不能据此宣称30FPS。侧栏显示 Render FPS、真实 Inference FPS、耗时与结果年龄。
   实时骨骼显示时限改为可配置 `maxLiveResultAgeMilliseconds`（默认3000ms）；HUD显示真实结果年龄，超时仍隐藏。放宽显示时限不会提高识别帧率，也不代表骨骼与当前相机帧同步。
-- 包内 Android 库已交叉编译，AUTO模式请求NNAPI设备加速，失败回退ONNX CPU；不包含RKNN。实际设备分配及性能需要实测。
+- 包内 Android 库已交叉编译，Android检测固定使用CPU，姿态AUTO模式请求NNAPI设备加速并在失败时回退CPU；不包含RKNN。实际设备分配及性能需要实测。
 - 包含 CAMERA/INTERNET 权限清单合并库；首次 WebCamera 请求摄像头权限。
   摄像头必须能被 Android Camera API 枚举；不保证所有厂商 USB UVC 固件自动支持。
 - 模型从 APK 的 StreamingAssets 提取到 persistentDataPath，再交给原生库。
@@ -134,7 +134,7 @@ Git UPM 包与 unitypackage 为两种安装方式，不要同时安装。见 UPM
 - 更新Git依赖到新标签即可；不要同时导入unitypackage。若当前场景经过自行修改并删除了SceneControls，请手动挂载举手组件并指定manager。
 - 未执行手机、摄像头、Unity运行测试；仅编译与包内容校验。请实机检查前后摄像头、横竖屏、身体与双手、举手状态，以及关闭Use regions后的全画面识别。
 
-## 0.3.0-preview.3 Android follow-up
+## 0.3.0-preview.3 Android follow-up (historical)
 
 - All controls, settings, gesture status and diagnostics are now in one scrollable sliding drawer. The edge arrow opens/closes it; Edit regions collapses it automatically. No top/bottom panels remain over the image when collapsed. Region input excludes only the actual drawer and edge tab.
 - Android AUTO now requests NNAPI acceleration without FP16 relaxation; unsupported operators remain on ORT CPU. NNAPI initialization or inference exceptions fall back to CPU. This is a requested acceleration path, not proof that all model nodes ran on a GPU/NPU. `forceCpu` on HumanVisionCameraManager allows a CPU-only comparison after restarting the app.
@@ -144,3 +144,32 @@ Git UPM 包与 unitypackage 为两种安装方式，不要同时安装。见 UPM
 - Verification: Windows/Android native builds and managed conditional compilation; package and metadata/hash checks. No runtime, camera or phone tests executed per user instruction.
 
 NNAPI behavior reference: https://onnxruntime.ai/docs/execution-providers/NNAPI-ExecutionProvider.html
+
+## 0.3.0-preview.4 Detector bottleneck correction
+
+User measurements from preview.3: detector1073–1086ms, pose60–86ms, pipeline0.9FPS,
+source age1811–2311ms. The detector is the measured dominant stage. Whether NNAPI
+partitioning or another device-specific cost caused all of the regression is not established.
+The old500ms source-time detector deadline also retriggered immediately after each
+one-second detector pass, so skipping every second pass did not help.
+
+Android now uses a dedicated CPU detector thread and a separate pose thread (pose
+AUTO still requests NNAPI with CPU fallback). The pose thread refreshes the detector's
+single pending image up to5Hz; inference never holds the queue mutex. Region masks
+are applied before both branches. Detector snapshots carry source timestamp, image
+size and region revision; wrong-coordinate or older-than1200ms crops are rejected.
+The pose thread always runs the model on its current input frame; it does not reuse
+or fabricate joints. Tracker crop prediction is non-mutating and capped at250ms;
+unmatched detections are not resurrected. A valid zero-person detector result clears
+old tracks. Stop joins both workers before destroying their models.
+
+Detector/Pose milliseconds are parallel stage costs on Android and must not be added
+to interpret pose-frame latency. HUD Pose FPS is now a recent half-second processed
+rate, not the lifetime average. The core cumulative counters retain their original API.
+No30FPS claim: the provided single-body60–86ms pose timings alone exceed a33ms budget.
+This release addresses the long detector stall; phone validation is still required.
+
+Verification: Windows x64 and Android ARM64 native builds; managed Runtime/Demo/Editor
+and Android conditional compilation. No unit/integration/Unity runtime/phone tests run
+per user instruction. Rebuild the APK after updating the Git package; scenes and models
+need not be deleted or recreated.

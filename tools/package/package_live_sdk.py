@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / 'unity/HumanVisionDemo/Assets/HumanVision'
-OUTPUT = ROOT / 'out/releases/0.3.0-preview.3'
+OUTPUT = ROOT / 'out/releases/0.3.0-preview.4'
 NAMESPACE = uuid.UUID('9a1f16d6-9fe3-4b94-a3b2-77076251bfec')
 
 
@@ -117,7 +117,7 @@ This is a user-testing preview, not a claim of model redistribution clearance or
 ''')
     manifest = {path: hashlib.sha256(data).hexdigest() for path, (data, _) in sorted(assets.items())}
     (OUTPUT / 'asset-sha256.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    package = OUTPUT / 'HumanVisionSDK-0.3.0-preview.3.unitypackage'
+    package = OUTPUT / 'HumanVisionSDK-0.3.0-preview.4.unitypackage'
     # Unity 2021's importer returns zero assets when gzip FNAME is the outer
     # .unitypackage filename. Match Unity ExportPackage's inner tar filename.
     with package.open('wb') as raw, gzip.GzipFile(filename='archtemp.tar', mode='wb',
@@ -135,7 +135,7 @@ This is a user-testing preview, not a claim of model redistribution clearance or
                 tar.addfile(info, io.BytesIO(payload))
     shutil.copy2(ROOT / 'docs/SDK_LIVE_CAMERA_GUIDE.md', OUTPUT / 'README.md')
     shutil.copy2(ROOT / 'docs/SDK_LIVE_CAMERA_PLAN.md', OUTPUT / 'IMPLEMENTATION_PLAN.md')
-    archive = OUTPUT / 'HumanVisionSDK-0.3.0-preview.3.zip'
+    archive = OUTPUT / 'HumanVisionSDK-0.3.0-preview.4.zip'
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as bundle:
         for path in (package, OUTPUT / 'README.md', OUTPUT / 'asset-sha256.json', OUTPUT / 'IMPLEMENTATION_PLAN.md'):
             bundle.write(path, path.name)

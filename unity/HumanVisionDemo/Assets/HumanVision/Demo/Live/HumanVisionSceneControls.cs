@@ -15,6 +15,8 @@ namespace HumanVision
         private float _progress = 1, _nextUpdate;
         private Vector2 _scroll;
         private string _diagnostics = "";
+        private long _lastProcessed;
+        private float _lastStatsTime;
         private HumanVisionRegionSettingsUI _settings;
         private HumanVisionRaisedHandDetector _gesture;
         private void Start()
@@ -49,13 +51,18 @@ namespace HumanVision
                 _nextUpdate = Time.unscaledTime + .5f;
                 var pipeline = manager.GetComponent<HumanVisionManager>();
                 var bridge = manager.GetComponent<Demo.VideoPlayerFrameSource>();
+                float elapsed = Time.unscaledTime - _lastStatsTime;
+                float recentFps = elapsed > 0 ? Mathf.Max(0, pipeline.Stats.ProcessedFrames - _lastProcessed) / elapsed : 0;
+                _lastProcessed = pipeline.Stats.ProcessedFrames; _lastStatsTime = Time.unscaledTime;
                 _diagnostics = string.Format("Render {0:F0} / Pose {1:F1} FPS\nAge {2:F0} ms | Bodies {3} / Visible {4}\nDetector {5:F0} / Pose {6:F0} ms\n{7}",
-                    1f / Mathf.Max(.001f, Time.smoothDeltaTime), pipeline.Stats.InferenceFps,
+                    1f / Mathf.Max(.001f, Time.smoothDeltaTime), recentFps,
                     bridge.ResultAgeMilliseconds, pipeline.BodyCount, manager.GetUsersCount(),
                     pipeline.Stats.DetectionMs, pipeline.Stats.PoseMs,
                     string.IsNullOrEmpty(pipeline.LastError) ? manager.InputStatus : pipeline.LastError);
                 if (!string.IsNullOrEmpty(bridge.LastError)) _diagnostics = bridge.LastError;
                 else if (!manager.IsReady) _diagnostics = manager.Status;
+                else if (Application.platform == RuntimePlatform.Android)
+                    _diagnostics += manager.forceCpu ? "\nAsync detector CPU / Pose CPU" : "\nAsync detector CPU / Pose auto";
             }
             using (var ui = new HumanVisionMobileGui.Scope()) {
                 Geometry(out var panel, out var tab);

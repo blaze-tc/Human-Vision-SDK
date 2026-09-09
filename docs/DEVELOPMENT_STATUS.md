@@ -1,3 +1,23 @@
+# 0.3.0-preview.4 Android detector stall correction (2026-09-09)
+
+Active user request: improve persistent skeleton stutter. User screenshots show
+1073–1086ms detection,60–86ms pose,0.9FPS and1811–2311ms source age.
+Implemented Android CPU detector on a separate bounded latest-request worker;
+pose remains on current frames with AUTO acceleration. Detector requests/results
+carry region revision, dimensions and timestamp;1200ms maximum crop source age,
+250ms bounded non-mutating crop extrapolation, no lost-track resurrection.
+Windows retains sequential inference. HUD reports recent throughput and parallel stages.
+
+Commands: tools/package/build_live_native.ps1 PASSED (Windows/Android, no tests).
+tools/package/compile_managed.ps1 PASSED (existing CS0649 warning only).
+Runtime/unit/integration/phone tests not run per user instruction. This is not
+an eight-person30FPS acceptance result; actual device improvement awaits user testing.
+Archive verification: out/inspect_release034.py PASSED:59 Unity assets,141 UPM files,
+77 unique GUIDs; model, manifest and archive byte hashes match.
+Publication target: main / v0.3.0-preview.4.
+
+---
+
 # 0.3.0-preview.3 mobile latency and drawer (2026-09-09)
 
 Active user request: fix landscape GUI clipping/occlusion with a retractable panel,

@@ -25,6 +25,14 @@ void StatsCollector::RecordProcessed(const StageTimings& timings) {
     stats_.total_ms = timings.total_ms;
 }
 
+void StatsCollector::RecordTimings(const StageTimings& timings) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    stats_.detection_ms = timings.detection_ms;
+    stats_.pose_ms = timings.pose_ms;
+    stats_.tracking_ms = timings.tracking_ms;
+    stats_.total_ms = timings.total_ms;
+}
+
 HV_Stats StatsCollector::Snapshot(
     const std::int64_t authoritative_dropped_frames) const {
     std::lock_guard<std::mutex> lock(mutex_);

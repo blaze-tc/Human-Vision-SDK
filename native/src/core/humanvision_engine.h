@@ -51,6 +51,23 @@ private:
 
     static RuntimeConfig CopyConfig(const HV_Config& config);
     void WorkerLoop();
+#if defined(__ANDROID__)
+    void DetectorLoop();
+    std::mutex detector_mutex_;
+    std::condition_variable detector_condition_;
+    std::thread detector_worker_;
+    bool detector_stop_ = false, detector_pending_ = false;
+    FrameBuffer detector_frame_;
+    RuntimeConfig detector_config_;
+    std::vector<HV_Rect> detector_regions_;
+    int64_t detector_request_revision_ = -1;
+    struct DetectorSnapshot {
+        std::vector<Detection> detections;
+        int width = 0, height = 0;
+        int64_t revision = -1, timestamp_us = 0, sequence = 0;
+        float elapsed_ms = 0;
+    } detector_result_;
+#endif
     void SetLastError(std::string error);
 
     mutable std::mutex config_mutex_;

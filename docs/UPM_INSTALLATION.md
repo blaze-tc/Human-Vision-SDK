@@ -1,18 +1,18 @@
-# Human Vision SDK 0.3.0-preview.3
+# Human Vision SDK 0.3.0-preview.4
 
 ## Git Package Manager
 
 Unity: Window > Package Manager > + > Add package from git URL:
 
 ```
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.3.0-preview.3
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.3.0-preview.4
 ```
 
 The repository is private: use an account/SSH key with repository access.
 SSH alternative:
 
 ```
-ssh://git@github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.3.0-preview.3
+ssh://git@github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.3.0-preview.4
 ```
 
 Package includes Windows x64 and Android ARM64 libraries and pinned model files.
@@ -23,9 +23,9 @@ This copy is required because UPM model folders are not APK StreamingAssets.
 
 ## Local installation
 
-- Assets import: download HumanVisionSDK-0.3.0-preview.3.unitypackage from Releases,
+- Assets import: download HumanVisionSDK-0.3.0-preview.4.unitypackage from Releases,
   then Assets > Import Package > Custom Package.
-- UPM offline: download com.blazetc.humanvision-0.3.0-preview.3.tgz, then Package Manager
+- UPM offline: download com.blazetc.humanvision-0.3.0-preview.4.tgz, then Package Manager
   > + > Add package from tarball.
 - Choose one installation method. Do not install UPM over an existing Assets/HumanVision
   copy or duplicate native plugin DLLs. Back up the project before migrating; remove
@@ -51,7 +51,7 @@ OnePlus 9 Pro / Snapdragon 888 / Android 14 is the reported slow device.
 Live preview now runs separately from inference, with no history texture ring.
 One GPU readback is outstanding at a time; the latest-frame slot is refreshed up to30FPS. Analysis defaults to
 640x640 maximum preserving aspect ratio. Android ORT session pools use two threads
-and disable spinning. AUTO requests NNAPI acceleration with CPU fallback; RKNN is not included.
+and disable spinning. Android detection uses CPU; pose AUTO requests NNAPI with CPU fallback. RKNN is not included.
 HUD separates render FPS from actual inference FPS and source age.
 Live skeleton visibility now has a configurable source-age limit (default 3000 ms),
  and the HUD reports actual pose FPS, source age and native/visible body counts.
@@ -73,7 +73,7 @@ Third-party license and model provenance records are included in the package.
 - 更新Git依赖到新标签即可；不要同时导入unitypackage。若当前场景经过自行修改并删除了SceneControls，请手动挂载举手组件并指定manager。
 - 未执行手机、摄像头、Unity运行测试；仅编译与包内容校验。请实机检查前后摄像头、横竖屏、身体与双手、举手状态，以及关闭Use regions后的全画面识别。
 
-## 0.3.0-preview.3 Android follow-up
+## 0.3.0-preview.3 Android follow-up (historical)
 
 - All controls, settings, gesture status and diagnostics are now in one scrollable sliding drawer. The edge arrow opens/closes it; Edit regions collapses it automatically. No top/bottom panels remain over the image when collapsed. Region input excludes only the actual drawer and edge tab.
 - Android AUTO now requests NNAPI acceleration without FP16 relaxation; unsupported operators remain on ORT CPU. NNAPI initialization or inference exceptions fall back to CPU. This is a requested acceleration path, not proof that all model nodes ran on a GPU/NPU. `forceCpu` on HumanVisionCameraManager allows a CPU-only comparison after restarting the app.
@@ -83,3 +83,32 @@ Third-party license and model provenance records are included in the package.
 - Verification: Windows/Android native builds and managed conditional compilation; package and metadata/hash checks. No runtime, camera or phone tests executed per user instruction.
 
 NNAPI behavior reference: https://onnxruntime.ai/docs/execution-providers/NNAPI-ExecutionProvider.html
+
+## 0.3.0-preview.4 Detector bottleneck correction
+
+User measurements from preview.3: detector1073–1086ms, pose60–86ms, pipeline0.9FPS,
+source age1811–2311ms. The detector is the measured dominant stage. Whether NNAPI
+partitioning or another device-specific cost caused all of the regression is not established.
+The old500ms source-time detector deadline also retriggered immediately after each
+one-second detector pass, so skipping every second pass did not help.
+
+Android now uses a dedicated CPU detector thread and a separate pose thread (pose
+AUTO still requests NNAPI with CPU fallback). The pose thread refreshes the detector's
+single pending image up to5Hz; inference never holds the queue mutex. Region masks
+are applied before both branches. Detector snapshots carry source timestamp, image
+size and region revision; wrong-coordinate or older-than1200ms crops are rejected.
+The pose thread always runs the model on its current input frame; it does not reuse
+or fabricate joints. Tracker crop prediction is non-mutating and capped at250ms;
+unmatched detections are not resurrected. A valid zero-person detector result clears
+old tracks. Stop joins both workers before destroying their models.
+
+Detector/Pose milliseconds are parallel stage costs on Android and must not be added
+to interpret pose-frame latency. HUD Pose FPS is now a recent half-second processed
+rate, not the lifetime average. The core cumulative counters retain their original API.
+No30FPS claim: the provided single-body60–86ms pose timings alone exceed a33ms budget.
+This release addresses the long detector stall; phone validation is still required.
+
+Verification: Windows x64 and Android ARM64 native builds; managed Runtime/Demo/Editor
+and Android conditional compilation. No unit/integration/Unity runtime/phone tests run
+per user instruction. Rebuild the APK after updating the Git package; scenes and models
+need not be deleted or recreated.

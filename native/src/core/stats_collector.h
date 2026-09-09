@@ -21,6 +21,7 @@ public:
 
     void RecordSubmitted(bool replaced_pending);
     void RecordProcessed(const StageTimings& timings);
+    void RecordTimings(const StageTimings& timings);
     HV_Stats Snapshot(std::int64_t authoritative_dropped_frames = -1) const;
 
 private:

@@ -9,7 +9,7 @@ from package_live_sdk import metadata, NAMESPACE
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = '0.3.0-preview.3'
+VERSION = '0.3.0-preview.4'
 DEST = ROOT / 'upm/com.blazetc.humanvision'
 
 def main():
