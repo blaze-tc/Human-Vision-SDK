@@ -18,55 +18,68 @@ namespace HumanVision
         private bool _editing;
         private static readonly string[] SourceNames = { "WebCamera", "RTSP" };
         private static readonly string[] RegionNames = { "Region 0", "Region 1", "Region 2", "Region 3", "Region 4", "Region 5", "Region 6", "Region 7" };
-        private string _summary = "", _peopleLabel = "";
-        private float _nextTextUpdate;
 
         private void Start() { RefreshDevices(); }
         private void RefreshDevices() { _devices = WebCamTexture.devices; }
+        private Vector2 _scroll;
+        private Rect _panelPixels, _headerPixels, _footerPixels;
         private void OnGUI()
         {
             if (manager == null) return;
-            if (GUI.Button(new Rect(12, 12, 140, 30), showSettings ? "Hide settings" : "Camera settings")) showSettings = !showSettings;
-            if (Time.unscaledTime >= _nextTextUpdate) {
-                _nextTextUpdate = Time.unscaledTime + .25f;
-                _summary = manager.InputStatus + " | Bodies: " + manager.GetUsersCount();
-                _peopleLabel = "n=" + manager.Settings.people;
-            }
-            GUI.Label(new Rect(160, 12, Screen.width - 172, 28), _summary);
-            if (!showSettings) return;
             var settings = manager.Settings;
-            GUI.Box(new Rect(12, 48, 480, 252), "Camera and recognition regions");
-            int source = GUI.Toolbar(new Rect(24, 75, 280, 26), (int)settings.source, SourceNames);
-            settings.source = (HumanVisionCameraKind)source;
-            if (settings.source == HumanVisionCameraKind.WebCamera) {
-                GUI.Label(new Rect(24, 108, 350, 22), string.IsNullOrEmpty(settings.deviceName) ? "Default system camera" : settings.deviceName);
-                if (GUI.Button(new Rect(380, 105, 96, 26), "Next device")) {
-                    RefreshDevices();
-                    if (_devices.Length > 0) {
-                        int selected = -1;
-                        for (int i = 0; i < _devices.Length; i++) if (_devices[i].name == settings.deviceName) selected = i;
-                        settings.deviceName = _devices[(selected + 1) % _devices.Length].name;
+            using (var ui = new HumanVisionMobileGui.Scope()) {
+                var header = new Rect(10, 10, Mathf.Min(540, ui.Width - 20), 50);
+                _headerPixels = ui.ToPixels(header);
+                _footerPixels = ui.ToPixels(new Rect(0, ui.Height - 150, ui.Width, 150));
+                if (GUI.Button(header, showSettings ? "CAMERA SETTINGS  /  Collapse" : "CAMERA SETTINGS  /  Expand")) showSettings = !showSettings;
+                _panelPixels = new Rect();
+                if (showSettings) {
+                    var panel = new Rect(10, 68, header.width, Mathf.Max(60, Mathf.Min(510, ui.Height - 228)));
+                    _panelPixels = ui.ToPixels(panel);
+                    GUILayout.BeginArea(panel, GUI.skin.box);
+                    _scroll = GUILayout.BeginScrollView(_scroll);
+                    settings.source = (HumanVisionCameraKind)GUILayout.Toolbar((int)settings.source, SourceNames);
+                    if (settings.source == HumanVisionCameraKind.WebCamera) {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(string.IsNullOrEmpty(settings.deviceName) ? "System camera" : settings.deviceName);
+                        if (GUILayout.Button("Next camera", GUILayout.Width(145))) {
+                            RefreshDevices();
+                            if (_devices.Length > 0) {
+                                int selected = -1;
+                                for (int i = 0; i < _devices.Length; i++) if (_devices[i].name == settings.deviceName) selected = i;
+                                settings.deviceName = _devices[(selected + 1) % _devices.Length].name;
+                            }
+                        }
+                        GUILayout.EndHorizontal();
+                    } else {
+                        settings.rtspUrl = GUILayout.TextField(settings.rtspUrl);
+                        settings.rtspTcp = GUILayout.Toggle(settings.rtspTcp, "RTSP over TCP");
                     }
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("People: " + settings.people);
+                    _countText = GUILayout.TextField(_countText, 2, GUILayout.Width(60));
+                    if (GUILayout.Button("Set", GUILayout.Width(80)) && int.TryParse(_countText, out int count) && count >= 1 && count <= 8)
+                        settings.ResizeRegions(count);
+                    GUILayout.EndHorizontal();
+                    GUILayout.BeginHorizontal();
+                    settings.useRegions = GUILayout.Toggle(settings.useRegions, "Use regions");
+                    settings.mirror = GUILayout.Toggle(settings.mirror, "Mirror image");
+                    GUILayout.EndHorizontal();
+                    GUILayout.BeginHorizontal();
+                    if (GUILayout.Button(_editing ? "Finish editing" : "Edit regions")) { _editing = !_editing; if (_editing) showSettings = false; }
+                    if (GUILayout.Button("Apply")) { _editing = false; manager.StartCamera(); }
+                    GUILayout.EndHorizontal();
+                    GUILayout.BeginHorizontal();
+                    if (GUILayout.Button("Save")) { _editing = false; manager.SaveSettings(); }
+                    if (GUILayout.Button("Load")) { manager.LoadSettings(); _countText = manager.Settings.people.ToString(); }
+                    GUILayout.EndHorizontal();
+                    GUILayout.Label("Drag a box to move it. Drag its corner to resize. Expand settings to save.");
+                    GUILayout.Label(manager.Status);
+                    GUILayout.EndScrollView();
+                    GUILayout.EndArea();
                 }
-            } else {
-                settings.rtspUrl = GUI.TextField(new Rect(24, 108, 340, 24), settings.rtspUrl);
-                settings.rtspTcp = GUI.Toggle(new Rect(380, 108, 90, 24), settings.rtspTcp, "TCP");
             }
-            GUI.Label(new Rect(24, 139, 52, 25), "People");
-            _countText = GUI.TextField(new Rect(78, 137, 35, 25), _countText, 2);
-            if (GUI.Button(new Rect(120, 137, 65, 25), "Set") && int.TryParse(_countText, out int count) && count >= 1 && count <= 8)
-                settings.ResizeRegions(count);
-            GUI.Label(new Rect(190, 139, 55, 25), _peopleLabel);
-            settings.useRegions = GUI.Toggle(new Rect(247, 138, 120, 25), settings.useRegions, "Use regions");
-            settings.mirror = GUI.Toggle(new Rect(380, 138, 85, 25), settings.mirror, "Mirror");
-            if (GUI.Button(new Rect(24, 170, 80, 27), "Start")) { _editing = false; manager.StartCamera(); }
-            if (GUI.Button(new Rect(110, 170, 80, 27), "Stop")) manager.StopCamera();
-            if (GUI.Button(new Rect(196, 170, 90, 27), "Edit regions")) _editing = !_editing;
-            if (GUI.Button(new Rect(292, 170, 85, 27), "Apply")) { _editing = false; manager.ApplySettings(); }
-            if (GUI.Button(new Rect(384, 170, 92, 27), "Save")) { _editing = false; manager.SaveSettings(); }
-            if (GUI.Button(new Rect(24, 204, 90, 25), "Load saved")) { manager.LoadSettings(); _countText = settings.people.ToString(); }
-            GUI.Label(new Rect(122, 204, 354, 30), "Drag a box to move; bottom-right corner to resize.");
-            GUI.Label(new Rect(24, 238, 450, 54), manager.Status);
+            // GUI.matrix is restored here: boxes and pointer positions share physical screen pixels.
             if (settings.useRegions && settings.regions != null && preview != null && preview.texture != null) DrawRegions(settings);
         }
 
@@ -89,11 +102,12 @@ namespace HumanVision
                 GUI.DrawTexture(new Rect(screen.x, screen.y, 2, screen.height), Texture2D.whiteTexture);
                 GUI.DrawTexture(new Rect(screen.xMax - 2, screen.y, 2, screen.height), Texture2D.whiteTexture);
                 GUI.Label(new Rect(screen.x + 5, screen.y + 5, 120, 24), RegionNames[i]);
-                Rect handle = new Rect(screen.xMax - 18, screen.yMax - 18, 18, 18);
+                float handleSize = 28 * HumanVisionMobileGui.Scale;
+                Rect handle = new Rect(screen.xMax - handleSize, screen.yMax - handleSize, handleSize, handleSize);
                 if (_editing) GUI.DrawTexture(handle, Texture2D.whiteTexture);
                 GUI.color = old;
                 if (_editing && e.type == EventType.MouseDown && e.button == 0 && screen.Contains(e.mousePosition) &&
-                    !new Rect(12, 48, 480, 252).Contains(e.mousePosition)) {
+                    !_panelPixels.Contains(e.mousePosition) && !_headerPixels.Contains(e.mousePosition) && !_footerPixels.Contains(e.mousePosition)) {
                     _dragIndex = i; _resize = handle.Contains(e.mousePosition); _dragStart = e.mousePosition; _original = r; e.Use();
                 }
             }

@@ -25,6 +25,10 @@ namespace HumanVision
         private bool _running, _invalidated;
         private bool _resumeAfterPause;
         private Coroutine _startRoutine;
+        private int _lastRotation = -1;
+        private bool _lastFlipY;
+        [Tooltip("Allow the phone to rotate between portrait and landscape while the camera is open.")]
+        public bool autoRotateScreen = true;
 
         [DllImport("humanvision", CallingConvention = CallingConvention.Cdecl)]
         private static extern IntPtr HV_RtspOpen([MarshalAs(UnmanagedType.LPUTF8Str)] string url, int width, int height, int tcp, int timeoutMs);
@@ -47,6 +51,14 @@ namespace HumanVision
             Close();
             settings.Validate();
             bool mobile = Application.platform == RuntimePlatform.Android;
+            if (mobile && autoRotateScreen) {
+                Screen.autorotateToPortrait = true;
+                Screen.autorotateToPortraitUpsideDown = true;
+                Screen.autorotateToLandscapeLeft = true;
+                Screen.autorotateToLandscapeRight = true;
+                Screen.orientation = ScreenOrientation.AutoRotation;
+            }
+            _lastRotation = -1;
             _bridge.ConfigureLiveInput(mobile && smoothAndroidPreview,
                 mobile ? androidAnalysisWidth : 1280, mobile ? androidAnalysisHeight : 720);
             _settings = JsonUtility.FromJson<HumanVisionCameraSettings>(JsonUtility.ToJson(settings));
@@ -129,6 +141,11 @@ namespace HumanVision
                     }
                 }
                 if (input != null) {
+                    // Discard results from the old coordinate system, including 180-degree turns.
+                    if (_lastRotation != rotation || _lastFlipY != flipY) {
+                        _bridge.StopFrames();
+                        _lastRotation = rotation; _lastFlipY = flipY;
+                    }
                     int w = rotation % 180 == 0 ? input.width : input.height;
                     int h = rotation % 180 == 0 ? input.height : input.width;
                     if (_oriented == null || _oriented.width != w || _oriented.height != h) {

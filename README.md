@@ -2,14 +2,14 @@
 
 Independent Unity camera skeleton SDK for Windows x64 and Android ARM64.
 
-Current preview: **0.3.0-preview.1**. Camera/RTSP input, numbered recognition regions,
+Current preview: **0.3.0-preview.2**. Camera/RTSP input, numbered recognition regions,
 separate camera/settings scenes, independent line/sphere skeleton rendering and real
 hand-model endpoints (palm, middle fingertip, thumb tip). No AzureKinectExamples dependency.
 
 ## Install with Unity Package Manager
 
 ```
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.3.0-preview.1
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.3.0-preview.2
 ```
 
 The repository is private; Git credentials need repository access.

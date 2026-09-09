@@ -4,7 +4,6 @@ using UnityEngine.UI;
 
 namespace HumanVision
 {
-    // Scene navigation/diagnostics is separate from camera acquisition and region editing.
     public sealed class HumanVisionSceneControls : MonoBehaviour
     {
         public HumanVisionCameraManager manager;
@@ -13,6 +12,15 @@ namespace HumanVision
         public bool settingsScene;
         private float _nextUpdate;
         private string _diagnostics = "";
+        private void Start()
+        {
+            // Also upgrades camera scenes created with an earlier package version.
+            if (!settingsScene) {
+                var gesture = GetComponent<HumanVisionRaisedHandDetector>();
+                if (gesture == null) gesture = gameObject.AddComponent<HumanVisionRaisedHandDetector>();
+                gesture.manager = manager;
+            }
+        }
         private void OnGUI()
         {
             if (manager == null) return;
@@ -20,18 +28,28 @@ namespace HumanVision
                 _nextUpdate = Time.unscaledTime + .5f;
                 var pipeline = manager.GetComponent<HumanVisionManager>();
                 var bridge = manager.GetComponent<Demo.VideoPlayerFrameSource>();
-                _diagnostics = string.Format("Render {0:F0} FPS | Inference {1:F1} FPS | {2:F0} ms | Result age {3:F0} ms | {4}",
-                    1f / Mathf.Max(.001f, Time.smoothDeltaTime), pipeline.Stats.InferenceFps, pipeline.Stats.TotalMs,
-                    bridge.ResultAgeMilliseconds, manager.InputStatus);
+                _diagnostics = string.Format("Render {0:F0} / Pose {1:F1} FPS | Age {2:F0} ms\nBodies {3} / Visible {4} | {5}",
+                    1f / Mathf.Max(.001f, Time.smoothDeltaTime), pipeline.Stats.InferenceFps,
+                    bridge.ResultAgeMilliseconds, pipeline.BodyCount, manager.GetUsersCount(),
+                    string.IsNullOrEmpty(pipeline.LastError) ? manager.InputStatus : pipeline.LastError);
+                if (pipeline.BodyCount > 0 && manager.GetUsersCount() == 0)
+                    _diagnostics += " | Hidden: old pose, changed view or region";
+                if (!string.IsNullOrEmpty(bridge.LastError)) _diagnostics = bridge.LastError;
+                else if (!manager.IsReady) _diagnostics = manager.Status;
             }
-            float y = Screen.height - 72;
-            if (GUI.Button(new Rect(12, y, 140, 30), settingsScene ? "Back to camera" : "Open settings")) {
-                if (!string.IsNullOrEmpty(targetScene)) { manager.StopCamera(); SceneManager.LoadScene(targetScene); }
+            using (var ui = new HumanVisionMobileGui.Scope()) {
+                GUILayout.BeginArea(new Rect(10, ui.Height - 150, ui.Width - 20, 140), GUI.skin.box);
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button(settingsScene ? "Camera" : "Settings")) {
+                    if (!string.IsNullOrEmpty(targetScene)) { manager.StopCamera(); SceneManager.LoadScene(targetScene); }
+                }
+                if (GUILayout.Button("Start")) manager.StartCamera();
+                if (GUILayout.Button("Stop")) manager.StopCamera();
+                if (preview != null && GUILayout.Button(preview.enabled ? "Image: on" : "Image: off")) preview.enabled = !preview.enabled;
+                GUILayout.EndHorizontal();
+                GUILayout.Label(_diagnostics, GUILayout.Height(70));
+                GUILayout.EndArea();
             }
-            if (GUI.Button(new Rect(160, y, 90, 30), "Start")) manager.StartCamera();
-            if (GUI.Button(new Rect(258, y, 90, 30), "Stop")) manager.StopCamera();
-            if (preview != null) preview.enabled = GUI.Toggle(new Rect(360, y, 150, 30), preview.enabled, "Show camera image");
-            GUI.Label(new Rect(12, y + 35, Screen.width - 24, 28), _diagnostics);
         }
     }
 }

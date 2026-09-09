@@ -54,6 +54,7 @@ namespace HumanVision.Editor
             var skeleton = new GameObject("Skeleton Objects (independent)").AddComponent<HumanVisionSkeletonOverlayer>();
             skeleton.transform.SetParent(root.transform); skeleton.manager = facade; skeleton.preview = image; skeleton.foregroundCamera = camera;
             if (settings) { var ui = pipeline.AddComponent<HumanVisionRegionSettingsUI>(); ui.manager = facade; ui.preview = image; }
+            else { var gesture = pipeline.AddComponent<HumanVisionRaisedHandDetector>(); gesture.manager = facade; }
             var navigation = pipeline.AddComponent<HumanVisionSceneControls>(); navigation.manager = facade; navigation.preview = image;
             navigation.settingsScene = settings; navigation.targetScene = Path.GetFileNameWithoutExtension(other);
             new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule)).transform.SetParent(root.transform);

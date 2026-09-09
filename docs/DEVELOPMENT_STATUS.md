@@ -1,3 +1,22 @@
+# 0.3.0-preview.2 mobile follow-up (2026-09-09)
+
+Active user-authorized work: responsive GUI in both scenes, dynamic phone rotation,
+inverted camera correction, missing live skeleton diagnosis, and readable raised-hand example.
+Implemented clockwise display / inverse UV rotation, old-orientation invalidation,
+one-time live GPU row-order calibration, configurable 3000 ms overlay source-age cap,
+and a separate 1500 ms gesture age cap. GUI uses safe-area units and keeps region editing
+in physical screen coordinates. Existing camera scenes add the gesture component automatically.
+
+Validation: `tools/package/compile_managed.ps1` succeeded for Runtime, Demo, Editor
+and UNITY_ANDROID conditional Demo. Existing CS0649 warning only. No native changes;
+native binaries reuse the previous build. No runtime/unit/integration/camera tests run,
+per user instruction. Device orientation, visibility and performance await user testing.
+Archive verification: out/inspect_release032.py passed: 59 Unity assets, 141 UPM files,
+77 unique GUIDs, all manifest/model hashes and gzip header verified. UPM payload
+is byte-identical to the local tgz. Publication target: main and v0.3.0-preview.2.
+
+---
+
 # DEVELOPMENT_STATUS.md
 
 # HumanVisionSDK Development Status

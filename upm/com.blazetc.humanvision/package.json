@@ -1,6 +1,6 @@
 {
   "name": "com.blazetc.humanvision",
-  "version": "0.3.0-preview.1",
+  "version": "0.3.0-preview.2",
   "displayName": "Human Vision SDK",
   "unity": "2021.3",
   "description": "Independent camera skeleton SDK: Windows x64 and Android ARM64, numbered regions and hand endpoints.",

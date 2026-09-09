@@ -183,11 +183,15 @@ namespace HumanVision.Demo
         private bool _acceptReadbacks;
         private bool _normalizeReadbackRows;
         private bool _livePreview;
+        private bool _externalInput, _rowOrderReady, _rowProbePending;
+        private bool _externalRowsBottomUp;
         private Texture _liveTexture;
         private double _nextLiveSubmitTime;
         private long _livePendingFrameId = -1;
         private double _livePendingTime;
         public bool LivePreview => _livePreview;
+        [Tooltip("Maximum source age of a visible live skeleton. This does not increase inference FPS.")]
+        [Range(100, 10000)] public float maxLiveResultAgeMilliseconds = 3000;
         public double ResultAgeMilliseconds => manager == null || manager.SourceTimestampUs <= 0 ? 0 :
             Math.Max(0, Time.realtimeSinceStartupAsDouble * 1000 - manager.SourceTimestampUs / 1000d);
 
@@ -195,6 +199,9 @@ namespace HumanVision.Demo
         {
             StopCurrentVideo();
             _livePreview = smoothPreview;
+            _externalInput = true;
+            LastError = string.Empty;
+            if (!_rowOrderReady && !_rowProbePending && SystemInfo.supportsAsyncGPUReadback) BeginRowOrderProbe();
             maxAnalysisWidth = Math.Max(64, analysisWidth); maxAnalysisHeight = Math.Max(64, analysisHeight);
             _liveTexture = null; _nextLiveSubmitTime = 0; _livePendingFrameId = -1;
         }
@@ -225,11 +232,41 @@ namespace HumanVision.Demo
 
         public void StopFrames() { StopCurrentVideo(); _liveTexture = null; _livePendingFrameId = -1; _nextLiveSubmitTime = 0; }
 
+        // Measure actual GPU row order once for live input, instead of assuming Vulkan and
+        // OpenGL return the same layout. The marker never enters preview or inference.
+        private void BeginRowOrderProbe()
+        {
+            _rowProbePending = true;
+            var marker = new Texture2D(2, 2, TextureFormat.RGBA32, false, true);
+            marker.filterMode = FilterMode.Point;
+            marker.SetPixels32(new[] { new Color32(255, 0, 0, 255), new Color32(255, 0, 0, 255),
+                new Color32(0, 0, 255, 255), new Color32(0, 0, 255, 255) });
+            marker.Apply();
+            var source = RenderTexture.GetTemporary(2, 2, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+            var target = RenderTexture.GetTemporary(2, 2, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+            Graphics.Blit(marker, source);
+            Graphics.Blit(source, target);
+            AsyncGPUReadback.Request(target, 0, TextureFormat.RGBA32, request => {
+                try {
+                    if (this == null) return;
+                    if (request.hasError) { SetError("Camera GPU row-order readback failed. Restart camera or change graphics API."); return; }
+                    var pixels = request.GetData<byte>();
+                    _externalRowsBottomUp = pixels[0] > pixels[2]; // Red is the bottom row.
+                    _rowOrderReady = true;
+                } finally {
+                    _rowProbePending = false;
+                    RenderTexture.ReleaseTemporary(source); RenderTexture.ReleaseTemporary(target);
+                    Destroy(marker);
+                }
+            });
+        }
+
         public bool SubmitExternalTexture(Texture texture, long timestampUs)
         {
             if (texture == null || manager == null || !manager.IsInitialized) return false;
             if (_livePreview) PresentLiveTexture(texture);
             if (!SystemInfo.supportsAsyncGPUReadback) { SetError("Async GPU readback is unavailable."); return false; }
+            if (!_rowOrderReady) return false;
             if (_livePreview) {
                 double now = Time.realtimeSinceStartupAsDouble;
                 // Keep preview independent; read back only a frame the worker can use.
@@ -266,7 +303,7 @@ namespace HumanVision.Demo
         public bool CanPresentResult(long resultFrameId)
         {
             if (_livePreview) return _acceptReadbacks && resultFrameId >= _minimumUsableResultFrameId &&
-                manager != null && manager.ResultSequence > 0 && ResultAgeMilliseconds <= 350;
+                manager != null && manager.ResultSequence > 0 && ResultAgeMilliseconds <= maxLiveResultAgeMilliseconds;
             return _presentationFrameId >= _minimumUsableResultFrameId &&
                 PresentationFramePolicy.IsUsable(_latestSubmittedFrameId, resultFrameId,
                     _minimumUsableResultFrameId, maxOverlayLagFrames * 2) &&
@@ -361,6 +398,7 @@ namespace HumanVision.Demo
 
             StopCurrentVideo();
             CurrentVideoPath = Path.GetFullPath(path);
+            _externalInput = false; _livePreview = false;
             LastError = string.Empty;
             string extension = Path.GetExtension(path).ToLowerInvariant();
             if (extension == ".png" || extension == ".jpg" || extension == ".jpeg")
@@ -544,7 +582,7 @@ namespace HumanVision.Demo
             ReleaseReadbackResources();
             SourceWidth = width;
             SourceHeight = height;
-            _normalizeReadbackRows = SystemInfo.graphicsUVStartsAtTop;
+            _normalizeReadbackRows = _externalInput ? _externalRowsBottomUp : SystemInfo.graphicsUVStartsAtTop;
             int byteCount = checked(width * height * 4);
             for (int index = 0; index < _slots.Length; index++)
             {
