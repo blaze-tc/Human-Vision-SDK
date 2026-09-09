@@ -143,6 +143,8 @@ namespace HumanVision
                 if (input != null) {
                     // Discard results from the old coordinate system, including 180-degree turns.
                     if (_lastRotation != rotation || _lastFlipY != flipY) {
+                        // Reset tracked crops as well as displayed results when coordinates change.
+                        if (_lastRotation >= 0) GetComponent<HumanVisionCameraManager>()?.ApplySettings();
                         _bridge.StopFrames();
                         _lastRotation = rotation; _lastFlipY = flipY;
                     }

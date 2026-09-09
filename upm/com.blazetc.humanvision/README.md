@@ -1,4 +1,4 @@
-# HumanVision Live Camera SDK 0.3.0-preview.2
+# HumanVision Live Camera SDK 0.3.0-preview.3
 
 本次按用户要求只交付代码、编译和封装，**没有运行新功能测试**。
 Windows 摄像头、RTSP、Android 发布和区域交互等待用户实测。
@@ -6,7 +6,7 @@ Windows 摄像头、RTSP、Android 发布和区域交互等待用户实测。
 
 ## 导入与运行
 
-1. 使用修正版 `HumanVisionSDK-0.3.0-preview.2.unitypackage`，通过
+1. 使用修正版 `HumanVisionSDK-0.3.0-preview.3.unitypackage`，通过
    `Assets > Import Package > Custom Package` 导入 Unity。建议先导入空项目；
    支持目标为 Windows x64 Editor/Player、Android ARM64。
    编译使用 Unity 2021.3.45f1 的程序集；推荐 2021.3/2022.3 LTS。
@@ -89,9 +89,9 @@ public sealed class PlayerSlotReader : MonoBehaviour
 - Android 默认独立实时预览，推理不控制画面播放速度；默认分析尺寸上限640×640（保持比例），
   不再为实时输入分配历史画面缓存。可在 `HumanVisionLiveSource` 调整分析尺寸。
 - Android 推理会话各限制2线程并关闭空转，减少和 Unity/摄像头竞争。尚未实机测速，
-  不能据此宣称30FPS。底部显示 Render FPS、真实 Inference FPS、耗时与结果年龄。
+  不能据此宣称30FPS。侧栏显示 Render FPS、真实 Inference FPS、耗时与结果年龄。
   实时骨骼显示时限改为可配置 `maxLiveResultAgeMilliseconds`（默认3000ms）；HUD显示真实结果年龄，超时仍隐藏。放宽显示时限不会提高识别帧率，也不代表骨骼与当前相机帧同步。
-- 包内 Android 库已交叉编译，使用通用 ONNX CPU，**不包含 RKNN/NPU 加速**。
+- 包内 Android 库已交叉编译，AUTO模式请求NNAPI设备加速，失败回退ONNX CPU；不包含RKNN。实际设备分配及性能需要实测。
 - 包含 CAMERA/INTERNET 权限清单合并库；首次 WebCamera 请求摄像头权限。
   摄像头必须能被 Android Camera API 枚举；不保证所有厂商 USB UVC 固件自动支持。
 - 模型从 APK 的 StreamingAssets 提取到 persistentDataPath，再交给原生库。
@@ -124,7 +124,7 @@ Windows 非开发机可能需要 Microsoft Visual C++ x64 Runtime。
 设置在独立场景中，继续使用原有拖框/缩放逻辑和 Save/Load，矩形外不参与检测。
 Git UPM 包与 unitypackage 为两种安装方式，不要同时安装。见 UPM_INSTALLATION.md。
 
-## 0.3.0-preview.2 手机更新
+## 0.3.0-preview.2 手机更新（历史）
 
 - 两个场景共用安全区、横竖屏自适应 GUI。手机短边按480个界面单位布局，按钮高50单位；设置面板支持滚动。
 - 相机启用自动旋转，修正90/270度纹理采样方向；预览与识别共用校正后的图像。启动时校准GPU回读行顺序。旋转后丢弃旧方向结果。
@@ -133,3 +133,14 @@ Git UPM 包与 unitypackage 为两种安装方式，不要同时安装。见 UPM
 - 现有相机场景的HumanVisionSceneControls会自动挂载举手组件；新建场景也已挂载。可在Inspector调整regionIndex、heightMargin、minimumConfidence和maximumPoseAgeMilliseconds。
 - 更新Git依赖到新标签即可；不要同时导入unitypackage。若当前场景经过自行修改并删除了SceneControls，请手动挂载举手组件并指定manager。
 - 未执行手机、摄像头、Unity运行测试；仅编译与包内容校验。请实机检查前后摄像头、横竖屏、身体与双手、举手状态，以及关闭Use regions后的全画面识别。
+
+## 0.3.0-preview.3 Android follow-up
+
+- All controls, settings, gesture status and diagnostics are now in one scrollable sliding drawer. The edge arrow opens/closes it; Edit regions collapses it automatically. No top/bottom panels remain over the image when collapsed. Region input excludes only the actual drawer and edge tab.
+- Android AUTO now requests NNAPI acceleration without FP16 relaxation; unsupported operators remain on ORT CPU. NNAPI initialization or inference exceptions fall back to CPU. This is a requested acceleration path, not proof that all model nodes ran on a GPU/NPU. `forceCpu` on HumanVisionCameraManager allows a CPU-only comparison after restarting the app.
+- CPU graph optimization is enabled. The live input keeps the native latest-frame slot current (at most one GPU readback outstanding, up to30 submissions/sec). Android detector interval is2; tracked crops are reused for at most500ms before redetection. Pose and both hands are inferred from each processed frame. Region masking remains applied to every frame. No interpolated joints are advertised as fresh inference.
+- The drawer reports detector and pose milliseconds separately alongside actual pose FPS and source age. User screenshots of the previous version showed2.2 pose FPS and599–731ms age; there is no new phone measurement yet, and eight-person30FPS is not claimed.
+- UPM model metadata now uses a separate GUID namespace from the StreamingAssets unitypackage copies. Existing StreamingAssets models and GUIDs are preserved.
+- Verification: Windows/Android native builds and managed conditional compilation; package and metadata/hash checks. No runtime, camera or phone tests executed per user instruction.
+
+NNAPI behavior reference: https://onnxruntime.ai/docs/execution-providers/NNAPI-ExecutionProvider.html

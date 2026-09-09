@@ -36,12 +36,5 @@ namespace HumanVision
             return wrist.Confidence >= minimumConfidence && shoulder.Confidence >= minimumConfidence &&
                 wrist.Normalized.y < shoulder.Normalized.y - heightMargin;
         }
-        private void OnGUI()
-        {
-            using (var ui = new HumanVisionMobileGui.Scope()) {
-                GUI.Box(new Rect(10, 10, Mathf.Min(440, ui.Width - 20), 98),
-                    "RAISED HAND  /  REGION " + regionIndex + "\n" + (IsDetected ? "DETECTED: " : "") + Status);
-            }
-        }
     }
 }

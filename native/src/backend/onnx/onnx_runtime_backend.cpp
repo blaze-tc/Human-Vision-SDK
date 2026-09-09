@@ -16,6 +16,7 @@
 #include <vector>
 #if defined(__ANDROID__)
 #include <sys/stat.h>
+#include <nnapi_provider_factory.h>
 #endif
 
 namespace humanvision {
@@ -29,6 +30,11 @@ struct OnnxRuntimeBackend::Impl {
     std::unique_ptr<Ort::Session> session;
     std::string input_name;
     std::vector<std::string> output_names;
+#if defined(__ANDROID__)
+    bool nnapi_enabled = false;
+    std::filesystem::path model_path;
+    Ort::SessionOptions cpu_options;
+#endif
 };
 
 namespace {
@@ -88,6 +94,7 @@ OnnxRuntimeBackend::OnnxRuntimeBackend(bool use_gpu) : impl_(std::make_unique<Im
     impl_->session_options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
     impl_->session_options.AddConfigEntry("session.intra_op.allow_spinning", "0");
     impl_->session_options.AddConfigEntry("session.inter_op.allow_spinning", "0");
+    impl_->session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 #else
     impl_->session_options.SetIntraOpNumThreads(0);
 #endif
@@ -109,7 +116,20 @@ bool OnnxRuntimeBackend::Load(
         return false;
     }
     try {
-#if defined(HV_USE_DIRECTML)
+#if defined(__ANDROID__)
+        impl_->cpu_options = impl_->session_options.Clone();
+        impl_->model_path = model_path;
+        if (impl_->use_gpu) {
+            // Keep float32 model semantics. Avoid NNAPI's slower reference CPU;
+            // unsupported partitions remain on ORT CPU kernels.
+            auto accelerated = impl_->session_options.Clone();
+            OrtStatus* status = OrtSessionOptionsAppendExecutionProvider_Nnapi(accelerated, NNAPI_FLAG_CPU_DISABLED);
+            if (status == nullptr) {
+                impl_->session_options = std::move(accelerated);
+                impl_->nnapi_enabled = true;
+            } else Ort::GetApi().ReleaseStatus(status);
+        }
+#elif defined(HV_USE_DIRECTML)
         if (impl_->use_gpu) {
             // Unity resolves plugins separately; the process DLL search path does
             // not necessarily contain this directory. Preflight before delay-load
@@ -133,8 +153,19 @@ bool OnnxRuntimeBackend::Load(
             return false;
         }
 #endif
-        auto session = std::make_unique<Ort::Session>(
-            impl_->environment, model_path.c_str(), impl_->session_options);
+        std::unique_ptr<Ort::Session> session;
+#if defined(__ANDROID__)
+        try {
+            session = std::make_unique<Ort::Session>(impl_->environment, model_path.c_str(), impl_->session_options);
+        } catch (const Ort::Exception&) {
+            if (!impl_->nnapi_enabled) throw;
+            impl_->nnapi_enabled = false;
+            impl_->session_options = impl_->cpu_options.Clone();
+            session = std::make_unique<Ort::Session>(impl_->environment, model_path.c_str(), impl_->session_options);
+        }
+#else
+        session = std::make_unique<Ort::Session>(impl_->environment, model_path.c_str(), impl_->session_options);
+#endif
         if (session->GetInputCount() != 1) {
             error = "ONNX backend requires exactly one input: " + model_path.string();
             return false;
@@ -232,6 +263,15 @@ bool OnnxRuntimeBackend::Run(
         return true;
     } catch (const Ort::Exception& exception) {
         error = std::string("ONNX inference failed: ") + exception.what();
+#if defined(__ANDROID__)
+        if (impl_->nnapi_enabled) {
+            impl_->nnapi_enabled = false;
+            impl_->use_gpu = false;
+            impl_->session_options = impl_->cpu_options.Clone();
+            impl_->session.reset();
+            if (Load(impl_->model_path, error)) return Run(input, outputs, error);
+        }
+#endif
         return false;
     } catch (const std::exception& exception) {
         error = std::string("ONNX inference failed: ") + exception.what();

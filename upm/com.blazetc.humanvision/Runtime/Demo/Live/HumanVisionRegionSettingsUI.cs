@@ -21,23 +21,12 @@ namespace HumanVision
 
         private void Start() { RefreshDevices(); }
         private void RefreshDevices() { _devices = WebCamTexture.devices; }
-        private Vector2 _scroll;
-        private Rect _panelPixels, _headerPixels, _footerPixels;
-        private void OnGUI()
+        private HumanVisionSceneControls _controls;
+        public bool Editing => _editing;
+        public void DrawSettings()
         {
             if (manager == null) return;
             var settings = manager.Settings;
-            using (var ui = new HumanVisionMobileGui.Scope()) {
-                var header = new Rect(10, 10, Mathf.Min(540, ui.Width - 20), 50);
-                _headerPixels = ui.ToPixels(header);
-                _footerPixels = ui.ToPixels(new Rect(0, ui.Height - 150, ui.Width, 150));
-                if (GUI.Button(header, showSettings ? "CAMERA SETTINGS  /  Collapse" : "CAMERA SETTINGS  /  Expand")) showSettings = !showSettings;
-                _panelPixels = new Rect();
-                if (showSettings) {
-                    var panel = new Rect(10, 68, header.width, Mathf.Max(60, Mathf.Min(510, ui.Height - 228)));
-                    _panelPixels = ui.ToPixels(panel);
-                    GUILayout.BeginArea(panel, GUI.skin.box);
-                    _scroll = GUILayout.BeginScrollView(_scroll);
                     settings.source = (HumanVisionCameraKind)GUILayout.Toolbar((int)settings.source, SourceNames);
                     if (settings.source == HumanVisionCameraKind.WebCamera) {
                         GUILayout.BeginHorizontal();
@@ -66,7 +55,7 @@ namespace HumanVision
                     settings.mirror = GUILayout.Toggle(settings.mirror, "Mirror image");
                     GUILayout.EndHorizontal();
                     GUILayout.BeginHorizontal();
-                    if (GUILayout.Button(_editing ? "Finish editing" : "Edit regions")) { _editing = !_editing; if (_editing) showSettings = false; }
+                    if (GUILayout.Button(_editing ? "Finish editing" : "Edit regions")) { _editing = !_editing; if (_editing) { var controls = GetComponent<HumanVisionSceneControls>(); if (controls != null) controls.panelsOpen = false; } }
                     if (GUILayout.Button("Apply")) { _editing = false; manager.StartCamera(); }
                     GUILayout.EndHorizontal();
                     GUILayout.BeginHorizontal();
@@ -74,12 +63,13 @@ namespace HumanVision
                     if (GUILayout.Button("Load")) { manager.LoadSettings(); _countText = manager.Settings.people.ToString(); }
                     GUILayout.EndHorizontal();
                     GUILayout.Label("Drag a box to move it. Drag its corner to resize. Expand settings to save.");
-                    GUILayout.Label(manager.Status);
-                    GUILayout.EndScrollView();
-                    GUILayout.EndArea();
-                }
-            }
-            // GUI.matrix is restored here: boxes and pointer positions share physical screen pixels.
+
+        }
+        private void OnGUI()
+        {
+            if (manager == null) return;
+            if (_controls == null) _controls = GetComponent<HumanVisionSceneControls>();
+            var settings = manager.Settings;
             if (settings.useRegions && settings.regions != null && preview != null && preview.texture != null) DrawRegions(settings);
         }
 
@@ -107,7 +97,7 @@ namespace HumanVision
                 if (_editing) GUI.DrawTexture(handle, Texture2D.whiteTexture);
                 GUI.color = old;
                 if (_editing && e.type == EventType.MouseDown && e.button == 0 && screen.Contains(e.mousePosition) &&
-                    !_panelPixels.Contains(e.mousePosition) && !_headerPixels.Contains(e.mousePosition) && !_footerPixels.Contains(e.mousePosition)) {
+                    (_controls == null || !_controls.IsPointerOverControls(e.mousePosition))) {
                     _dragIndex = i; _resize = handle.Contains(e.mousePosition); _dragStart = e.mousePosition; _original = r; e.Use();
                 }
             }

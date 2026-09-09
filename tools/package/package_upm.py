@@ -9,7 +9,7 @@ from package_live_sdk import metadata, NAMESPACE
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = '0.3.0-preview.2'
+VERSION = '0.3.0-preview.3'
 DEST = ROOT / 'upm/com.blazetc.humanvision'
 
 def main():
@@ -43,7 +43,10 @@ def main():
                 relative = 'Models/' + Path(path).name
             else:
                 raise ValueError('Unexpected package asset: ' + path)
-            write(relative, item['asset'], item['asset.meta'])
+            # StreamingAssets may already contain the unitypackage copy. Package
+            # models are independent file sources, never scene asset references.
+            model_meta = metadata('UPM/' + relative).encode() if relative.startswith('Models/') else item['asset.meta']
+            write(relative, item['asset'], model_meta)
     descriptor = dict(name='com.blazetc.humanvision', version=VERSION, displayName='Human Vision SDK',
         unity='2021.3', description='Independent camera skeleton SDK: Windows x64 and Android ARM64, numbered regions and hand endpoints.',
         dependencies={'com.unity.ugui':'1.0.0'}, author={'name':'blaze-tc'},

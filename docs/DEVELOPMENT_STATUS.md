@@ -1,3 +1,25 @@
+# 0.3.0-preview.3 mobile latency and drawer (2026-09-09)
+
+Active user request: fix landscape GUI clipping/occlusion with a retractable panel,
+reduce actual Android skeleton lag, and carry forward model GUID correction.
+
+User evidence: camera/render30FPS, pose2.2FPS, result age599–731ms.
+Changes: one scrollable animated drawer containing all GUI; NNAPI AUTO with CPU
+fallback, full CPU graph optimization, Android detector interval2 with500ms crop
+reuse bound, latest-frame refresh while inference runs, stage timing display,
+rotation tracking reset, independent UPM model GUIDs.
+
+Commands: tools/package/build_live_native.ps1 succeeded (Windows x64 and Android
+ARM64; BUILD_TESTING=OFF). tools/package/compile_managed.ps1 succeeded (Runtime,
+Demo, Editor, UNITY_ANDROID; existing CS0649 warning). No runtime tests executed.
+Phone acceleration coverage, latency and fresh pose FPS remain user acceptance items.
+Archive verification: out/inspect_release033.py passed (59 Unity assets,141 UPM files,
+77 unique GUIDs; manifest, model, gzip header and archive bytes match). Both UPM
+model GUIDs differ from the actual Unity project StreamingAssets GUIDs.
+Publication target: main and v0.3.0-preview.3.
+
+---
+
 # 0.3.0-preview.2 mobile follow-up (2026-09-09)
 
 Active user-authorized work: responsive GUI in both scenes, dynamic phone rotation,

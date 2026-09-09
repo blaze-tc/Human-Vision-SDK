@@ -144,7 +144,7 @@ HumanVisionEngine::~HumanVisionEngine() {
 
 bool HumanVisionEngine::Initialize(std::string& error) {
     bool use_gpu = false;
-#if defined(HV_USE_DIRECTML)
+#if defined(HV_USE_DIRECTML) || defined(__ANDROID__)
     use_gpu = config_.backend == HV_BACKEND_AUTO;
 #endif
     auto detector = std::make_unique<RtmdetModel>(
@@ -261,6 +261,8 @@ void HumanVisionEngine::WorkerLoop() {
     ResultSnapshot snapshot;
     bool tracking_state_initialized = false;
     bool previous_tracking_state = false;
+    int previous_width = 0, previous_height = 0;
+    int64_t last_detection_timestamp = 0;
     while (frame_slot_.WaitTake(frame)) {
         int max_bodies = 0;
         float detection_threshold = 0.0F;
@@ -279,19 +281,26 @@ void HumanVisionEngine::WorkerLoop() {
             region_revision = region_revision_;
         }
         if (!tracking_state_initialized ||
-            enable_tracking != previous_tracking_state || previous_region_revision != region_revision) {
+            enable_tracking != previous_tracking_state || previous_region_revision != region_revision ||
+            previous_width != frame.width || previous_height != frame.height) {
             tracker_->Reset();
             previous_tracking_state = enable_tracking;
             tracking_state_initialized = true;
             processed_input_frames_ = 0;
             previous_region_revision = region_revision;
+            previous_width = frame.width; previous_height = frame.height;
+            tracked_detections.clear(); last_detection_timestamp = 0;
         }
 
         const auto total_start = std::chrono::steady_clock::now();
         StageTimings timings;
         std::string error;
         if (!regions.empty()) MaskOutsideRegions(frame, regions);
-        const bool run_detector = !regions.empty() || !enable_tracking || processed_input_frames_ == 0 ||
+        // Pose (including hands) still runs on every processed frame. Reuse only
+        // the short-lived tracked crop between detector passes, even with masks.
+        const bool run_detector = !enable_tracking || tracked_detections.empty() || processed_input_frames_ == 0 ||
+                                  frame.timestamp_us - last_detection_timestamp >= 500000 ||
+                                  frame.timestamp_us < last_detection_timestamp ||
                                   processed_input_frames_ % detection_interval == 0;
         if (run_detector) {
             const auto detection_start = std::chrono::steady_clock::now();
@@ -324,6 +333,7 @@ void HumanVisionEngine::WorkerLoop() {
                                        std::chrono::steady_clock::now() -
                                        detection_start)
                                        .count();
+            last_detection_timestamp = frame.timestamp_us;
         }
 
         const auto tracking_start = std::chrono::steady_clock::now();

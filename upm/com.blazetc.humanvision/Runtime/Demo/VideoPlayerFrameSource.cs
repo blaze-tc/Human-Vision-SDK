@@ -271,7 +271,8 @@ namespace HumanVision.Demo
                 double now = Time.realtimeSinceStartupAsDouble;
                 // Keep preview independent; read back only a frame the worker can use.
                 if (now < _nextLiveSubmitTime) return false;
-                if (_livePendingFrameId >= 0 && manager.SourceFrameId < _livePendingFrameId && now - _livePendingTime < 1.0) return false;
+                // Keep the native latest-frame slot fresh while inference is busy.
+                // One GPU request at a time still bounds readback memory and work.
                 for (int i = 0; i < _slots.Length; i++) if (_slots[i].Busy) return false;
             }
             var size = AnalysisRenderTextureGeometry.CalculateTargetSize(texture.width, texture.height,

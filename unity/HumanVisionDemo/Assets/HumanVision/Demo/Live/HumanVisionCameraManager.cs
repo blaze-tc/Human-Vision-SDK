@@ -17,6 +17,8 @@ namespace HumanVision
         public static HumanVisionCameraManager Instance { get; private set; }
         public HumanVisionCameraSettings Settings = new HumanVisionCameraSettings();
         public bool startAutomatically;
+        [Tooltip("Disable automatic device acceleration for CPU comparison; restart the app after changing this.")]
+        public bool forceCpu;
         public string Status { get; private set; } = "Initializing";
         public bool IsReady => _manager != null && _manager.IsInitialized;
         public string InputStatus => _source != null ? _source.Status : "Stopped";
@@ -59,7 +61,9 @@ namespace HumanVision
             }
             _detectorPath = Path.Combine(root, files[0]); _posePath = Path.Combine(root, files[1]);
             if (!_manager.TryInitialize(new HumanVisionConfig { MaxBodies = Settings.people,
-                DetectorModelPath = _detectorPath, PoseModelPath = _posePath, EnableTracking = true })) {
+                DetectorModelPath = _detectorPath, PoseModelPath = _posePath, EnableTracking = true,
+                UseHardwareAcceleration = !forceCpu,
+                DetectionInterval = Application.platform == RuntimePlatform.Android ? 2 : 1 })) {
                 Status = _manager.LastError; yield break;
             }
             if (!ApplySettings()) yield break;

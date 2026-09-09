@@ -14,6 +14,7 @@ namespace HumanVision
         [Range(0f, 1f)] public float PoseThreshold = 0.30f;
         [Min(1)] public int DetectionInterval = 1;
         public bool EnableTracking = true;
+        public bool UseHardwareAcceleration = true;
         public string DetectorModelPath;
         public string PoseModelPath;
 
@@ -80,7 +81,7 @@ namespace HumanVision
                 PoseThreshold = config.PoseThreshold,
                 DetectionInterval = config.DetectionInterval,
                 EnableTracking = config.EnableTracking ? 1 : 0,
-                Backend = HVBackend.Auto,
+                Backend = config.UseHardwareAcceleration ? HVBackend.Auto : HVBackend.OnnxCpu,
                 DetectorModelPathUtf8 = _detectorPath,
                 PoseModelPathUtf8 = _posePath
             };
