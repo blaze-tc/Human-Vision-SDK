@@ -25,7 +25,7 @@ public:
         float threshold,
         std::array<HV_Joint, HV_JOINT_COUNT>& joints,
         float& inference_ms,
-        std::string& error);
+        std::string& error, std::array<HV_Joint, 6>* hands = nullptr);
 
 private:
     std::unique_ptr<IInferenceBackend> backend_;

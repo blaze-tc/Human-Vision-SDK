@@ -130,6 +130,13 @@ namespace HumanVision
                     out int written);
                 ThrowIfFailed("body result copy", bodiesResult, _handle);
 
+                bool hasHands = _api is IHumanVisionHandNativeApi;
+                if (hasHands) {
+                    var handResult = ((IHumanVisionHandNativeApi)_api).GetHandJoints(_handle, before.ResultSequence,
+                        _result.NativeHands, checked(_result.Capacity * 6));
+                    if (handResult == HVResult.NoNewResult) continue;
+                    ThrowIfFailed("hand snapshot copy", handResult, _handle);
+                }
                 HVResultMetaNative after = EmptyMetadata();
                 HVResult afterResult = _api.GetLatestResultMeta(_handle, ref after);
                 ThrowIfFailed("result metadata verification", afterResult, _handle);
@@ -146,7 +153,7 @@ namespace HumanVision
                     written,
                     before.ResultSequence,
                     before.SourceFrameId,
-                    before.SourceTimestampUs);
+                    before.SourceTimestampUs, hasHands);
                 RefreshStats();
                 return true;
             }

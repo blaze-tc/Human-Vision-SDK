@@ -139,6 +139,9 @@ namespace HumanVision.Interop
         internal static readonly int ResultMetaSize = Marshal.SizeOf<HVResultMetaNative>();
         internal static readonly int StatsSize = Marshal.SizeOf<HVStatsNative>();
 
+        [DllImport("humanvision", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern HVResult HV_GetHandJoints(IntPtr handle, long sequence, IntPtr joints, int capacity);
+
         [DllImport(LibraryName, EntryPoint = nameof(HV_GetVersionString),
             CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern IntPtr HV_GetVersionString();

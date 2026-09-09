@@ -182,6 +182,29 @@ namespace HumanVision.Demo
         private long _latestResultFrameId = -1;
         private bool _acceptReadbacks;
         private bool _normalizeReadbackRows;
+        private bool _livePreview;
+        private Texture _liveTexture;
+        private double _nextLiveSubmitTime;
+        private long _livePendingFrameId = -1;
+        private double _livePendingTime;
+        public bool LivePreview => _livePreview;
+        public double ResultAgeMilliseconds => manager == null || manager.SourceTimestampUs <= 0 ? 0 :
+            Math.Max(0, Time.realtimeSinceStartupAsDouble * 1000 - manager.SourceTimestampUs / 1000d);
+
+        public void ConfigureLiveInput(bool smoothPreview, int analysisWidth = 1280, int analysisHeight = 720)
+        {
+            StopCurrentVideo();
+            _livePreview = smoothPreview;
+            maxAnalysisWidth = Math.Max(64, analysisWidth); maxAnalysisHeight = Math.Max(64, analysisHeight);
+            _liveTexture = null; _nextLiveSubmitTime = 0; _livePendingFrameId = -1;
+        }
+
+        private void PresentLiveTexture(Texture texture)
+        {
+            _liveTexture = texture;
+            if (targetDisplay != null) { targetDisplay.texture = texture; targetDisplay.color = Color.white; }
+            if (aspectRatioFitter != null) aspectRatioFitter.aspectRatio = (float)texture.width / texture.height;
+        }
 
         public event Action VideoLayoutChanged;
         public event Action PresentationFrameChanged;
@@ -198,14 +221,22 @@ namespace HumanVision.Demo
         public int PresentationDelayFrames => presentationDelayFrames;
         public long LatestSubmittedFrameId => _latestSubmittedFrameId;
         public long PresentationFrameId => _presentationFrameId;
-        public Texture PresentationTexture => targetDisplay != null ? targetDisplay.texture : _renderTexture;
+        public Texture PresentationTexture => _livePreview ? _liveTexture : (targetDisplay != null ? targetDisplay.texture : _renderTexture);
 
-        public void StopFrames() => StopCurrentVideo();
+        public void StopFrames() { StopCurrentVideo(); _liveTexture = null; _livePendingFrameId = -1; _nextLiveSubmitTime = 0; }
 
         public bool SubmitExternalTexture(Texture texture, long timestampUs)
         {
             if (texture == null || manager == null || !manager.IsInitialized) return false;
+            if (_livePreview) PresentLiveTexture(texture);
             if (!SystemInfo.supportsAsyncGPUReadback) { SetError("Async GPU readback is unavailable."); return false; }
+            if (_livePreview) {
+                double now = Time.realtimeSinceStartupAsDouble;
+                // Keep preview independent; read back only a frame the worker can use.
+                if (now < _nextLiveSubmitTime) return false;
+                if (_livePendingFrameId >= 0 && manager.SourceFrameId < _livePendingFrameId && now - _livePendingTime < 1.0) return false;
+                for (int i = 0; i < _slots.Length; i++) if (_slots[i].Busy) return false;
+            }
             var size = AnalysisRenderTextureGeometry.CalculateTargetSize(texture.width, texture.height,
                 maxAnalysisWidth, maxAnalysisHeight);
             if (_renderTexture == null || SourceWidth != size.x || SourceHeight != size.y) {
@@ -221,7 +252,12 @@ namespace HumanVision.Demo
             slot.Busy = true;
             slot.FrameId = _nextSubmissionFrameId++;
             slot.TimestampUs = timestampUs;
-            CapturePresentationFrame(slot.FrameId);
+            if (_livePreview) {
+                PresentLiveTexture(texture);
+                _presentationFrameId = slot.FrameId;
+                _livePendingFrameId = slot.FrameId; _livePendingTime = Time.realtimeSinceStartupAsDouble;
+                _nextLiveSubmitTime = _livePendingTime + 1.0 / 30.0;
+            } else CapturePresentationFrame(slot.FrameId);
             slot.Request = AsyncGPUReadback.RequestIntoNativeArray(ref slot.Buffer, _renderTexture,
                 0, TextureFormat.RGBA32, slot.Completion);
             return true;
@@ -229,6 +265,8 @@ namespace HumanVision.Demo
 
         public bool CanPresentResult(long resultFrameId)
         {
+            if (_livePreview) return _acceptReadbacks && resultFrameId >= _minimumUsableResultFrameId &&
+                manager != null && manager.ResultSequence > 0 && ResultAgeMilliseconds <= 350;
             return _presentationFrameId >= _minimumUsableResultFrameId &&
                 PresentationFramePolicy.IsUsable(_latestSubmittedFrameId, resultFrameId,
                     _minimumUsableResultFrameId, maxOverlayLagFrames * 2) &&
@@ -536,7 +574,7 @@ namespace HumanVision.Demo
                 autoGenerateMips = false
             };
             _renderTexture.Create();
-            int presentationSlotCount = Math.Max(
+            int presentationSlotCount = _livePreview ? 0 : Math.Max(
                 presentationDelayFrames,
                 maxOverlayLagFrames * 2) + 4;
             _presentationSlots = new PresentationSlot[presentationSlotCount];
@@ -639,6 +677,7 @@ namespace HumanVision.Demo
 
         private void OnManagerResultUpdated(long sequence)
         {
+            if (_livePreview) { PresentationFrameChanged?.Invoke(); return; }
             if (manager == null || manager.SourceFrameId < _minimumUsableResultFrameId)
             {
                 return;

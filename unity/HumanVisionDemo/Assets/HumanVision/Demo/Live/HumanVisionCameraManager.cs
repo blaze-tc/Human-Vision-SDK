@@ -9,7 +9,7 @@ namespace HumanVision
 {
     public enum HumanVisionJointType { Nose, LeftEye, RightEye, LeftEar, RightEar, LeftShoulder,
         RightShoulder, LeftElbow, RightElbow, LeftWrist, RightWrist, LeftHip, RightHip,
-        LeftKnee, RightKnee, LeftAnkle, RightAnkle }
+        LeftKnee, RightKnee, LeftAnkle, RightAnkle, LeftHand, LeftHandtip, LeftThumb, RightHand, RightHandtip, RightThumb }
 
     [RequireComponent(typeof(HumanVisionManager), typeof(VideoPlayerFrameSource), typeof(HumanVisionLiveSource))]
     public sealed class HumanVisionCameraManager : MonoBehaviour
@@ -45,7 +45,7 @@ namespace HumanVision
             catch (Exception e) { Status = e.Message; yield break; }
             string root = Path.Combine(Application.persistentDataPath, "HumanVisionModels");
             Directory.CreateDirectory(root);
-            string[] files = { "rtmdet_tiny_person_640.onnx", "rtmpose_s_256x192.onnx" };
+            string[] files = { "rtmdet_tiny_person_640.onnx", "rtmpose_s_133.onnx" };
             foreach (string file in files) {
                 string source = Application.streamingAssetsPath + "/HumanVision/Models/" + file;
                 string target = Path.Combine(root, file);
@@ -126,8 +126,9 @@ namespace HumanVision
         }
         private bool Fresh => IsReady && _source.HasRecentFrame && _bridge.CanPresentResult(_manager.SourceFrameId);
         public Texture GetColorImageTex() => _bridge != null ? _bridge.PresentationTexture : null;
-        public int GetColorImageWidth() => _bridge != null ? _bridge.SourceWidth : 0;
-        public int GetColorImageHeight() => _bridge != null ? _bridge.SourceHeight : 0;
+        public int GetColorImageWidth() => GetColorImageTex() != null ? GetColorImageTex().width : 0;
+        public int GetColorImageHeight() => GetColorImageTex() != null ? GetColorImageTex().height : 0;
+        public int GetJointCount() => 23;
         public int GetUsersCount() { if (!Fresh) return 0; int count = 0; foreach (var body in _slots) if (body != null) count++; return count; }
         public int GetRegionCount() => _slots.Length;
         public bool TryGetBodyByRegionIndex(int index, out HumanVisionBody body)
@@ -141,12 +142,12 @@ namespace HumanVision
         public bool TryGetJointByRegionIndex(int index, HumanVisionJointType type, out HumanVisionJoint joint)
         {
             joint = default;
-            if ((int)type < 0 || (int)type >= HumanVisionJoint.Count || !TryGetBodyByRegionIndex(index, out var body)) return false;
-            joint = body.Joints[(int)type]; return joint.Valid;
+            if ((int)type < 0 || (int)type >= 23 || !TryGetBodyByRegionIndex(index, out var body)) return false;
+            joint = (int)type < HumanVisionJoint.Count ? body.Joints[(int)type] : body.HandJoints[(int)type - HumanVisionJoint.Count]; return joint.Valid;
         }
         public bool IsJointTracked(ulong userId, HumanVisionJointType joint) => TryGetJointByRegionIndex(GetUserIndexById(userId), joint, out _);
         public Vector2 GetJointPosition2D(ulong userId, HumanVisionJointType joint) =>
-            TryGetJointByRegionIndex(GetUserIndexById(userId), joint, out var value) ? value.Pixel : Vector2.zero;
+            TryGetJointByRegionIndex(GetUserIndexById(userId), joint, out var value) ? new Vector2(value.Normalized.x * GetColorImageWidth(), value.Normalized.y * GetColorImageHeight()) : Vector2.zero;
         // Unit image plane, origin at center, +Y up. This is not metric 3D depth.
         public Vector3 GetJointPosition(ulong userId, HumanVisionJointType joint) =>
             TryGetJointByRegionIndex(GetUserIndexById(userId), joint, out var value) ?

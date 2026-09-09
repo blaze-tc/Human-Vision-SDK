@@ -30,6 +30,11 @@ HV_API HV_Result HV_CALL HV_GetBodies(
     HV_Body* out_bodies,
     int32_t capacity,
     int32_t* written);
+/* Six joints per body: left Hand/Handtip/Thumb, then right. Same sequence/order
+ * as GetBodies. capacity counts joints. reserved[0]=1 means derived palm.
+ * Legacy 17-point models return invalid hands; the original HV_Body ABI is unchanged. */
+HV_API HV_Result HV_CALL HV_GetHandJoints(HV_Handle handle, int64_t expected_sequence,
+    HV_Joint* joints, int32_t capacity);
 HV_API HV_Result HV_CALL HV_GetStats(HV_Handle handle, HV_Stats* out_stats);
 /* Normalized top-left rectangles. count=0 disables regions. Non-overlapping. */
 HV_API HV_Result HV_CALL HV_SetRegions(HV_Handle handle, const HV_Rect* regions, int32_t count, int64_t revision);

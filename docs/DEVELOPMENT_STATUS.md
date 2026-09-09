@@ -2,18 +2,51 @@
 
 # HumanVisionSDK Development Status
 
+## 0.3.0-preview.1 delivery checkpoint - 2026-09-09
+
+Implementation and Windows/Android native + managed compilation completed.
+- Six hand endpoints are decoded from the 133-landmark model and published with
+  the same snapshot/sequence as COCO-17 bodies; the legacy ABI remains unchanged.
+  Palm is derived from five actual hand-model landmarks and marked as derived.
+- Independent sphere/LineRenderer overlayer with line/joint size controls; two
+  generated scenes (camera and settings) with navigation. Original region move/
+  resize semantics remain unchanged; camera-space mapping accommodates the new canvas.
+- Android latest-camera preview is decoupled from inference, no history texture
+  ring, one useful readback at a time, 640x640 analysis cap preserving aspect,
+  ORT pools limited to two threads without spinning. Camera-only comparison and
+  device details are user-provided; new phone FPS is NOT measured.
+- UPM directory and tgz include scripts, platform-selected native plugins, model
+  files and an Editor/build installer for StreamingAssets. Git/release target is
+  the user-confirmed Human-Vision-SDK repository, which is currently private.
+
+Validation: `tools/package/build_live_native.ps1`, `compile_managed.ps1`,
+`package_live_sdk.py`, `package_upm.py`; all compilation succeeded, including
+Android conditional C# and the UPM model installer. Static archive inspection:
+57 Unity assets; 137 UPM files; 75 unique GUIDs; content/model hashes matched;
+Unity-compatible gzip inner filename preserved. A new isolated Unity launch
+was canceled at OS startup and its REST endpoint was unavailable, so no new
+Unity import/scene/runtime pass is claimed. No unit/integration/camera tests ran.
+Evidence: `out/build-native030.log`, `out/build-managed030.log`,
+`out/inspect_release030.py`, `out/releases/0.3.0-preview.1/SHA256SUMS.txt`.
+
 ## User priority update - 2026-09-07
 
 **Current stage:** Independent SDK skeleton upgrade and validation.
-**Current milestone:** Live cameras, numbered recognition regions and independent
-Windows/Android SDK packaging (user instruction, 2026-09-08).
+**Current milestone:** 0.3.0-preview.1: genuine hand endpoints, independent skeleton rendering/settings scene, Android live-preview performance, and UPM/GitHub delivery (user update 2026-09-09).
+The user confirmed Editor camera operation and corrected the region request: existing
+rectangle movement/resizing works and must be preserved. Phone validation is now
+OnePlus 9 Pro LE2120, Snapdragon 888, Android 14, 12 GB RAM (user screenshot).
+Camera-only APK is smooth; SDK analysis APK is choppy. Preserve previous no-runtime-test
+instruction; compile/package verification is agent-owned. User explicitly authorizes
+main and Release publication to blaze-tc/Human-Vision-SDK (confirmed destination).
+See SDK_030_PLAN.md.
 The user confirmed following on `4859224-uhd_3840_2160_25fps` and explicitly
 requested code delivery without running tests; hardware/runtime acceptance is
 now user-owned. Builds needed to produce native libraries/packages are allowed;
 do not run unit, integration, Play Mode or camera tests for this new work.
-See `SDK_LIVE_CAMERA_PLAN.md`. S2 rich-hand integration remains pending.
+See `SDK_030_PLAN.md`. Hand integration is implemented for this preview; real-device quality/performance acceptance remains pending.
 
-**Delivery checkpoint:** 0.2.0-preview source implementation complete; Windows
+**Historical delivery checkpoint:** 0.2.0-preview source implementation complete; Windows
 x64 and Android ARM64 native builds completed with BUILD_TESTING=OFF. Managed
 Runtime/Demo/Editor and Android-conditional Demo compilation completed using
 Unity2021.3.45f1 references. No tests, camera connections, Play Mode, APK build,

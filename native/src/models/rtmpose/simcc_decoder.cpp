@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cmath>
 #include <string>
 
 namespace humanvision {
@@ -15,11 +16,11 @@ constexpr float kSplitRatio = 2.0F;
 bool ValidTensor(
     const Tensor& tensor,
     const std::string& expected_name,
-    const std::size_t bins) {
+    const std::size_t bins, int count) {
     return tensor.name == expected_name && tensor.shape.size() == 3U &&
-           tensor.shape[0] == 1 && tensor.shape[1] == HV_JOINT_COUNT &&
+           tensor.shape[0] == 1 && tensor.shape[1] == count &&
            tensor.shape[2] == static_cast<std::int64_t>(bins) &&
-           tensor.values.size() == static_cast<std::size_t>(HV_JOINT_COUNT) * bins;
+           tensor.values.size() == static_cast<std::size_t>(count) * bins;
 }
 
 }  // namespace
@@ -30,15 +31,24 @@ bool DecodeSimcc(
     const PoseAffineTransform& transform,
     std::array<DecodedJoint, HV_JOINT_COUNT>& joints,
     std::string& error) {
-    if (!ValidTensor(simcc_x, "simcc_x", kXBins) ||
-        !ValidTensor(simcc_y, "simcc_y", kYBins)) {
+    return DecodeSimccJoints(simcc_x, simcc_y, transform, joints.data(), HV_JOINT_COUNT, error);
+}
+
+bool DecodeSimccJoints(const Tensor& simcc_x, const Tensor& simcc_y,
+    const PoseAffineTransform& transform, DecodedJoint* joints, int count, std::string& error) {
+    if (!joints || (count != 17 && count != 133) ||
+        !ValidTensor(simcc_x, "simcc_x", kXBins, count) ||
+        !ValidTensor(simcc_y, "simcc_y", kYBins, count)) {
         error =
-            "RTMPose outputs must be float tensors simcc_x [1,17,384] and "
-            "simcc_y [1,17,512]";
+            "RTMPose outputs must be matched float tensors [1,K,384]/[1,K,512], K=17 or 133";
         return false;
     }
 
-    for (std::size_t joint = 0; joint < joints.size(); ++joint) {
+    if (!std::all_of(simcc_x.values.begin(), simcc_x.values.end(), [](float value) { return std::isfinite(value); }) ||
+        !std::all_of(simcc_y.values.begin(), simcc_y.values.end(), [](float value) { return std::isfinite(value); })) {
+        error = "RTMPose output contains nonfinite values"; return false;
+    }
+    for (std::size_t joint = 0; joint < static_cast<size_t>(count); ++joint) {
         const auto x_begin = simcc_x.values.begin() + joint * kXBins;
         const auto y_begin = simcc_y.values.begin() + joint * kYBins;
         const auto x_peak = std::max_element(x_begin, x_begin + kXBins);

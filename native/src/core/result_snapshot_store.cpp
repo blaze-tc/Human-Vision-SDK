@@ -14,6 +14,7 @@ void ResultSnapshotStore::Publish(const ResultSnapshot& snapshot) {
     back.meta.struct_size = sizeof(HV_ResultMeta);
     back.meta.body_count = static_cast<std::int32_t>(snapshot.bodies.size());
     back.bodies.assign(snapshot.bodies.begin(), snapshot.bodies.end());
+    back.hands.assign(snapshot.hands.begin(), snapshot.hands.end());
     back.region_indices.assign(snapshot.region_indices.begin(), snapshot.region_indices.end());
     back.region_revision = snapshot.region_revision;
     front_index_ = back_index;
@@ -55,6 +56,16 @@ HV_Result ResultSnapshotStore::CopyBodies(
         return HV_ERR_INVALID_ARGUMENT;
     }
     std::copy(bodies.begin(), bodies.end(), destination);
+    return HV_OK;
+}
+
+HV_Result ResultSnapshotStore::CopyHands(int64_t sequence, HV_Joint* destination, int capacity) const {
+    if (capacity < 0 || (capacity && !destination)) return HV_ERR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!has_result_ || snapshots_[front_index_].meta.result_sequence != sequence) return HV_NO_NEW_RESULT;
+    const auto& hands = snapshots_[front_index_].hands;
+    if (capacity < static_cast<int>(hands.size())) return HV_ERR_INVALID_ARGUMENT;
+    std::copy(hands.begin(), hands.end(), destination);
     return HV_OK;
 }
 

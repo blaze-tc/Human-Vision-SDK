@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     HumanVisionSDK
-    VERSION 0.2.0
+    VERSION 0.3.0
     DESCRIPTION "Human Vision SDK live cameras and recognition regions"
     LANGUAGES CXX)
 

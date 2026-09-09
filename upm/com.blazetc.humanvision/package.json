@@ -1,0 +1,18 @@
+{
+  "name": "com.blazetc.humanvision",
+  "version": "0.3.0-preview.1",
+  "displayName": "Human Vision SDK",
+  "unity": "2021.3",
+  "description": "Independent camera skeleton SDK: Windows x64 and Android ARM64, numbered regions and hand endpoints.",
+  "dependencies": {
+    "com.unity.ugui": "1.0.0"
+  },
+  "author": {
+    "name": "blaze-tc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/blaze-tc/Human-Vision-SDK.git"
+  },
+  "documentationUrl": "https://github.com/blaze-tc/Human-Vision-SDK/blob/main/docs/UPM_INSTALLATION.md"
+}

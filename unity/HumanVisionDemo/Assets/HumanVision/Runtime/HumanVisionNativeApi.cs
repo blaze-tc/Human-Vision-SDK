@@ -15,7 +15,12 @@ namespace HumanVision.Interop
         void Destroy(IntPtr handle);
     }
 
-    internal sealed class PInvokeHumanVisionNativeApi : IHumanVisionNativeApi
+    internal interface IHumanVisionHandNativeApi
+    {
+        HVResult GetHandJoints(IntPtr handle, long sequence, IntPtr joints, int capacity);
+    }
+
+    internal sealed class PInvokeHumanVisionNativeApi : IHumanVisionNativeApi, IHumanVisionHandNativeApi
     {
         internal static readonly PInvokeHumanVisionNativeApi Instance = new PInvokeHumanVisionNativeApi();
 
@@ -47,6 +52,9 @@ namespace HumanVision.Interop
         {
             return NativeBindings.HV_GetBodies(handle, bodies, capacity, out written);
         }
+
+        public HVResult GetHandJoints(IntPtr handle, long sequence, IntPtr joints, int capacity) =>
+            NativeBindings.HV_GetHandJoints(handle, sequence, joints, capacity);
 
         public HVResult GetStats(IntPtr handle, ref HVStatsNative stats)
         {

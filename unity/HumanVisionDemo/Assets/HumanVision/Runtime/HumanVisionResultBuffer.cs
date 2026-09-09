@@ -8,6 +8,8 @@ namespace HumanVision
     internal sealed class HumanVisionResultBuffer : IDisposable
     {
         private IntPtr _nativeBodies;
+        private IntPtr _nativeHands;
+        internal IntPtr NativeHands => _nativeHands;
         private bool _disposed;
 
         internal HumanVisionResultBuffer(int capacity)
@@ -48,6 +50,8 @@ namespace HumanVision
             _nativeBodies = _nativeBodies == IntPtr.Zero
                 ? Marshal.AllocHGlobal(bytes)
                 : Marshal.ReAllocHGlobal(_nativeBodies, (IntPtr)bytes);
+            int handBytes = checked(capacity * 6 * Marshal.SizeOf<HVJointNative>());
+            _nativeHands = _nativeHands == IntPtr.Zero ? Marshal.AllocHGlobal(handBytes) : Marshal.ReAllocHGlobal(_nativeHands, (IntPtr)handBytes);
             Bodies = grown;
         }
 
@@ -55,7 +59,7 @@ namespace HumanVision
             int count,
             long resultSequence,
             long sourceFrameId,
-            long sourceTimestampUs)
+            long sourceTimestampUs, bool hasHands = false)
         {
             ThrowIfDisposed();
             if (count < 0 || count > Capacity)
@@ -76,6 +80,12 @@ namespace HumanVision
                     nativeBody->BoundingBox.Height);
                 body.DetectionConfidence = nativeBody->DetectionConfidence;
 
+                for (int h = 0; h < 6; h++) {
+                    HVJointNative* hand = (HVJointNative*)_nativeHands.ToPointer() + bodyIndex * 6 + h;
+                    body.HandJoints[h] = hasHands ? new HumanVisionJoint(new Vector2(hand->X, hand->Y),
+                        new Vector2(hand->NormalizedX, hand->NormalizedY), hand->Confidence,
+                        hand->Valid != 0, hand->Reserved0 != 0) : default;
+                }
                 HVJointNative* nativeJoints = &nativeBody->Joint0;
                 for (int jointIndex = 0; jointIndex < HumanVisionJoint.Count; jointIndex++)
                 {
@@ -107,6 +117,7 @@ namespace HumanVision
                 _nativeBodies = IntPtr.Zero;
             }
 
+            if (_nativeHands != IntPtr.Zero) { Marshal.FreeHGlobal(_nativeHands); _nativeHands = IntPtr.Zero; }
             _disposed = true;
         }
 

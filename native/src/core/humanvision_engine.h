@@ -31,6 +31,7 @@ public:
     HV_Result GetLatestResultMeta(HV_ResultMeta* destination) const;
     int GetBodyCount() const;
     HV_Result GetBodies(HV_Body* destination, int capacity, int* written) const;
+    HV_Result GetHands(int64_t sequence, HV_Joint* joints, int capacity) const { return result_store_.CopyHands(sequence, joints, capacity); }
     HV_Result GetStats(HV_Stats* destination) const;
     std::string LastError() const;
     HV_Result SetRegions(const HV_Rect* regions, int count, int64_t revision);

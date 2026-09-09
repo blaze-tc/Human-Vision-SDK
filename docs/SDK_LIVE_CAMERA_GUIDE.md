@@ -1,4 +1,4 @@
-# HumanVision Live Camera SDK 0.2.0-preview
+# HumanVision Live Camera SDK 0.3.0-preview.1
 
 本次按用户要求只交付代码、编译和封装，**没有运行新功能测试**。
 Windows 摄像头、RTSP、Android 发布和区域交互等待用户实测。
@@ -6,13 +6,14 @@ Windows 摄像头、RTSP、Android 发布和区域交互等待用户实测。
 
 ## 导入与运行
 
-1. 使用修正版 `HumanVisionSDK-0.2.0-preview-importfix2.unitypackage`，通过
+1. 使用修正版 `HumanVisionSDK-0.3.0-preview.1.unitypackage`，通过
    `Assets > Import Package > Custom Package` 导入 Unity。建议先导入空项目；
    支持目标为 Windows x64 Editor/Player、Android ARM64。
    编译使用 Unity 2021.3.45f1 的程序集；推荐 2021.3/2022.3 LTS。
 2. 项目需要 UGUI、Video、ImageConversion、UnityWebRequest、IMGUI、WebCam 模块。
    普通 Unity 3D 项目通常已经启用。使用 .NET Standard 2.1。
-3. 菜单 `HumanVision > Create Live Camera Demo` 创建独立的新场景。
+3. 菜单 `HumanVision > Create Live Camera Demo` 创建摄像头与设置两个独立场景，底部按钮切换。
+   `HumanVision > Create Camera Settings Scene` 可直接打开设置场景。
    不依赖、不导入 AzureKinectExamples。场景生成器会保留已有场景文件。
 4. 进入 Play，等待模型准备完成。选择 WebCamera，用 `Next device` 切换设备；
    或选择 RTSP，填写 `rtsp://用户名:密码@地址:端口/路径`，默认 TCP。
@@ -76,12 +77,20 @@ public sealed class PlayerSlotReader : MonoBehaviour
 `SkeletonUpdated(sequence)` 用于订阅新结果；返回的 Body/Joint 数组会复用，
 需要长期保留时由调用方复制。未识别的 userId 为0，查询前检查有效性。
 
-当前生产模型仍为 COCO-17；手掌、指尖、大拇指的真实额外输出尚未接入此版本。
+新版使用全身姿态模型，保留 `body.Joints[17]`，新增 `body.HandJoints[6]`：
+左手 Hand/Handtip/Thumb，再右手三点。`HumanVisionJointType.LeftHand` 等可直接查询。
+身体和双手同帧推理、同一结果序号。手掌由真实手部根节点和四个 MCP 点求均值，
+`IsDerived=true`；指尖使用中指尖、拇指使用拇指尖，低置信度不显示，并非腕点外推。
 显示层的躯干连线不增加模型观测关键点。1–8 人配置不等于8人30FPS达标。
 
 ## Android
 
-- IL2CPP、ARM64 only、最低 API24；实机目标 RK3588 Android12。
+- IL2CPP、ARM64 only、最低 API24。当前反馈设备为 OnePlus 9 Pro/骁龙888/Android14，RK3588仍为目标。
+- Android 默认独立实时预览，推理不控制画面播放速度；默认分析尺寸上限640×640（保持比例），
+  不再为实时输入分配历史画面缓存。可在 `HumanVisionLiveSource` 调整分析尺寸。
+- Android 推理会话各限制2线程并关闭空转，减少和 Unity/摄像头竞争。尚未实机测速，
+  不能据此宣称30FPS。底部显示 Render FPS、真实 Inference FPS、耗时与结果年龄。
+  实时模式隐藏超过350ms的骨骼，避免误认旧结果为当前结果。
 - 包内 Android 库已交叉编译，使用通用 ONNX CPU，**不包含 RKNN/NPU 加速**。
 - 包含 CAMERA/INTERNET 权限清单合并库；首次 WebCamera 请求摄像头权限。
   摄像头必须能被 Android Camera API 枚举；不保证所有厂商 USB UVC 固件自动支持。
@@ -96,7 +105,7 @@ public sealed class PlayerSlotReader : MonoBehaviour
 `Assets/HumanVision`：运行时、输入、区域 UI、演示生成器、shader、文档。
 `Assets/Plugins/x86_64`：Windows SDK、私有 ORT/DirectML、FFmpeg共享库。
 `Assets/Plugins/Android`：ARM64 SDK/ORT/FFmpeg与权限合并库。
-`Assets/StreamingAssets/HumanVision/Models`：检测与17点姿态模型。
+`Assets/StreamingAssets/HumanVision/Models`：检测与全身姿态模型。
 不包含 AzureKinectExamples、测试框架或用户摄像头图片/视频。
 
 如果导入已有 HumanVision 项目，先退出 Play；包内同路径文件是此版本的替换文件。
@@ -105,3 +114,12 @@ Windows 非开发机可能需要 Microsoft Visual C++ x64 Runtime。
 
 请实测后反馈：Unity版本/平台、摄像头型号和来源、是否有画面、各区域是否对应、
 骨骼跟随情况、Console 错误原文。由你完成运行验收后再修正实际问题。
+
+## 独立绘制与设置
+
+`Camera Image` 是独立 RawImage，可隐藏而不停止识别。`Skeleton Objects` 使用
+`HumanVisionSkeletonOverlayer` 的球体和 LineRenderer，独立于画面绘制。
+通过 `lineWidthPixels`、`jointDiameterPixels` 控制粗细，可分别关闭点和线；
+可指定 jointPrefab/linePrefab。位置映射到 preview 矩形和 foregroundCamera 的图像平面。
+设置在独立场景中，继续使用原有拖框/缩放逻辑和 Save/Load，矩形外不参与检测。
+Git UPM 包与 unitypackage 为两种安装方式，不要同时安装。见 UPM_INSTALLATION.md。

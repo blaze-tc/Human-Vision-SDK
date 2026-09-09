@@ -36,11 +36,19 @@ namespace HumanVision
         [DllImport("humanvision", CallingConvention = CallingConvention.Cdecl)]
         private static extern void HV_RtspClose(IntPtr handle);
 
+        [Tooltip("Android: show the current camera frame independently of slower inference.")]
+        public bool smoothAndroidPreview = true;
+        [Range(320, 1920)] public int androidAnalysisWidth = 640;
+        [Range(240, 1080)] public int androidAnalysisHeight = 640;
+
         private void Awake() { _bridge = GetComponent<VideoPlayerFrameSource>(); }
         public void Open(HumanVisionCameraSettings settings)
         {
             Close();
             settings.Validate();
+            bool mobile = Application.platform == RuntimePlatform.Android;
+            _bridge.ConfigureLiveInput(mobile && smoothAndroidPreview,
+                mobile ? androidAnalysisWidth : 1280, mobile ? androidAnalysisHeight : 720);
             _settings = JsonUtility.FromJson<HumanVisionCameraSettings>(JsonUtility.ToJson(settings));
             _startRoutine = StartCoroutine(OpenRoutine());
         }

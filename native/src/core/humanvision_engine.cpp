@@ -348,6 +348,8 @@ void HumanVisionEngine::WorkerLoop() {
                                   .count();
 
         snapshot.bodies.clear();
+        snapshot.hands.clear();
+        snapshot.hands.reserve(tracked_detections.size() * 6);
         snapshot.region_indices.clear();
         snapshot.region_revision = region_revision;
         snapshot.meta.struct_size = sizeof(HV_ResultMeta);
@@ -371,6 +373,7 @@ void HumanVisionEngine::WorkerLoop() {
             body.bbox_px.height = std::max(0.0F, detection.y2 - detection.y1);
             body.detection_confidence = detection.score;
             std::array<HV_Joint, HV_JOINT_COUNT> joints{};
+            std::array<HV_Joint, 6> hands{};
             float pose_inference_ms = 0.0F;
             if (!pose_->Estimate(
                     frame,
@@ -378,12 +381,18 @@ void HumanVisionEngine::WorkerLoop() {
                     pose_threshold,
                     joints,
                     pose_inference_ms,
-                    error)) {
+                    error, &hands)) {
                 pose_succeeded = false;
                 break;
             }
             std::copy(joints.begin(), joints.end(), std::begin(body.joints));
+            // Do not expose inferred landmarks in areas explicitly excluded by the user.
+            if (!regions.empty()) {
+                for (auto& joint : body.joints) if (RegionAt(regions, joint.x_norm, joint.y_norm) != region) joint.valid = 0;
+                for (auto& joint : hands) if (RegionAt(regions, joint.x_norm, joint.y_norm) != region) joint.valid = 0;
+            }
             snapshot.bodies.push_back(body);
+            snapshot.hands.insert(snapshot.hands.end(), hands.begin(), hands.end());
             snapshot.region_indices.push_back(region);
         }
         if (!pose_succeeded) {

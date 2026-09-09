@@ -35,6 +35,11 @@ HV_Result InvalidHandle() {
 
 }  // namespace
 
+extern "C" HV_Result HV_CALL HV_GetHandJoints(HV_Handle handle, int64_t sequence, HV_Joint* joints, int32_t capacity) {
+    auto* state = ToState(handle);
+    return state ? state->engine->GetHands(sequence, joints, capacity) : InvalidHandle();
+}
+
 extern "C" HV_Result HV_CALL HV_Create(
     const HV_Config* config,
     HV_Handle* out_handle) {

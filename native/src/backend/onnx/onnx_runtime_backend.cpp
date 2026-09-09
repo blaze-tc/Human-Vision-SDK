@@ -80,7 +80,17 @@ OnnxRuntimeBackend::OnnxRuntimeBackend(bool use_gpu) : impl_(std::make_unique<Im
     impl_->use_gpu = use_gpu;
     impl_->session_options.SetGraphOptimizationLevel(
         GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+#if defined(__ANDROID__)
+    // Two model sessions otherwise each create a full, spinning CPU pool.
+    // Leave cores available for Unity, camera delivery and thermal headroom.
+    impl_->session_options.SetIntraOpNumThreads(2);
+    impl_->session_options.SetInterOpNumThreads(1);
+    impl_->session_options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+    impl_->session_options.AddConfigEntry("session.intra_op.allow_spinning", "0");
+    impl_->session_options.AddConfigEntry("session.inter_op.allow_spinning", "0");
+#else
     impl_->session_options.SetIntraOpNumThreads(0);
+#endif
 }
 
 OnnxRuntimeBackend::~OnnxRuntimeBackend() = default;

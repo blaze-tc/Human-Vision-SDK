@@ -73,8 +73,8 @@ namespace HumanVision
         private void DrawRegions(HumanVisionCameraSettings settings)
         {
             preview.rectTransform.GetWorldCorners(_corners);
-            Vector2 bottomLeft = RectTransformUtility.WorldToScreenPoint(null, _corners[0]);
-            Vector2 topRight = RectTransformUtility.WorldToScreenPoint(null, _corners[2]);
+            Vector2 bottomLeft = RectTransformUtility.WorldToScreenPoint(preview.canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : preview.canvas.worldCamera, _corners[0]);
+            Vector2 topRight = RectTransformUtility.WorldToScreenPoint(preview.canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : preview.canvas.worldCamera, _corners[2]);
             Rect image = new Rect(bottomLeft.x, Screen.height - topRight.y, topRight.x - bottomLeft.x, topRight.y - bottomLeft.y);
             if (image.width < 1 || image.height < 1) return;
             Event e = Event.current;

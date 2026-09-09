@@ -1,0 +1,12 @@
+{
+  "name": "HumanVision.Editor",
+  "references": [
+    "HumanVision.Runtime",
+    "HumanVision.Demo",
+    "UnityEngine.UI"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "autoReferenced": true
+}

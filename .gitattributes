@@ -12,3 +12,7 @@ CMakeLists.txt text eol=lf
 
 *.docx binary
 *.zip binary
+
+# UPM archives and the Git install must have byte-identical manifest payloads.
+upm/** -text
+upm/**/Licenses/** whitespace=-blank-at-eol

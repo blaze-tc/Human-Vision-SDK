@@ -6,6 +6,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -47,7 +48,8 @@ bool RtmposeModel::Estimate(
     const float threshold,
     std::array<HV_Joint, HV_JOINT_COUNT>& joints,
     float& inference_ms,
-    std::string& error) {
+    std::string& error, std::array<HV_Joint, 6>* hands) {
+    if (hands) hands->fill(HV_Joint{});
     if (threshold < 0.0F || threshold > 1.0F) {
         error = "invalid RTMPose threshold";
         return false;
@@ -72,23 +74,38 @@ bool RtmposeModel::Estimate(
         error = "RTMPose outputs do not contain simcc_x and simcc_y";
         return false;
     }
-    std::array<DecodedJoint, HV_JOINT_COUNT> decoded{};
-    if (!DecodeSimcc(
-            *simcc_x, *simcc_y, input_buffer_.transform, decoded, error)) {
+    const int count = simcc_x->shape.size() == 3 ? static_cast<int>(simcc_x->shape[1]) : 0;
+    std::array<DecodedJoint, 133> decoded{};
+    if (!DecodeSimccJoints(*simcc_x, *simcc_y, input_buffer_.transform, decoded.data(), count, error)) {
         return false;
     }
+    auto convert = [&](const DecodedJoint& point) {
+        HV_Joint result{};
+        result.x_px = point.x_px; result.y_px = point.y_px;
+        result.x_norm = point.x_px / frame.width; result.y_norm = point.y_px / frame.height;
+        result.confidence = point.confidence;
+        result.valid = std::isfinite(point.confidence) && point.confidence > 0 && point.confidence >= threshold &&
+            std::isfinite(point.x_px) && std::isfinite(point.y_px) && point.x_px >= 0 && point.y_px >= 0 &&
+            point.x_px < frame.width && point.y_px < frame.height;
+        return result;
+    };
+    if (count == 133 && hands) {
+        const int palms[2][5] = {{91,96,100,104,108}, {112,117,121,125,129}};
+        for (int side = 0; side < 2; ++side) {
+            DecodedJoint palm{}; palm.confidence = std::numeric_limits<float>::infinity(); bool valid = true;
+            for (int index : palms[side]) {
+                palm.x_px += decoded[index].x_px / 5.0F; palm.y_px += decoded[index].y_px / 5.0F;
+                palm.confidence = std::min(palm.confidence, decoded[index].confidence);
+                valid = valid && convert(decoded[index]).valid;
+            }
+            auto& hand = (*hands)[side * 3]; hand = convert(palm);
+            hand.valid = hand.valid && valid; hand.reserved[0] = 1; // derived from real hand landmarks
+            (*hands)[side * 3 + 1] = convert(decoded[side == 0 ? 103 : 124]);
+            (*hands)[side * 3 + 2] = convert(decoded[side == 0 ? 95 : 116]);
+        }
+    }
     for (std::size_t index = 0; index < joints.size(); ++index) {
-        HV_Joint joint{};
-        joint.x_px = decoded[index].x_px;
-        joint.y_px = decoded[index].y_px;
-        joint.x_norm = joint.x_px / static_cast<float>(frame.width);
-        joint.y_norm = joint.y_px / static_cast<float>(frame.height);
-        joint.confidence = decoded[index].confidence;
-        joint.valid = static_cast<std::uint8_t>(
-            joint.confidence >= threshold && std::isfinite(joint.x_px) &&
-            std::isfinite(joint.y_px) && joint.x_px >= 0.0F &&
-            joint.y_px >= 0.0F);
-        joints[index] = joint;
+        joints[index] = convert(decoded[index]);
     }
     error.clear();
     return true;

@@ -15,6 +15,9 @@ struct DecodedJoint {
     float confidence = 0.0F;
 };
 
+bool DecodeSimccJoints(const Tensor& x, const Tensor& y, const PoseAffineTransform& transform,
+    DecodedJoint* joints, int count, std::string& error);
+
 bool DecodeSimcc(
     const Tensor& simcc_x,
     const Tensor& simcc_y,

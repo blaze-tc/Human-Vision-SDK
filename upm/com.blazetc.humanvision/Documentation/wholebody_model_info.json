@@ -1,0 +1,129 @@
+{
+  "candidates": [
+    {
+      "archive_entries": [
+        "20230831/rtmpose_onnx/rtmpose-s_simcc-ucoco_dw-ucoco_270e-256x192-3fd922c8_20230728/",
+        "20230831/rtmpose_onnx/rtmpose-s_simcc-ucoco_dw-ucoco_270e-256x192-3fd922c8_20230728/deploy.json",
+        "20230831/rtmpose_onnx/rtmpose-s_simcc-ucoco_dw-ucoco_270e-256x192-3fd922c8_20230728/pipeline.json",
+        "20230831/rtmpose_onnx/rtmpose-s_simcc-ucoco_dw-ucoco_270e-256x192-3fd922c8_20230728/detail.json",
+        "20230831/rtmpose_onnx/rtmpose-s_simcc-ucoco_dw-ucoco_270e-256x192-3fd922c8_20230728/end2end.onnx",
+        "20230831/rtmpose_onnx/rtmpose-s_simcc-ucoco_dw-ucoco_270e-256x192-3fd922c8_20230728/output_onnxruntime.jpg",
+        "20230831/rtmpose_onnx/rtmpose-s_simcc-ucoco_dw-ucoco_270e-256x192-3fd922c8_20230728/output_pytorch.jpg"
+      ],
+      "archive_sha256": "4608671d47b7693a55601cbac109cbdd612553d7864666292b955c62e14ad66a",
+      "archive_url": "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-s_simcc-ucoco_dw-ucoco_270e-256x192-3fd922c8_20230728.zip",
+      "checkpoint_path": "tools/reference/downloads/rtmpose-s_simcc-ucoco_dw-ucoco_270e-256x192-3fd922c8_20230728.pth",
+      "checkpoint_sha256": "3fd922c87ac2fb1f3b5045d73c6c697843922ecae6088002752e1cd48779a5fc",
+      "checkpoint_url": "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/rtmpose-s_simcc-ucoco_dw-ucoco_270e-256x192-3fd922c8_20230728.pth",
+      "config_path": "tools/reference/vendor/mmpose/projects/rtmpose/rtmpose/wholebody_2d_keypoint/rtmpose-s_8xb64-270e_coco-wholebody-256x192.py",
+      "config_sha256": "b79006924228a94ac9412df1c8a9208c998d8eadfdeb9f19a9687d5411826689",
+      "inputs": [
+        {
+          "dtype": "FLOAT",
+          "name": "input",
+          "shape": [
+            "batch",
+            3,
+            256,
+            192
+          ]
+        }
+      ],
+      "onnx_bytes": 33531475,
+      "onnx_path": "models/wholebody/rtmpose_s_133.onnx",
+      "onnx_sha256": "b791032a77010398f95b112f863dbe30ad16e09ff156753fb08484ff5bf8f718",
+      "opsets": [
+        {
+          "domain": "",
+          "version": 11
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "FLOAT",
+          "name": "simcc_x",
+          "shape": [
+            "batch",
+            "MatMulsimcc_x_dim_1",
+            384
+          ]
+        },
+        {
+          "dtype": "FLOAT",
+          "name": "simcc_y",
+          "shape": [
+            "batch",
+            "MatMulsimcc_x_dim_1",
+            512
+          ]
+        }
+      ],
+      "release_status": "evaluation_only_not_cleared_for_redistribution",
+      "size": "s",
+      "source_commit": "5408bc76f5b848cf925a0d1857899011d8c5b497"
+    },
+    {
+      "archive_entries": [
+        "20230831/rtmpose_onnx/rtmpose-m_simcc-ucoco_dw-ucoco_270e-256x192-c8b76419_20230728/",
+        "20230831/rtmpose_onnx/rtmpose-m_simcc-ucoco_dw-ucoco_270e-256x192-c8b76419_20230728/deploy.json",
+        "20230831/rtmpose_onnx/rtmpose-m_simcc-ucoco_dw-ucoco_270e-256x192-c8b76419_20230728/pipeline.json",
+        "20230831/rtmpose_onnx/rtmpose-m_simcc-ucoco_dw-ucoco_270e-256x192-c8b76419_20230728/detail.json",
+        "20230831/rtmpose_onnx/rtmpose-m_simcc-ucoco_dw-ucoco_270e-256x192-c8b76419_20230728/end2end.onnx",
+        "20230831/rtmpose_onnx/rtmpose-m_simcc-ucoco_dw-ucoco_270e-256x192-c8b76419_20230728/output_onnxruntime.jpg",
+        "20230831/rtmpose_onnx/rtmpose-m_simcc-ucoco_dw-ucoco_270e-256x192-c8b76419_20230728/output_pytorch.jpg"
+      ],
+      "archive_sha256": "a4e4d56e9dc043e2171c73f5918f334509a47fde60182c1961370c7160334ac0",
+      "archive_url": "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-m_simcc-ucoco_dw-ucoco_270e-256x192-c8b76419_20230728.zip",
+      "checkpoint_path": "tools/reference/downloads/rtmpose-m_simcc-ucoco_dw-ucoco_270e-256x192-c8b76419_20230728.pth",
+      "checkpoint_sha256": "c8b7641988ce785c987b8ad156e411f328b54766d353df19aea5b08433ef1aaf",
+      "checkpoint_url": "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/rtmpose-m_simcc-ucoco_dw-ucoco_270e-256x192-c8b76419_20230728.pth",
+      "config_path": "tools/reference/vendor/mmpose/projects/rtmpose/rtmpose/wholebody_2d_keypoint/rtmpose-m_8xb64-270e_coco-wholebody-256x192.py",
+      "config_sha256": "de89214686ff1bb243bba9816f47ce887de5d2f1ba34ebee0492f36667030673",
+      "inputs": [
+        {
+          "dtype": "FLOAT",
+          "name": "input",
+          "shape": [
+            "batch",
+            3,
+            256,
+            192
+          ]
+        }
+      ],
+      "onnx_bytes": 71792372,
+      "onnx_path": "models/wholebody/rtmpose_m_133.onnx",
+      "onnx_sha256": "94ca58fa2d6c4530b6957ac9548084ebc2fa27ed71e4e01f0b73844306ed01a6",
+      "opsets": [
+        {
+          "domain": "",
+          "version": 11
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "FLOAT",
+          "name": "simcc_x",
+          "shape": [
+            "batch",
+            "MatMulsimcc_x_dim_1",
+            384
+          ]
+        },
+        {
+          "dtype": "FLOAT",
+          "name": "simcc_y",
+          "shape": [
+            "batch",
+            "MatMulsimcc_x_dim_1",
+            512
+          ]
+        }
+      ],
+      "release_status": "evaluation_only_not_cleared_for_redistribution",
+      "size": "m",
+      "source_commit": "5408bc76f5b848cf925a0d1857899011d8c5b497"
+    }
+  ],
+  "schema_version": 1
+}

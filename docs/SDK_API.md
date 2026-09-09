@@ -239,3 +239,17 @@ The Unity public layer must expose HumanVision concepts, not model/runtime imple
 ## 11. Future ABI hooks
 
 Segmentation, per-body masks, foreground RGBA, RKNN and native RTSP control will be added as separate APIs after the D0/D1 interface is stable. Do not add dummy mask functions to D0 just to “reserve” them.
+
+
+## 0.3.0 same-frame hand extension
+
+`HV_GetHandJoints(handle, expected_sequence, HV_Joint* joints, capacity)` copies
+six joints per body in GetBodies order: Left Hand/Handtip/Thumb, Right Hand/Handtip/Thumb.
+Capacity counts joints, not bodies. Mismatched sequence returns HV_NO_NEW_RESULT.
+`reserved[0]=1` on palm denotes derived from the five model hand-root/MCP landmarks;
+other endpoints are direct model predictions. Invalid landmarks stay invalid.
+A COCO-17 model returns invalid hand entries rather than fabricated positions.
+Unity exposes `HumanVisionBody.HandJoints[6]` and `HumanVisionJoint.IsDerived`;
+its reader verifies the body/hand metadata sequence before publishing either.
+`HumanVisionCameraManager.GetJointCount()` returns23; first17 enum values stay stable.
+This is not the full Kinect32 schema and does not change the old HV_Body layout.
