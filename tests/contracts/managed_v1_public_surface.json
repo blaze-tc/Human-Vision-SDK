@@ -1,0 +1,72 @@
+{
+  "root": "upm/com.blazetc.humanvision/Runtime",
+  "required": {
+    "HumanVisionBody.cs": [
+      "public readonly struct HumanVisionJoint",
+      "public const int Count = 17;",
+      "public Vector2 Pixel { get; }",
+      "public Vector2 Normalized { get; }",
+      "public float Confidence { get; }",
+      "public bool Valid { get; }",
+      "public bool IsDerived { get; }",
+      "public sealed class HumanVisionBody",
+      "public int TrackId { get; internal set; }",
+      "public Rect BoundingBoxPixels { get; internal set; }",
+      "public float DetectionConfidence { get; internal set; }",
+      "public HumanVisionJoint[] Joints { get; }",
+      "public HumanVisionJoint[] HandJoints { get; }"
+    ],
+    "HumanVisionConfig.cs": [
+      "public sealed class HumanVisionConfig",
+      "public int MaxBodies = 4;",
+      "public float DetectionThreshold = 0.35f;",
+      "public float PoseThreshold = 0.30f;",
+      "public int DetectionInterval = 1;",
+      "public bool EnableTracking = true;",
+      "public bool UseHardwareAcceleration = true;",
+      "public string DetectorModelPath;",
+      "public string PoseModelPath;",
+      "public void Validate()",
+      "public HumanVisionConfig Clone()"
+    ],
+    "HumanVisionException.cs": [
+      "public sealed class HumanVisionException : Exception",
+      "public string Operation { get; }",
+      "public int ResultCode { get; }"
+    ],
+    "HumanVisionManager.cs": [
+      "public sealed class HumanVisionManager : MonoBehaviour",
+      "public event Action<long> ResultUpdated;",
+      "public bool IsInitialized => _session != null;",
+      "public HumanVisionBody[] Bodies => _session?.Bodies;",
+      "public int BodyCount => _session?.BodyCount ?? 0;",
+      "public long ResultSequence => _session?.ResultSequence ?? 0;",
+      "public long SourceFrameId => _session?.SourceFrameId ?? -1;",
+      "public long SourceTimestampUs => _session?.SourceTimestampUs ?? 0;",
+      "public HumanVisionStats Stats => _session?.Stats ?? default;",
+      "public int MaxBodies => _session?.MaxBodies ?? config.MaxBodies;",
+      "public string LastError { get; private set; }",
+      "public bool TrySetRegions(Rect[] regions, long revision)",
+      "public bool TryCopyRegionAssignments(int[] indices, out long revision)",
+      "public bool TryInitialize(HumanVisionConfig requestedConfig)",
+      "public bool SubmitFrame( IntPtr data, int width, int height, int strideBytes, HumanVisionPixelFormat pixelFormat, long frameId, long timestampUs, int dataBytes)",
+      "public bool TrySetMaxBodies(int maxBodies)",
+      "public void Shutdown()"
+    ],
+    "HumanVisionSession.cs": [
+      "public enum HumanVisionPixelFormat { Rgba32 = 1, Bgra32 = 2, Rgb24 = 3, Bgr24 = 4 }"
+    ],
+    "HumanVisionStats.cs": [
+      "public readonly struct HumanVisionStats",
+      "public float InputFps { get; }",
+      "public float InferenceFps { get; }",
+      "public float DetectionMs { get; }",
+      "public float PoseMs { get; }",
+      "public float TrackingMs { get; }",
+      "public float TotalMs { get; }",
+      "public long SubmittedFrames { get; }",
+      "public long ProcessedFrames { get; }",
+      "public long DroppedFrames { get; }"
+    ]
+  }
+}

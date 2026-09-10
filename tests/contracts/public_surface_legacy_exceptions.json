@@ -1,0 +1,23 @@
+{
+  "exceptions": [
+    {
+      "path": "native/include/humanvision/humanvision_types.h",
+      "token": "ONNX",
+      "line": "HV_BACKEND_ONNX_CPU = 1"
+    },
+    {
+      "path": "native/include/humanvision/humanvision_types.h",
+      "token": "public-model-config",
+      "line": "const char* detector_model_path_utf8"
+    },
+    {
+      "path": "native/include/humanvision/humanvision_types.h",
+      "token": "public-model-config",
+      "line": "const char* pose_model_path_utf8"
+    }
+  ],
+  "internal_interop_files": [
+    "upm/com.blazetc.humanvision/Runtime/NativeBindings.cs",
+    "upm/com.blazetc.humanvision/Runtime/HumanVisionNativeApi.cs"
+  ]
+}

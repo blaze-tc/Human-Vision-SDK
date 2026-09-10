@@ -1,3 +1,20 @@
+# 0.4 v2 implementation (2026-09-10) — ACTIVE
+
+User approved `docs/plans/040-v2/2026-09-10-humanvision-040-master-v2.md`.
+Architecture authority: SDK_040_PLUGIN_ARCHITECTURE_ADDENDUM.md in that directory.
+Current milestone: freeze V1 ABI/Unity contracts, then introduce versioned plugin Host.
+Later runtime/model/service/Unity milestones must pass their preceding automated gates.
+Maintenance documentation and architecture guards are release requirements.
+Automated non-hardware tests are now authorized and required by the new plan.
+USER MANUAL ACCEPTANCE PENDING: Android camera, FPS, latency, accuracy, thermal,
+1/2/4/6/8 people, RTSP. No physical-device performance claims.
+Cleanup is limited to audited regenerable artifacts; user data and dependencies stay.
+
+Historical preview.5: source/tag e8f16eb pushed; Release remains draft as work moved
+to 0.4. This does not constitute 0.4 implementation or acceptance.
+
+---
+
 # 0.3.0-preview.5 Android pose continuity (2026-09-10)
 
 Active user request: analyze the supplied Android recordings and fix flicker/stalls.

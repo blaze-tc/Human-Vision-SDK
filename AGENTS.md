@@ -2,6 +2,18 @@
 
 ## Project Goal
 
+### Active user-approved plan (2026-09-10)
+
+The 0.4 v2 plan in `docs/plans/040-v2/` supersedes earlier stage restrictions.
+Read `SDK_040_PLUGIN_ARCHITECTURE_ADDENDUM.md`, the master-v2 plan and maintenance
+documentation contract first; LEGACY plans apply only where they do not conflict.
+Target: stable Unity/C ABI, Runtime Host, versioned C plugin ABI, replaceable
+pipeline/backend plugins, model packs/profiles, common services and batched renderer.
+Automated non-hardware testing is required; physical device acceptance belongs to
+the user. Publish v0.4.0-preview.1 only after implementation, maintenance docs and
+architecture/package checks pass. Preserve the existing V1 ABI exactly.
+Future maintenance starts at `docs/maintenance/START_HERE.md` once created.
+
 ### Active user-approved plan (2026-09-07)
 
 The user has prioritized independent SDK skeleton acceptance before

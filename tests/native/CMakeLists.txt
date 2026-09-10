@@ -72,6 +72,22 @@ endif()
 
 gtest_discover_tests(humanvision_native_tests)
 
+add_executable(humanvision_api_contract_tests
+    test_api_contract.cpp)
+
+target_link_libraries(humanvision_api_contract_tests
+    PRIVATE
+        HumanVision::Core
+        GTest::gtest_main)
+
+target_compile_features(humanvision_api_contract_tests PRIVATE cxx_std_17)
+
+if(MSVC)
+    target_compile_options(humanvision_api_contract_tests PRIVATE /W4 /permissive-)
+endif()
+
+add_test(NAME api_contract COMMAND humanvision_api_contract_tests)
+
 if(MSVC)
     get_filename_component(HV_MSVC_BIN_DIRECTORY "${CMAKE_LINKER}" DIRECTORY)
     set(HV_DUMPBIN_PATH "${HV_MSVC_BIN_DIRECTORY}/dumpbin.exe")
