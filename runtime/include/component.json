@@ -1,0 +1,1 @@
+{"id":"plugin.abi","type":"contract","version":"1.0.0","api_version":1,"capabilities":["pipeline_contract","backend_contract","semantic_observations"],"dependencies":[],"test_targets":["humanvision_plugin_c_contract","humanvision_plugin_tests"]}

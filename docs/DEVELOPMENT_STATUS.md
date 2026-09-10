@@ -2,7 +2,13 @@
 
 User approved `docs/plans/040-v2/2026-09-10-humanvision-040-master-v2.md`.
 Architecture authority: SDK_040_PLUGIN_ARCHITECTURE_ADDENDUM.md in that directory.
-Current milestone: freeze V1 ABI/Unity contracts, then introduce versioned plugin Host.
+Completed foundation: V1 ABI/Unity contract snapshots; versioned C plugin ABI and
+generic Runtime Host/registry. Native regression: 36/36 passed via
+`tools/test/run_native_tests.ps1`; Windows/Android builds passed via
+`tools/package/build_live_native.ps1`. Public-surface checker intentionally retains
+three existing model-path findings until semantic Unity migration.
+Current milestone: capability resolution, validated ModelPacks and Profiles.
+Production recognizer plugins and Unity V2 integration are not yet implemented.
 Later runtime/model/service/Unity milestones must pass their preceding automated gates.
 Maintenance documentation and architecture guards are release requirements.
 Automated non-hardware tests are now authorized and required by the new plan.
