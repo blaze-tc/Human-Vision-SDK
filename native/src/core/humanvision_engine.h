@@ -9,6 +9,7 @@
 #include "tracking/i_body_tracker.h"
 
 #include <cstdint>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -56,7 +57,8 @@ private:
     std::mutex detector_mutex_;
     std::condition_variable detector_condition_;
     std::thread detector_worker_;
-    bool detector_stop_ = false, detector_pending_ = false;
+    bool detector_stop_ = false, detector_pending_ = false, detector_busy_ = false;
+    std::chrono::steady_clock::time_point detector_completed_{};
     FrameBuffer detector_frame_;
     RuntimeConfig detector_config_;
     std::vector<HV_Rect> detector_regions_;

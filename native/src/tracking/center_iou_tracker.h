@@ -20,10 +20,15 @@ public:
         std::int64_t timestamp_us,
         std::vector<TrackedDetection>& output) override;
 
+    void ObservePose(int track_id, const Detection& crop, std::int64_t timestamp_us) override;
+    void RejectPose(int track_id) override;
 private:
     struct Track {
         int id = -1;
         Detection detection;
+        Detection detector_anchor;
+        std::int64_t pose_timestamp_us = 0;
+        bool pose_rejected = false;
         float velocity_x_per_us = 0.0F;
         float velocity_y_per_us = 0.0F;
         std::int64_t timestamp_us = 0;

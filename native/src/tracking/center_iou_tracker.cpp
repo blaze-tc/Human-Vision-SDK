@@ -106,8 +106,13 @@ void CenterIouTracker::Update(
              detection_index < detections.size();
              ++detection_index) {
             bool eligible = false;
-            const float cost =
-                MatchCost(predicted, detections[detection_index], eligible);
+            float cost = MatchCost(predicted, detections[detection_index], eligible);
+            // A delayed detector observes an older image than the pose crop.
+            if (track.pose_timestamp_us > timestamp_us) {
+                bool anchor_eligible = false;
+                const float anchor_cost = MatchCost(track.detector_anchor, detections[detection_index], anchor_eligible);
+                if (anchor_eligible && (!eligible || anchor_cost < cost)) { cost = anchor_cost; eligible = true; }
+            }
             if (eligible) {
                 candidates.push_back(MatchCandidate{
                     track_index, detection_index, cost, track.id});
@@ -143,8 +148,13 @@ void CenterIouTracker::Update(
                 (CenterY(detection) - CenterY(track.detection)) /
                 static_cast<float>(delta_us);
         }
-        track.detection = detection;
-        track.timestamp_us = timestamp_us;
+        track.detector_anchor = detection;
+        if (track.pose_timestamp_us <= timestamp_us) {
+            track.detection = detection;
+            track.timestamp_us = timestamp_us;
+            track.pose_timestamp_us = 0; // A newer detection can reacquire an expired pose.
+            track.pose_rejected = false;
+        }
         track.lost_frames = 0;
         output[candidate.detection_index].track_id = track.id;
         matched_tracks[candidate.track_index] = true;
@@ -170,6 +180,7 @@ void CenterIouTracker::Update(
         Track track;
         track.id = next_track_id_++;
         track.detection = detections[index];
+        track.detector_anchor = detections[index];
         track.timestamp_us = timestamp_us;
         tracks_.push_back(track);
         output[index].track_id = track.id;
@@ -182,7 +193,13 @@ void CenterIouTracker::Predict(
     output.clear();
     output.reserve(tracks_.size());
     for (const Track& track : tracks_) {
-        if (track.lost_frames != 0) continue;
+        if (track.pose_rejected) continue;
+        if (track.pose_timestamp_us > 0) {
+            // This is a crop retry budget, not permission to publish old joints.
+            // Several people can take over 500ms on a slow device; validate their
+            // next image before deciding they disappeared.
+            if (timestamp_us < track.pose_timestamp_us || timestamp_us - track.pose_timestamp_us > 3000000) continue;
+        } else if (track.lost_frames != 0) continue;
         // Predict only a crop, never joints; limit extrapolation after a slow detector.
         const std::int64_t delta_us = std::min<std::int64_t>(250000, std::max<std::int64_t>(
             0, timestamp_us - track.timestamp_us));
@@ -192,6 +209,21 @@ void CenterIouTracker::Predict(
             track.velocity_y_per_us * static_cast<float>(delta_us));
         output.push_back(TrackedDetection{predicted, track.id});
     }
+}
+
+void CenterIouTracker::ObservePose(int track_id, const Detection& crop, std::int64_t timestamp_us) {
+    for (auto& track : tracks_) if (track.id == track_id) {
+        track.detection = crop;
+        track.timestamp_us = track.pose_timestamp_us = timestamp_us;
+        track.velocity_x_per_us = track.velocity_y_per_us = 0;
+        track.lost_frames = 0;
+        track.pose_rejected = false;
+        return;
+    }
+}
+
+void CenterIouTracker::RejectPose(int track_id) {
+    for (auto& track : tracks_) if (track.id == track_id) { track.pose_rejected = true; return; }
 }
 
 }  // namespace humanvision

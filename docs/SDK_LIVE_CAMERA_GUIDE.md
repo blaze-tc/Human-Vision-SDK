@@ -1,4 +1,4 @@
-# HumanVision Live Camera SDK 0.3.0-preview.4
+# HumanVision Live Camera SDK 0.3.0-preview.5
 
 本次按用户要求只交付代码、编译和封装，**没有运行新功能测试**。
 Windows 摄像头、RTSP、Android 发布和区域交互等待用户实测。
@@ -6,7 +6,7 @@ Windows 摄像头、RTSP、Android 发布和区域交互等待用户实测。
 
 ## 导入与运行
 
-1. 使用修正版 `HumanVisionSDK-0.3.0-preview.4.unitypackage`，通过
+1. 使用修正版 `HumanVisionSDK-0.3.0-preview.5.unitypackage`，通过
    `Assets > Import Package > Custom Package` 导入 Unity。建议先导入空项目；
    支持目标为 Windows x64 Editor/Player、Android ARM64。
    编译使用 Unity 2021.3.45f1 的程序集；推荐 2021.3/2022.3 LTS。
@@ -145,31 +145,31 @@ Git UPM 包与 unitypackage 为两种安装方式，不要同时安装。见 UPM
 
 NNAPI behavior reference: https://onnxruntime.ai/docs/execution-providers/NNAPI-ExecutionProvider.html
 
-## 0.3.0-preview.4 Detector bottleneck correction
+## 0.3.0-preview.5 Android tracking continuity
 
-User measurements from preview.3: detector1073–1086ms, pose60–86ms, pipeline0.9FPS,
-source age1811–2311ms. The detector is the measured dominant stage. Whether NNAPI
-partitioning or another device-specific cost caused all of the regression is not established.
-The old500ms source-time detector deadline also retriggered immediately after each
-one-second detector pass, so skipping every second pass did not help.
+The supplied phone recordings show 535-892 ms detector passes and repeated
+zero-body snapshots while people remain visible. Preview.4 reset all tracks when
+the detector source exceeded 1200 ms, even when current-image pose could continue.
+Its pending detector queue also kept the CPU detector continuously busy.
 
-Android now uses a dedicated CPU detector thread and a separate pose thread (pose
-AUTO still requests NNAPI with CPU fallback). The pose thread refreshes the detector's
-single pending image up to5Hz; inference never holds the queue mutex. Region masks
-are applied before both branches. Detector snapshots carry source timestamp, image
-size and region revision; wrong-coordinate or older-than1200ms crops are rejected.
-The pose thread always runs the model on its current input frame; it does not reuse
-or fabricate joints. Tracker crop prediction is non-mutating and capped at250ms;
-unmatched detections are not resurrected. A valid zero-person detector result clears
-old tracks. Stop joins both workers before destroying their models.
+Android now refreshes each tracked crop from successful current-image body joints.
+Delayed detections cannot overwrite a newer pose crop. The 1200 ms detector seed
+limit no longer clears pose-validated tracks. A crop can be retried for up to 3 s
+across a slow frame, but every published skeleton still requires new model inference;
+no old joints are republished. Fewer than five valid body joints or two torso joints
+rejects the pose and retires that crop. Real palm, fingertip and thumb outputs remain.
 
-Detector/Pose milliseconds are parallel stage costs on Android and must not be added
-to interpret pose-frame latency. HUD Pose FPS is now a recent half-second processed
-rate, not the lifetime average. The core cumulative counters retain their original API.
-No30FPS claim: the provided single-body60–86ms pose timings alone exceed a33ms budget.
-This release addresses the long detector stall; phone validation is still required.
+The detector accepts the newest image only when idle. While tracks exist it pauses
+500 ms after completion, or 1000 ms when all requested places are occupied. With no
+tracks it searches immediately. This reduces CPU contention; it does not make the
+underlying model a 30 FPS model. New-person discovery may take the pause plus one
+full detector pass. Region masking and orientation revision rejection remain active.
 
-Verification: Windows x64 and Android ARM64 native builds; managed Runtime/Demo/Editor
-and Android conditional compilation. No unit/integration/Unity runtime/phone tests run
-per user instruction. Rebuild the APK after updating the Git package; scenes and models
-need not be deleted or recreated.
+HUD explicitly distinguishes an empty result from a valid skeleton; Pose FPS counts
+only frames containing valid poses. Detector and pose timings are parallel costs.
+Windows retains its existing sequential path.
+
+Verification: native Windows/Android and managed compilation; archive/hash checks.
+No unit/integration/Unity runtime/phone tests were run, per the user's instruction.
+Actual device continuity, latency, reacquisition and fresh pose FPS require retesting.
+Update the Git version and rebuild the APK; no scene recreation is required.

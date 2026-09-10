@@ -23,6 +23,9 @@ public:
     virtual void Predict(
         std::int64_t timestamp_us,
         std::vector<TrackedDetection>& output) = 0;
+    // Current-image pose observations refresh only the crop, never synthesize joints.
+    virtual void ObservePose(int track_id, const Detection& crop, std::int64_t timestamp_us) = 0;
+    virtual void RejectPose(int track_id) = 0;
 };
 
 }  // namespace humanvision

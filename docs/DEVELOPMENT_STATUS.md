@@ -1,3 +1,27 @@
+# 0.3.0-preview.5 Android pose continuity (2026-09-10)
+
+Active user request: analyze the supplied Android recordings and fix flicker/stalls.
+Evidence: detector 535-892 ms, intermittent zero-body output with people visible.
+Root cause in preview.4: detector age expiry reset all tracks; pending detector
+requests kept CPU inference busy. Pose crop refresh was absent.
+Implemented fresh-pose crop feedback, preservation against delayed detector updates,
+pose validity rejection, idle-only detector submission with 500/1000 ms search pauses,
+and explicit empty-result HUD. No joint interpolation or stale joint republication.
+
+Acceptance for user device retest: sustained current-image skeletons while stationary
+and moving; disappear after leaving; reacquire on return; preserve region IDs and hands;
+compare valid Pose FPS and result age, including two people and orientation changes.
+30 fresh complete skeleton FPS/person for eight people remains NOT accepted.
+
+Builds: tools/package/build_live_native.ps1 (Windows x64 and Android ARM64) PASS;
+tools/package/compile_managed.ps1 PASS (existing CS0649 warning only).
+Runtime/unit/integration/phone tests omitted per user instruction.
+Archive check: out/inspect_release035.py PASS: 59 Unity assets, 141 UPM files,
+77 unique GUIDs; manifests, models and archive bytes match.
+Publication target: main and v0.3.0-preview.5.
+
+---
+
 # 0.3.0-preview.4 Android detector stall correction (2026-09-09)
 
 Active user request: improve persistent skeleton stutter. User screenshots show

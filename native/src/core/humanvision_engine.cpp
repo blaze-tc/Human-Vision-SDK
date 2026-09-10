@@ -311,6 +311,8 @@ void HumanVisionEngine::DetectorLoop() {
             detector_result_.width = frame.width; detector_result_.height = frame.height;
             detector_result_.revision = revision; detector_result_.timestamp_us = frame.timestamp_us;
             detector_result_.elapsed_ms = elapsed; ++detector_result_.sequence;
+            detector_busy_ = false;
+            detector_completed_ = std::chrono::steady_clock::now();
         }
     }
 }
@@ -373,16 +375,20 @@ void HumanVisionEngine::WorkerLoop() {
         bool run_detector = false;
         {
             std::lock_guard<std::mutex> lock(detector_mutex_);
-            // Refresh the pending detector image at 5 Hz. Detector inference never
-            // holds this mutex and never blocks the pose worker.
-            if (last_detector_submit < 0 || frame.timestamp_us < last_detector_submit ||
-                    frame.timestamp_us - last_detector_submit >= 200000) {
+            // Do not queue work behind a slow detector. Use the newest image when
+            // it is idle, and leave CPU time for pose while current tracks are valid.
+            const auto detector_idle_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - detector_completed_).count();
+            const int search_pause_ms = tracked_detections.empty() ? 0 :
+                (tracked_detections.size() >= static_cast<size_t>(max_bodies) ? 1000 : 500);
+            if (!detector_busy_ && (last_detector_submit < 0 || detector_idle_ms >= search_pause_ms)) {
                 detector_frame_ = frame;
                 detector_config_.max_bodies = max_bodies;
                 detector_config_.detection_threshold = detection_threshold;
                 detector_regions_.assign(regions.begin(), regions.end());
                 detector_request_revision_ = region_revision;
                 detector_pending_ = true;
+                detector_busy_ = true;
                 last_detector_submit = frame.timestamp_us;
                 detector_condition_.notify_one();
             }
@@ -398,7 +404,9 @@ void HumanVisionEngine::WorkerLoop() {
                 run_detector = true;
             }
         }
-        if (!detector_ready) { tracker_->Reset(); detections.clear(); tracked_detections.clear(); detector_sequence = -1; }
+        // Seed age limits apply to new detector observations, not to tracks whose
+        // crops are being validated against fresh image pixels by pose below.
+        if (!detector_ready && !enable_tracking) detections.clear();
 #else
         // Pose (including hands) still runs on every processed frame. Reuse only
         // the short-lived tracked crop between detector passes, even with masks.
@@ -519,6 +527,41 @@ void HumanVisionEngine::WorkerLoop() {
                 for (auto& joint : body.joints) if (RegionAt(regions, joint.x_norm, joint.y_norm) != region) joint.valid = 0;
                 for (auto& joint : hands) if (RegionAt(regions, joint.x_norm, joint.y_norm) != region) joint.valid = 0;
             }
+#if defined(__ANDROID__)
+            int visible_joints = 0, torso_joints = 0;
+            float left = static_cast<float>(frame.width), top = static_cast<float>(frame.height), right = 0, bottom = 0;
+            for (int j = 0; j < HV_JOINT_COUNT; ++j) if (body.joints[j].valid) {
+                const auto& point = body.joints[j];
+                ++visible_joints;
+                if (j == 5 || j == 6 || j == 11 || j == 12) ++torso_joints;
+                left = std::min(left, point.x_px); right = std::max(right, point.x_px);
+                top = std::min(top, point.y_px); bottom = std::max(bottom, point.y_px);
+            }
+            if (visible_joints < 5 || torso_joints < 2) {
+                tracker_->RejectPose(tracked.track_id);
+                continue;
+            }
+            if (enable_tracking) {
+                // Keep space for temporarily occluded limbs; do not collapse the
+                // crop to just the face. This crop is for the NEXT real inference.
+                const float width = std::max((right - left) * 1.3F, body.bbox_px.width * .95F);
+                const float height = std::max((bottom - top) * 1.3F, body.bbox_px.height * .95F);
+                const float cx = (left + right) * .5F, cy = (top + bottom) * .5F;
+                Detection crop = detection;
+                crop.x1 = std::max(0.0F, cx - width * .5F);
+                crop.y1 = std::max(0.0F, cy - height * .5F);
+                crop.x2 = std::min(static_cast<float>(frame.width), cx + width * .5F);
+                crop.y2 = std::min(static_cast<float>(frame.height), cy + height * .5F);
+                if (region >= 0) {
+                    const auto& bounds = regions[region];
+                    crop.x1 = std::max(crop.x1, bounds.x * frame.width);
+                    crop.y1 = std::max(crop.y1, bounds.y * frame.height);
+                    crop.x2 = std::min(crop.x2, (bounds.x + bounds.width) * frame.width);
+                    crop.y2 = std::min(crop.y2, (bounds.y + bounds.height) * frame.height);
+                }
+                tracker_->ObservePose(tracked.track_id, crop, frame.timestamp_us);
+            }
+#endif
             snapshot.bodies.push_back(body);
             snapshot.hands.insert(snapshot.hands.end(), hands.begin(), hands.end());
             snapshot.region_indices.push_back(region);
@@ -536,7 +579,7 @@ void HumanVisionEngine::WorkerLoop() {
         ++processed_input_frames_;
 #if defined(__ANDROID__)
         // Polling for a first detection is not a completed inference.
-        if (detector_ready && (!snapshot.bodies.empty() || run_detector)) stats_.RecordProcessed(timings);
+        if (!snapshot.bodies.empty()) stats_.RecordProcessed(timings);
         else stats_.RecordTimings(timings);
 #else
         stats_.RecordProcessed(timings);
