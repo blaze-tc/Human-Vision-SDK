@@ -135,6 +135,7 @@ typedef struct HV_PluginApiV1 {
     uint32_t max_people;
     const HV_PipelineApiV1* pipeline;
     const HV_BackendApiV1* backend;
+    int32_t priority; /* Higher preference for automatic backend selection. */
 } HV_PluginApiV1;
 
 typedef HV_Result (HV_CALL *HV_QueryPluginFn)(uint32_t requested_api, HV_PluginApiV1*);

@@ -7,7 +7,16 @@ generic Runtime Host/registry. Native regression: 36/36 passed via
 `tools/test/run_native_tests.ps1`; Windows/Android builds passed via
 `tools/package/build_live_native.ps1`. Public-surface checker intentionally retains
 three existing model-path findings until semantic Unity migration.
-Current milestone: capability resolution, validated ModelPacks and Profiles.
+Task 3 complete (2026-09-11): capability resolution, validated ModelPacks and Profiles.
+`tools/test/run_native_tests.ps1 -Fresh`: 40/40 PASS, 7.88 seconds.
+`tools/package/build_live_native.ps1 -Fresh`: Windows x64 and Android ARM64 PASS.
+Regression first exposed automatic selection accepting a pipeline as a backend;
+selection now checks plugin type as well as capability, and retains fallback reasons.
+Fresh builds also exposed MSVC localized include-prefix encoding preventing Ninja
+header dependencies from being recorded. UTF-8 command code page fixes this;
+`ninja -t deps` now lists humanvision_plugin.h in both Windows build directories.
+Current milestone: wrap the existing recognizer as a Pipeline Plugin and verify
+real model observations through the generic Host.
 Production recognizer plugins and Unity V2 integration are not yet implemented.
 Later runtime/model/service/Unity milestones must pass their preceding automated gates.
 Maintenance documentation and architecture guards are release requirements.

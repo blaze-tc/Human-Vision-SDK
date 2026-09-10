@@ -117,3 +117,5 @@ if(WIN32)
     target_compile_definitions(humanvision_plugin_tests PRIVATE HV_TEST_PLUGIN_PATH="$<TARGET_FILE:humanvision_fixture_plugin>")
     add_dependencies(humanvision_plugin_tests humanvision_fixture_plugin)
 endif()
+
+target_sources(humanvision_plugin_tests PRIVATE ../runtime/test_model_profiles.cpp)

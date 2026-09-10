@@ -1,17 +1,23 @@
 param(
     [string]$VisualStudio = 'D:/Microsoft Visual Studio',
-    [string]$AndroidNdk = 'D:/Developer/2021.3.45f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK'
+    [string]$AndroidNdk = 'D:/Developer/2021.3.45f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK',
+    [switch]$Fresh
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path "$PSScriptRoot/../..").Path.Replace('\','/')
 $cmake = "$VisualStudio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
 $ninja = "$VisualStudio/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe"
+$freshArg = if ($Fresh) { '--fresh' } else { '' }
+$cleanArg = if ($Fresh) { '--clean-first' } else { '' }
 $batch = @"
 @echo off
 call "$VisualStudio/Common7/Tools/VsDevCmd.bat" -arch=x64 -host_arch=x64 -vcvars_ver=14.44
-"$cmake" -S "$root" -B "$root/build/windows-live" -G "Ninja Multi-Config" -DBUILD_TESTING=OFF -DHV_USE_DIRECTML=ON -DHV_ENABLE_RTSP=ON -DHV_ONNXRUNTIME_ROOT="$root/out/hv-ort-dml" -DHV_DIRECTML_ROOT="$root/out/directml-1.15.4" -DHV_FFMPEG_INCLUDE="$root/out/live-deps/ffmpeg-headers" -DHV_FFMPEG_LIB_DIR="$root/out/live-deps/ffmpeg-windows"
 if errorlevel 1 exit /b 1
-"$cmake" --build "$root/build/windows-live" --config Release --target humanvision
+set VSLANG=1033
+chcp 65001 >nul
+"$cmake" $freshArg -S "$root" -B "$root/build/windows-live" -G "Ninja Multi-Config" -DBUILD_TESTING=OFF -DHV_USE_DIRECTML=ON -DHV_ENABLE_RTSP=ON -DHV_ONNXRUNTIME_ROOT="$root/out/hv-ort-dml" -DHV_DIRECTML_ROOT="$root/out/directml-1.15.4" -DHV_FFMPEG_INCLUDE="$root/out/live-deps/ffmpeg-headers" -DHV_FFMPEG_LIB_DIR="$root/out/live-deps/ffmpeg-windows"
+if errorlevel 1 exit /b 1
+"$cmake" --build "$root/build/windows-live" --config Release --target humanvision $cleanArg
 "@
 $batchPath = "$root/out/build-live-windows.cmd"
 $batch | Set-Content $batchPath -Encoding ascii

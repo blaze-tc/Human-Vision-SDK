@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 
 namespace humanvision::runtime {
 struct PluginModule {
@@ -21,6 +22,7 @@ public:
     bool Register(HV_QueryPluginFn query, std::string& error);
     bool Load(const std::filesystem::path& path, std::string& error);
     std::shared_ptr<const PluginModule> Find(const std::string& id, uint64_t capabilities, std::string& error) const;
+    std::vector<std::shared_ptr<const PluginModule>> List(uint64_t capabilities) const;
 private:
     bool RegisterModule(HV_QueryPluginFn query, std::shared_ptr<PluginModule> module, std::string& error);
     mutable std::mutex mutex_;

@@ -1,1 +1,22 @@
-{"id":"runtime.host","type":"host","version":"0.4.0-preview.1","api_version":1,"capabilities":["latest_frame","plugin_registry","dynamic_windows","static_registration"],"dependencies":["plugin.abi","core.latest_frame_slot"],"test_targets":["humanvision_plugin_tests","humanvision_plugin_c_contract"]}
+{
+  "id": "runtime.host",
+  "type": "host",
+  "version": "0.4.0-preview.1",
+  "api_version": 1,
+  "capabilities": [
+    "latest_frame",
+    "plugin_registry",
+    "dynamic_windows",
+    "static_registration",
+    "model_pack_validation",
+    "profile_resolution"
+  ],
+  "dependencies": [
+    "plugin.abi",
+    "core.latest_frame_slot"
+  ],
+  "test_targets": [
+    "humanvision_plugin_tests",
+    "humanvision_plugin_c_contract"
+  ]
+}

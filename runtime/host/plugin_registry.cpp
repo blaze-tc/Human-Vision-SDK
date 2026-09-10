@@ -1,5 +1,6 @@
 #include "host/plugin_registry.h"
 #include <exception>
+#include <algorithm>
 #if defined(_WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -71,5 +72,13 @@ std::shared_ptr<const PluginModule> PluginRegistry::Find(const std::string& id, 
         error = "Plugin lacks requested capabilities: " + id; return {};
     }
     error.clear(); return found->second;
+}
+
+std::vector<std::shared_ptr<const PluginModule>> PluginRegistry::List(uint64_t capabilities) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::shared_ptr<const PluginModule>> result;
+    for (const auto& entry : modules_) if ((entry.second->api.capabilities & capabilities) == capabilities) result.push_back(entry.second);
+    std::stable_sort(result.begin(), result.end(), [](const auto& a, const auto& b) { return a->api.priority > b->api.priority; });
+    return result;
 }
 }
