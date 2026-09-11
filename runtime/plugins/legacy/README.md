@@ -10,9 +10,10 @@ source timestamps; does not assign track IDs, regions or presentation indices.
 COCO-17 joints are mapped inside this adapter; unsupported canonical joints remain
 invalid. No fabricated hand points or temporal samples are emitted.
 
-This migration adapter currently uses the existing CPU backend internally. It is
-not the final accelerated 0.4 default. Backend injection and the new pipelines are
-subsequent milestones. Requested ROI processing is explicitly rejected; full-frame
+This migration adapter obtains both model sessions through HostServices; it no
+longer instantiates a concrete execution backend. BackendFactory tries the configured
+candidate order and leases the selected plugin. The adapter is not the final 0.4
+default. Requested ROI processing is explicitly rejected; full-frame
 region masking belongs to common services.
 
 Allowed dependencies: plugin ABI, shared configuration utilities, existing native

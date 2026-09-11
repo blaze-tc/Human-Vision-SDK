@@ -1,5 +1,7 @@
 #include "plugins/legacy/legacy_pipeline.h"
 #include "host/runtime_host.h"
+#include "host/backend_factory.h"
+#include "plugins/backend/ort/ort_plugin.h"
 #include "test_support.h"
 #include <gtest/gtest.h>
 #include <chrono>
@@ -12,7 +14,9 @@ TEST(LegacyPlugin, RealModelsPublishSemanticObservationsThroughHost) {
     const std::string manifest=R"({"models":[{"role":"detector","asset_path":"models/detector/rtmdet_tiny_640.onnx"},{"role":"body","asset_path":"models/pose/rtmpose_s_256x192.onnx"}]})";
     HV_PipelineConfigV1 config{};config.struct_size=sizeof(config);config.api_version=HV_PLUGIN_API_V1;
     config.max_bodies=2; config.asset_root_utf8=HV_TEST_PROJECT_ROOT;config.model_manifest_utf8=manifest.c_str();
-    HV_HostServicesV1 services{};services.struct_size=sizeof(services);services.api_version=HV_PLUGIN_API_V1;
+    ASSERT_TRUE(registry.Register(HV_QueryOrtCpuPlugin,error));
+    BackendFactory factory({registry.Find("backend.ort.cpu",HV_CAP_TENSOR_INFERENCE,error)});
+    auto services=factory.Services();
     RuntimeHost host;
     ASSERT_TRUE(host.Start(registry.Find("pipeline.legacy",HV_CAP_BODY_POSE,error),config,services,error))<<error;
     auto pixels=humanvision::test::ReadBytes(HV_TEST_RAW_IMAGE_PATH);

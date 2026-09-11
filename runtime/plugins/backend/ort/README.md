@@ -3,7 +3,8 @@
 Current implementation: `backend.ort.cpu`, registered with `HV_QueryOrtCpuPlugin`.
 `HV_QueryOrtAcceleratedPlugin` additionally registers `backend.ort.directml` in
 Windows DirectML builds or `backend.ort.nnapi` on Android. CPU-only builds reject
-that query. Profile fallback orchestration and pipeline injection are still pending.
+that query. BackendFactory now handles ordered creation fallback and the legacy
+pipeline requests model sessions through HostServices.
 
 Session diagnostics report the requested provider, the provider configured in the
 current session and any NNAPI registration/session/run failure that led to CPU

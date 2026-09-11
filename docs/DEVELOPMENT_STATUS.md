@@ -24,6 +24,14 @@ After final metadata/ROI validation edits, `-Filter LegacyPlugin`: 1/1 PASS.
 The adapter has no identity/region ownership, does not synthesize missing hands,
 and uses the legacy CPU backend pending backend-plugin migration.
 Current milestone: implement/refactor Backend Plugins and session diagnostics.
+Latest increment: BackendFactory provides ordered creation fallback, failure
+diagnostics and independent module/session lifetime. Legacy detector and pose now
+request injected backend sessions through HostServices instead of constructing ORT.
+`tools/test/run_native_tests.ps1`: 46/46 PASS (10.39 seconds), including real-model
+golden integration and creation-fallback lifetime tests.
+`tools/package/build_live_native.ps1`: Windows x64 / Android ARM64 PASS.
+Optional QNN and final Task 5 review remain; generic run-time provider retry is not
+implemented (NNAPI retains its own recovery). No device performance claim.
 Latest Task 5 increment: compiled-platform DirectML/NNAPI plugin query added.
 Session diagnostics now preserve NNAPI registration, session-creation and run-time
 fallback errors, and report the current configured provider. Accelerator flag is
@@ -31,15 +39,14 @@ provider configuration only, not measured graph coverage or device acceleration.
 Verification: full native regression 44/44 PASS; subsequent capability-query test
 and final focused backend/diagnostic suite 4/4 PASS. Final Windows x64 and Android
 ARM64 builds PASS via `tools/package/build_live_native.ps1`.
-Remaining Task 5: generic fallback/session orchestration, pipeline injection and
-optional QNN integration; physical accelerator execution remains user acceptance.
+Remaining Task 5: optional QNN integration and final review;
+physical accelerator execution remains user acceptance.
 Task 5 in progress: `backend.ort.cpu` now exposes real single-input float32 tensor
 inference through the C plugin ABI, with shape/overflow validation and CPU diagnostics.
 Unsupported accelerator requests fail explicitly. BackendPlugin fixture tests added.
 Latest verification: `tools/test/run_native_tests.ps1` 43/43 PASS (10.37 seconds);
 `tools/package/build_live_native.ps1` Windows x64 / Android ARM64 PASS.
-Fallback orchestration and pipeline injection remain
-pending; Task 5 is not complete and this change does not optimize phone inference yet.
+Task 5 is not complete and this change does not establish phone performance.
 New production pipelines and Unity V2 integration are not yet implemented.
 Later runtime/model/service/Unity milestones must pass their preceding automated gates.
 Maintenance documentation and architecture guards are release requirements.

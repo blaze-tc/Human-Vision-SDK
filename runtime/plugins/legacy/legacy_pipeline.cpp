@@ -1,5 +1,5 @@
 #include "plugins/legacy/legacy_pipeline.h"
-#include "backend/onnx/onnx_runtime_backend.h"
+#include "common/plugin_backend.h"
 #include "models/rtmdet/rtmdet_model.h"
 #include "models/rtmpose/rtmpose_model.h"
 #include "common/config_io.h"
@@ -12,8 +12,9 @@ namespace {
 using namespace humanvision;
 // Transitional recognizer only: no identity, region assignment or rendering state.
 struct Instance {
-    RtmdetModel detector{std::make_unique<OnnxRuntimeBackend>()};
-    RtmposeModel pose{std::make_unique<OnnxRuntimeBackend>()};
+    explicit Instance(HV_HostServicesV1 services):detector(std::make_unique<humanvision::runtime::PluginBackend>(services)),pose(std::make_unique<humanvision::runtime::PluginBackend>(services)){}
+    RtmdetModel detector;
+    RtmposeModel pose;
     FrameBuffer frame;
     std::vector<Detection> detections;
     int capacity=1;
@@ -23,13 +24,14 @@ void Error(HV_ErrorBufferV1* out,const std::string& message) {
     const auto size=std::min(message.size(),static_cast<size_t>(out->capacity-1));
     std::memcpy(out->data,message.data(),size);out->data[size]=0;
 }
-HV_Result HV_CALL Create(const HV_PipelineConfigV1* config,const HV_HostServicesV1*,void** out,HV_ErrorBufferV1* error) {
+HV_Result HV_CALL Create(const HV_PipelineConfigV1* config,const HV_HostServicesV1* services,void** out,HV_ErrorBufferV1* error) {
     if (!out) return HV_ERR_INVALID_ARGUMENT;
     *out=nullptr;
+    if(!services||services->struct_size<sizeof(*services)||services->api_version!=HV_PLUGIN_API_V1||!services->create_backend||!services->release_backend)return HV_ERR_INVALID_ARGUMENT;
     if(!config || config->struct_size<sizeof(*config) || config->api_version!=HV_PLUGIN_API_V1 ||
         config->max_bodies<1 || config->max_bodies>HV_MAX_PEOPLE || !config->model_manifest_utf8 || !config->asset_root_utf8) return HV_ERR_INVALID_ARGUMENT;
     try {
-        auto instance=std::make_unique<Instance>();instance->capacity=config->max_bodies;
+        auto instance=std::make_unique<Instance>(*services);instance->capacity=config->max_bodies;
         const auto manifest=nlohmann::json::parse(config->model_manifest_utf8);
         std::filesystem::path detector,body;
         for (const auto& model:manifest.at("models")) {

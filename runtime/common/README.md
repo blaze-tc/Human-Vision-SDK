@@ -7,3 +7,8 @@ on one another. File/hash work must stay outside the per-frame path.
 
 Dependencies: C++ filesystem and vendored nlohmann JSON. Verified by PackTest path,
 schema and model-integrity cases in `humanvision_plugin_tests`.
+
+`plugin_backend.h` adapts the legacy internal tensor interface to HostServices and
+the C tensor ABI. It copies borrowed output data into reusable legacy buffers and
+supports at most 16 float32 outputs. It must not select concrete backend IDs.
+Real-model integration is verified by LegacyPlugin in humanvision_native_tests.

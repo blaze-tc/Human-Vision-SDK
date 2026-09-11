@@ -42,6 +42,16 @@ an absolute Windows DLL path. Required capabilities are checked before selection
 Do not add recognizer-name switches in Host. Registry module handles remain alive as
 long as an instance retains its shared module. Pipeline instances are destroyed first.
 
+## Backend sessions
+BackendFactory exposes HostServices from an immutable ordered candidate list.
+Creation failures try the next candidate; partial instances are destroyed and
+the failed plugin IDs/reasons are included in session diagnostics. Returned leases
+retain modules independently of factory/registry lifetime. Keep the factory alive
+while callers may create more sessions. Release does not dereference factory state.
+The generic dispatcher does not retry inference on another provider after a run
+failure; provider-specific recovery remains inside the backend (currently NNAPI).
+No model/provider ID switches belong in this dispatcher.
+
 ## Common symptoms
 Missing plugin IDs, API-version mismatch, missing callbacks, outdated frame metadata,
 shutdown races, dropped pending images. A slow model belongs to its pipeline/backend.
