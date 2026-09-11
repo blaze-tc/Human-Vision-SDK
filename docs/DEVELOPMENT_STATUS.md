@@ -24,6 +24,13 @@ After final metadata/ROI validation edits, `-Filter LegacyPlugin`: 1/1 PASS.
 The adapter has no identity/region ownership, does not synthesize missing hands,
 and uses the legacy CPU backend pending backend-plugin migration.
 Current milestone: implement/refactor Backend Plugins and session diagnostics.
+Task 5 in progress: `backend.ort.cpu` now exposes real single-input float32 tensor
+inference through the C plugin ABI, with shape/overflow validation and CPU diagnostics.
+Unsupported accelerator requests fail explicitly. BackendPlugin fixture tests added.
+Latest verification: `tools/test/run_native_tests.ps1` 43/43 PASS (10.37 seconds);
+`tools/package/build_live_native.ps1` Windows x64 / Android ARM64 PASS.
+Accelerated backend plugins, fallback orchestration and pipeline injection remain
+pending; Task 5 is not complete and this change does not optimize phone inference yet.
 New production pipelines and Unity V2 integration are not yet implemented.
 Later runtime/model/service/Unity milestones must pass their preceding automated gates.
 Maintenance documentation and architecture guards are release requirements.
@@ -31,6 +38,7 @@ Automated non-hardware tests are now authorized and required by the new plan.
 USER MANUAL ACCEPTANCE PENDING: Android camera, FPS, latency, accuracy, thermal,
 1/2/4/6/8 people, RTSP. No physical-device performance claims.
 Cleanup is limited to audited regenerable artifacts; user data and dependencies stay.
+User instruction: preserve caches and continue development; cleanup is deferred.
 
 Historical preview.5: source/tag e8f16eb pushed; Release remains draft as work moved
 to 0.4. This does not constitute 0.4 implementation or acceptance.
