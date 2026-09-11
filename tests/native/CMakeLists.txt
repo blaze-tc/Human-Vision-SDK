@@ -122,5 +122,7 @@ target_sources(humanvision_plugin_tests PRIVATE ../runtime/test_model_profiles.c
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_legacy_plugin.cpp)
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_backend_plugin.cpp)
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_backend_factory.cpp)
+target_sources(humanvision_native_tests PRIVATE ../runtime/test_rtmo_plugin.cpp)
+target_sources(humanvision_native_tests PRIVATE ../runtime/test_simcc_plugin.cpp)
 target_include_directories(humanvision_native_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/native)
 target_compile_definitions(humanvision_native_tests PRIVATE HV_TEST_PROJECT_ROOT="${PROJECT_SOURCE_DIR}")

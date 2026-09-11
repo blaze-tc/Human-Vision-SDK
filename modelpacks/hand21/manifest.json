@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "pack_id": "hand21",
+  "pack_version": "1.0.0",
+  "pipeline_id": "pipeline.hand",
+  "capabilities": [
+    "hand_pose"
+  ],
+  "max_people": 8,
+  "models": [
+    {
+      "role": "hand",
+      "format": "onnx",
+      "decoder_id": "simcc21",
+      "asset_path": "hand.onnx",
+      "sha256": "39e858936bca0f94c09847d4e70b68a51d6c0adac61f36b457fcadb54621cd29",
+      "input_contract": {
+        "width": 256,
+        "height": 256
+      },
+      "output_contract": {
+        "decoder": "simcc21"
+      },
+      "source": "OpenMMLab MMPose official models; see SOURCES.md",
+      "license": "Upstream Apache-2.0 code; consult linked model and dataset terms"
+    }
+  ]
+}

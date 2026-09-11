@@ -23,7 +23,16 @@ After final metadata/ROI validation edits, `-Filter LegacyPlugin`: 1/1 PASS.
 `tools/package/build_live_native.ps1`: Windows x64 / Android ARM64 PASS.
 The adapter has no identity/region ownership, does not synthesize missing hands,
 and uses the legacy CPU backend pending backend-plugin migration.
-Current milestone: implement/refactor Backend Plugins and session diagnostics.
+Current milestone: Task 6 — new body and hand pipeline plugins and ModelPacks.
+Task 6 pipeline implementation: RTMO centered-letterbox semantic output, Nano320
+TopDown Body26 with five-frame detector cadence and current-pose crop updates,
+independent Hand21 ROI pipeline. Data-only ModelPacks with hashes/provenance staged.
+Full native regression 49/49 PASS (19.48 s); Windows/Android builds PASS. Tests
+exercise real models; phone FPS/latency is not measured. Model metadata and final
+pipeline review remain before advancing common services.
+Task 5 default backend path is implemented and regression-verified; optional QNN
+enabled linking/device checks remain explicitly dependency-limited below. This does
+not block model/pipeline work under the optional-backend plan.
 Optional QNN increment: HV_USE_QNN defaults OFF; Android ARM64 guard and
 HV_QNN_HOME validation added. QNN plugin uses HTP with CPU EP fallback disabled,
 and only reports QNN_HTP after session initialization. Missing support fails query.
@@ -824,3 +833,5 @@ Known issues / environment notes:
 ## Advancement rule
 
 Only mark a milestone complete when its acceptance criteria in `CODEX_DEMO_EXECUTION_PLAN.md` are met with real outputs. Then update `Current milestone` to the next item before implementing it.
+
+Task 6 final focused SimCC check 1/1 PASS; final default native builds PASS. Current work advances to Task 7 common services. Model-pack generation assets are retained; source archives remain cached.

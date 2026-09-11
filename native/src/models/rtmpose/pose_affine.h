@@ -24,7 +24,7 @@ struct PoseAffineTransform {
 bool BuildPoseAffine(
     const Detection& detection,
     PoseAffineTransform& destination,
-    std::string& error);
+    std::string& error, int input_width = 192, int input_height = 256);
 
 Point2f TransformPoint(
     const std::array<float, 6>& matrix,

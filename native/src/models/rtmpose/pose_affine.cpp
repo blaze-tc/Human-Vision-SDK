@@ -7,8 +7,8 @@ namespace humanvision {
 
 namespace {
 
-constexpr float kInputWidth = 192.0F;
-constexpr float kInputHeight = 256.0F;
+
+
 constexpr float kBboxPadding = 1.25F;
 
 }  // namespace
@@ -16,10 +16,10 @@ constexpr float kBboxPadding = 1.25F;
 bool BuildPoseAffine(
     const Detection& detection,
     PoseAffineTransform& destination,
-    std::string& error) {
+    std::string& error, int input_width, int input_height) {
     const float width = detection.x2 - detection.x1;
     const float height = detection.y2 - detection.y1;
-    if (!std::isfinite(detection.x1) || !std::isfinite(detection.y1) ||
+    if (input_width < 1 || input_height < 1 || !std::isfinite(detection.x1) || !std::isfinite(detection.y1) ||
         !std::isfinite(detection.x2) || !std::isfinite(detection.y2) ||
         width <= 0.0F || height <= 0.0F) {
         error = "RTMPose requires a finite, positive person bounding box";
@@ -30,29 +30,29 @@ bool BuildPoseAffine(
     destination.center_y = (detection.y1 + detection.y2) * 0.5F;
     destination.scale_width = width * kBboxPadding;
     destination.scale_height = height * kBboxPadding;
-    const float aspect_ratio = kInputWidth / kInputHeight;
+    const float aspect_ratio = float(input_width) / input_height;
     if (destination.scale_width > destination.scale_height * aspect_ratio) {
         destination.scale_height = destination.scale_width / aspect_ratio;
     } else {
         destination.scale_width = destination.scale_height * aspect_ratio;
     }
 
-    const float scale = kInputWidth / destination.scale_width;
+    const float scale = input_width / destination.scale_width;
     destination.source_to_input = {
         scale,
         0.0F,
-        kInputWidth * 0.5F - destination.center_x * scale,
+        input_width * 0.5F - destination.center_x * scale,
         0.0F,
         scale,
-        kInputHeight * 0.5F - destination.center_y * scale};
+        input_height * 0.5F - destination.center_y * scale};
     const float inverse_scale = 1.0F / scale;
     destination.input_to_source = {
         inverse_scale,
         0.0F,
-        destination.center_x - kInputWidth * 0.5F * inverse_scale,
+        destination.center_x - input_width * 0.5F * inverse_scale,
         0.0F,
         inverse_scale,
-        destination.center_y - kInputHeight * 0.5F * inverse_scale};
+        destination.center_y - input_height * 0.5F * inverse_scale};
     error.clear();
     return true;
 }

@@ -10,8 +10,8 @@ namespace humanvision {
 
 namespace {
 
-constexpr int kInputWidth = 192;
-constexpr int kInputHeight = 256;
+
+
 constexpr std::array<float, 3> kMean = {123.675F, 116.28F, 103.53F};
 constexpr std::array<float, 3> kStd = {58.395F, 57.12F, 57.375F};
 
@@ -75,24 +75,24 @@ bool PreprocessRtmpose(
     const FrameBuffer& frame,
     const Detection& detection,
     PoseInput& destination,
-    std::string& error) {
+    std::string& error, int input_width, int input_height) {
     const int bytes_per_pixel = BytesPerPixel(frame.pixel_format);
-    if (frame.width <= 0 || frame.height <= 0 || bytes_per_pixel == 0 ||
+    if (input_width < 32 || input_height < 32 || input_width > 2048 || input_height > 2048 || frame.width <= 0 || frame.height <= 0 || bytes_per_pixel == 0 ||
         frame.stride_bytes < frame.width * bytes_per_pixel ||
         frame.bytes.size() <
             static_cast<std::size_t>(frame.stride_bytes) * frame.height) {
         error = "invalid owned frame for RTMPose preprocessing";
         return false;
     }
-    if (!BuildPoseAffine(detection, destination.transform, error)) {
+    if (!BuildPoseAffine(detection, destination.transform, error, input_width, input_height)) {
         return false;
     }
 
-    constexpr std::size_t plane_size =
-        static_cast<std::size_t>(kInputWidth) * kInputHeight;
+    const std::size_t plane_size =
+        static_cast<std::size_t>(input_width) * input_height;
     destination.normalized_chw.resize(plane_size * 3U);
-    for (int y = 0; y < kInputHeight; ++y) {
-        for (int x = 0; x < kInputWidth; ++x) {
+    for (int y = 0; y < input_height; ++y) {
+        for (int x = 0; x < input_width; ++x) {
             const Point2f source = TransformPoint(
                 destination.transform.input_to_source,
                 Point2f{static_cast<float>(x), static_cast<float>(y)});
@@ -102,7 +102,7 @@ bool PreprocessRtmpose(
                     pixel[channel];
                 const std::size_t index =
                     static_cast<std::size_t>(channel) * plane_size +
-                    static_cast<std::size_t>(y) * kInputWidth + x;
+                    static_cast<std::size_t>(y) * input_width + x;
                 destination.normalized_chw[index] =
                     (static_cast<float>(value) - kMean[channel]) / kStd[channel];
             }

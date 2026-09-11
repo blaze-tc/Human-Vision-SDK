@@ -28,7 +28,7 @@ struct Detection {
 
 class RtmdetModel {
 public:
-    explicit RtmdetModel(std::unique_ptr<IInferenceBackend> backend);
+    explicit RtmdetModel(std::unique_ptr<IInferenceBackend> backend, int width = 640, int height = 640, bool person_only = false);
 
     bool Load(const std::filesystem::path& model_path, std::string& error);
     bool Preprocess(
@@ -44,6 +44,8 @@ public:
         std::string& error);
 
 private:
+    int width_, height_;
+    bool person_only_;
     std::unique_ptr<IInferenceBackend> backend_;
     DetectorInput input_buffer_;
     Tensor tensor_input_;

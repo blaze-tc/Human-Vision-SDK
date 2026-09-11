@@ -18,6 +18,6 @@ bool PreprocessRtmpose(
     const FrameBuffer& frame,
     const Detection& detection,
     PoseInput& destination,
-    std::string& error);
+    std::string& error, int input_width = 192, int input_height = 256);
 
 }  // namespace humanvision

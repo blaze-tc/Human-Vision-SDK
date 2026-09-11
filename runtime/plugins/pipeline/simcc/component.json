@@ -1,0 +1,21 @@
+{
+  "id": "pipeline.simcc",
+  "type": "pipeline",
+  "version": "0.4.0-preview.1",
+  "api_version": 1,
+  "capabilities": [
+    "body_pose",
+    "hand_pose"
+  ],
+  "dependencies": [
+    "plugin.abi",
+    "common.config_io"
+  ],
+  "test_targets": [
+    "humanvision_native_tests"
+  ],
+  "exports": [
+    "pipeline.topdown",
+    "pipeline.hand"
+  ]
+}

@@ -4,6 +4,8 @@ target_sources(humanvision_internal PRIVATE
     host/model_pack_manager.cpp
     host/profile_manager.cpp
     host/backend_factory.cpp
+    plugins/pipeline/rtmo/rtmo_pipeline.cpp
+    plugins/pipeline/simcc/simcc_pipeline.cpp
     plugins/legacy/legacy_pipeline.cpp
     plugins/backend/ort/ort_plugin.cpp)
 target_include_directories(humanvision_internal PRIVATE ${PROJECT_SOURCE_DIR}/third_party)

@@ -15,8 +15,8 @@ namespace humanvision {
 
 namespace {
 
-constexpr int kInputWidth = 640;
-constexpr int kInputHeight = 640;
+
+
 constexpr std::array<float, 3> kMean = {103.53F, 116.28F, 123.675F};
 constexpr std::array<float, 3> kStd = {57.375F, 57.12F, 58.395F};
 constexpr std::uint8_t kPadValue = 114;
@@ -90,10 +90,10 @@ const Tensor* FindOutput(const std::vector<Tensor>& outputs, const std::string& 
 
 }  // namespace
 
-RtmdetModel::RtmdetModel(std::unique_ptr<IInferenceBackend> backend)
-    : backend_(std::move(backend)) {
+RtmdetModel::RtmdetModel(std::unique_ptr<IInferenceBackend> backend, int width, int height, bool person_only)
+    : width_(width), height_(height), person_only_(person_only), backend_(std::move(backend)) {
     tensor_input_.name = "input";
-    tensor_input_.shape = {1, 3, kInputHeight, kInputWidth};
+    tensor_input_.shape = {1, 3, height_, width_};
 }
 
 bool RtmdetModel::Load(
@@ -110,7 +110,7 @@ bool RtmdetModel::Preprocess(
     const FrameBuffer& frame,
     DetectorInput& destination,
     std::string& error) const {
-    if (frame.width <= 0 || frame.height <= 0 ||
+    if (width_ < 32 || width_ > 2048 || height_ < 32 || height_ > 2048 || frame.width <= 0 || frame.height <= 0 ||
         frame.stride_bytes < frame.width * BytesPerPixel(frame.pixel_format) ||
         frame.bytes.size() <
             static_cast<std::size_t>(frame.stride_bytes) * frame.height) {
@@ -124,8 +124,8 @@ bool RtmdetModel::Preprocess(
 
     const int bytes_per_pixel = BytesPerPixel(frame.pixel_format);
     const float resize_ratio = std::min(
-        static_cast<float>(kInputWidth) / frame.width,
-        static_cast<float>(kInputHeight) / frame.height);
+        static_cast<float>(width_) / frame.width,
+        static_cast<float>(height_) / frame.height);
     destination.resized_width =
         std::max(1, static_cast<int>(frame.width * resize_ratio + 0.5F));
     destination.resized_height =
@@ -134,7 +134,7 @@ bool RtmdetModel::Preprocess(
     destination.scale_y = static_cast<float>(destination.resized_height) / frame.height;
 
     const std::size_t plane_size =
-        static_cast<std::size_t>(kInputWidth) * kInputHeight;
+        static_cast<std::size_t>(width_) * height_;
     destination.normalized_chw.resize(plane_size * 3U);
     for (int channel = 0; channel < 3; ++channel) {
         const float normalized_pad = (kPadValue - kMean[channel]) / kStd[channel];
@@ -153,7 +153,7 @@ bool RtmdetModel::Preprocess(
                 const std::uint8_t value = pixel[channel];
                 const std::size_t index =
                     static_cast<std::size_t>(channel) * plane_size +
-                    static_cast<std::size_t>(y) * kInputWidth + x;
+                    static_cast<std::size_t>(y) * width_ + x;
                 destination.normalized_chw[index] =
                     (static_cast<float>(value) - kMean[channel]) / kStd[channel];
             }
@@ -190,12 +190,12 @@ bool RtmdetModel::Detect(
 
     const Tensor* boxes = FindOutput(output_buffers_, "dets");
     const Tensor* labels = FindOutput(output_buffers_, "labels");
-    if (boxes == nullptr || labels == nullptr || boxes->values.size() % 5U != 0U) {
+    if (boxes == nullptr || (!person_only_ && labels == nullptr) || boxes->values.size() % 5U != 0U) {
         error = "RTMDet outputs must contain float tensors named dets [N,5] and labels [N]";
         return false;
     }
     const std::size_t count = boxes->values.size() / 5U;
-    if (labels->values.size() < count) {
+    if (!person_only_ && labels->values.size() < count) {
         error = "RTMDet labels output is shorter than detections output";
         return false;
     }
@@ -204,7 +204,7 @@ bool RtmdetModel::Detect(
     detections.reserve(std::min<std::size_t>(count, static_cast<std::size_t>(max_bodies)));
     for (std::size_t index = 0; index < count; ++index) {
         const float* row = boxes->values.data() + index * 5U;
-        const int label = static_cast<int>(std::lround(labels->values[index]));
+        const int label = person_only_ ? 0 : static_cast<int>(std::lround(labels->values[index]));
         if (label != 0 || row[4] < threshold) {
             continue;
         }
