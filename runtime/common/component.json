@@ -1,0 +1,1 @@
+{"id":"common.config_io","type":"common","version":"0.4.0-preview.1","api_version":1,"capabilities":["configuration_io"],"dependencies":[],"test_targets":["humanvision_plugin_tests"]}

@@ -119,3 +119,6 @@ if(WIN32)
 endif()
 
 target_sources(humanvision_plugin_tests PRIVATE ../runtime/test_model_profiles.cpp)
+target_sources(humanvision_native_tests PRIVATE ../runtime/test_legacy_plugin.cpp)
+target_include_directories(humanvision_native_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/native)
+target_compile_definitions(humanvision_native_tests PRIVATE HV_TEST_PROJECT_ROOT="${PROJECT_SOURCE_DIR}")

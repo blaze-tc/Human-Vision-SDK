@@ -1,5 +1,5 @@
 #include "host/model_pack_manager.h"
-#include "host/config_io.h"
+#include "common/config_io.h"
 #include "picosha2/picosha2.h"
 #include <array>
 #include <set>

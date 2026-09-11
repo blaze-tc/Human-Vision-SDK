@@ -1,5 +1,5 @@
 #include "host/profile_manager.h"
-#include "host/config_io.h"
+#include "common/config_io.h"
 #include <set>
 
 namespace humanvision::runtime {

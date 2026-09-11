@@ -15,9 +15,16 @@ selection now checks plugin type as well as capability, and retains fallback rea
 Fresh builds also exposed MSVC localized include-prefix encoding preventing Ninja
 header dependencies from being recorded. UTF-8 command code page fixes this;
 `ninja -t deps` now lists humanvision_plugin.h in both Windows build directories.
-Current milestone: wrap the existing recognizer as a Pipeline Plugin and verify
-real model observations through the generic Host.
-Production recognizer plugins and Unity V2 integration are not yet implemented.
+Task 4 complete (2026-09-11): existing detector/pose adapter registered as
+`pipeline.legacy`; real image/model output reaches RuntimeHost with semantic joints
+and original timestamps. Nose coordinates match the locked reference within 1.5 px.
+`tools/test/run_native_tests.ps1`: 41/41 PASS, 9.02 seconds.
+After final metadata/ROI validation edits, `-Filter LegacyPlugin`: 1/1 PASS.
+`tools/package/build_live_native.ps1`: Windows x64 / Android ARM64 PASS.
+The adapter has no identity/region ownership, does not synthesize missing hands,
+and uses the legacy CPU backend pending backend-plugin migration.
+Current milestone: implement/refactor Backend Plugins and session diagnostics.
+New production pipelines and Unity V2 integration are not yet implemented.
 Later runtime/model/service/Unity milestones must pass their preceding automated gates.
 Maintenance documentation and architecture guards are release requirements.
 Automated non-hardware tests are now authorized and required by the new plan.

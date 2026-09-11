@@ -21,7 +21,7 @@ Concrete model/provider implementations, model-native decoder schemas, Unity API
 
 ## Primary implementation files
 plugin_registry.cpp; runtime_host.cpp; ../include/humanvision_plugin.h.
-model_pack_manager.cpp; profile_manager.cpp; config_io.h.
+model_pack_manager.cpp; profile_manager.cpp; ../common/config_io.h.
 
 ## ModelPack and Profile resolution
 ModelPackManager confines manifest and asset paths to the configured pack root,
