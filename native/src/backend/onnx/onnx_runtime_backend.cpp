@@ -22,6 +22,8 @@
 namespace humanvision {
 
 struct OnnxRuntimeBackend::Impl {
+    std::string actual_provider = "uninitialized";
+    std::string fallback_reason;
     bool use_gpu = false;
     // Declared before the session/environment so the DLL outlives their teardown.
     std::shared_ptr<void> directml_module;
@@ -101,6 +103,8 @@ OnnxRuntimeBackend::OnnxRuntimeBackend(bool use_gpu) : impl_(std::make_unique<Im
 }
 
 OnnxRuntimeBackend::~OnnxRuntimeBackend() = default;
+std::string OnnxRuntimeBackend::ActualProvider() const { return impl_->actual_provider; }
+std::string OnnxRuntimeBackend::FallbackReason() const { return impl_->fallback_reason; }
 
 bool OnnxRuntimeBackend::Load(
     const std::filesystem::path& model_path,
@@ -127,7 +131,10 @@ bool OnnxRuntimeBackend::Load(
             if (status == nullptr) {
                 impl_->session_options = std::move(accelerated);
                 impl_->nnapi_enabled = true;
-            } else Ort::GetApi().ReleaseStatus(status);
+            } else {
+                impl_->fallback_reason = std::string("NNAPI registration failed: ") + Ort::GetApi().GetErrorMessage(status);
+                Ort::GetApi().ReleaseStatus(status);
+            }
         }
 #elif defined(HV_USE_DIRECTML)
         if (impl_->use_gpu) {
@@ -157,8 +164,9 @@ bool OnnxRuntimeBackend::Load(
 #if defined(__ANDROID__)
         try {
             session = std::make_unique<Ort::Session>(impl_->environment, model_path.c_str(), impl_->session_options);
-        } catch (const Ort::Exception&) {
+        } catch (const Ort::Exception& exception) {
             if (!impl_->nnapi_enabled) throw;
+            impl_->fallback_reason = std::string("NNAPI session creation failed: ") + exception.what();
             impl_->nnapi_enabled = false;
             impl_->session_options = impl_->cpu_options.Clone();
             session = std::make_unique<Ort::Session>(impl_->environment, model_path.c_str(), impl_->session_options);
@@ -194,6 +202,12 @@ bool OnnxRuntimeBackend::Load(
         impl_->input_name = input_name.get();
         impl_->output_names = std::move(output_names);
         impl_->session = std::move(session);
+        impl_->actual_provider = "CPU";
+#if defined(__ANDROID__)
+        if (impl_->nnapi_enabled) impl_->actual_provider = "NNAPI";
+#elif defined(HV_USE_DIRECTML)
+        if (impl_->use_gpu) impl_->actual_provider = "DirectML";
+#endif
         error.clear();
         return true;
     } catch (const Ort::Exception& exception) {
@@ -265,10 +279,12 @@ bool OnnxRuntimeBackend::Run(
         error = std::string("ONNX inference failed: ") + exception.what();
 #if defined(__ANDROID__)
         if (impl_->nnapi_enabled) {
+            impl_->fallback_reason = std::string("NNAPI inference failed: ") + exception.what();
             impl_->nnapi_enabled = false;
             impl_->use_gpu = false;
             impl_->session_options = impl_->cpu_options.Clone();
             impl_->session.reset();
+            impl_->actual_provider = "uninitialized";
             if (Load(impl_->model_path, error)) return Run(input, outputs, error);
         }
 #endif

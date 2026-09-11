@@ -24,12 +24,21 @@ After final metadata/ROI validation edits, `-Filter LegacyPlugin`: 1/1 PASS.
 The adapter has no identity/region ownership, does not synthesize missing hands,
 and uses the legacy CPU backend pending backend-plugin migration.
 Current milestone: implement/refactor Backend Plugins and session diagnostics.
+Latest Task 5 increment: compiled-platform DirectML/NNAPI plugin query added.
+Session diagnostics now preserve NNAPI registration, session-creation and run-time
+fallback errors, and report the current configured provider. Accelerator flag is
+provider configuration only, not measured graph coverage or device acceleration.
+Verification: full native regression 44/44 PASS; subsequent capability-query test
+and final focused backend/diagnostic suite 4/4 PASS. Final Windows x64 and Android
+ARM64 builds PASS via `tools/package/build_live_native.ps1`.
+Remaining Task 5: generic fallback/session orchestration, pipeline injection and
+optional QNN integration; physical accelerator execution remains user acceptance.
 Task 5 in progress: `backend.ort.cpu` now exposes real single-input float32 tensor
 inference through the C plugin ABI, with shape/overflow validation and CPU diagnostics.
 Unsupported accelerator requests fail explicitly. BackendPlugin fixture tests added.
 Latest verification: `tools/test/run_native_tests.ps1` 43/43 PASS (10.37 seconds);
 `tools/package/build_live_native.ps1` Windows x64 / Android ARM64 PASS.
-Accelerated backend plugins, fallback orchestration and pipeline injection remain
+Fallback orchestration and pipeline injection remain
 pending; Task 5 is not complete and this change does not optimize phone inference yet.
 New production pipelines and Unity V2 integration are not yet implemented.
 Later runtime/model/service/Unity milestones must pass their preceding automated gates.

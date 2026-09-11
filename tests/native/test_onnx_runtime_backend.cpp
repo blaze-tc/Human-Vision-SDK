@@ -59,3 +59,11 @@ TEST(OnnxRuntimeBackend, LoadsAndRunsTinyPublicFixture) {
 }
 
 }  // namespace
+TEST(OnnxBackendDiagnostics, CpuReportsOnlyInitializedProvider) {
+ humanvision::OnnxRuntimeBackend backend;
+ EXPECT_EQ(backend.ActualProvider(), "uninitialized");
+ std::string error;
+ ASSERT_TRUE(backend.Load(HV_TEST_BACKEND_MODEL_PATH,error))<<error;
+ EXPECT_EQ(backend.ActualProvider(),"CPU");
+ EXPECT_TRUE(backend.FallbackReason().empty());
+}

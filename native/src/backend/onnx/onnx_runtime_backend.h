@@ -14,6 +14,8 @@ public:
     OnnxRuntimeBackend& operator=(const OnnxRuntimeBackend&) = delete;
 
     bool Load(const std::filesystem::path& model_path, std::string& error) override;
+    std::string ActualProvider() const;
+    std::string FallbackReason() const;
     bool Run(
         const Tensor& input,
         std::vector<Tensor>& outputs,

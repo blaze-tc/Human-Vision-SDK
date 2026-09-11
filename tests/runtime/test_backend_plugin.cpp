@@ -32,3 +32,13 @@ TEST(BackendPlugin, CpuRejectsUnavailableProviderWithoutCreatingSession) {
  EXPECT_EQ(plugin.backend->create(&config,&instance,&error),HV_ERR_INVALID_ARGUMENT);
  EXPECT_EQ(instance,nullptr);EXPECT_NE(std::string(message).find("requested provider"),std::string::npos);
 }
+TEST(BackendPlugin, AcceleratedQueryMatchesCompiledCapabilities) {
+ HV_PluginApiV1 plugin{};plugin.struct_size=sizeof(plugin);
+#if defined(HV_USE_DIRECTML) || defined(__ANDROID__)
+ EXPECT_EQ(HV_QueryOrtAcceleratedPlugin(HV_PLUGIN_API_V1,&plugin),HV_OK);
+ EXPECT_EQ(plugin.type,HV_PLUGIN_BACKEND);EXPECT_GT(plugin.priority,0);
+#else
+ EXPECT_EQ(HV_QueryOrtAcceleratedPlugin(HV_PLUGIN_API_V1,&plugin),HV_ERR_NOT_INITIALIZED);
+ EXPECT_EQ(plugin.backend,nullptr);
+#endif
+}

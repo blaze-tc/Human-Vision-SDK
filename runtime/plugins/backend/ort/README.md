@@ -1,8 +1,15 @@
 # ORT backend plugin
 
 Current implementation: `backend.ort.cpu`, registered with `HV_QueryOrtCpuPlugin`.
-This is the CPU portion of the backend migration; accelerated plugins and profile
-fallback orchestration are still pending. It never claims accelerator execution.
+`HV_QueryOrtAcceleratedPlugin` additionally registers `backend.ort.directml` in
+Windows DirectML builds or `backend.ort.nnapi` on Android. CPU-only builds reject
+that query. Profile fallback orchestration and pipeline injection are still pending.
+
+Session diagnostics report the requested provider, the provider configured in the
+current session and any NNAPI registration/session/run failure that led to CPU
+fallback. `accelerated` means an accelerator provider was configured, not that all
+graph nodes executed there; partial CPU partitions remain possible. Hardware
+coverage and speed are not inferred from successful session creation.
 
 Consumes one named float32 input tensor, positive dimensions (rank 1-8), and exact
 byte count. Rejects overflow, incompatible types and provider requests. Produces
