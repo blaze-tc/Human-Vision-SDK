@@ -42,3 +42,10 @@ TEST(BackendPlugin, AcceleratedQueryMatchesCompiledCapabilities) {
  EXPECT_EQ(plugin.backend,nullptr);
 #endif
 }
+TEST(BackendPlugin, QnnIsExplicitlyUnavailableWithoutOptionalBuild) {
+ HV_PluginApiV1 plugin{};plugin.struct_size=sizeof(plugin);
+#ifndef HV_USE_QNN
+ EXPECT_EQ(HV_QueryOrtQnnPlugin(HV_PLUGIN_API_V1,&plugin),HV_ERR_NOT_INITIALIZED);
+ EXPECT_EQ(plugin.backend,nullptr);
+#endif
+}

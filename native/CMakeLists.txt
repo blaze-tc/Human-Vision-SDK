@@ -1,5 +1,15 @@
 find_package(Threads REQUIRED)
 option(HV_USE_DIRECTML "Enable GPU selection for AUTO on Windows" OFF)
+option(HV_USE_QNN "Enable Android QNN EP in a custom ONNX Runtime build" OFF)
+set(HV_QNN_HOME "" CACHE PATH "Authorized QAIRT SDK root used to build ONNX Runtime")
+if(HV_USE_QNN)
+    if(NOT ANDROID)
+        message(FATAL_ERROR "HV_USE_QNN requires Android ARM64")
+    endif()
+    if(NOT ANDROID_ABI STREQUAL "arm64-v8a" OR NOT EXISTS "${HV_QNN_HOME}/include/QNN/QnnInterface.h")
+        message(FATAL_ERROR "HV_USE_QNN requires arm64-v8a and HV_QNN_HOME with include/QNN/QnnInterface.h; see docs/QNN_ANDROID_BUILD.md")
+    endif()
+endif()
 set(HV_DIRECTML_ROOT "" CACHE PATH "Extracted Microsoft.AI.DirectML package")
 
 set(
@@ -85,6 +95,9 @@ add_library(humanvision_internal STATIC
     src/tracking/center_iou_tracker.cpp)
 
 add_library(HumanVision::Internal ALIAS humanvision_internal)
+if(HV_USE_QNN)
+    target_compile_definitions(humanvision_internal PUBLIC HV_USE_QNN)
+endif()
 
 target_compile_features(humanvision_internal PUBLIC cxx_std_17)
 if(HV_USE_DIRECTML)

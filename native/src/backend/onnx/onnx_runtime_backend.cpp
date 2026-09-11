@@ -25,6 +25,7 @@ struct OnnxRuntimeBackend::Impl {
     std::string actual_provider = "uninitialized";
     std::string fallback_reason;
     bool use_gpu = false;
+    bool use_qnn = false;
     // Declared before the session/environment so the DLL outlives their teardown.
     std::shared_ptr<void> directml_module;
     Ort::Env environment{ORT_LOGGING_LEVEL_WARNING, "HumanVisionSDK"};
@@ -84,8 +85,9 @@ std::size_t ElementCount(const std::vector<std::int64_t>& shape) {
 
 }  // namespace
 
-OnnxRuntimeBackend::OnnxRuntimeBackend(bool use_gpu) : impl_(std::make_unique<Impl>()) {
+OnnxRuntimeBackend::OnnxRuntimeBackend(bool use_gpu, bool use_qnn) : impl_(std::make_unique<Impl>()) {
     impl_->use_gpu = use_gpu;
+    impl_->use_qnn = use_qnn;
     impl_->session_options.SetGraphOptimizationLevel(
         GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
 #if defined(__ANDROID__)
@@ -120,9 +122,20 @@ bool OnnxRuntimeBackend::Load(
         return false;
     }
     try {
+#if !defined(HV_USE_QNN)
+        if(impl_->use_qnn){error="QNN support is not enabled in this native build";return false;}
+#endif
 #if defined(__ANDROID__)
         impl_->cpu_options = impl_->session_options.Clone();
         impl_->model_path = model_path;
+#if defined(HV_USE_QNN)
+        if(impl_->use_qnn){
+            const char* keys[]{"backend_path","htp_performance_mode"};
+            const char* values[]{"libQnnHtp.so","balanced"};
+            impl_->session_options.AddConfigEntry("session.disable_cpu_ep_fallback","1");
+            Ort::ThrowOnError(Ort::GetApi().SessionOptionsAppendExecutionProvider(impl_->session_options,"QNN",keys,values,2));
+        } else
+#endif
         if (impl_->use_gpu) {
             // Keep float32 model semantics. Avoid NNAPI's slower reference CPU;
             // unsupported partitions remain on ORT CPU kernels.
@@ -205,6 +218,7 @@ bool OnnxRuntimeBackend::Load(
         impl_->actual_provider = "CPU";
 #if defined(__ANDROID__)
         if (impl_->nnapi_enabled) impl_->actual_provider = "NNAPI";
+        if (impl_->use_qnn) impl_->actual_provider = "QNN_HTP";
 #elif defined(HV_USE_DIRECTML)
         if (impl_->use_gpu) impl_->actual_provider = "DirectML";
 #endif

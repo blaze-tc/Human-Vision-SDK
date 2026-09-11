@@ -24,6 +24,16 @@ After final metadata/ROI validation edits, `-Filter LegacyPlugin`: 1/1 PASS.
 The adapter has no identity/region ownership, does not synthesize missing hands,
 and uses the legacy CPU backend pending backend-plugin migration.
 Current milestone: implement/refactor Backend Plugins and session diagnostics.
+Optional QNN increment: HV_USE_QNN defaults OFF; Android ARM64 guard and
+HV_QNN_HOME validation added. QNN plugin uses HTP with CPU EP fallback disabled,
+and only reports QNN_HTP after session initialization. Missing support fails query.
+Verification: full default native suite 47/47 PASS (10.72 seconds); final backend
+focused suite rerun after provider-validation correction. Windows/Android default
+builds PASS. Android clang++ --target=aarch64-linux-android24 -DHV_USE_QNN
+-fsyntax-only passed for backend implementation and plugin with deployed ORT headers.
+QNN-enabled linking, runtime library packaging and device execution remain UNVERIFIED:
+authorized QAIRT/custom ORT dependencies have not been supplied. Syntax checking is
+not a QNN build or execution pass. Build instructions: docs/QNN_ANDROID_BUILD.md.
 Latest increment: BackendFactory provides ordered creation fallback, failure
 diagnostics and independent module/session lifetime. Legacy detector and pose now
 request injected backend sessions through HostServices instead of constructing ORT.

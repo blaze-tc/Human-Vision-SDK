@@ -6,6 +6,11 @@ Windows DirectML builds or `backend.ort.nnapi` on Android. CPU-only builds rejec
 that query. BackendFactory now handles ordered creation fallback and the legacy
 pipeline requests model sessions through HostServices.
 
+`HV_QueryOrtQnnPlugin` is optional (`HV_USE_QNN`). It registers `backend.ort.qnn`
+only in enabled Android builds, priority 200. It requests HTP, disables CPU EP
+fallback, and lets BackendFactory handle creation failure. See
+`docs/QNN_ANDROID_BUILD.md` for dependency and verification limitations.
+
 Session diagnostics report the requested provider, the provider configured in the
 current session and any NNAPI registration/session/run failure that led to CPU
 fallback. `accelerated` means an accelerator provider was configured, not that all

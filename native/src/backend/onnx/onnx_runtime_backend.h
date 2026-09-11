@@ -8,7 +8,7 @@ namespace humanvision {
 
 class OnnxRuntimeBackend final : public IInferenceBackend {
 public:
-    explicit OnnxRuntimeBackend(bool use_gpu = false);
+    explicit OnnxRuntimeBackend(bool use_gpu = false, bool use_qnn = false);
     ~OnnxRuntimeBackend() override;
     OnnxRuntimeBackend(const OnnxRuntimeBackend&) = delete;
     OnnxRuntimeBackend& operator=(const OnnxRuntimeBackend&) = delete;
