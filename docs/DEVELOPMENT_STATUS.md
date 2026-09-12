@@ -14,9 +14,16 @@ Cache files are not edited. Runtime index is still published only after all entr
 validate. No inference, skeleton or camera behavior changed in this patch.
 
 Regression first: package-only Git checkout with autocrlf=true failed on auto.json;
-UPM import regression failed on missing text repair. After implementation, the Git
-checkout test and package/architecture/public API guards PASS. Isolated installer
-regression and real remote Git URL import are the remaining publication gates.
+UPM import regression failed on missing text repair. Final verification:
+- Package-only Git checkout with autocrlf=true: PASS.
+- Installer newline recovery, text tamper rejection and binary exclusion: PASS.
+- Actual remote Git URL at de518d023bba9a428fea2a2d8ba090fbe5949a0a: PASS in
+  isolated Tuanjie2022.3; packages-lock source=git and exact commit verified.
+  Installed auto.json is433bytes and matches the published SHA256 exactly.
+- Native initialization, full RuntimeData/index installation, GUID isolation and
+  generated camera/settings scenes: PASS.
+- Archive isolation92Unityassets/97UPMfiles/119GUIDs and architecture/public API: PASS.
+Current step: publish preview.2 assets and verify downloaded copies.
 
 Previous native63/63 and Unity43/43 are unchanged-core baseline, not newly executed
 patch results. Physical device acceptance remains pending as described below.

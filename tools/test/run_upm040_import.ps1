@@ -20,4 +20,9 @@ $process.WaitForExit()
 if ($process.ExitCode -ne 0) { throw "UPM import failed ($($process.ExitCode)); see out/upm040-import.log" }
 if (!(Test-Path "$testProject/upm-import-pass.txt")) { throw 'Missing UPM import success evidence' }
 if ((Get-Item "$testProject/upm-import-pass.txt").LastWriteTimeUtc -lt $startedAt) { throw 'Stale UPM import evidence' }
+if ($GitRevision) {
+    $locked = (Get-Content "$testProject/Packages/packages-lock.json" -Raw | ConvertFrom-Json).dependencies.'com.blazetc.humanvision'
+    if ($locked.source -ne 'git' -or $locked.hash -ne $GitRevision) { throw 'The tested package did not resolve to the requested Git commit' }
+    Write-Output "Verified remote Git source: $($locked.hash)"
+}
 Get-Content "$testProject/upm-import-pass.txt"
