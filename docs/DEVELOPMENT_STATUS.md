@@ -1,4 +1,4 @@
-# 0.4 v2 implementation — release verification (2026-09-12)
+# 0.4 v2 — published; physical acceptance pending (2026-09-12)
 
 Authority: [master v2](plans/040-v2/2026-09-10-humanvision-040-master-v2.md)
 and its plugin architecture addendum. Maintenance starts at
@@ -12,9 +12,15 @@ masking/revision isolation, canonical derivation, asynchronous fair hand schedul
 bounded adaptive temporal samples, additive V2 C ABI/semantic Unity integration,
 batched UGUI skeleton mesh and actual-provider diagnostics.
 Task 10 maintenance documentation and generated component metadata are implemented.
-Task 11 complete: architecture, documentation, archive/isolation and final UPM
-import gates PASS. Current milestone: Task 12 main/tag/GitHub Release publication.
-Release is not yet published.
+Tasks 11–12 complete: architecture/documentation/archive/import gates PASS;
+main and annotated tag pushed; GitHub prerelease published2026-09-12 08:43:48 UTC.
+Release code commit:45a833a1627d719befaa66cec2216f53fc5d55ed.
+[Download v0.4.0-preview.1](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.1)
+
+All seven remote release assets were downloaded and their SHA-256 hashes exactly
+match local artifacts. All96 committed Git UPM payload hashes also match the tested
+archive. The release is not a draft. Current next gate is USER physical acceptance;
+there is no unfinished mandatory non-hardware implementation milestone in this plan.
 
 ## Fresh verification
 
