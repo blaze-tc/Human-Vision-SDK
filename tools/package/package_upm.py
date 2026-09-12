@@ -53,6 +53,8 @@ def main():
             # models are independent file sources, never scene asset references.
             model_meta = metadata('UPM/' + relative).encode() if relative.startswith(('Models/', 'RuntimeData/')) else item['asset.meta']
             write(relative, item['asset'], model_meta)
+    # Unity may materialize this subfolder without the repository root attributes.
+    write('.gitattributes', b'* -text\n')
     descriptor = dict(name='com.blazetc.humanvision', version=VERSION, displayName='Human Vision SDK',
         unity='2021.3', description='Independent camera skeleton SDK: Windows x64 and Android ARM64, numbered regions and hand endpoints.',
         dependencies={key:'1.0.0' for key in ('com.unity.ugui','com.unity.modules.physics','com.unity.modules.imageconversion',

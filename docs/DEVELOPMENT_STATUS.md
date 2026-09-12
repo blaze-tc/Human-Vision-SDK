@@ -1,3 +1,28 @@
+# 0.4.0-preview.2 — Git import newline repair (2026-09-12)
+
+User screenshot: `HumanVision runtime hash mismatch: profiles/auto.json`, followed
+by missing Runtime/index.json and HTTP404. Actual user PackageCache file is445bytes
+with12CRLFs; published payload is433bytes withLF. SHA256 of CRLF-converted source
+exactly matches user's file. Root repository .gitattributes did not protect the
+UPM package-only checkout. The preview.1 tgz/import and committed-blob tests did
+not cover that Git materialization step.
+
+Fix: package-local .gitattributes disables payload newline rewriting. Installer
+also recovers JSON/Markdown newline changes only when restored bytes match the
+original SHA256; modified content and ONNX weights never bypass byte verification.
+Cache files are not edited. Runtime index is still published only after all entries
+validate. No inference, skeleton or camera behavior changed in this patch.
+
+Regression first: package-only Git checkout with autocrlf=true failed on auto.json;
+UPM import regression failed on missing text repair. After implementation, the Git
+checkout test and package/architecture/public API guards PASS. Isolated installer
+regression and real remote Git URL import are the remaining publication gates.
+
+Previous native63/63 and Unity43/43 are unchanged-core baseline, not newly executed
+patch results. Physical device acceptance remains pending as described below.
+
+---
+
 # 0.4 v2 — published; physical acceptance pending (2026-09-12)
 
 Authority: [master v2](plans/040-v2/2026-09-10-humanvision-040-master-v2.md)

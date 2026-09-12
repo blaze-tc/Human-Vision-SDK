@@ -17,20 +17,21 @@ python tools/package/package_upm.py
 python tools/maintenance/generate_component_catalog.py --check
 python tools/maintenance/check_architecture_boundaries.py
 python tools/package/verify_package_isolation.py
+python tools/test/verify_upm_git_newlines.py
 pwsh -File tools/test/run_upm040_import.ps1
 ```
 
 Version locations: CMakeLists.txt numeric version, package_live_sdk.py VERSION,
 package_upm.py imported VERSION, component metadata, installation/release docs.
-Default artifacts in out/releases/0.4.0-preview.1:
-HumanVisionSDK-0.4.0-preview.1.unitypackage, HumanVisionSDK-0.4.0-preview.1.zip,
-com.blazetc.humanvision-0.4.0-preview.1.tgz, asset-sha256.json, README.md.
+Default artifacts in out/releases/0.4.0-preview.2:
+HumanVisionSDK-0.4.0-preview.2.unitypackage, HumanVisionSDK-0.4.0-preview.2.zip,
+com.blazetc.humanvision-0.4.0-preview.2.tgz, asset-sha256.json, README.md.
 Unity tar GUID directories and gzip inner name archtemp.tar are compatibility
 requirements. UPM data GUIDs must differ from StreamingAssets copies.
 
 Record exact results in DEVELOPMENT_STATUS. Stage tracked changes plus explicitly
 declared new SDK files (never user media/archives). Commit verified artifacts,
-push main after checking remote ancestry, create annotated tag v0.4.0-preview.1,
+push main after checking remote ancestry, create annotated tag v0.4.0-preview.2,
 create a draft GitHub Release in blaze-tc/Human-Vision-SDK, upload artifacts, download
 to a separate verification directory and compare SHA-256. Verify remote main/tag
 commits before publishing the draft. Do not publish the superseded preview.5 draft.

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Security.Cryptography;
+using System.Text;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
@@ -34,15 +35,35 @@ namespace HumanVision.Editor
                     throw new BuildFailedException("Invalid HumanVision runtime data path");
                 string source = Path.Combine(models, name), destination = Path.Combine(target, name);
                 if (!File.Exists(source)) throw new BuildFailedException("HumanVision model missing: " + source);
-                if (!string.Equals(Hash(source), entry.sha256, StringComparison.OrdinalIgnoreCase)) throw new BuildFailedException("HumanVision runtime hash mismatch: " + name);
+                byte[] verifiedText = null;
+                if (!string.Equals(Hash(source), entry.sha256, StringComparison.OrdinalIgnoreCase)) verifiedText = ReadVerifiedText(source, entry.sha256);
                 if (File.Exists(destination) && string.Equals(Hash(destination), entry.sha256, StringComparison.OrdinalIgnoreCase)) continue;
                 Directory.CreateDirectory(Path.GetDirectoryName(destination));
-                File.Copy(source, destination + ".tmp", true);
+                if (verifiedText == null) File.Copy(source, destination + ".tmp", true);
+                else File.WriteAllBytes(destination + ".tmp", verifiedText);
                 File.Copy(destination + ".tmp", destination, true); File.Delete(destination + ".tmp"); changed = true;
             }
             string targetIndex = Path.Combine(target, "index.json");
             if (!File.Exists(targetIndex) || Hash(targetIndex) != Hash(indexPath)) { File.Copy(indexPath, targetIndex, true); changed = true; }
             if (changed) AssetDatabase.Refresh();
+        }
+        // Git can rewrite text newlines in a subfolder package. Accept only an
+        // exact indexed hash after newline conversion; weights stay byte-strict.
+        private static byte[] ReadVerifiedText(string path, string expected)
+        {
+            string extension = Path.GetExtension(path).ToLowerInvariant();
+            if (extension == ".json" || extension == ".md") {
+                var utf8 = new UTF8Encoding(false, true);
+                string normalized = utf8.GetString(File.ReadAllBytes(path)).Replace("\r\n", "\n");
+                foreach (string candidate in new[] { normalized, normalized.Replace("\n", "\r\n") }) {
+                    byte[] bytes = utf8.GetBytes(candidate);
+                    using (var sha = SHA256.Create()) {
+                        string digest = BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant();
+                        if (string.Equals(digest, expected, StringComparison.OrdinalIgnoreCase)) return bytes;
+                    }
+                }
+            }
+            throw new BuildFailedException("HumanVision runtime hash mismatch: " + path + ". Reinstall the package; content differs from its index.");
         }
         private static string Hash(string path)
         {

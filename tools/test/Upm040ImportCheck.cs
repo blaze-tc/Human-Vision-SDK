@@ -12,6 +12,21 @@ public static class Upm040ImportCheck
     public static void Run()
     {
         try {
+            // Reproduce Windows Git line-ending conversion without weakening model hashes.
+            string fixture = Path.GetFullPath("line-ending-fixture.json");
+            byte[] canonical = System.Text.Encoding.UTF8.GetBytes("{\n  \"test\": true\n}\n");
+            File.WriteAllText(fixture, "{\r\n  \"test\": true\r\n}\r\n", new System.Text.UTF8Encoding(false));
+            string digest; using(var sha=SHA256.Create()) digest=BitConverter.ToString(sha.ComputeHash(canonical)).Replace("-", "").ToLowerInvariant();
+            var repair=typeof(HumanVisionModelInstaller).GetMethod("ReadVerifiedText",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static);
+            if(repair==null)throw new Exception("Missing verified text newline repair");
+            var repaired=(byte[])repair.Invoke(null,new object[]{fixture,digest});
+            if(!System.Linq.Enumerable.SequenceEqual(canonical,repaired))throw new Exception("Newline repair changed payload");
+            File.WriteAllText(fixture,"{\"test\":false}");
+            bool rejected=false;try{repair.Invoke(null,new object[]{fixture,digest});}catch(System.Reflection.TargetInvocationException e){rejected=e.InnerException is UnityEditor.Build.BuildFailedException;}
+            if(!rejected)throw new Exception("Text content tampering accepted");
+            string binary=Path.ChangeExtension(fixture,"onnx");File.WriteAllBytes(binary,canonical);
+            rejected=false;try{repair.Invoke(null,new object[]{binary,digest});}catch(System.Reflection.TargetInvocationException e){rejected=e.InnerException is UnityEditor.Build.BuildFailedException;}
+            if(!rejected)throw new Exception("Model weights must never use text repair");
             HumanVisionModelInstaller.Prepare();
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             const string root = "Assets/StreamingAssets/HumanVision/Runtime";

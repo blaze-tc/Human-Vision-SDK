@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / 'unity/HumanVisionDemo/Assets/HumanVision'
-VERSION = '0.4.0-preview.1'
+VERSION = '0.4.0-preview.2'
 OUTPUT = ROOT / 'out/releases' / VERSION
 NAMESPACE = uuid.UUID('9a1f16d6-9fe3-4b94-a3b2-77076251bfec')
 

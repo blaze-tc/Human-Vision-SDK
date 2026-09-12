@@ -1,4 +1,4 @@
-# Human Vision SDK 0.4.0-preview.1
+# Human Vision SDK 0.4.0-preview.2
 
 独立 Unity SDK，目标为 Windows x64 和 Android ARM64，不依赖 AzureKinectExamples。
 本版使用语义 Runtime Host、可替换流水线/后端、ModelPack 和 Profile。
@@ -9,7 +9,7 @@
 Package Manager → Add package from git URL：
 
 ```
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.1
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.2
 ```
 
 也可从 Human-Vision-SDK Releases 下载 unitypackage 或 UPM tgz。私有仓库需要
