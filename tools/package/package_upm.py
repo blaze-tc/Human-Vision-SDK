@@ -11,6 +11,10 @@ import uuid
 ROOT = Path(__file__).resolve().parents[2]
 DEST = ROOT / 'upm/com.blazetc.humanvision'
 
+def write_release_checksums(folder):
+    files = sorted(path for path in folder.iterdir() if path.is_file() and path.name != 'SHA256SUMS.txt')
+    (folder/'SHA256SUMS.txt').write_text(''.join(hashlib.sha256(path.read_bytes()).hexdigest()+'  '+path.name+'\n' for path in files), encoding='utf-8')
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('package', type=Path, nargs='?', default=OUTPUT / ('HumanVisionSDK-' + VERSION + '.unitypackage'))
@@ -82,6 +86,7 @@ def main():
     with tarfile.open(output,'w:gz',format=tarfile.PAX_FORMAT) as archive:
         for path in sorted(DEST.rglob('*')):
             if path.is_file(): archive.add(path,arcname='package/'+path.relative_to(DEST).as_posix())
+    write_release_checksums(output.parent)
     print('Git package:',DEST)
     print('Local UPM archive:',output)
     print('SHA256:',hashlib.sha256(output.read_bytes()).hexdigest())

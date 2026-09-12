@@ -1,0 +1,1 @@
+{"id":"runtime.profiles","type":"profile","version":"0.4.0-preview.1","api_version":1,"capabilities":["runtime_composition"],"dependencies":["pipeline.rtmo","pipeline.topdown","pipeline.hand","backend.ort.cpu"],"test_targets":["humanvision_plugin_tests","humanvision_native_tests"]}

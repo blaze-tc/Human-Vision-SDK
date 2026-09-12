@@ -139,7 +139,7 @@ namespace HumanVision.Interop
         internal static readonly int ResultMetaSize = Marshal.SizeOf<HVResultMetaNative>();
         internal static readonly int StatsSize = Marshal.SizeOf<HVStatsNative>();
 
-        [DllImport("humanvision", CallingConvention = CallingConvention.Cdecl)]
+        [DllImport("humanvision", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern HVResult HV_GetHandJoints(IntPtr handle, long sequence, IntPtr joints, int capacity);
 
         [DllImport(LibraryName, EntryPoint = nameof(HV_GetVersionString),
@@ -178,9 +178,9 @@ namespace HumanVision.Interop
             CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern HVResult HV_GetStats(IntPtr handle, ref HVStatsNative stats);
 
-        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern HVResult HV_SetRegions(IntPtr handle, [In] HVRectNative[] regions, int count, long revision);
-        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern HVResult HV_GetRegionAssignments(IntPtr handle, long sequence,
             [Out] int[] indices, int capacity, out long revision);
 

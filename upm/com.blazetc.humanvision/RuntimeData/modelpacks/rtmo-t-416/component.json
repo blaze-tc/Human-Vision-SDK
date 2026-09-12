@@ -1,0 +1,16 @@
+{
+  "id": "modelpack.rtmo-t-416",
+  "type": "modelpack",
+  "version": "1.0.0",
+  "api_version": 1,
+  "capabilities": [
+    "body_pose",
+    "multi_person"
+  ],
+  "dependencies": [
+    "pipeline.rtmo"
+  ],
+  "test_targets": [
+    "humanvision_native_tests"
+  ]
+}

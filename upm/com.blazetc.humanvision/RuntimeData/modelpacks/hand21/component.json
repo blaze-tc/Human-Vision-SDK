@@ -1,0 +1,15 @@
+{
+  "id": "modelpack.hand21",
+  "type": "modelpack",
+  "version": "1.0.0",
+  "api_version": 1,
+  "capabilities": [
+    "hand_pose"
+  ],
+  "dependencies": [
+    "pipeline.hand"
+  ],
+  "test_targets": [
+    "humanvision_native_tests"
+  ]
+}

@@ -1,8 +1,0 @@
-{
-  "change": "Gather COCO class 0 along score axis 1 before NMS; network and original file unchanged",
-  "limitations": "Only person detections; global top-300 is now person-only. Validate on application clips.",
-  "output": "models/detector/rtmdet_tiny_person_640.onnx",
-  "output_sha256": "f8b476a1454aecbb2cdae3632a2a861fb43d82a9346442a0605227cbe5d699d8",
-  "source": "models/detector/rtmdet_tiny_640.onnx",
-  "source_sha256": "6d0d4e5da97772cbc8d25368f7796b1250fdf12c61861b228d31b321fc519e3d"
-}

@@ -12,8 +12,9 @@ masking/revision isolation, canonical derivation, asynchronous fair hand schedul
 bounded adaptive temporal samples, additive V2 C ABI/semantic Unity integration,
 batched UGUI skeleton mesh and actual-provider diagnostics.
 Task 10 maintenance documentation and generated component metadata are implemented.
-Current milestone: Task 11 final architecture/package/import verification, followed
-by Task 12 main/tag/GitHub Release publication. Release is not yet published.
+Task 11 complete: architecture, documentation, archive/isolation and final UPM
+import gates PASS. Current milestone: Task 12 main/tag/GitHub Release publication.
+Release is not yet published.
 
 ## Fresh verification
 
@@ -30,7 +31,8 @@ by Task 12 main/tag/GitHub Release publication. Release is not yet published.
 - `pwsh -File tools/test/run_upm040_import.ps1`: isolated tgz import PASS on Unity2021.3 and Tuanjie2022.3;
   native runtime initialization, generated camera/settings scenes, all installed
   data hashes and independent StreamingAssets/UPM GUIDs verified. Final regenerated
-  archives will be checked again before publication.
+  tgz reimport on Tuanjie2022.3 PASS, using a SHA-addressed input path to prevent
+  stale same-version UPM cache reuse.
 - Hand21 golden uses independent OpenCV/ORT preprocessing and inverse ROI transform;
   actual palm/index-tip/thumb match within1.5px. No fabricated production joints.
 
@@ -38,6 +40,10 @@ Regression-first fixes: crossing identity, fast-hand priority, all16-hand fairne
 per-hand cadence (not a global15-job ceiling), expired hands, C import spelling,
 NDK filesystem linking and RTSP/Unity clock-origin mismatch. Source timestamps
 remain original; rendered samples do not increment raw result sequence.
+
+- Final `verify_package_isolation.py`: PASS (92 Unity assets,96 UPM files,118 GUIDs).
+- Catalog `--check`, architecture/documentation and public-surface guards: PASS.
+- Final release hashes: out/releases/0.4.0-preview.1/SHA256SUMS.txt.
 
 ## Explicit acceptance limits
 

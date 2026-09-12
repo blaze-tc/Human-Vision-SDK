@@ -17,6 +17,8 @@ namespace HumanVision
         public static HumanVisionCameraManager Instance { get; private set; }
         public HumanVisionCameraSettings Settings = new HumanVisionCameraSettings();
         public bool startAutomatically;
+        [Min(1), Tooltip("Display/sample rate; this does not change raw inference FPS.")]
+        public int targetDisplayFrameRate = 60;
         [Tooltip("Disable automatic device acceleration for CPU comparison; restart the app after changing this.")]
         public bool forceCpu;
         public string Status { get; private set; } = "Initializing";
@@ -31,7 +33,7 @@ namespace HumanVision
         private int[] _assignments = Array.Empty<int>();
         private long _revision;
         private bool _regionsEnabled;
-        private string _detectorPath, _posePath;
+        private string _runtimeRoot;
 
         private void Awake()
         {
@@ -43,27 +45,14 @@ namespace HumanVision
         }
         private IEnumerator Start()
         {
+            Application.targetFrameRate = Mathf.Clamp(targetDisplayFrameRate, 1, 240);
             try { Settings = HumanVisionCameraSettings.Load(); Settings.ResizeRegions(Settings.people); }
             catch (Exception e) { Status = e.Message; yield break; }
-            string root = Path.Combine(Application.persistentDataPath, "HumanVisionModels");
-            Directory.CreateDirectory(root);
-            string[] files = { "rtmdet_tiny_person_640.onnx", "rtmpose_s_133.onnx" };
-            foreach (string file in files) {
-                string source = Application.streamingAssetsPath + "/HumanVision/Models/" + file;
-                string target = Path.Combine(root, file);
-                // UnityWebRequest also reads Android APK StreamingAssets (jar:file).
-                using (var request = UnityWebRequest.Get(source.Contains("://") ? source : new Uri(source).AbsoluteUri)) {
-                    request.downloadHandler = new DownloadHandlerFile(target + ".tmp");
-                    yield return request.SendWebRequest();
-                    if (request.result != UnityWebRequest.Result.Success) { Status = "Model extraction failed: " + request.error; yield break; }
-                }
-                File.Copy(target + ".tmp", target, true); File.Delete(target + ".tmp");
-            }
-            _detectorPath = Path.Combine(root, files[0]); _posePath = Path.Combine(root, files[1]);
+            Status = "Preparing runtime data";
+            yield return HumanVisionRuntimeData.Prepare(root => _runtimeRoot = root, error => Status = error);
+            if (string.IsNullOrEmpty(_runtimeRoot)) yield break;
             if (!_manager.TryInitialize(new HumanVisionConfig { MaxBodies = Settings.people,
-                DetectorModelPath = _detectorPath, PoseModelPath = _posePath, EnableTracking = true,
-                UseHardwareAcceleration = !forceCpu,
-                DetectionInterval = Application.platform == RuntimePlatform.Android ? 2 : 1 })) {
+                RuntimeRoot = _runtimeRoot, Profile = forceCpu ? "cpu" : "auto" })) {
                 Status = _manager.LastError; yield break;
             }
             if (!ApplySettings()) yield break;
@@ -88,8 +77,7 @@ namespace HumanVision
                 long revision = ++_revision;
                 _bridge.StopFrames();
                 Array.Clear(_slots, 0, _slots.Length);
-                if (!_manager.TrySetRegions(Array.Empty<Rect>(), revision) ||
-                    !_manager.TrySetMaxBodies(Settings.people) ||
+                if (!_manager.TrySetMaxBodies(Settings.people) ||
                     !_manager.TrySetRegions(Settings.useRegions ? Settings.regions : Array.Empty<Rect>(), revision)) {
                     Status = _manager.LastError; return false;
                 }
@@ -123,7 +111,7 @@ namespace HumanVision
             Array.Clear(_slots, 0, _slots.Length);
             if (!_manager.TryCopyRegionAssignments(_assignments, out long revision) || revision != _revision) return;
             for (int i = 0; i < _manager.BodyCount; i++) {
-                int slot = _regionsEnabled ? _assignments[i] : i;
+                int slot = (_regionsEnabled || _manager.UsesRuntimeProfile) ? _assignments[i] : i;
                 if (slot >= 0 && slot < _slots.Length) _slots[slot] = _manager.Bodies[i];
             }
             SkeletonUpdated?.Invoke(sequence);
@@ -141,6 +129,16 @@ namespace HumanVision
             return body != null;
         }
         public bool IsUserDetected(int index) => TryGetBodyByRegionIndex(index, out _);
+        public bool TryGetSampledBodyByRegionIndex(int index, out HumanVisionBody body)
+        {
+            body = null;
+            if (!IsReady || !_source.HasRecentFrame) return false;
+            for (int i = 0; i < _manager.SampledBodyCount; i++) {
+                var candidate = _manager.SampledBodies[i];
+                if (candidate.RegionIndex == index) { body = candidate; return true; }
+            }
+            return false;
+        }
         public ulong GetUserIdByIndex(int index) => TryGetBodyByRegionIndex(index, out var body) ? (ulong)Math.Max(0, body.TrackId) : 0;
         public int GetUserIndexById(ulong id) { if (id == 0) return -1; for (int i = 0; i < _slots.Length; i++) if (GetUserIdByIndex(i) == id) return i; return -1; }
         public bool TryGetJointByRegionIndex(int index, HumanVisionJointType type, out HumanVisionJoint joint)

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "pack_id": "precision-t-26",
+  "pack_version": "1.0.0",
+  "pipeline_id": "pipeline.topdown",
+  "capabilities": [
+    "body_pose",
+    "multi_person"
+  ],
+  "max_people": 8,
+  "models": [
+    {
+      "role": "detector",
+      "format": "onnx",
+      "decoder_id": "person_dets",
+      "asset_path": "detector.onnx",
+      "sha256": "a6e9039b481218cc0cfcccf1d03243b68af34c736f2cb774dcca39afce2e99c7",
+      "input_contract": {
+        "width": 320,
+        "height": 320
+      },
+      "output_contract": {
+        "decoder": "person_dets"
+      },
+      "source": "OpenMMLab MMPose official models; see SOURCES.md",
+      "license": "Upstream Apache-2.0 code; consult linked model and dataset terms"
+    },
+    {
+      "role": "body",
+      "format": "onnx",
+      "decoder_id": "simcc26",
+      "asset_path": "body.onnx",
+      "sha256": "7d0075fbc44b2e696af21ac4555333fbb43405bf8dcc8d44c17c98d23818c710",
+      "input_contract": {
+        "width": 192,
+        "height": 256
+      },
+      "output_contract": {
+        "decoder": "simcc26"
+      },
+      "source": "OpenMMLab MMPose official models; see SOURCES.md",
+      "license": "Upstream Apache-2.0 code; consult linked model and dataset terms"
+    }
+  ]
+}

@@ -39,6 +39,10 @@ namespace HumanVision
         private static extern int HV_RtspState(IntPtr handle);
         [DllImport("humanvision", CallingConvention = CallingConvention.Cdecl)]
         private static extern void HV_RtspClose(IntPtr handle);
+        [DllImport("humanvision", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern long HV_RuntimeClockUs();
+        private static long TranslateCaptureTimestamp(long capture, long nativeNow, long unityNow)
+            => unityNow - Math.Max(0, nativeNow - capture);
 
         [Tooltip("Android: show the current camera frame independently of slower inference.")]
         public bool smoothAndroidPreview = true;
@@ -136,6 +140,8 @@ namespace HumanVision
                         _rtspTexture.LoadRawTextureData(_pin.AddrOfPinnedObject(), width * height * 4);
                         _rtspTexture.Apply(false, false);
                         _rtspSequence = sequence;
+                        timestamp = TranslateCaptureTimestamp(timestamp, HV_RuntimeClockUs(),
+                            (long)(Time.realtimeSinceStartupAsDouble * 1000000));
                         input = _rtspTexture;
                         flipY = true; // FFmpeg bytes are top-down; Texture2D storage is bottom-up.
                     }

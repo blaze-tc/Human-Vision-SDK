@@ -3,7 +3,7 @@ using UnityEngine.UI;
 
 namespace HumanVision
 {
-    // Independent world-space objects, projected over the preview rectangle.
+    // Default: one batched canonical mesh. Explicit prefabs retain V1 rendering.
     // No Azure/Kinect dependency; image-plane positions are not metric depth.
     public sealed class HumanVisionSkeletonOverlayer : MonoBehaviour
     {
@@ -24,6 +24,7 @@ namespace HumanVision
         private readonly Vector3[] _positions = new Vector3[23];
         private readonly bool[] _valid = new bool[23];
         private int _capacity;
+        private HumanVisionSkeletonGraphic _graphic;
         private void Grow(int count)
         {
             if (count <= _capacity) return;
@@ -53,6 +54,18 @@ namespace HumanVision
         }
         private void LateUpdate()
         {
+            if (jointPrefab == null && linePrefab == null && manager != null && preview != null) {
+                if (_graphic == null) {
+                    var child = new GameObject("Canonical skeleton", typeof(RectTransform), typeof(CanvasRenderer), typeof(HumanVisionSkeletonGraphic));
+                    child.transform.SetParent(preview.transform, false);
+                    _graphic = child.GetComponent<HumanVisionSkeletonGraphic>();
+                    _graphic.Owner = this; _graphic.raycastTarget = false;
+                    _graphic.rectTransform.anchorMin = Vector2.zero; _graphic.rectTransform.anchorMax = Vector2.one;
+                    _graphic.rectTransform.offsetMin = _graphic.rectTransform.offsetMax = Vector2.zero;
+                }
+                Hide(); _graphic.enabled = drawSkeleton; _graphic.SetVerticesDirty(); return;
+            }
+            if (_graphic != null) _graphic.enabled = false;
             if (manager == null || preview == null || foregroundCamera == null || !drawSkeleton) { Hide(); return; }
             Grow(manager.GetRegionCount()); if (!enabled) return;
             preview.rectTransform.GetWorldCorners(_corners);
@@ -80,7 +93,7 @@ namespace HumanVision
             }
         }
         private void Hide() { foreach (var joint in _joints) if (joint != null) joint.gameObject.SetActive(false); foreach (var line in _lines) if (line != null) line.gameObject.SetActive(false); }
-        private void OnDisable() { Hide(); }
-        private void OnDestroy() { foreach (var material in _materials) if (material != null) Destroy(material); }
+        private void OnDisable() { Hide(); if (_graphic != null) _graphic.enabled = false; }
+        private void OnDestroy() { foreach (var material in _materials) if (material != null) Destroy(material); if (_graphic != null) Destroy(_graphic.gameObject); }
     }
 }

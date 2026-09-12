@@ -1,0 +1,85 @@
+{
+  "version": "0.4.0-preview.1",
+  "files": [
+    {
+      "path": "modelpacks/hand21/component.json",
+      "sha256": "76119b6fe411d18b55b7c23a423e3cef5e144607e114a1846c8067b6293c4598"
+    },
+    {
+      "path": "modelpacks/hand21/hand.onnx",
+      "sha256": "39e858936bca0f94c09847d4e70b68a51d6c0adac61f36b457fcadb54621cd29"
+    },
+    {
+      "path": "modelpacks/hand21/manifest.json",
+      "sha256": "1fad738224ff6f99ce52acd5961bd402236ddc62d48b6f8c880765416b45c1a3"
+    },
+    {
+      "path": "modelpacks/hand21/README.md",
+      "sha256": "5ad41d190790e3407918ad2eae6bdb9f6bf33ae1ae2e75273e0370aeb1446ed1"
+    },
+    {
+      "path": "modelpacks/hand21/SOURCES.md",
+      "sha256": "48d9a6ae7c3f52c31d7717e83f2bdd65f60ef2ddc39c5794bcbdc626ba4c80e4"
+    },
+    {
+      "path": "modelpacks/precision-t-26/body.onnx",
+      "sha256": "7d0075fbc44b2e696af21ac4555333fbb43405bf8dcc8d44c17c98d23818c710"
+    },
+    {
+      "path": "modelpacks/precision-t-26/component.json",
+      "sha256": "5d2e8962c2db42ae742a294b860e118ad00765d2ac5351ac8bd5b6c13194479b"
+    },
+    {
+      "path": "modelpacks/precision-t-26/detector.onnx",
+      "sha256": "a6e9039b481218cc0cfcccf1d03243b68af34c736f2cb774dcca39afce2e99c7"
+    },
+    {
+      "path": "modelpacks/precision-t-26/manifest.json",
+      "sha256": "df00e4d62ae0e276abebf5a16bbc4568824b734a2296e8ff1eb04df1960eb128"
+    },
+    {
+      "path": "modelpacks/precision-t-26/README.md",
+      "sha256": "1f377f5265b497d8a4a04504065d7e84c1b32949d49de9c40b08e130e475a5fb"
+    },
+    {
+      "path": "modelpacks/precision-t-26/SOURCES.md",
+      "sha256": "548c383147d38a47388d614599dac8eb68e89b4372b5e327cc24105f993274b9"
+    },
+    {
+      "path": "modelpacks/rtmo-t-416/body.onnx",
+      "sha256": "20aad6e2e42359cac1c5b4a0b2da00e29bfe91a72a782fdcf287d273a04c1b24"
+    },
+    {
+      "path": "modelpacks/rtmo-t-416/component.json",
+      "sha256": "f9c5e90457a55e687f9509643e1a6a28235f466f9d0c581da087c0f2e9b4ce82"
+    },
+    {
+      "path": "modelpacks/rtmo-t-416/manifest.json",
+      "sha256": "337cb5c0289ceba3acd2c43d2914f489f7d03ba634e3fbc3058ef9f77bdd1189"
+    },
+    {
+      "path": "modelpacks/rtmo-t-416/README.md",
+      "sha256": "c7bc67750c93e6b806b35f4960eb7b527f6374aac3bd42bc721ba57d89271020"
+    },
+    {
+      "path": "modelpacks/rtmo-t-416/SOURCES.md",
+      "sha256": "73712b78b6305c83ee3ebdb3f34581a02b20172758692c986c1689b13216b7e4"
+    },
+    {
+      "path": "profiles/auto.json",
+      "sha256": "9dea68a7bd87a3b63fc19bb442a71ee7bf24c9fe4ed3653815c24f7a7f79c09e"
+    },
+    {
+      "path": "profiles/component.json",
+      "sha256": "3d0020686e4462593b2b3496670b41c0b04a80b33dbde10c5005d584a91bb835"
+    },
+    {
+      "path": "profiles/cpu.json",
+      "sha256": "1180b18f52de55e0319d46ce201231193fdfb2bd0e308862f6249583dd727b26"
+    },
+    {
+      "path": "profiles/README.md",
+      "sha256": "16cf1fa339f515e804bae8f2ff85a21675c3471706bf8ec5989f85fccc8042c9"
+    }
+  ]
+}
