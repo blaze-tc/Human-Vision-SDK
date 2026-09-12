@@ -23,7 +23,11 @@ UPM import regression failed on missing text repair. Final verification:
 - Native initialization, full RuntimeData/index installation, GUID isolation and
   generated camera/settings scenes: PASS.
 - Archive isolation92Unityassets/97UPMfiles/119GUIDs and architecture/public API: PASS.
-Current step: publish preview.2 assets and verify downloaded copies.
+Published [v0.4.0-preview.2](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.2)
+on2026-09-12T13:38:53Z (not draft). All7remote assets downloaded and SHA256 matched.
+Release tag337eed82a0dc53bf9cf10be62f329e29a6226070; main includes publication record.
+User project/cache files were inspected read-only; update its Git dependency from
+preview.1 to preview.2 and restart Play Mode. No cache deletion is required.
 
 Previous native63/63 and Unity43/43 are unchanged-core baseline, not newly executed
 patch results. Physical device acceptance remains pending as described below.
