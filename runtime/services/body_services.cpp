@@ -4,6 +4,9 @@
 #include <limits>
 namespace humanvision::runtime {
 namespace {
+constexpr int64_t kPredictionHorizonUs=25000;
+constexpr int64_t kHandExpiryUs=200000;
+constexpr double kObservationPeriodAlpha=.2;
 float Iou(HV_Rect a,HV_Rect b){float w=std::max(0.F,std::min(a.x+a.width,b.x+b.width)-std::max(a.x,b.x));float h=std::max(0.F,std::min(a.y+a.height,b.y+b.height)-std::max(a.y,b.y));return w*h/std::max(1.F,a.width*a.height+b.width*b.height-w*h);}
 void Midpoint(HV_CanonicalBodyV1& body,int target,int left,int right){
  auto& j=body.joints[target];const auto& a=body.joints[left];const auto& b=body.joints[right];if(j.valid||!a.valid||!b.valid)return;
@@ -32,16 +35,21 @@ std::array<int,8> Assign(const float costs[8][8],int n){
 }
 }
 void BodyServices::Configure(int capacity,const HV_Rect* regions,uint32_t count,int64_t revision){
- capacity_=std::clamp(capacity,1,8);region_count_=regions?std::min(count,uint32_t(capacity_)):0;regions_={};for(uint32_t i=0;i<region_count_;++i)regions_[i]=regions[i];tracks_={};revision_=revision;last_time_=0;hand_cursor_=0;hand_served_mask_=0;
+ capacity_=std::clamp(capacity,1,8);region_count_=regions?std::min(count,uint32_t(capacity_)):0;regions_={};for(uint32_t i=0;i<region_count_;++i)regions_[i]=regions[i];tracks_={};revision_=revision;last_time_=0;observation_period_ewma_us_=0;hand_cursor_=0;hand_served_mask_=0;
 }
+int64_t BodyServices::RenderHoldUs() const{
+ return observation_period_ewma_us_>0?int64_t(std::clamp(observation_period_ewma_us_*2.5,300000.,800000.)):500000;
+}
+int64_t BodyServices::TrackLostUs() const{return std::max(int64_t(800000),RenderHoldUs());}
 int BodyServices::Region(const HV_Rect& box,int width,int height) const{
  if(!region_count_)return -1;float x=(box.x+box.width*.5F)/width,y=(box.y+box.height*.5F)/height;
  for(uint32_t i=0;i<region_count_;++i){auto r=regions_[i];if(x>=r.x&&y>=r.y&&x<=r.x+r.width&&y<=r.y+r.height)return int(i);}return -2;
 }
 void BodyServices::Observe(const HV_ObservationFrameV1& frame,int64_t revision){
  if(revision!=revision_||frame.source_timestamp_us<=last_time_||frame.width<=0||frame.height<=0||frame.body_count>8)return;
+ if(last_time_){const double period=double(frame.source_timestamp_us-last_time_);observation_period_ewma_us_=observation_period_ewma_us_>0?observation_period_ewma_us_+kObservationPeriodAlpha*(period-observation_period_ewma_us_):period;}
  last_time_=frame.source_timestamp_us;width_=frame.width;height_=frame.height;int obs[8]{},regions[8]{},num=0,slots[8]{},active=0;
- for(int i=0;i<capacity_;++i){auto& t=tracks_[i];if(t.active&&last_time_-t.raw.observation_timestamp_us>500000)t.active=false;if(t.active){slots[active++]=i;t.raw.lifecycle=t.filtered.lifecycle=2;}}
+ for(int i=0;i<capacity_;++i){auto& t=tracks_[i];if(t.active&&last_time_-t.raw.observation_timestamp_us>TrackLostUs())t.active=false;if(t.active){slots[active++]=i;t.raw.lifecycle=t.filtered.lifecycle=2;}}
  for(uint32_t i=0;i<frame.body_count&&num<capacity_;++i){const auto& b=frame.bodies[i].bbox_px;if(!std::isfinite(b.x)||!std::isfinite(b.y)||!std::isfinite(b.width)||!std::isfinite(b.height)||b.width<=0||b.height<=0)continue;int region=Region(b,frame.width,frame.height);if(region==-2)continue;bool taken=false;for(int j=0;j<num;++j)taken|=region>=0&&regions[j]==region;if(taken)continue;obs[num]=int(i);regions[num++]=region;}
  float costs[8][8];for(auto& row:costs)std::fill_n(row,8,2.F);int n=std::max(active,num);
  for(int i=0;i<active;++i)for(int j=0;j<num;++j){const auto& track=tracks_[slots[i]];const auto& t=track.raw;const auto& b=frame.bodies[obs[j]];
@@ -66,7 +74,37 @@ void BodyServices::Observe(const HV_ObservationFrameV1& frame,int64_t revision){
 }
 BodySnapshot BodyServices::Raw() const{BodySnapshot out;for(const auto& t:tracks_)if(t.active&&t.raw.observation_timestamp_us==last_time_)out.bodies[out.count++]=t.raw;return out;}
 BodySnapshot BodyServices::Sample(int64_t now) const{
- BodySnapshot out;for(const auto& t:tracks_)if(t.active&&now>=t.raw.observation_timestamp_us&&now-t.raw.observation_timestamp_us<=200000){auto body=t.filtered;for(int k=0;k<32;++k){auto& j=body.joints[k];if(!j.valid)continue;if(now-j.observation_timestamp_us>200000){j.valid=0;continue;}float horizon=std::clamp(float(now-j.observation_timestamp_us)/1e6F,0.F,.025F);float dx=t.vx[k]*horizon,dy=t.vy[k]*horizon;j.x_norm+=dx/width_;j.y_norm+=dy/height_;j.x_px+=dx;j.y_px+=dy;j.prediction_ms=horizon*1000;}out.bodies[out.count++]=body;}return out;
+ BodySnapshot out;const int64_t hold=RenderHoldUs();
+ for(const auto& t:tracks_)if(t.active&&now>=t.raw.observation_timestamp_us&&now-t.raw.observation_timestamp_us<=hold){
+  auto body=t.filtered;
+  for(int k=0;k<32;++k){
+   auto& j=body.joints[k];if(!j.valid)continue;
+   const bool hand=(k>=8&&k<=10)||(k>=15&&k<=17);
+   const int64_t age=now-j.observation_timestamp_us;
+   j.prediction_ms=0;
+   if(age>(hand?kHandExpiryUs:hold)){j.valid=0;continue;}
+   // Once the short prediction window ends, hold the last filtered observation.
+   // Do not keep integrating velocity throughout a slow inference interval.
+   if(age>=0&&age<=kPredictionHorizonUs){
+    const float horizon=float(age)/1e6F,dx=t.vx[k]*horizon,dy=t.vy[k]*horizon;
+    j.x_norm+=dx/width_;j.y_norm+=dy/height_;j.x_px+=dx;j.y_px+=dy;j.prediction_ms=horizon*1000;
+   }
+  }
+  out.bodies[out.count++]=body;
+ }
+ return out;
+}
+BodySampleDiagnostics BodyServices::Diagnostics(int64_t now) const{
+ BodySampleDiagnostics out;const int64_t hold=RenderHoldUs(),lost=TrackLostUs();
+ out.observation_period_ewma_ms=observation_period_ewma_us_/1000.;out.render_hold_ms=double(hold)/1000.;out.track_lost_ms=double(lost)/1000.;
+ int64_t youngest=std::numeric_limits<int64_t>::max();
+ for(const auto& t:tracks_)if(t.active&&now>=t.raw.observation_timestamp_us){
+  const int64_t age=now-t.raw.observation_timestamp_us;youngest=std::min(youngest,age);
+  if(age<=lost)++out.tracked_body_count;if(age<=hold)++out.sampled_body_count;
+ }
+ if(youngest!=std::numeric_limits<int64_t>::max())out.sample_age_ms=double(youngest)/1000.;
+ if(out.sampled_body_count)out.state=youngest<=kPredictionHorizonUs?BodySampleState::Predicted:BodySampleState::Held;
+ return out;
 }
 void BodyServices::MergeHands(const HV_HandObservationV1* hands,uint32_t count,int64_t revision){
  if(!hands||revision!=revision_)return;

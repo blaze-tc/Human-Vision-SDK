@@ -28,6 +28,69 @@ TEST(CommonServices, RegionsExcludeOutsideAndExpireOldSamples){
  services.Observe(Frame(2,1033000,100),3);ASSERT_EQ(services.Raw().count,1u);EXPECT_EQ(services.Raw().bodies[0].region_index,0);
  EXPECT_EQ(services.Sample(2033000).count,0u);
 }
+TEST(CommonServices, StartupRenderHoldKeepsBodyAcrossSlowInferenceGaps) {
+ BodyServices s;s.Configure(1,nullptr,0,1);s.Observe(Frame(1,1000000,100),1);
+ for(int64_t age:{0,100000,250000,400000,500000}){
+  auto sample=s.Sample(1000000+age);ASSERT_EQ(sample.count,1u)<<age;
+  EXPECT_TRUE(sample.bodies[0].joints[HV_CANONICAL_WRIST_LEFT].valid);
+  EXPECT_EQ(sample.bodies[0].source_frame_id,1);
+  EXPECT_EQ(sample.bodies[0].observation_timestamp_us,1000000);
+  EXPECT_LE(sample.bodies[0].joints[HV_CANONICAL_WRIST_LEFT].prediction_ms,25.F);
+ }
+ EXPECT_EQ(s.Sample(1500001).count,0u);
+ EXPECT_EQ(s.Raw().count,1u); // Presentation expiry never fabricates or removes a raw observation.
+}
+TEST(CommonServices, AdaptiveRenderHoldUsesObservationCadenceAndBoundaries) {
+ BodyServices s;s.Configure(1,nullptr,0,1);
+ s.Observe(Frame(1,1000000,100),1);s.Observe(Frame(2,1200000,105),1);
+ EXPECT_EQ(s.Sample(1600000).count,1u);EXPECT_EQ(s.Sample(1700000).count,1u);
+ EXPECT_EQ(s.Sample(1700001).count,0u); // 200 ms observation period * 2.5.
+ s.Configure(1,nullptr,0,2);s.Observe(Frame(1,2000000,100),2);s.Observe(Frame(2,2033000,105),2);
+ EXPECT_EQ(s.Sample(2333000).count,1u);EXPECT_EQ(s.Sample(2333001).count,0u); // Minimum 300 ms.
+ s.Configure(1,nullptr,0,3);s.Observe(Frame(1,3000000,100),3);s.Observe(Frame(2,3400000,105),3);
+ EXPECT_EQ(s.Sample(4200000).count,1u);EXPECT_EQ(s.Sample(4200001).count,0u); // Maximum 800 ms.
+}
+TEST(CommonServices, HeldBodyStopsPredictionAndRealObservationReplacesIt) {
+ BodyServices s;s.Configure(1,nullptr,0,1);s.Observe(Frame(1,1000000,100),1);s.Observe(Frame(2,1200000,120),1);
+ const auto filtered=s.Sample(1200000);const float x=filtered.bodies[0].joints[7].x_px;
+ auto predicted=s.Sample(1225000);ASSERT_EQ(predicted.count,1u);
+ EXPECT_GT(predicted.bodies[0].joints[7].x_px,x);EXPECT_FLOAT_EQ(predicted.bodies[0].joints[7].prediction_ms,25.F);
+ for(int64_t age:{25001,100000,250000,400000}){
+  auto held=s.Sample(1200000+age);ASSERT_EQ(held.count,1u);
+  EXPECT_FLOAT_EQ(held.bodies[0].joints[7].x_px,x);EXPECT_FLOAT_EQ(held.bodies[0].joints[7].prediction_ms,0.F);
+  EXPECT_EQ(held.bodies[0].source_frame_id,2);EXPECT_TRUE(held.bodies[0].joints[7].valid);
+ }
+ s.Observe(Frame(3,1600000,145),1);auto fresh=s.Sample(1600000);ASSERT_EQ(fresh.count,1u);
+ EXPECT_EQ(fresh.bodies[0].source_frame_id,3);EXPECT_EQ(fresh.bodies[0].observation_timestamp_us,1600000);
+ EXPECT_GT(fresh.bodies[0].joints[7].x_px,x);EXPECT_FLOAT_EQ(s.Raw().bodies[0].joints[7].x_px,145.F);
+}
+TEST(CommonServices, RenderExpiryIsIndependentFromTrackLossAndHandExpiry) {
+ BodyServices s;s.Configure(1,nullptr,0,1);auto f=Frame(1,1000000,100);s.Observe(f,1);const auto id=s.Raw().bodies[0].track_id;
+ HV_HandObservationV1 hand{};hand.request_id=id;hand.fingertip=f.bodies[0].joints[7];s.MergeHands(&hand,1,1);
+ EXPECT_TRUE(s.Sample(1200000).bodies[0].joints[9].valid);
+ auto held=s.Sample(1250000);ASSERT_EQ(held.count,1u);EXPECT_TRUE(held.bodies[0].joints[7].valid);EXPECT_FALSE(held.bodies[0].joints[9].valid);
+ EXPECT_EQ(s.Sample(1500001).count,0u);
+ s.Observe(Frame(2,1700000,101),1);ASSERT_EQ(s.Raw().count,1u);EXPECT_EQ(s.Raw().bodies[0].track_id,id);
+ s.Observe(Frame(3,2500001,101),1);ASSERT_EQ(s.Raw().count,1u);EXPECT_NE(s.Raw().bodies[0].track_id,id);
+}
+TEST(CommonServices, SampleDiagnosticsReportsCadenceStateAndSeparateLifetimes) {
+ BodyServices s;s.Configure(1,nullptr,0,1);auto empty=s.Diagnostics(1000000);
+ EXPECT_EQ(empty.state,BodySampleState::Stale);EXPECT_EQ(empty.sample_age_ms,-1.);EXPECT_EQ(empty.render_hold_ms,500.);
+ s.Observe(Frame(1,1000000,100),1);EXPECT_EQ(s.Diagnostics(1025000).state,BodySampleState::Predicted);
+ EXPECT_EQ(s.Diagnostics(1025001).state,BodySampleState::Held);
+ s.Observe(Frame(2,1200000,101),1);auto slow=s.Diagnostics(1600000);
+ EXPECT_EQ(slow.observation_period_ewma_ms,200.);EXPECT_EQ(slow.render_hold_ms,500.);
+ EXPECT_EQ(slow.sample_age_ms,400.);EXPECT_EQ(slow.sampled_body_count,1u);EXPECT_EQ(slow.tracked_body_count,1u);
+ auto stale=s.Diagnostics(1700001);EXPECT_EQ(stale.state,BodySampleState::Stale);
+ EXPECT_EQ(stale.sampled_body_count,0u);EXPECT_EQ(stale.tracked_body_count,1u);EXPECT_EQ(stale.track_lost_ms,800.);
+ EXPECT_EQ(s.Diagnostics(2000001).tracked_body_count,0u);EXPECT_EQ(s.Raw().count,1u);
+ s.Observe(Frame(3,1300000,102),1);auto faster=s.Diagnostics(1300000);
+ EXPECT_EQ(faster.observation_period_ewma_ms,180.);EXPECT_EQ(faster.render_hold_ms,450.);
+ s.Observe(Frame(4,1400000,102),2); // Rejected revisions must not change cadence.
+ EXPECT_EQ(s.Diagnostics(1400000).observation_period_ewma_ms,180.);
+ s.Configure(1,nullptr,0,2);EXPECT_EQ(s.Diagnostics(1400000).render_hold_ms,500.);
+ EXPECT_EQ(s.Diagnostics(1400000).observation_period_ewma_ms,0.);
+}
 TEST(CommonServices, HandSchedulingVisitsBothSidesWithoutSkipping) {
  BodyServices s;s.Configure(1,nullptr,0,1);auto f=Frame(1,1000000,100);
  for(int k:{6,7,13,14}){auto& j=f.bodies[0].joints[k];j.valid=1;j.x_px=float(k*10);j.y_px=100;j.observation_timestamp_us=1000000;}
@@ -68,8 +131,8 @@ TEST(CommonServices, ShortLossRecoversButExpiredReentryGetsNewIdentity) {
  BodyServices s;s.Configure(1,nullptr,0,1);s.Observe(Frame(1,1000000,100),1);auto id=s.Raw().bodies[0].track_id;
  auto missing=Frame(2,1100000,100);missing.body_count=0;s.Observe(missing,1);EXPECT_EQ(s.Raw().count,0u);
  s.Observe(Frame(3,1150000,101),1);ASSERT_EQ(s.Raw().count,1u);EXPECT_EQ(s.Raw().bodies[0].track_id,id);
- s.Observe(Frame(4,1800000,101),1);EXPECT_NE(s.Raw().bodies[0].track_id,id);
- auto raw=s.Raw();for(int i=0;i<6;++i){auto sample=s.Sample(1800000+i*16666);ASSERT_EQ(sample.count,1u);EXPECT_EQ(sample.bodies[0].source_frame_id,4);EXPECT_LE(sample.bodies[0].joints[7].prediction_ms,25.F);}
+ s.Observe(Frame(4,2000000,101),1);EXPECT_NE(s.Raw().bodies[0].track_id,id);
+ auto raw=s.Raw();for(int i=0;i<6;++i){auto sample=s.Sample(2000000+i*16666);ASSERT_EQ(sample.count,1u);EXPECT_EQ(sample.bodies[0].source_frame_id,4);EXPECT_LE(sample.bodies[0].joints[7].prediction_ms,25.F);}
  EXPECT_EQ(s.Raw().bodies[0].observation_timestamp_us,raw.bodies[0].observation_timestamp_us);
 }
 TEST(CommonServices, FastMovingHandGetsPriorityWithoutRepeatingWithinRound) {

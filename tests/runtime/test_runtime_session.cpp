@@ -17,7 +17,9 @@ TEST(RuntimeSession, SemanticProfileProducesAtomicCanonicalSnapshotAndInvalidate
  while(stats.body_sequence==0&&std::chrono::steady_clock::now()<end){ASSERT_EQ(HV_RuntimeCopy(handle,0,bodies,8,&count,&stats),HV_OK);std::this_thread::sleep_for(std::chrono::milliseconds(10));}
  ASSERT_EQ(count,1u);EXPECT_EQ(stats.source_frame_id,42);EXPECT_EQ(bodies[0].observation_timestamp_us,1000000);
  EXPECT_TRUE(bodies[0].joints[HV_CANONICAL_NOSE].valid);
- ASSERT_EQ(HV_RuntimeCopy(handle,1300000,bodies,8,&count,&stats),HV_OK);EXPECT_EQ(count,0u);
+ ASSERT_EQ(HV_RuntimeCopy(handle,1300000,bodies,8,&count,&stats),HV_OK);ASSERT_EQ(count,1u);
+ EXPECT_EQ(bodies[0].source_frame_id,42);EXPECT_EQ(bodies[0].observation_timestamp_us,1000000);
+ ASSERT_EQ(HV_RuntimeCopy(handle,1500001,bodies,8,&count,&stats),HV_OK);EXPECT_EQ(count,0u);
  HV_Rect region{0,0,.5F,1};ASSERT_EQ(HV_RuntimeSetRegions(handle,&region,1,1),HV_OK);
  ASSERT_EQ(HV_RuntimeCopy(handle,0,bodies,8,&count,&stats),HV_OK);EXPECT_EQ(count,0u);EXPECT_EQ(stats.region_revision,1);
  EXPECT_EQ(HV_RuntimeSetRegions(handle,&region,1,1),HV_ERR_INVALID_ARGUMENT);
