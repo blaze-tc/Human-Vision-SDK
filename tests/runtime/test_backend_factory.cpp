@@ -21,6 +21,7 @@ TEST(BackendFactory, FallsBackAndKeepsModuleAliveAndReason) {
   BackendFactory factory({registry.Find("fixture.unavailable",0,error),registry.Find("backend.ort.cpu",0,error)});
   services=factory.Services();HV_BackendConfigV1 config{};config.struct_size=sizeof(config);config.api_version=HV_PLUGIN_API_V1;config.model_path_utf8=HV_TEST_BACKEND_MODEL_PATH;
   ASSERT_EQ(services.create_backend(services.context,&config,&api,&session,nullptr),HV_OK);
+  EXPECT_NE(factory.Diagnostics().find(std::filesystem::path(HV_TEST_BACKEND_MODEL_PATH).filename().u8string()),std::string::npos);
  }
  HV_BackendSessionInfoV1 info{};info.struct_size=sizeof(info);info.api_version=HV_PLUGIN_API_V1;
  EXPECT_EQ(api->session_info(session,&info),HV_OK);EXPECT_STREQ(info.actual,"CPU");

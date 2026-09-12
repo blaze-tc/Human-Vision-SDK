@@ -49,6 +49,38 @@ typedef struct HV_CanonicalBodyV1 {
     HV_CanonicalJointV1 joints[HV_CANONICAL_JOINT_COUNT];
 } HV_CanonicalBodyV1;
 
+typedef struct HV_RuntimeConfigV1 {
+    uint32_t struct_size, api_version;
+    const char* runtime_root_utf8;
+    const char* profile_id_utf8;
+    int32_t max_people;
+    uint32_t reserved;
+} HV_RuntimeConfigV1;
+
+typedef struct HV_RuntimeStatsV1 {
+    uint32_t struct_size, api_version;
+    int64_t body_sequence, hand_sequence, source_frame_id, source_timestamp_us;
+    int64_t region_revision, dropped_frames;
+    float body_fps, hand_fps, preprocess_ms, inference_ms, postprocess_ms;
+    uint32_t reserved;
+} HV_RuntimeStatsV1;
+
+typedef void* HV_RuntimeHandle;
+/* Native steady clock, also used by RTSP capture; callers can translate clock
+ * domains by subtracting native capture age from their own monotonic now. */
+HV_API int64_t HV_CALL HV_RuntimeClockUs(void);
+/* Additive semantic API. Strings are UTF-8. Submit copies input and returns before
+ * inference. Control operations (Create/Destroy) may wait for model loading/jobs.
+ * Copy is one coherent snapshot; sample_timestamp_us=0 selects raw observations.
+ * Sample time must use the same monotonic clock as input timestamps. */
+HV_API HV_Result HV_CALL HV_RuntimeCreate(const HV_RuntimeConfigV1*, HV_RuntimeHandle*, char* error, uint32_t error_capacity);
+HV_API HV_Result HV_CALL HV_RuntimeSubmit(HV_RuntimeHandle, const HV_VideoFrame*);
+HV_API HV_Result HV_CALL HV_RuntimeSetRegions(HV_RuntimeHandle, const HV_Rect*, uint32_t count, int64_t revision);
+HV_API HV_Result HV_CALL HV_RuntimeCopy(HV_RuntimeHandle, int64_t sample_timestamp_us, HV_CanonicalBodyV1*, uint32_t capacity, uint32_t* written, HV_RuntimeStatsV1*);
+HV_API HV_Result HV_CALL HV_RuntimeGetError(HV_RuntimeHandle, char* error, uint32_t capacity);
+HV_API HV_Result HV_CALL HV_RuntimeGetDiagnostics(HV_RuntimeHandle, char* text, uint32_t capacity);
+HV_API void HV_CALL HV_RuntimeDestroy(HV_RuntimeHandle);
+
 #ifdef __cplusplus
 }
 #endif

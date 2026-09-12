@@ -41,7 +41,9 @@ namespace HumanVision.Tests
                 .Where(method => method.GetCustomAttribute<DllImportAttribute>() != null)
                 .ToArray();
 
-            Assert.That(methods, Has.Length.EqualTo(10));
+            string[] required = { "HV_GetVersionString", "HV_Create", "HV_Reconfigure", "HV_SubmitFrame",
+                "HV_GetLatestResultMeta", "HV_GetBodyCount", "HV_GetBodies", "HV_GetStats", "HV_GetLastError", "HV_Destroy" };
+            Assert.That(methods.Select(method => method.Name), Is.SupersetOf(required), "Every frozen V1 entry point must remain.");
             foreach (MethodInfo method in methods)
             {
                 DllImportAttribute attribute = method.GetCustomAttribute<DllImportAttribute>();

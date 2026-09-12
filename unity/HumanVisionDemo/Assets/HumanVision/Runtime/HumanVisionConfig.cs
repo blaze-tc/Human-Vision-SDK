@@ -15,6 +15,10 @@ namespace HumanVision
         [Min(1)] public int DetectionInterval = 1;
         public bool EnableTracking = true;
         public bool UseHardwareAcceleration = true;
+        [Tooltip("Prepared runtime data folder. Empty selects the V1 compatibility configuration.")]
+        public string RuntimeRoot;
+        public string Profile = "auto";
+        // Deprecated V1 compatibility inputs; new applications use RuntimeRoot/Profile.
         public string DetectorModelPath;
         public string PoseModelPath;
 
@@ -23,6 +27,13 @@ namespace HumanVision
             if (MaxBodies < 1)
             {
                 throw new ArgumentException("MaxBodies must be at least 1.", nameof(MaxBodies));
+            }
+
+            if (!string.IsNullOrWhiteSpace(RuntimeRoot))
+            {
+                if (MaxBodies > 8 || string.IsNullOrWhiteSpace(Profile))
+                    throw new ArgumentException("Runtime profiles require 1-8 people and a profile id.");
+                return;
             }
 
             ValidateThreshold(DetectionThreshold, nameof(DetectionThreshold));

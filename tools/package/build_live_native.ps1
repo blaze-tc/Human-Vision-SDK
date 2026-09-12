@@ -1,6 +1,6 @@
 param(
     [string]$VisualStudio = 'D:/Microsoft Visual Studio',
-    [string]$AndroidNdk = 'D:/Developer/2021.3.45f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK',
+    [string]$AndroidNdk = 'D:/Developer/2022.3.61t4/Editor/Data/PlaybackEngines/AndroidPlayer/NDK',
     [switch]$Fresh
 )
 $ErrorActionPreference = 'Stop'
@@ -23,7 +23,9 @@ $batchPath = "$root/out/build-live-windows.cmd"
 $batch | Set-Content $batchPath -Encoding ascii
 & cmd /d /c "`"$batchPath`"" > "$root/out/build-live-windows.log" 2>&1
 if ($LASTEXITCODE -ne 0) { throw 'Windows native build failed; see out/build-live-windows.log' }
-& $cmake -S $root -B "$root/build/android-live" -G Ninja "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_TOOLCHAIN_FILE=$AndroidNdk/build/cmake/android.toolchain.cmake" -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DHV_ENABLE_RTSP=ON "-DHV_ONNXRUNTIME_ROOT=$root/out/live-deps/ort-android" "-DHV_FFMPEG_INCLUDE=$root/out/live-deps/ffmpeg-headers" "-DHV_FFMPEG_LIB_DIR=$root/out/live-deps/ffmpeg-android" > "$root/out/configure-android-live.log" 2>&1
+$androidConfigure = @('-S', $root, '-B', "$root/build/android-live", '-G', 'Ninja')
+if ($Fresh) { $androidConfigure += '--fresh' }
+& $cmake @androidConfigure "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_TOOLCHAIN_FILE=$AndroidNdk/build/cmake/android.toolchain.cmake" -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DHV_ENABLE_RTSP=ON "-DHV_ONNXRUNTIME_ROOT=$root/out/live-deps/ort-android" "-DHV_FFMPEG_INCLUDE=$root/out/live-deps/ffmpeg-headers" "-DHV_FFMPEG_LIB_DIR=$root/out/live-deps/ffmpeg-android" > "$root/out/configure-android-live.log" 2>&1
 if ($LASTEXITCODE -ne 0) { throw 'Android configuration failed' }
 & $cmake --build "$root/build/android-live" --target humanvision > "$root/out/build-android-live.log" 2>&1
 if ($LASTEXITCODE -ne 0) { throw 'Android native build failed' }

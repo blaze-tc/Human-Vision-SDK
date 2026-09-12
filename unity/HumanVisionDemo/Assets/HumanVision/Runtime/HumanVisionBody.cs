@@ -32,13 +32,18 @@ namespace HumanVision
         {
             Joints = new HumanVisionJoint[HumanVisionJoint.Count];
             HandJoints = new HumanVisionJoint[6];
+            CanonicalJoints = new HumanVisionCanonicalJoint[32];
         }
 
         public int TrackId { get; internal set; }
         public Rect BoundingBoxPixels { get; internal set; }
         public float DetectionConfidence { get; internal set; }
         public HumanVisionJoint[] Joints { get; }
-        // Left Hand/Handtip/Thumb then right, same source frame as Joints.
+        // Left Hand/Handtip/Thumb then right. V2 hand timestamps are independent.
         public HumanVisionJoint[] HandJoints { get; }
+        public HumanVisionCanonicalJoint[] CanonicalJoints { get; }
+        public long StableTrackId { get; internal set; }
+        public long ObservationTimestampUs { get; internal set; }
+        public int RegionIndex { get; internal set; }
     }
 }

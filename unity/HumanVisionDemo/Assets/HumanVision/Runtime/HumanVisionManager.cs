@@ -14,7 +14,7 @@ namespace HumanVision
         [Header("Polling")]
         [SerializeField, Min(0.05f)] private float statsRefreshSeconds = 0.25f;
 
-        private HumanVisionSession _session;
+        private IHumanVisionSession _session;
         private float _nextStatsRefreshTime;
         private string _lastLoggedError;
 
@@ -28,6 +28,11 @@ namespace HumanVision
         public long SourceTimestampUs => _session?.SourceTimestampUs ?? 0;
         public HumanVisionStats Stats => _session?.Stats ?? default;
         public int MaxBodies => _session?.MaxBodies ?? config.MaxBodies;
+        public HumanVisionBody[] SampledBodies => (_session as HumanVisionRuntimeSession)?.SampledBodies ?? Bodies;
+        public int SampledBodyCount => (_session as HumanVisionRuntimeSession)?.SampledCount ?? BodyCount;
+        public bool UsesRuntimeProfile => _session is HumanVisionRuntimeSession;
+        public float HandInferenceFps => (_session as HumanVisionRuntimeSession)?.HandFps ?? 0;
+        public string RuntimeDiagnostics => (_session as HumanVisionRuntimeSession)?.Diagnostics ?? "V1 compatibility session";
         public string LastError { get; private set; }
         public bool TrySetRegions(Rect[] regions, long revision)
         {
@@ -88,7 +93,9 @@ namespace HumanVision
             try
             {
                 config = requestedConfig?.Clone() ?? throw new ArgumentNullException(nameof(requestedConfig));
-                _session = new HumanVisionSession(config);
+                _session = string.IsNullOrWhiteSpace(config.RuntimeRoot)
+                    ? (IHumanVisionSession)new HumanVisionSession(config)
+                    : new HumanVisionRuntimeSession(config);
                 LastError = string.Empty;
                 _lastLoggedError = string.Empty;
                 _nextStatsRefreshTime = 0f;

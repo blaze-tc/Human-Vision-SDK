@@ -1,82 +1,57 @@
-# 0.4 v2 implementation (2026-09-10) — ACTIVE
+# 0.4 v2 implementation — release verification (2026-09-12)
 
-User approved `docs/plans/040-v2/2026-09-10-humanvision-040-master-v2.md`.
-Architecture authority: SDK_040_PLUGIN_ARCHITECTURE_ADDENDUM.md in that directory.
-Completed foundation: V1 ABI/Unity contract snapshots; versioned C plugin ABI and
-generic Runtime Host/registry. Native regression: 36/36 passed via
-`tools/test/run_native_tests.ps1`; Windows/Android builds passed via
-`tools/package/build_live_native.ps1`. Public-surface checker intentionally retains
-three existing model-path findings until semantic Unity migration.
-Task 3 complete (2026-09-11): capability resolution, validated ModelPacks and Profiles.
-`tools/test/run_native_tests.ps1 -Fresh`: 40/40 PASS, 7.88 seconds.
-`tools/package/build_live_native.ps1 -Fresh`: Windows x64 and Android ARM64 PASS.
-Regression first exposed automatic selection accepting a pipeline as a backend;
-selection now checks plugin type as well as capability, and retains fallback reasons.
-Fresh builds also exposed MSVC localized include-prefix encoding preventing Ninja
-header dependencies from being recorded. UTF-8 command code page fixes this;
-`ninja -t deps` now lists humanvision_plugin.h in both Windows build directories.
-Task 4 complete (2026-09-11): existing detector/pose adapter registered as
-`pipeline.legacy`; real image/model output reaches RuntimeHost with semantic joints
-and original timestamps. Nose coordinates match the locked reference within 1.5 px.
-`tools/test/run_native_tests.ps1`: 41/41 PASS, 9.02 seconds.
-After final metadata/ROI validation edits, `-Filter LegacyPlugin`: 1/1 PASS.
-`tools/package/build_live_native.ps1`: Windows x64 / Android ARM64 PASS.
-The adapter has no identity/region ownership, does not synthesize missing hands,
-and uses the legacy CPU backend pending backend-plugin migration.
-Current milestone: Task 6 — new body and hand pipeline plugins and ModelPacks.
-Task 6 pipeline implementation: RTMO centered-letterbox semantic output, Nano320
-TopDown Body26 with five-frame detector cadence and current-pose crop updates,
-independent Hand21 ROI pipeline. Data-only ModelPacks with hashes/provenance staged.
-Full native regression 49/49 PASS (19.48 s); Windows/Android builds PASS. Tests
-exercise real models; phone FPS/latency is not measured. Model metadata and final
-pipeline review remain before advancing common services.
-Task 5 default backend path is implemented and regression-verified; optional QNN
-enabled linking/device checks remain explicitly dependency-limited below. This does
-not block model/pipeline work under the optional-backend plan.
-Optional QNN increment: HV_USE_QNN defaults OFF; Android ARM64 guard and
-HV_QNN_HOME validation added. QNN plugin uses HTP with CPU EP fallback disabled,
-and only reports QNN_HTP after session initialization. Missing support fails query.
-Verification: full default native suite 47/47 PASS (10.72 seconds); final backend
-focused suite rerun after provider-validation correction. Windows/Android default
-builds PASS. Android clang++ --target=aarch64-linux-android24 -DHV_USE_QNN
--fsyntax-only passed for backend implementation and plugin with deployed ORT headers.
-QNN-enabled linking, runtime library packaging and device execution remain UNVERIFIED:
-authorized QAIRT/custom ORT dependencies have not been supplied. Syntax checking is
-not a QNN build or execution pass. Build instructions: docs/QNN_ANDROID_BUILD.md.
-Latest increment: BackendFactory provides ordered creation fallback, failure
-diagnostics and independent module/session lifetime. Legacy detector and pose now
-request injected backend sessions through HostServices instead of constructing ORT.
-`tools/test/run_native_tests.ps1`: 46/46 PASS (10.39 seconds), including real-model
-golden integration and creation-fallback lifetime tests.
-`tools/package/build_live_native.ps1`: Windows x64 / Android ARM64 PASS.
-Optional QNN and final Task 5 review remain; generic run-time provider retry is not
-implemented (NNAPI retains its own recovery). No device performance claim.
-Latest Task 5 increment: compiled-platform DirectML/NNAPI plugin query added.
-Session diagnostics now preserve NNAPI registration, session-creation and run-time
-fallback errors, and report the current configured provider. Accelerator flag is
-provider configuration only, not measured graph coverage or device acceleration.
-Verification: full native regression 44/44 PASS; subsequent capability-query test
-and final focused backend/diagnostic suite 4/4 PASS. Final Windows x64 and Android
-ARM64 builds PASS via `tools/package/build_live_native.ps1`.
-Remaining Task 5: optional QNN integration and final review;
-physical accelerator execution remains user acceptance.
-Task 5 in progress: `backend.ort.cpu` now exposes real single-input float32 tensor
-inference through the C plugin ABI, with shape/overflow validation and CPU diagnostics.
-Unsupported accelerator requests fail explicitly. BackendPlugin fixture tests added.
-Latest verification: `tools/test/run_native_tests.ps1` 43/43 PASS (10.37 seconds);
-`tools/package/build_live_native.ps1` Windows x64 / Android ARM64 PASS.
-Task 5 is not complete and this change does not establish phone performance.
-New production pipelines and Unity V2 integration are not yet implemented.
-Later runtime/model/service/Unity milestones must pass their preceding automated gates.
-Maintenance documentation and architecture guards are release requirements.
-Automated non-hardware tests are now authorized and required by the new plan.
-USER MANUAL ACCEPTANCE PENDING: Android camera, FPS, latency, accuracy, thermal,
-1/2/4/6/8 people, RTSP. No physical-device performance claims.
-Cleanup is limited to audited regenerable artifacts; user data and dependencies stay.
-User instruction: preserve caches and continue development; cleanup is deferred.
+Authority: [master v2](plans/040-v2/2026-09-10-humanvision-040-master-v2.md)
+and its plugin architecture addendum. Maintenance starts at
+[START_HERE](maintenance/START_HERE.md). Earlier entries below are history.
 
-Historical preview.5: source/tag e8f16eb pushed; Release remains draft as work moved
-to 0.4. This does not constitute 0.4 implementation or acceptance.
+Tasks 1–6 are committed: frozen V1 contracts; C Plugin ABI/Host; registry,
+ModelPacks/Profiles; legacy adapter; backend factories and optional providers;
+real RTMO, TopDown Body26 and independent Hand21 pipelines.
+Tasks 7–9 implementation is complete: common Hungarian/velocity tracking, region
+masking/revision isolation, canonical derivation, asynchronous fair hand scheduling,
+bounded adaptive temporal samples, additive V2 C ABI/semantic Unity integration,
+batched UGUI skeleton mesh and actual-provider diagnostics.
+Task 10 maintenance documentation and generated component metadata are implemented.
+Current milestone: Task 11 final architecture/package/import verification, followed
+by Task 12 main/tag/GitHub Release publication. Release is not yet published.
+
+## Fresh verification
+
+- `pwsh -File tools/test/run_native_tests.ps1`: 63/63 PASS, 11.94s (final diagnostic-label regression included).
+- `-Filter CommonServices`: 12/12 PASS, including stationary-jitter/reversal,
+  region-locked identity/old-frame, sixteen-hand fairness and per-hand cadence.
+- `pwsh -File tools/package/build_live_native.ps1`: Windows x64 and Android ARM64 PASS.
+  Android uses NDK23, API24; NDK21 filesystem linkage failed and was replaced.
+- `pwsh -File tools/package/compile_managed.ps1`: Runtime/Demo/Editor and Android
+  conditional compilation PASS. JsonUtility/serialized-field CS0649 warnings remain.
+- `pwsh -File tools/test/run_unity040_tests.ps1`: 43/43 EditMode PASS in isolated
+  Unity2021.3 project, also rerun PASS with Tuanjie2022.3.61t4: actual packaged native P/Invoke, canonical/legacy projection,
+  ABI layouts, RTSP clock age conversion, eight-body mesh/coordinate/thickness checks.
+- `pwsh -File tools/test/run_upm040_import.ps1`: isolated tgz import PASS on Unity2021.3 and Tuanjie2022.3;
+  native runtime initialization, generated camera/settings scenes, all installed
+  data hashes and independent StreamingAssets/UPM GUIDs verified. Final regenerated
+  archives will be checked again before publication.
+- Hand21 golden uses independent OpenCV/ORT preprocessing and inverse ROI transform;
+  actual palm/index-tip/thumb match within1.5px. No fabricated production joints.
+
+Regression-first fixes: crossing identity, fast-hand priority, all16-hand fairness,
+per-hand cadence (not a global15-job ceiling), expired hands, C import spelling,
+NDK filesystem linking and RTSP/Unity clock-origin mismatch. Source timestamps
+remain original; rendered samples do not increment raw result sequence.
+
+## Explicit acceptance limits
+
+Physical Windows/Android camera/RTSP, 1/2/4/6/8 people, fresh complete skeleton FPS,
+latency, accuracy, hand visibility and thermal behavior remain USER ACCEPTANCE.
+The Demo requests60Hz display/sampling independently of inference.
+No automated pass establishes 8-person30FPS or phone latency. Hand updates are
+independent, bounded by actual inference capacity, and expire separately.
+Optional QNN defaults OFF. Its source/syntax path was checked; enabled linking,
+redistribution dependencies and device execution remain UNVERIFIED without QAIRT
+and compatible custom ORT. It is not advertised as an enabled backend in this package.
+No RKNN backend is shipped. Existing V1 ABI/public methods/GUIDs remain compatible.
+Caches, user archives/media and the user's Unity project are preserved. The prior
+preview.5 GitHub Release remains an unpublished, superseded draft.
 
 ---
 

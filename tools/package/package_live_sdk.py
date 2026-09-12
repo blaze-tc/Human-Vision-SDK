@@ -14,7 +14,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / 'unity/HumanVisionDemo/Assets/HumanVision'
-OUTPUT = ROOT / 'out/releases/0.3.0-preview.5'
+VERSION = '0.4.0-preview.1'
+OUTPUT = ROOT / 'out/releases' / VERSION
 NAMESPACE = uuid.UUID('9a1f16d6-9fe3-4b94-a3b2-77076251bfec')
 
 
@@ -91,11 +92,17 @@ def main():
 </manifest>
 ''')
     text('Assets/Plugins/Android/HumanVisionPermissions.androidlib/project.properties', 'android.library=true\ntarget=android-24\n')
-    for directory, name in (('detector', 'rtmdet_tiny_person_640.onnx'), ('wholebody', 'rtmpose_s_133.onnx')):
-        add(ROOT / 'models' / directory / name, 'Assets/StreamingAssets/HumanVision/Models/' + name)
-        add(ROOT / 'models' / directory / ('candidates.json' if directory == 'wholebody' else 'model_info.json'), 'Assets/HumanVision/Documentation/' + directory + '_model_info.json')
-    add(ROOT / 'models/detector/rtmdet_tiny_person_640.json', 'Assets/HumanVision/Documentation/person_detector_transform.json')
-    add(ROOT / 'docs/SDK_LIVE_CAMERA_GUIDE.md', 'Assets/HumanVision/README.md')
+    runtime_index = {'version': VERSION, 'files': []}
+    for section in ('modelpacks', 'profiles'):
+        for source in sorted((ROOT / section).rglob('*')):
+            if not source.is_file(): continue
+            relative = source.relative_to(ROOT).as_posix()
+            add(source, 'Assets/StreamingAssets/HumanVision/Runtime/' + relative)
+            runtime_index['files'].append({'path': relative, 'sha256': hashlib.sha256(source.read_bytes()).hexdigest()})
+    text('Assets/StreamingAssets/HumanVision/Runtime/index.json', json.dumps(runtime_index, indent=2) + '\n')
+    for source in sorted((ROOT/'docs/maintenance').rglob('*.md')):
+        add(source, 'Assets/HumanVision/Documentation/maintenance/' + source.relative_to(ROOT/'docs/maintenance').as_posix())
+    add(ROOT / 'docs/SDK_040_USER_GUIDE.md', 'Assets/HumanVision/README.md')
     add(ROOT / 'out/hv-ort-dml/ORT_LICENSE', 'Assets/HumanVision/Licenses/ONNXRuntime.txt')
     add(ROOT / 'out/live-deps/ffmpeg-7.1/COPYING.LGPLv2.1', 'Assets/HumanVision/Licenses/FFmpeg-LGPL-2.1.txt')
     for project in ('mmdetection', 'mmpose'):
@@ -117,7 +124,7 @@ This is a user-testing preview, not a claim of model redistribution clearance or
 ''')
     manifest = {path: hashlib.sha256(data).hexdigest() for path, (data, _) in sorted(assets.items())}
     (OUTPUT / 'asset-sha256.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    package = OUTPUT / 'HumanVisionSDK-0.3.0-preview.5.unitypackage'
+    package = OUTPUT / ('HumanVisionSDK-' + VERSION + '.unitypackage')
     # Unity 2021's importer returns zero assets when gzip FNAME is the outer
     # .unitypackage filename. Match Unity ExportPackage's inner tar filename.
     with package.open('wb') as raw, gzip.GzipFile(filename='archtemp.tar', mode='wb',
@@ -133,9 +140,9 @@ This is a user-testing preview, not a claim of model redistribution clearance or
             for leaf, payload in (('asset', data), ('asset.meta', meta), ('pathname', path.encode())):
                 info = tarfile.TarInfo(guid + '/' + leaf); info.size = len(payload); info.mode = 0o644
                 tar.addfile(info, io.BytesIO(payload))
-    shutil.copy2(ROOT / 'docs/SDK_LIVE_CAMERA_GUIDE.md', OUTPUT / 'README.md')
-    shutil.copy2(ROOT / 'docs/SDK_LIVE_CAMERA_PLAN.md', OUTPUT / 'IMPLEMENTATION_PLAN.md')
-    archive = OUTPUT / 'HumanVisionSDK-0.3.0-preview.5.zip'
+    shutil.copy2(ROOT / 'docs/SDK_040_USER_GUIDE.md', OUTPUT / 'README.md')
+    shutil.copy2(ROOT / 'docs/plans/040-v2/2026-09-10-humanvision-040-master-v2.md', OUTPUT / 'IMPLEMENTATION_PLAN.md')
+    archive = OUTPUT / ('HumanVisionSDK-' + VERSION + '.zip')
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as bundle:
         for path in (package, OUTPUT / 'README.md', OUTPUT / 'asset-sha256.json', OUTPUT / 'IMPLEMENTATION_PLAN.md'):
             bundle.write(path, path.name)

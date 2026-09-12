@@ -1,0 +1,1 @@
+{"id":"unity.runtime","type":"unity","version":"0.4.0-preview.1","api_version":1,"capabilities":["semantic_api","raw_and_sampled_snapshots"],"dependencies":["runtime.composition"],"test_targets":["compile_managed","public_surface"]}

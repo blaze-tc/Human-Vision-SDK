@@ -1,6 +1,6 @@
 from pathlib import Path
 import sys,json,hashlib,urllib.request
-root=Path.cwd();sys.path.insert(0,str(root))
+root=Path(__file__).resolve().parents[2];sys.path.insert(0,str(root))
 from tools.reference.common import MMPOSE_DIR,MMDEPLOY_DIR,REFERENCE_IMAGE
 from mmengine import Config
 from mmdeploy.apis import torch2onnx
@@ -8,6 +8,9 @@ work=root/'out/models040-preflight/nano320';work.mkdir(parents=True,exist_ok=Tru
 url='https://download.openmmlab.com/mmpose/v1/projects/rtmpose/rtmdet_nano_8xb32-100e_coco-obj365-person-05d8511e.pth'
 checkpoint=work/'checkpoint.pth'
 if not checkpoint.exists(): urllib.request.urlretrieve(url,checkpoint)
+expected='05d8511e7b3fabc62e27d2f624179e004ad14ee63a86ca9d9d22c88f3db0eee1'
+if hashlib.sha256(checkpoint.read_bytes()).hexdigest()!=expected:
+    raise RuntimeError('Official Nano checkpoint hash mismatch; cached file was not executed')
 deploy=Config.fromfile(str(MMDEPLOY_DIR/'configs/mmdet/detection/detection_onnxruntime_static.py'))
 deploy.onnx_config.input_shape=[320,320]
 deploy.onnx_config.dynamic_axes={'input':{0:'batch'},'dets':{0:'batch'},'labels':{0:'batch'}}

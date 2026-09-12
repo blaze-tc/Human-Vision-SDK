@@ -5,18 +5,18 @@ import io
 import json
 import tarfile
 from pathlib import Path
-from package_live_sdk import metadata, NAMESPACE
+from package_live_sdk import metadata, NAMESPACE, VERSION, OUTPUT
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = '0.3.0-preview.5'
 DEST = ROOT / 'upm/com.blazetc.humanvision'
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('package', type=Path)
+    parser.add_argument('package', type=Path, nargs='?', default=OUTPUT / ('HumanVisionSDK-' + VERSION + '.unitypackage'))
     args = parser.parse_args()
     DEST.mkdir(parents=True, exist_ok=True)
+    previous_manifest = json.loads((DEST/'asset-sha256.json').read_text()) if (DEST/'asset-sha256.json').exists() else {}
     manifest = {}
     def write(path, data, meta=None):
         target = DEST / path
@@ -41,15 +41,18 @@ def main():
                 relative = 'Runtime/Plugins/' + path[len('Assets/Plugins/'):]
             elif path.startswith('Assets/StreamingAssets/HumanVision/Models/'):
                 relative = 'Models/' + Path(path).name
+            elif path.startswith('Assets/StreamingAssets/HumanVision/Runtime/'):
+                relative = 'RuntimeData/' + path[len('Assets/StreamingAssets/HumanVision/Runtime/'):]
             else:
                 raise ValueError('Unexpected package asset: ' + path)
             # StreamingAssets may already contain the unitypackage copy. Package
             # models are independent file sources, never scene asset references.
-            model_meta = metadata('UPM/' + relative).encode() if relative.startswith('Models/') else item['asset.meta']
+            model_meta = metadata('UPM/' + relative).encode() if relative.startswith(('Models/', 'RuntimeData/')) else item['asset.meta']
             write(relative, item['asset'], model_meta)
     descriptor = dict(name='com.blazetc.humanvision', version=VERSION, displayName='Human Vision SDK',
         unity='2021.3', description='Independent camera skeleton SDK: Windows x64 and Android ARM64, numbered regions and hand endpoints.',
-        dependencies={'com.unity.ugui':'1.0.0'}, author={'name':'blaze-tc'},
+        dependencies={key:'1.0.0' for key in ('com.unity.ugui','com.unity.modules.physics','com.unity.modules.imageconversion',
+            'com.unity.modules.imgui','com.unity.modules.jsonserialize','com.unity.modules.unitywebrequest','com.unity.modules.video')}, author={'name':'blaze-tc'},
         repository={'type':'git','url':'https://github.com/blaze-tc/Human-Vision-SDK.git'},
         documentationUrl='https://github.com/blaze-tc/Human-Vision-SDK/blob/main/docs/UPM_INSTALLATION.md')
     write('package.json', (json.dumps(descriptor, indent=2)+'\n').encode())
@@ -58,6 +61,13 @@ def main():
     installer = ROOT/'tools/package/HumanVisionModelInstaller.cs'
     write('Editor/HumanVisionModelInstaller.cs', installer.read_bytes(), metadata('UPM/Editor/HumanVisionModelInstaller.cs').encode())
     write('UPM_INSTALLATION.md', (ROOT/'docs/UPM_INSTALLATION.md').read_bytes())
+    # Reconcile only files owned by the previous generated manifest. User caches
+    # and unrelated files are never enumerated for deletion.
+    for relative in sorted(set(previous_manifest) - set(manifest)):
+        stale = (DEST/relative).resolve()
+        if not stale.is_relative_to(DEST.resolve()): raise ValueError('Unsafe previous manifest path')
+        for owned in (stale, stale.with_name(stale.name + '.meta')):
+            if owned.is_file(): owned.unlink()
     # All folders/assets get stable metadata, including Android .androidlib directories.
     for path in sorted(DEST.rglob('*')):
         if path.name.endswith('.meta'): continue

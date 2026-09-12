@@ -21,7 +21,12 @@ TEST(SimccPlugin, RealBodyAndHandModelsUseIndependentSessions) {
   HV_BodyObservationV1 bodies[2]{};HV_HandObservationV1 hands[1]{};
   HV_PipelineOutputV1 output{sizeof(output),HV_PLUGIN_API_V1,bodies,2,0,hands,1,0,0,0,0};
   ASSERT_EQ(plugin.pipeline->process(instance,&input,&output,&e),HV_OK)<<message;
-  if(hand){ASSERT_EQ(output.hand_count,1u);EXPECT_EQ(hands[0].request_id,99);EXPECT_EQ(hands[0].thumb.observation_timestamp_us,12345);EXPECT_TRUE(std::isfinite(hands[0].fingertip.x_px));}
+  if(hand){ASSERT_EQ(output.hand_count,1u);EXPECT_EQ(hands[0].request_id,99);EXPECT_EQ(hands[0].thumb.observation_timestamp_us,12345);
+   // Independent OpenCV + ORT reference, recorded in hand040_golden.json.
+   EXPECT_NEAR(hands[0].thumb.x_px,50.2099609375F,1.5F);EXPECT_NEAR(hands[0].thumb.y_px,129.9169921875F,1.5F);
+   EXPECT_NEAR(hands[0].fingertip.x_px,55.5078125F,1.5F);EXPECT_NEAR(hands[0].fingertip.y_px,134.0185546875F,1.5F);
+   EXPECT_NEAR(hands[0].palm.x_px,36.640625F,1.5F);EXPECT_NEAR(hands[0].palm.y_px,124.2431640625F,1.5F);
+  }
   else{ASSERT_GE(output.body_count,1u);EXPECT_TRUE(bodies[0].joints[HV_CANONICAL_NOSE].valid);EXPECT_EQ(bodies[0].joints[HV_CANONICAL_HEAD].observation_timestamp_us,12345);}
  }
 }

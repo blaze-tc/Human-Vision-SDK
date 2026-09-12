@@ -1,0 +1,1 @@
+{"id":"core.latest_frame_slot","type":"core","version":"0.4.0-preview.1","api_version":1,"capabilities":["frame_validation","latest_frame","legacy_compatibility"],"dependencies":[],"test_targets":["humanvision_native_tests","humanvision_api_contract_tests"]}

@@ -77,7 +77,9 @@ def scan_file(repo: Path, path: Path, internal_interop: set[str],
         if path.suffix.lower() == ".cs" and not is_internal_interop and CONCRETE_MODEL_ASSET.search(line):
             findings.append(Finding(relative, number, "concrete-model-asset", line))
         if path.suffix.lower() == ".cs" and not is_internal_interop and PUBLIC_MODEL_CONFIG.search(line):
-            findings.append(Finding(relative, number, "public-model-config", line))
+            finding = Finding(relative, number, "public-model-config", line)
+            if not is_exact_exception(finding, exceptions):
+                findings.append(finding)
         if path.suffix.lower() == ".h" and NATIVE_MODEL_CONFIG.search(line):
             finding = Finding(relative, number, "public-model-config", line)
             if not is_exact_exception(finding, exceptions):

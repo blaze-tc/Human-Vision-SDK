@@ -11,7 +11,7 @@ namespace HumanVision
         Bgr24 = 4
     }
 
-    internal sealed class HumanVisionSession : IDisposable
+    internal sealed class HumanVisionSession : IHumanVisionSession
     {
         private const int SnapshotReadAttempts = 2;
 
@@ -56,16 +56,16 @@ namespace HumanVision
         }
 
         internal IntPtr Handle => _handle;
-        internal int MaxBodies => _config.MaxBodies;
+        public int MaxBodies => _config.MaxBodies;
         internal int Capacity => _result.Capacity;
-        internal HumanVisionBody[] Bodies => _result.Bodies;
-        internal int BodyCount => _result.BodyCount;
-        internal long ResultSequence => _result.ResultSequence;
-        internal long SourceFrameId => _result.SourceFrameId;
-        internal long SourceTimestampUs => _result.SourceTimestampUs;
-        internal HumanVisionStats Stats { get; private set; }
+        public HumanVisionBody[] Bodies => _result.Bodies;
+        public int BodyCount => _result.BodyCount;
+        public long ResultSequence => _result.ResultSequence;
+        public long SourceFrameId => _result.SourceFrameId;
+        public long SourceTimestampUs => _result.SourceTimestampUs;
+        public HumanVisionStats Stats { get; private set; }
 
-        internal bool SubmitFrame(
+        public bool SubmitFrame(
             IntPtr data,
             int width,
             int height,
@@ -96,7 +96,7 @@ namespace HumanVision
             return true;
         }
 
-        internal bool PollLatestResult()
+        public bool PollLatestResult()
         {
             ThrowIfDisposed();
             for (int attempt = 0; attempt < SnapshotReadAttempts; attempt++)
@@ -161,7 +161,7 @@ namespace HumanVision
             return false;
         }
 
-        internal void SetRegions(UnityEngine.Rect[] regions, long revision)
+        public void SetRegions(UnityEngine.Rect[] regions, long revision)
         {
             ThrowIfDisposed();
             var native = new HVRectNative[regions.Length];
@@ -170,7 +170,7 @@ namespace HumanVision
             ThrowIfFailed("region configuration", NativeBindings.HV_SetRegions(_handle, native, native.Length, revision), _handle);
         }
 
-        internal bool CopyRegions(long sequence, int[] indices, out long revision)
+        public bool CopyRegions(long sequence, int[] indices, out long revision)
         {
             ThrowIfDisposed();
             HVResult result = NativeBindings.HV_GetRegionAssignments(_handle, sequence, indices, indices.Length, out revision);
@@ -179,7 +179,7 @@ namespace HumanVision
             return true;
         }
 
-        internal void RefreshStats()
+        public void RefreshStats()
         {
             ThrowIfDisposed();
             var native = new HVStatsNative { StructSize = NativeBindings.StatsSize };
@@ -197,7 +197,7 @@ namespace HumanVision
                 native.DroppedFrames);
         }
 
-        internal void ReconfigureMaxBodies(int maxBodies)
+        public void ReconfigureMaxBodies(int maxBodies)
         {
             ThrowIfDisposed();
             HumanVisionConfig updated = _config.Clone();

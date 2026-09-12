@@ -2,6 +2,9 @@
 
 .gitattributes text eol=lf
 .gitignore text eol=lf
+*.cs text eol=lf
+*.asmdef text eol=lf
+*.shader text eol=lf
 *.c text eol=lf
 *.cpp text eol=lf
 *.h text eol=lf

@@ -1,6 +1,16 @@
 {
   "exceptions": [
     {
+      "path": "upm/com.blazetc.humanvision/Runtime/HumanVisionConfig.cs",
+      "token": "public-model-config",
+      "line": "public string DetectorModelPath"
+    },
+    {
+      "path": "upm/com.blazetc.humanvision/Runtime/HumanVisionConfig.cs",
+      "token": "public-model-config",
+      "line": "public string PoseModelPath"
+    },
+    {
       "path": "native/include/humanvision/humanvision_types.h",
       "token": "ONNX",
       "line": "HV_BACKEND_ONNX_CPU = 1"
