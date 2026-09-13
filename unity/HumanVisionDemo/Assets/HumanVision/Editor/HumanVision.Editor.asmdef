@@ -1,0 +1,19 @@
+{
+  "name": "HumanVision.Editor",
+  "rootNamespace": "HumanVision.Editor",
+  "references": [
+    "HumanVision.Runtime",
+    "HumanVision.Demo"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
