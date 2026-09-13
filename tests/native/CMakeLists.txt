@@ -103,7 +103,8 @@ endif()
 
 add_executable(humanvision_plugin_tests ../runtime/test_plugin_host.cpp)
 target_link_libraries(humanvision_plugin_tests PRIVATE HumanVision::Internal GTest::gtest_main)
-target_include_directories(humanvision_plugin_tests PRIVATE ${PROJECT_SOURCE_DIR}/runtime ${PROJECT_SOURCE_DIR}/runtime/include)
+target_include_directories(humanvision_plugin_tests PRIVATE ${PROJECT_SOURCE_DIR}/runtime ${PROJECT_SOURCE_DIR}/runtime/include ${PROJECT_SOURCE_DIR}/third_party)
+target_compile_definitions(humanvision_plugin_tests PRIVATE HV_TEST_PROJECT_ROOT="${PROJECT_SOURCE_DIR}")
 gtest_discover_tests(humanvision_plugin_tests)
 
 add_executable(humanvision_plugin_c_contract ../runtime/plugin_c_contract.c)

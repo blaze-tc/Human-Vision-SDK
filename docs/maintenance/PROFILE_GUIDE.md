@@ -5,6 +5,13 @@
 `cpu.json` is the same composition with CPU-only execution for comparison.
 Selection uses configured maximum people, not transient detections.
 
+Android provider comparison uses `android-cpu-nohands`,
+`android-nnapi-nohands`, and `android-xnnpack-nohands`. These diagnostic profiles
+keep the same body selection and rates as `auto`, disable the independent hand
+pipeline, and each request one backend only. Failure to create that backend makes
+the run fail; it must not be counted as a successful measurement of the requested
+provider. They do not replace `auto` as the default profile.
+
 Windows realtime and Android realtime start with auto. Android precision can copy
 auto to a new profile ID and use a single body selection for pipeline.topdown and
 precision-t-26; pose cost then scales with people. This is a configurable accuracy

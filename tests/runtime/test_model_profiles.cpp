@@ -4,6 +4,7 @@
 #include <fstream>
 #include <atomic>
 #include <chrono>
+#include "json/json.hpp"
 using namespace humanvision::runtime;
 namespace {
 // Metadata fixtures are never instantiated or included in production builds.
@@ -67,5 +68,31 @@ TEST_F(PackTest, AutoFallbackSelectsOnlyBackendsAndKeepsDiagnostic) {
  ASSERT_EQ(profile->backends.size(),1u); EXPECT_STREQ(profile->backends[0]->api.plugin_id,"fixture.cpu");
  EXPECT_NE(profile->fallback_reason.find("missing.gpu"),std::string::npos);
  EXPECT_EQ(profile->max_people,8); EXPECT_EQ(profile->output_hz,60); EXPECT_FALSE(profile->hands_enabled);
+}
+
+TEST(AndroidBenchmarkProfiles, SelectOneProviderDisableHandsAndKeepBodyPolicy) {
+ const std::pair<const char*,const char*> profiles[]{
+  {"android-cpu-nohands","backend.ort.cpu"},
+  {"android-nnapi-nohands","backend.ort.nnapi"},
+  {"android-xnnpack-nohands","backend.ort.xnnpack"}
+ };
+ for(const auto& expected:profiles){
+  std::ifstream stream(std::filesystem::path(HV_TEST_PROJECT_ROOT)/"profiles"/(std::string(expected.first)+".json"));
+  ASSERT_TRUE(stream.good())<<expected.first;
+  nlohmann::json profile;stream>>profile;
+  EXPECT_EQ(profile.at("schema_version"),1);
+  EXPECT_EQ(profile.at("profile"),expected.first);
+  ASSERT_TRUE(profile.contains("body_by_capacity"));
+  const auto& choices=profile.at("body_by_capacity");ASSERT_EQ(choices.size(),2u);
+  EXPECT_EQ(choices[0].at("max_people"),2);EXPECT_EQ(choices[0].at("pipeline"),"pipeline.topdown");
+  EXPECT_EQ(choices[0].at("modelPack"),"precision-t-26");
+  EXPECT_EQ(choices[1].at("max_people"),8);EXPECT_EQ(choices[1].at("pipeline"),"pipeline.rtmo");
+  EXPECT_EQ(choices[1].at("modelPack"),"rtmo-t-416");
+  EXPECT_FALSE(profile.at("hands").at("enabled").get<bool>());
+  EXPECT_EQ(profile.at("body_fps"),30);EXPECT_EQ(profile.at("output").at("hz"),60);
+  const auto& preference=profile.at("backend").at("preference");
+  ASSERT_TRUE(preference.is_array());ASSERT_EQ(preference.size(),1u);
+  EXPECT_EQ(preference[0],expected.second);
+ }
 }
 }
