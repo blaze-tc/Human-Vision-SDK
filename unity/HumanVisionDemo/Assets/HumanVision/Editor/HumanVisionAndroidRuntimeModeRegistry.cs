@@ -46,7 +46,11 @@ namespace HumanVision.Editor
                     requiresVulkan: true,
                     requiresGpuBridge: true,
                     requiresNcnn: true,
-                    new[] { "body_pose", "multi_person", "gpu_input", "vulkan", "fp16" }),
+                    new[]
+                    {
+                        "body_pose", "multi_person", "gpu_input", "vulkan", "fp16-storage",
+                        "fp16-arithmetic", "android-hardware-buffer", "external-sync-fd"
+                    }),
                 new HumanVisionAndroidRuntimeModeDescriptor(
                     "android-ort-xnnpack",
                     "ORT XNNPACK",
@@ -54,7 +58,7 @@ namespace HumanVision.Editor
                     requiresVulkan: false,
                     requiresGpuBridge: false,
                     requiresNcnn: false,
-                    new[] { "body_pose", "multi_person", "cpu_input" }),
+                    new[] { "body_pose", "multi_person", "tensor_inference" }),
                 new HumanVisionAndroidRuntimeModeDescriptor(
                     "android-ort-cpu",
                     "ORT CPU",
@@ -62,7 +66,7 @@ namespace HumanVision.Editor
                     requiresVulkan: false,
                     requiresGpuBridge: false,
                     requiresNcnn: false,
-                    new[] { "body_pose", "multi_person", "cpu_input" })
+                    new[] { "body_pose", "multi_person", "tensor_inference" })
             });
 
         private static readonly Dictionary<string, HumanVisionAndroidRuntimeModeDescriptor> byId =

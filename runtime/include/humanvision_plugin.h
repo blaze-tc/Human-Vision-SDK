@@ -9,6 +9,11 @@
 #define HV_CAP_DYNAMIC_INPUT (1ull << 4)
 #define HV_CAP_BATCH (1ull << 5)
 #define HV_CAP_GPU_INPUT (1ull << 6)
+#define HV_CAP_VULKAN (1ull << 7)
+#define HV_CAP_FP16_STORAGE (1ull << 8)
+#define HV_CAP_FP16_ARITHMETIC (1ull << 9)
+#define HV_CAP_ANDROID_HARDWARE_BUFFER (1ull << 10)
+#define HV_CAP_EXTERNAL_SYNC_FD (1ull << 11)
 #define HV_PLUGIN_PIPELINE 1u
 #define HV_PLUGIN_BACKEND 2u
 #if defined(_WIN32) && defined(HV_PLUGIN_BUILD_DLL)

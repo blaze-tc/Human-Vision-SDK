@@ -13,6 +13,8 @@ struct RuntimeProfile {
     std::vector<std::shared_ptr<const PluginModule>> backends;
     bool hands_enabled = false;
     bool allow_backend_fallback = true;
+    uint64_t required_capabilities = 0;
+    std::vector<std::string> required_capability_names;
     int max_people = 0, body_fps = 30, hand_fps = 15, output_hz = 60;
 };
 class ProfileManager {

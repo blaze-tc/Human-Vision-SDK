@@ -6,9 +6,14 @@
 #include <vector>
 
 namespace humanvision::runtime {
+struct ModelFile {
+    std::string name, sha256;
+    std::filesystem::path path;
+};
 struct ModelAsset {
     std::string role, format, decoder_id, sha256, input_contract, output_contract;
     std::filesystem::path path;
+    std::vector<ModelFile> files;
 };
 struct ModelPack {
     std::string id, version, pipeline_id, manifest_json;

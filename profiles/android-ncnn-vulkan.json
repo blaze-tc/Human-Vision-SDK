@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "profile": "android-ncnn-vulkan",
+  "body": {
+    "pipeline": "pipeline.topdown",
+    "modelPack": "precision-t-26-ncnn-fp16"
+  },
+  "hands": {"enabled": false, "fps": 15},
+  "body_fps": 30,
+  "output": {"hz": 60},
+  "required_capabilities": [
+    "body_pose",
+    "multi_person",
+    "gpu_input",
+    "vulkan",
+    "fp16-storage",
+    "fp16-arithmetic",
+    "android-hardware-buffer",
+    "external-sync-fd"
+  ],
+  "backend": {
+    "preference": ["backend.ncnn.vulkan"],
+    "allow_fallback": false
+  },
+  "staged_dependencies": {
+    "modelPacks": ["precision-t-26-ncnn-fp16"],
+    "backends": ["backend.ncnn.vulkan"]
+  }
+}

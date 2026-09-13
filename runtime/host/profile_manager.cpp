@@ -12,6 +12,19 @@ std::shared_ptr<const RuntimeProfile> ProfileManager::Resolve(const std::string&
             throw std::runtime_error("Unsupported profile schema or identity");
         auto result = std::make_shared<RuntimeProfile>();
         result->id = id; result->json = json.dump(); result->max_people = max_people;
+        if (json.contains("required_capabilities")) {
+            const auto& requirements = json.at("required_capabilities");
+            if (!requirements.is_array() || requirements.empty())
+                throw std::runtime_error("required_capabilities must be a nonempty array");
+            std::set<std::string> seen_requirements;
+            for (const auto& value : requirements) {
+                const auto name = value.get<std::string>();
+                if (!seen_requirements.insert(name).second)
+                    throw std::runtime_error("Duplicate required capability: " + name);
+                result->required_capabilities |= CapabilityBit(name);
+                result->required_capability_names.push_back(name);
+            }
+        }
         auto resolve = [&](const nlohmann::json& choice, uint64_t capability) {
             PipelineSelection selected;
             const auto plugin_id = choice.at("pipeline").get<std::string>();
@@ -66,8 +79,30 @@ std::shared_ptr<const RuntimeProfile> ProfileManager::Resolve(const std::string&
             else if (!module) result->fallback_reason += error + "; ";
         }
         if (result->backends.empty()) throw std::runtime_error("No compatible backend: " + result->fallback_reason);
+        if (!result->required_capability_names.empty() &&
+            (result->allow_backend_fallback || ids.size() != 1 || ids[0] == "auto"))
+            throw std::runtime_error("A strict profile requires allow_fallback false and exactly one explicit backend");
         if(!result->allow_backend_fallback&&result->backends.size()!=1)
             throw std::runtime_error("A forced backend profile must resolve exactly one backend");
+        uint64_t backend_capabilities = 0;
+        for (const auto& backend : result->backends) backend_capabilities |= backend->api.capabilities;
+        const auto has = [](uint64_t capabilities, uint64_t bit) { return (capabilities & bit) == bit; };
+        const auto requirement_available = [&](uint64_t bit) {
+            if (bit == HV_CAP_BODY_POSE || bit == HV_CAP_MULTI_PERSON)
+                return has(result->body.plugin->api.capabilities, bit) && has(result->body.pack->capabilities, bit);
+            if (bit == HV_CAP_HAND_POSE)
+                return result->hands_enabled && has(result->hands.plugin->api.capabilities, bit) && has(result->hands.pack->capabilities, bit);
+            if (bit == HV_CAP_GPU_INPUT)
+                return has(result->body.plugin->api.capabilities, bit) && has(result->body.pack->capabilities, bit) && has(backend_capabilities, bit);
+            if (bit == HV_CAP_TENSOR_INFERENCE || bit == HV_CAP_VULKAN || bit == HV_CAP_FP16_STORAGE ||
+                bit == HV_CAP_FP16_ARITHMETIC || bit == HV_CAP_ANDROID_HARDWARE_BUFFER || bit == HV_CAP_EXTERNAL_SYNC_FD)
+                return has(backend_capabilities, bit);
+            return has(result->body.plugin->api.capabilities | result->body.pack->capabilities | backend_capabilities, bit);
+        };
+        for (const auto& requirement : result->required_capability_names) {
+            const auto bit = CapabilityBit(requirement);
+            if (!requirement_available(bit)) throw std::runtime_error("Missing required capability: " + requirement);
+        }
         error.clear(); return result;
     } catch (const std::exception& exception) { error = "Profile " + id + ": " + exception.what(); return {}; }
 }

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "profile": "android-ort-cpu",
+  "body": {
+    "pipeline": "pipeline.topdown",
+    "modelPack": "precision-t-26"
+  },
+  "hands": {"enabled": false, "fps": 15},
+  "body_fps": 30,
+  "output": {"hz": 60},
+  "required_capabilities": [
+    "body_pose",
+    "multi_person",
+    "tensor_inference"
+  ],
+  "backend": {
+    "preference": ["backend.ort.cpu"],
+    "allow_fallback": false
+  }
+}
