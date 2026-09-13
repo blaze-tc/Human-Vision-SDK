@@ -2,6 +2,7 @@
 
 Status: proposed for user review; implementation is not authorized yet  
 Date: 2026-09-13  
+Revision: 2, incorporating the 2026-09-13 design-review corrections  
 Baseline: `origin/main` at `f283a5e2ce7a5afb46aa7902fcc03ac44957074c`  
 Target device: Snapdragon 888 / Adreno 660, Android 14, ARM64  
 
@@ -65,12 +66,16 @@ preserved except for profile renaming/mapping and the shared Android build basel
 
 ### Recommended: Android Hardware Buffer exchange ring
 
-Unity and ncnn keep separate Vulkan logical devices on the same physical Adreno GPU.
+Unity and ncnn use the same `VkPhysicalDevice` but own different `VkDevice` objects.
+The two `VkPhysicalDevice` handles are instance-scoped and are never compared as raw
+handles. Section 7.1 defines UUID-based identity matching and explicit ncnn device
+selection; the implementation is forbidden from using ncnn's default GPU index.
+
 The bridge owns three reusable RGBA Android Hardware Buffers. Each buffer is imported
-as a Vulkan image by Unity and by ncnn. Unity performs a GPU-to-GPU blit from the
-oriented camera RenderTexture into a free buffer, exports a synchronization fence,
-and returns immediately. The native inference worker waits for that fence and imports
-the same buffer with ncnn's official Android Hardware Buffer API.
+as a Vulkan image by both logical devices. Unity performs a GPU-to-GPU blit from the
+oriented camera RenderTexture into a free buffer, exports an Android native fence,
+and returns immediately. The native inference worker waits for that fence and uses
+the cached ncnn import for the same buffer.
 
 Benefits:
 
@@ -79,7 +84,8 @@ Benefits:
 - Detector decode can happen on the native worker, followed immediately by pose ROI
   inference without waiting for another Unity render frame.
 - The bridge has explicit ownership, synchronization, backpressure, and teardown.
-- ncnn source can remain unmodified.
+- ncnn inference/model code remains upstream; only the audited AHB external-acquire
+  adapter described in Section 7.3 is carried against the pinned source.
 
 Costs:
 
@@ -128,6 +134,8 @@ Unity WebCamTexture / RTSP Texture
                 |
 ===============================================================
  Runtime Host GPU worker
+                |
+ UUID-matched ncnn VkDevice + GPU semaphore wait/acquire
                 |
  pipeline.topdown -> backend.ncnn.vulkan
                 |
@@ -289,7 +297,38 @@ capabilities, callback presence, and profile requirements before creating a sess
 
 ## 7. Vulkan GPU Frame Bridge
 
-### 7.1 Unity render event flow
+### 7.1 Physical-device identity and explicit ncnn selection
+
+The required topology is exact:
+
+```text
+Unity VkInstance_U -> VkPhysicalDevice_U -> VkDevice_U
+ncnn  VkInstance_N -> VkPhysicalDevice_N -> VkDevice_N
+                         same physical GPU
+                         different logical devices
+```
+
+At Unity Vulkan device initialization, the bridge queries
+`VkPhysicalDeviceIDProperties` through `vkGetPhysicalDeviceProperties2` and stores
+the 16-byte `deviceUUID` and `driverUUID`. Vulkan 1.1 or the equivalent properties2
+extension and non-zero UUIDs are required. `VkPhysicalDevice` pointer equality is
+invalid across instances and is never used.
+
+Before creating any ncnn `Net`, the backend enumerates every ncnn Vulkan GPU index,
+obtains its instance-local physical device, and queries the same UUID properties. It
+must find exactly one entry whose `deviceUUID` and `driverUUID` both equal Unity's.
+The device UUID proves physical-device identity; the driver UUID proves that the two
+Vulkan instances satisfy the external-queue compatibility rule. The backend then
+calls `Net::set_vulkan_device(matched_index)` for every network and obtains all
+allocators from `get_gpu_device(matched_index)`. It never calls or accepts
+`get_default_gpu_index()` as the production selection result.
+
+`vendorID`, `deviceID`, `deviceName`, driver version, and `pipelineCacheUUID` are
+reported for diagnostics only. They are not authoritative identity keys. A missing
+UUID, no match, or multiple matches is a fail-fast initialization error; it never
+selects index zero and never creates an ORT session.
+
+### 7.2 Unity render event flow
 
 `HumanVisionLiveSource` continues to produce the correctly oriented RenderTexture.
 In `NCNN Vulkan` mode `VideoPlayerFrameSource.SubmitExternalTexture` routes to a new
@@ -297,42 +336,137 @@ GPU source instead of `AsyncGPUReadback`.
 
 For each accepted frame:
 
-1. C# requests a native event slot with texture pointer, dimensions, frame ID, and
-   monotonic timestamp.
+1. C# requests a native event record with texture pointer, dimensions, frame ID,
+   monotonic timestamp, and the current bridge generation. The request atomically
+   reserves a `Free` AHB slot. If none exists, it drops this submission immediately,
+   increments `gpu_bridge_no_free_slot_drops`, and leaves the preview unaffected.
 2. C# calls `GL.IssuePluginEventAndData` with the stable native pointer.
 3. The render callback verifies Vulkan and calls
    `IUnityGraphicsVulkanV2::AccessTexture` with a transfer-read layout.
 4. It calls `IUnityGraphicsVulkanV2::AccessQueue(..., flush=true)`. Unity submits all
    prior work before granting exclusive queue access.
-5. The queue callback records/submits a GPU blit into a free AHB slot and signals an
-   Android sync fd. It does not wait for inference.
-6. The worker consumes the newest ready slot. Older ready slots are released once
-   their copy fence is safe and counted as dropped.
+5. The queue callback acquires the AHB image from `VK_QUEUE_FAMILY_EXTERNAL`, records
+   the GPU copy, releases it back to the external queue family, and submits the
+   command buffer with a cached exportable binary semaphore. It exports that
+   submission's payload as a native-fence sync fd.
+6. The callback publishes the producer fence to the native worker and returns. It
+   never waits for ncnn inference, a consumer fence, or a free slot.
+7. The worker selects the newest producer-complete slot. Older ready slots enter the
+   drop-drain path: their producer fence is completed on the worker, then the slot is
+   recycled without inference and counted in
+   `gpu_bridge_superseded_ready_drops`.
 
 The bridge does not call `AsyncGPUReadback`, `Texture2D.ReadPixels`, `GetPixels`, or
 copy a full camera image through JNI/PInvoke.
 
-### 7.2 AHB ring and ownership
+### 7.3 Three-slot state, synchronization, and lifetime
 
-Use three fixed slots created at startup or geometry change. Each slot contains:
+Use three fixed slots created for one bridge generation. Each slot contains:
 
 - one `AHardwareBuffer` in `AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM`;
 - Unity-device imported image/view/memory;
-- ncnn-device import state created by official ncnn APIs;
-- reusable Unity copy command resources;
+- ncnn-device image, allocator, and import pipeline state created once by official
+  ncnn APIs;
+- reusable Unity copy command buffer, fence, and export-semaphore resources;
+- reusable ncnn import-semaphore, ownership command, and fence resources;
 - frame metadata and generation;
-- copy fence/sync fd and state.
+- producer sync fd and state.
 
-States are `Free -> UnityCopyQueued -> ReadyForNcnn -> InferenceRunning -> Free`.
-No state permits Unity writes while ncnn reads. A geometry/orientation change creates
-a new generation only after active slots drain; stale render events are discarded.
+The state machine is:
+
+```text
+Free
+  -> EventReserved
+  -> UnityCopySubmitted
+  -> ProducerSignalPending
+  -> ReadyForNcnn
+  -> InferenceRunning
+  -> ConsumerReleasePending
+  -> Free
+
+ReadyForNcnn -> DropDrain -> Free       (superseded pending frame)
+any queued old generation -> DropDrain  (reconfigure/teardown)
+```
+
+Only compare-and-swap transitions defined above are legal. No state permits Unity
+to write while ncnn may read. The producer sequence is:
+
+1. Unity's device acquires external image ownership from
+   `VK_QUEUE_FAMILY_EXTERNAL`.
+2. The Unity queue copies the oriented/scaled texture into the AHB image.
+3. A release barrier makes the writes available and returns ownership to
+   `VK_QUEUE_FAMILY_EXTERNAL`.
+4. The same submission signals an exportable semaphore. The bridge exports its
+   temporary payload as an Android native-fence sync fd.
+
+The consumer sequence runs only on the native inference worker:
+
+1. temporarily import the producer sync fd into the slot's cached ncnn-device binary
+   semaphore with `VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT`; successful import
+   transfers fd ownership to Vulkan, while every failed import closes it explicitly;
+2. submit the external-to-ncnn ownership acquire barrier with a GPU wait on that
+   semaphore before the cached imported image is read;
+3. run all detector and TopDown pose work for that observation after the acquire on
+   the same reserved ncnn queue sequence;
+4. submit a release barrier from the ncnn queue family back to
+   `VK_QUEUE_FAMILY_EXTERNAL`;
+5. wait for the final consumer fence only on the native worker, then mark the slot
+   `Free`.
+
+The ncnn backend reserves one queue from the matched `VulkanDevice` for the complete
+acquire/import/preprocessing/inference/release sequence. The external semaphore wait
+is therefore part of the GPU submission chain; there is no host wait before image
+use. The final fence wait is only for safe slot reclamation. A slot cannot be
+recycled from a timestamp or CPU callback alone; producer and consumer GPU completion
+are the ownership proof.
+
+The pinned ncnn import helper currently records an internal
+`UNDEFINED -> SHADER_READ_ONLY_OPTIMAL` barrier with ignored queue-family indices.
+That is not used unchanged for cross-device AHB reuse because it would not express
+external ownership or content preservation. Human Vision carries one audited adapter
+patch that adds an external-acquire variant to
+`record_import_android_hardware_buffer`; it accepts the prior layout and queue-family
+indices and records the acquire exactly once before the existing conversion dispatch.
+The patch file and upstream base hash are release-manifest inputs. No detector or pose
+operator is added through this adapter.
+
+When all slots are busy, the new frame is dropped before issuing a render event.
+When multiple slots reach `ReadyForNcnn`, only the newest is inferred. For each older
+slot, `DropDrain` imports its sync fd, submits a GPU wait plus external acquire/release
+without inference, and recycles the slot only after that fence completes. An in-flight
+inference is never cancelled or relabeled. This is the latest-frame/drop policy and
+bounds queue age without blocking Unity.
+
+Each long-lived owner takes one `AHardwareBuffer_acquire` reference at slot creation
+and releases that exact reference only after the generation drains. Per-frame work
+uses an internal slot lease and performs no `AHardwareBuffer_acquire/release` pair.
+The owner that called `AHardwareBuffer_allocate` releases its allocation reference
+last. Every exported fd is either transferred to its consumer or closed on the
+error/drop path exactly once.
 
 The bridge records one GPU scaling blit into the configured analysis geometry. The
 existing source-orientation RenderTexture remains the single coordinate-space source
 for preview, inference, and overlay. This keeps dynamic portrait/landscape rotation,
 front-camera mirror, skeleton coordinates, and Region coordinates aligned.
 
-### 7.3 Vulkan initialization and teardown
+### 7.4 Slot cache, rebuild key, initialization, and teardown
+
+Every slot creates and retains the following for the entire generation:
+
+- AHB plus Unity imported `VkDeviceMemory`, `VkImage`, and `VkImageView`;
+- Unity producer command/fence/export-semaphore resources;
+- ncnn `VkAndroidHardwareBufferImageAllocator`;
+- ncnn `VkImageMat::from_android_hardware_buffer` result;
+- `ImportAndroidHardwareBufferPipeline`;
+- ncnn import-semaphore, ownership command/fence resources, and reusable
+  preprocessing buffers.
+
+There is no per-frame creation of AHBs, Vulkan images/views/memory, allocators,
+`VkImageMat`, import pipelines, command pools, or model pipelines. A generation is
+rebuilt only when the camera session identity, analysis width/height, resolved
+rotation or mirror transform, AHB format/color contract, or ModelPack input-contract
+hash changes. Frame ID, timestamp, body boxes, Regions, and tracker state do not
+rebuild the ring.
 
 The Android native plugin is configured to preload. During Vulkan initialization it
 uses `IUnityGraphicsVulkanV2` interception to observe the physical device and enable
@@ -344,15 +478,17 @@ because all backends are shipped together and ncnn AHB support is compiled at AP
 Keeping ORT APKs at API 24 is deferred to runtime-mode dependency stripping/separate
 native binaries.
 
-Shutdown order is:
+Rebuild and shutdown order is:
 
 1. reject new GPU submissions;
 2. invalidate the session generation;
 3. drain or cancel native event slots;
 4. wait only on native control teardown, never inside a per-frame Unity call;
-5. complete ncnn work and release imported images;
-6. destroy AHB slots before the Unity Vulkan device shutdown callback;
-7. destroy ncnn sessions/device state.
+5. complete consumer release for every acquired slot and close outstanding sync fds;
+6. destroy per-slot ncnn import pipelines, image mats, and allocators;
+7. release every subsystem's AHB reference, then release the allocation reference;
+8. destroy Unity imported resources before the Unity Vulkan device shutdown callback;
+9. destroy ncnn sessions/device state.
 
 Android pause/resume and graphics-device recreation follow the same teardown and
 recreate path. A stale texture pointer is never reused after a device event.
@@ -365,7 +501,7 @@ Pin Tencent ncnn official release tag `20260526`. That source contains
 `VkAndroidHardwareBufferImageAllocator` and
 `VkImageMat::from_android_hardware_buffer`. Official prebuilt Android archives are
 built for an API level that removes the API-26 AHB symbols, so Human Vision builds the
-unmodified official source with:
+pinned official source plus the single audited Section 7.3 adapter patch with:
 
 ```text
 ANDROID_ABI=arm64-v8a
@@ -392,6 +528,12 @@ release manifests. No floating `master` dependency is allowed.
 - detector and pose input/output buffers;
 - decoded output storage sized from the ModelPack contract.
 
+The bridge creates each slot's AHB allocator, imported `VkImageMat`,
+`ImportAndroidHardwareBufferPipeline`, ownership commands, and transform buffers at
+generation startup. The backend receives a cached slot handle for each observation;
+it does not reconstruct an import object from the AHB on every frame. The same cache
+is reused for detector and every TopDown pose ROI before the slot is released.
+
 The backend enables only FP16 features required by the profile. The profile names the
 required level explicitly rather than using an ambiguous `fp16=true`:
 
@@ -403,12 +545,39 @@ Startup fails if any required ncnn/Vulkan capability is missing. Diagnostics rep
 requested and actual storage/arithmetic modes; a lower precision mode is never chosen
 silently.
 
-### 8.3 GPU preprocessing and CPU output boundary
+### 8.3 AHB to VkMat input contract
 
-ncnn imports the AHB as a `VkImageMat`, converts RGBA to model RGB ordering, and runs
-resize/letterbox or affine ROI crop, normalization, packing, and type conversion on
-the GPU. Detector preprocessing uses the whole analysis image. Pose preprocessing
-uses the detector bbox transforms against the same retained image slot.
+The bridge-side image contract is explicit and versioned in the ModelPack/profile:
+
+- `AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM`;
+- `AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE |
+  AHARDWAREBUFFER_USAGE_GPU_COLOR_OUTPUT`;
+- top-left origin after the resolved Unity rotation/mirror transform;
+- analysis width and height equal to the active bridge generation;
+- RGBA UNORM channels, alpha ignored, and no CPU mapping;
+- color space/range declared by the source contract rather than inferred per frame.
+
+The cached AHB import yields a cached `VkImageMat`. For every observation, the
+backend explicitly records these GPU operations into reusable command resources:
+
+1. `record_import_android_hardware_buffer` imports/converts the image into a reusable
+   RGB FP32 pack1 `VkMat` with values in the validated import range;
+2. detector letterbox or pose affine crop/resize is applied against that `VkMat`;
+3. channel order, scale, mean, and standard-deviation normalization from the
+   ModelPack input contract are applied;
+4. `VulkanDevice::convert_packing` explicitly converts the tensor to the model's
+   required `elempack` and dtype, including the declared FP16 cast when required;
+5. only after the actual dims, `elemsize`, `elempack`, and dtype match the contract is
+   the tensor passed to `Extractor::input`.
+
+The implementation must not rely on `Extractor::input(VkMat)` to perform packing or
+dtype conversion. Model outputs needed on CPU are explicitly converted to FP32
+pack1 before the small tensor download and decoder step. Startup preflight validates
+the import range, input shape/layout/dtype/packing, and output shapes; a mismatch is
+a fail-fast model-contract error.
+
+Detector preprocessing uses the whole analysis image. Pose preprocessing uses the
+detector bbox transforms against the same retained image slot.
 
 Only raw detector head outputs/final detection tensors and pose SimCC tensors cross
 to CPU. Their shapes and maximum byte counts are declared in the ModelPack and checked
@@ -439,8 +608,28 @@ The production conversion path is:
 7. compare boxes/scores against the pinned PyTorch or current ORT reference on a fixed
    golden corpus before Android integration.
 
-If conversion or parity fails, the milestone remains failed. It does not substitute a
-different detector, use fake detections, or route the production profile through ORT.
+RTMDet Nano conversion is time-boxed to 24 engineering hours or three working days
+after the pinned toolchain and source checkpoint are available, whichever occurs
+first. The time box covers export, pnnx/ncnn conversion, operator closure, Vulkan
+execution, and golden comparison. Work exits early when any of these conditions is
+met:
+
+- the graph cannot convert, load, or execute fully on ncnn Vulkan;
+- support would require more than two narrowly scoped custom layers or any persistent
+  modification to ncnn core;
+- two focused correction iterations still fail detector golden parity;
+- inspection shows an unsupported layer or CPU execution inside the detector graph;
+- the time box expires.
+
+On exit, the team records the failing operator/conversion/golden evidence and stops
+converter work. It may replace only the detector model, decoder, and detector
+ModelPack assets with a mature ncnn Android person detector that has a reproducible
+source/license, a Vulkan-supported graph without CPU fallback, a static mobile input,
+and passing detector golden tests. The chosen substitute is an explicit build-time
+ModelPack decision, not a runtime fallback. The AHB bridge, ncnn backend interface,
+RTMPose, Canonical Skeleton, Tracker, Region service, snapshots, and Unity API remain
+unchanged. Fake detections and routing the `android-ncnn-vulkan` profile through ORT
+remain prohibited.
 
 ### 9.2 RTMPose TopDown
 
@@ -472,23 +661,39 @@ Preserve schema 1 readers. Add schema 2 for multi-file ncnn models:
       "role": "detector",
       "format": "ncnn",
       "assets": {"param": "detector.ncnn.param", "bin": "detector.ncnn.bin"},
-      "input_contract": {"width": 320, "height": 320},
+      "input_contract": {
+        "width": 320,
+        "height": 320,
+        "layout": "chw",
+        "channel_order": "rgb",
+        "source_range": [0.0, 255.0],
+        "scale": [0.0039215686, 0.0039215686, 0.0039215686],
+        "mean": [0.0, 0.0, 0.0],
+        "std": [1.0, 1.0, 1.0],
+        "dtype": "fp16",
+        "elempack": 4,
+        "resize": "letterbox"
+      },
       "output_contract": {"decoder": "rtmdet_nano_raw_v1"}
     }
   ]
 }
 ```
 
-Every asset has a SHA-256 entry, provenance, license, input/output contract, dtype,
-normalization, color order, and conversion recipe. Runtime loading is confined to the
-pack root and rejects missing, changed, or incompatible assets.
+The values above illustrate the required fields; generated values must match the
+validated model exactly. Every asset has a SHA-256 entry, provenance, license,
+input/output contract, dtype, packing, normalization, color order, and conversion
+recipe. Runtime loading is confined to the pack root and rejects missing, changed, or
+incompatible assets.
 
 ## 10. TopDown data flow
 
 For each newest accepted GPU frame:
 
-1. Wait for the Unity-to-AHB sync fd on the native inference worker.
-2. Import/reference the AHB with ncnn; retain the slot until all pose work finishes.
+1. Import the Unity producer sync fd into the cached ncnn semaphore and enqueue the
+   GPU wait plus external ownership acquire on the reserved ncnn queue.
+2. Reference the slot-cached AHB allocator/image/import pipeline; retain the slot
+   until all pose work and the external ownership release finish.
 3. GPU resize/letterbox/normalize to 320x320.
 4. Run RTMDet Nano with ncnn Vulkan/FP16.
 5. Read only detector outputs; decode and NMS on CPU.
@@ -569,12 +774,16 @@ Initialization performs these checks before accepting a camera frame:
 - Android API level and ARM64 process;
 - actual Unity graphics API is Vulkan;
 - `IUnityGraphicsVulkanV2` and render-event bridge are available;
-- Unity and ncnn physical-device identity matches;
-- required AHB, foreign-memory, sync-fd, and image-format capabilities;
+- Unity exposes non-zero `VkPhysicalDeviceIDProperties.deviceUUID` and `driverUUID`;
+- exactly one enumerated ncnn Vulkan device has the same device and driver UUIDs, and
+  every ncnn network/allocator is explicitly bound to that index;
+- required AHB, external-memory, external-queue, sync-fd, and image-format
+  capabilities;
 - successful creation/import of every reusable AHB slot;
 - ncnn Vulkan device is valid and not blacklisted;
 - required FP16 storage/arithmetic features;
 - profile/backend/pipeline/ModelPack capability match;
+- cached imported input tensor dims/dtype/packing and explicit conversion contract;
 - model assets and hashes;
 - a bounded GPU bridge initialization self-check.
 
@@ -583,6 +792,7 @@ requirement, observed value, and corrective Project Settings action. Examples:
 
 ```text
 android-ncnn-vulkan initialization failed: Unity is running OpenGLES3; rebuild with Vulkan first.
+android-ncnn-vulkan initialization failed: no ncnn Vulkan device UUID matches Unity device UUID 6f...a1.
 android-ncnn-vulkan initialization failed: Adreno driver lacks required FP16 storageBuffer16BitAccess.
 android-ncnn-vulkan initialization failed: detector.ncnn.bin SHA-256 does not match its ModelPack.
 ```
@@ -596,14 +806,22 @@ Add diagnostics without changing gameplay APIs:
 - baked runtime mode and resolved profile;
 - actual Unity graphics API;
 - Unity/ncnn GPU vendor, device, and driver identity;
+- Unity and ncnn device UUIDs plus the explicitly selected ncnn GPU index;
 - AHB/sync/FP16 capability decisions;
-- bridge slot states, accepted frames, busy drops, replaced pending frames, and errors;
+- bridge slot generation/states and these monotonic counters:
+  `gpu_capture_requested`, `gpu_capture_submitted`,
+  `gpu_bridge_no_free_slot_drops`, `gpu_bridge_superseded_ready_drops`,
+  `gpu_copy_errors`, and `gpu_import_errors`;
 - detector, pose-per-person, total inference, decode, Region, and publication timings;
-- source frame ID/timestamp, result age, fresh body FPS, and output sampling FPS;
+- source frame ID/timestamp, observation sequence, end-to-end age,
+  `fresh_observation_frames`, fresh observation FPS, and output sampling FPS;
 - requested/actual ncnn precision flags.
 
 Diagnostics must distinguish preview FPS, GPU capture FPS, fresh inference FPS, and
-sampled output FPS.
+sampled output FPS. Source rate limiting before submission is reported separately
+from bridge-pressure drops. `source_frames_seen` counts camera arrivals,
+`source_rate_limited_drops` counts frames rejected before a bridge request, and
+`gpu_capture_requested` counts post-rate-limit attempts to reserve a bridge slot.
 
 ## 13. Testing and acceptance
 
@@ -616,8 +834,15 @@ Native non-hardware tests:
 - V1 ABI byte/layout and behavior regression tests;
 - V2 struct size/version/capability validation;
 - native event-slot generation and stale-callback safety;
+- exact deviceUUID/driverUUID matching, no-match/ambiguous-match failure, and proof
+  that the selected ncnn index is explicitly bound;
 - AHB ring state transitions, latest-frame replacement, drop accounting, and teardown
   using a fake GPU bridge;
+- sync-fd ownership/close paths, temporary semaphore import, producer/consumer
+  acquire-release ordering, and DropDrain completion;
+- invariant that Unity render callbacks never wait for inference or slot reclamation;
+- per-slot import-cache identity and rebuild-key tests proving no per-frame allocator,
+  `VkImageMat`, import pipeline, or AHB creation;
 - strict no-fallback profile selection and error propagation;
 - ncnn backend selection only when all declared capabilities match;
 - TopDown orchestration with fake GPU backend tensors;
@@ -631,6 +856,7 @@ Model tests:
 - RTMDet Nano graph/operator audit;
 - RTMDet box/score/NMS golden parity;
 - RTMPose SimCC and affine-reversal golden parity;
+- AHB import range plus explicit VkMat dtype/elempack conversion golden tests;
 - FP32 reference versus ncnn FP16 tolerance with documented thresholds;
 - invalid or oversized output contracts fail before buffer access.
 
@@ -647,6 +873,7 @@ Unity EditMode tests:
 Build/package checks:
 
 - Android ARM64 native build with pinned NDK/API 26 and ncnn Vulkan;
+- pinned ncnn source and audited external-acquire adapter patch hash verification;
 - Unity managed/runtime/demo compilation;
 - architecture dependency guards;
 - UPM isolation/import tests;
@@ -654,19 +881,53 @@ Build/package checks:
   and licenses;
 - exported symbols and no accidental MediaPipe/QNN dependency.
 
-### 13.2 Snapdragon 888 physical acceptance
+### 13.2 Observation and metric definitions
+
+One **complete observation frame** is one atomically published
+`HV_ObservationFrameV1` produced from one unique source frame ID and original
+monotonic capture timestamp. It contains the complete Body set accepted for that
+source frame after detector/pose, Canonical Skeleton mapping, Region assignment, and
+tracking. Every included Body belongs to that same source frame; confidence-marked
+invalid or occluded joints remain valid contract data.
+
+`fresh observation FPS` counts unique complete observation frames divided by wall
+time after warm-up. A frame containing 1, 4, or 8 bodies counts as exactly one
+observation. Re-publishing, rendering, sampling, interpolating, or predicting an old
+snapshot does not increment this counter.
+
+End-to-end age is measured at first atomic publication:
+
+```text
+publication monotonic timestamp - original camera capture monotonic timestamp
+```
+
+P50 and P95 are computed from the unique fresh observation frames in the acceptance
+window. GPU bridge drops are reported separately as no-free-slot drops and
+superseded-ready drops. Camera frames rejected by the configured source-rate limiter
+are not bridge drops and cannot be used to hide bridge pressure.
+
+### 13.3 Snapdragon 888 physical acceptance
 
 The user owns final physical-device acceptance. The SDK provides an integrated camera
 scene and persistent diagnostics; it does not provide a separate benchmark-only app.
+
+After a 5-second warm-up, each capacity runs a 60-second measured window at a
+30 FPS camera submission target. The production target is 30 complete observation
+frames per second; clock tolerance permits at least 29.0 fresh observation FPS in
+each 10-second rolling window and at least 29.5 average FPS over the full window.
 
 TopDown gate, capacities 1 and 2:
 
 - real camera preview remains smooth and correctly oriented in portrait/landscape;
 - skeleton follows the same current image without flashing or multi-second stalls;
-- 30 fresh complete skeleton results per second at the accepted capacity after warmup;
-- bounded latest-frame queue with no monotonic growth in result age;
-- target steady-state source age: p95 at or below 100 ms, with no sample above 250 ms
-  outside lifecycle transitions;
+- every complete observation contains all current accepted bodies for its source
+  frame and counts once regardless of body count;
+- the fresh observation FPS target above is met at the accepted capacity;
+- bounded latest-frame queue with no monotonic growth in end-to-end age;
+- steady-state end-to-end age P50 at or below 75 ms and P95 at or below 100 ms, with
+  no sample above 250 ms outside startup, pause/resume, and rotation transitions;
+- combined no-free-slot and superseded-ready bridge drops are at or below 1% of
+  `gpu_capture_requested`, and `gpu_copy_errors`/`gpu_import_errors` are zero;
 - stable track IDs and Region slots during normal motion/crossing;
 - no full-frame CPU readback counter or allocation in diagnostics;
 - no Vulkan validation, native crash, ANR, or device-loss loop;
@@ -674,8 +935,10 @@ TopDown gate, capacities 1 and 2:
 
 RTMO gate, capacities 3, 4, 6, and 8:
 
-- the same freshness, correctness, identity, Region, crash, and thermal criteria;
-- 30 fresh complete skeleton results per person per second at the configured capacity.
+- the same complete-observation FPS, P50/P95 age, bridge-drop, correctness, identity,
+  Region, crash, and thermal criteria at every configured capacity;
+- each observation contains the entire current Body set up to the configured capacity
+  and still counts as one observation frame.
 
 If a gate fails, the corresponding milestone remains open. The SDK does not inflate
 output FPS through sampling, hold stale poses without their source timestamps, or
@@ -747,6 +1010,12 @@ Implementation must update:
   <https://github.com/Tencent/ncnn/releases/tag/20260526>
 - Tencent ncnn Android Hardware Buffer documentation:
   <https://github.com/Tencent/ncnn/wiki/use-ncnn-with-android-hardware-buffer>
+- Khronos Vulkan external memory/synchronization guidance and Android Hardware Buffer
+  external-memory requirements, including physical/driver UUID identity and external
+  queue-family ownership:
+  <https://docs.vulkan.org/guide/latest/extensions/external.html>
+  <https://docs.vulkan.org/spec/latest/chapters/memory.html>
+  <https://docs.vulkan.org/spec/latest/chapters/synchronization.html>
 - OpenMMLab RTMPose deployment documentation and ncnn FP16 configuration:
   <https://github.com/open-mmlab/mmpose/blob/main/docs/en/user_guides/how_to_deploy.md>
 - OpenMMLab MMDeploy support tables: RTMPose lists ncnn support; RTMDet currently does
