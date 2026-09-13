@@ -19,10 +19,13 @@ namespace HumanVision
         public bool startAutomatically;
         [Min(1), Tooltip("Display/sample rate; this does not change raw inference FPS.")]
         public int targetDisplayFrameRate = 60;
-        [Tooltip("Disable automatic device acceleration for CPU comparison; restart the app after changing this.")]
+        [Tooltip("Use CPU when the benchmark profile override is empty.")]
         public bool forceCpu;
+        [Tooltip("Demo diagnostics only. Leave empty for auto/forceCpu, or select an Android no-hands benchmark profile.")]
+        public string runtimeProfileOverride = "";
         public string Status { get; private set; } = "Initializing";
         public bool IsReady => _manager != null && _manager.IsInitialized;
+        public string ActiveRuntimeProfile => string.IsNullOrEmpty(_activeRuntimeProfile) ? "not initialized" : _activeRuntimeProfile;
         public string InputStatus => _source != null ? _source.Status : "Stopped";
         public long ResultSequence => _manager != null ? _manager.ResultSequence : 0;
         public event Action<long> SkeletonUpdated;
@@ -34,6 +37,7 @@ namespace HumanVision
         private long _revision;
         private bool _regionsEnabled;
         private string _runtimeRoot;
+        private string _activeRuntimeProfile = "";
 
         private void Awake()
         {
@@ -51,10 +55,7 @@ namespace HumanVision
             Status = "Preparing runtime data";
             yield return HumanVisionRuntimeData.Prepare(root => _runtimeRoot = root, error => Status = error);
             if (string.IsNullOrEmpty(_runtimeRoot)) yield break;
-            if (!_manager.TryInitialize(new HumanVisionConfig { MaxBodies = Settings.people,
-                RuntimeRoot = _runtimeRoot, Profile = forceCpu ? "cpu" : "auto" })) {
-                Status = _manager.LastError; yield break;
-            }
+            if (!TryInitializeRuntime(ResolveRuntimeProfile())) yield break;
             if (!ApplySettings()) yield break;
             Status = "Ready. Select camera and press Start.";
             if (startAutomatically) StartCamera();
@@ -71,9 +72,10 @@ namespace HumanVision
         private void OnDestroy() { if (Instance == this) Instance = null; }
         public bool ApplySettings()
         {
-            if (!IsReady) { Status = "SDK is not ready"; return false; }
             try {
+                if (string.IsNullOrEmpty(_runtimeRoot)) { Status = "SDK is not ready"; return false; }
                 Settings.Validate();
+                if (!TryInitializeRuntime(ResolveRuntimeProfile())) return false;
                 long revision = ++_revision;
                 _bridge.StopFrames();
                 Array.Clear(_slots, 0, _slots.Length);
@@ -87,6 +89,33 @@ namespace HumanVision
                 Status = "Settings applied";
                 return true;
             } catch (Exception e) { Status = e.Message; return false; }
+        }
+        private string ResolveRuntimeProfile()
+            => ResolveRuntimeProfile(runtimeProfileOverride, forceCpu);
+        internal static string ResolveRuntimeProfile(string overrideValue, bool forceCpuValue)
+        {
+            string requested = (overrideValue ?? "").Trim();
+            if (requested.Length == 0) return forceCpuValue ? "cpu" : "auto";
+            if (requested == "android-cpu-nohands" || requested == "android-xnnpack-nohands" ||
+                requested == "android-nnapi-nohands") return requested;
+            throw new ArgumentException("Unsupported benchmark profile: " + requested);
+        }
+        private bool TryInitializeRuntime(string profile)
+        {
+            if (IsReady && string.Equals(_activeRuntimeProfile, profile, StringComparison.Ordinal)) return true;
+            if (IsReady) {
+                _source.Close();
+                _bridge.StopFrames();
+                Array.Clear(_slots, 0, _slots.Length);
+            }
+            _activeRuntimeProfile = "";
+            if (!_manager.TryInitialize(new HumanVisionConfig {
+                MaxBodies = Settings.people, RuntimeRoot = _runtimeRoot, Profile = profile })) {
+                Status = _manager.LastError;
+                return false;
+            }
+            _activeRuntimeProfile = profile;
+            return true;
         }
         public void StartCamera()
         {

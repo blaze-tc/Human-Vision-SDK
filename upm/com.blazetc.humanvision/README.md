@@ -1,4 +1,4 @@
-# Human Vision SDK 0.4.0-preview.2
+# Human Vision SDK 0.4.0-preview.3
 
 独立 Unity SDK，目标为 Windows x64 和 Android ARM64，不依赖 AzureKinectExamples。
 本版使用语义 Runtime Host、可替换流水线/后端、ModelPack 和 Profile。
@@ -9,7 +9,7 @@
 Package Manager → Add package from git URL：
 
 ```
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.2
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.3
 ```
 
 也可从 Human-Vision-SDK Releases 下载 unitypackage 或 UPM tgz。私有仓库需要
@@ -39,17 +39,28 @@ body.CanonicalJoints 提供32个语义关节点，使用 HumanVisionCanonicalJoi
 
 HumanVisionManager.Bodies 是原始观察，SampledBodies 是平滑/有限预测后的显示数据。
 Demo 的 targetDisplayFrameRate 默认60，实际显示速率仍取决于设备。
-预测最多25ms，超过200ms的采样点失效。数组循环复用，保留历史时自行复制。
+预测最多25ms，随后在按实测观察周期计算的300–800ms显示窗口内保持最后的
+滤波骨骼；超过窗口后才隐藏。原始观察时间戳不变，显示保持不计作新识别帧。
+数组循环复用，保留历史时自行复制。
 ResultUpdated 表示新的原生观察，显示采样不能计算为新的识别帧。
 HumanVisionRaisedHandDetector 是举手示例，按区域比较有效肩膀与手腕高度。
 
 ## 性能诊断
 
-HUD 区分 Render、Raw body、Hand jobs、结果年龄、预处理和推理时间。
+HUD 区分 Render、Raw body、Hand jobs、结果年龄、预处理和推理时间，并显示
+Pipeline、Profile、Requested/Actual backend、原始/跟踪/采样人数和两级丢帧。
 实际后端诊断来自已创建的会话，不根据请求选项推测 GPU/NPU 已启用。
 auto 配置在1–2人使用轻量 TopDown，3–8人使用多人流水线；手部共享轮转任务。
-forceCpu 用于与自动后端对照。30FPS/15Hz是调度上限，不是实测保证。
+设置场景可选择 android-cpu-nohands、android-xnnpack-nohands 和
+android-nnapi-nohands；点击 Apply/Start 后 Runtime 会重新初始化。三种配置用于
+同条件基准对比，不能把 Requested backend 当成 Actual backend。
+forceCpu 仅在 override 为空时用于 CPU 对照。30FPS/15Hz是调度上限，不是实测保证。
 QNN 为可选构建路径，默认包不宣称 QNN 已验证。
+
+真机只需按 [Android preview.3 device benchmark](https://github.com/blaze-tc/Human-Vision-SDK/blob/main/docs/diagnostics/ANDROID_0403_DEVICE_BENCHMARK.md)
+的六组矩阵测试，
+每组至少30秒。若最佳 RTMO 仍低于15 Raw body FPS 或 Result age 高于180ms，
+下一版本进入 QNN HTP 专项；本版不声称手机性能已通过。
 
 维护入口：docs/maintenance/START_HERE.md。原生构建使用 NDK23、Android API24；
 Unity 托管兼容目标2021.3/2022.3。自动化结果以 DEVELOPMENT_STATUS 为准。

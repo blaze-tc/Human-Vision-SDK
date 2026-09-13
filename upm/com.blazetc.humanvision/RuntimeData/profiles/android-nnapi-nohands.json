@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "profile": "android-nnapi-nohands",
+  "body_by_capacity": [
+    {"max_people": 2, "pipeline": "pipeline.topdown", "modelPack": "precision-t-26"},
+    {"max_people": 8, "pipeline": "pipeline.rtmo", "modelPack": "rtmo-t-416"}
+  ],
+  "hands": {"enabled": false, "fps": 15},
+  "body_fps": 30,
+  "output": {"hz": 60},
+  "backend": {"preference": ["backend.ort.nnapi"], "allow_fallback": false}
+}

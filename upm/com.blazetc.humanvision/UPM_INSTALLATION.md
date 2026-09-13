@@ -1,15 +1,20 @@
-# Human Vision SDK 0.4.0-preview.2
+# Human Vision SDK 0.4.0-preview.3
 
 Current installation/runtime instructions: [0.4 user guide](SDK_040_USER_GUIDE.md).
-Use the Git URL below or the matching 0.4.0-preview.2 unitypackage/tgz release asset.
+Use the Git URL below or the matching 0.4.0-preview.3 unitypackage/tgz release asset.
 The installer now copies indexed RuntimeData into
 Assets/StreamingAssets/HumanVision/Runtime, with independent metadata GUIDs.
 
 ```
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.2
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.3
 ```
 
 The notes below describe older 0.3 releases and are retained as migration history.
+
+Preview.3 adds explicit CPU, XNNPACK and NNAPI no-hands benchmark selections in
+the generated camera settings scene. Apply/Start recreates the Runtime with the
+selected profile. Use the HUD's actual backend and raw body metrics when comparing
+providers; physical-device performance remains user acceptance.
 
 ## Git Package Manager
 

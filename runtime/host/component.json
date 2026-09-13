@@ -1,7 +1,7 @@
 {
   "id": "runtime.host",
   "type": "host",
-  "version": "0.4.0-preview.1",
+  "version": "0.4.0-preview.3",
   "api_version": 1,
   "capabilities": [
     "latest_frame",

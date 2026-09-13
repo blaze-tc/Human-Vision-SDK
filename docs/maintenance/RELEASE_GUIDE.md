@@ -6,6 +6,12 @@ the filesystem implementation required by ModelPack/Profile paths. On this
 machine use `.venv-reference/Scripts/python.exe` for Python commands below.
 Preserve dependency caches and user archives.
 
+This workstation marks Unity 2021.3 `Unity.exe` as `RUNASADMIN` in the current-user
+compatibility registry. For hidden batch validation set
+`$env:__COMPAT_LAYER='RunAsInvoker'` in that command's process before invoking the
+Unity test/import scripts. This avoids a hidden UAC prompt without changing the
+registry or the user's open Editor process.
+
 ```powershell
 pwsh -File tools/test/run_native_tests.ps1
 pwsh -File tools/package/build_live_native.ps1
@@ -23,15 +29,15 @@ pwsh -File tools/test/run_upm040_import.ps1
 
 Version locations: CMakeLists.txt numeric version, package_live_sdk.py VERSION,
 package_upm.py imported VERSION, component metadata, installation/release docs.
-Default artifacts in out/releases/0.4.0-preview.2:
-HumanVisionSDK-0.4.0-preview.2.unitypackage, HumanVisionSDK-0.4.0-preview.2.zip,
-com.blazetc.humanvision-0.4.0-preview.2.tgz, asset-sha256.json, README.md.
+Default artifacts in out/releases/0.4.0-preview.3:
+HumanVisionSDK-0.4.0-preview.3.unitypackage, HumanVisionSDK-0.4.0-preview.3.zip,
+com.blazetc.humanvision-0.4.0-preview.3.tgz, asset-sha256.json, README.md.
 Unity tar GUID directories and gzip inner name archtemp.tar are compatibility
 requirements. UPM data GUIDs must differ from StreamingAssets copies.
 
 Record exact results in DEVELOPMENT_STATUS. Stage tracked changes plus explicitly
 declared new SDK files (never user media/archives). Commit verified artifacts,
-push main after checking remote ancestry, create annotated tag v0.4.0-preview.2,
+push main after checking remote ancestry, create annotated tag v0.4.0-preview.3,
 create a draft GitHub Release in blaze-tc/Human-Vision-SDK, upload artifacts, download
 to a separate verification directory and compare SHA-256. Verify remote main/tag
 commits before publishing the draft. Do not publish the superseded preview.5 draft.

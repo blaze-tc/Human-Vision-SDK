@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $taskRoot = (Resolve-Path "$PSScriptRoot/../..").Path
 $testProject = Join-Path $taskRoot 'out/upm040-verification'
 New-Item "$testProject/Assets/Editor", "$testProject/Packages" -ItemType Directory -Force | Out-Null
-$sourcePackage = Join-Path $taskRoot 'out/releases/0.4.0-preview.2/com.blazetc.humanvision-0.4.0-preview.2.tgz'
+$sourcePackage = Join-Path $taskRoot 'out/releases/0.4.0-preview.3/com.blazetc.humanvision-0.4.0-preview.3.tgz'
 $hash = (Get-FileHash -LiteralPath $sourcePackage -Algorithm SHA256).Hash.ToLowerInvariant()
 $inputFolder = Join-Path $taskRoot 'out/upm040-inputs'
 New-Item $inputFolder -ItemType Directory -Force | Out-Null

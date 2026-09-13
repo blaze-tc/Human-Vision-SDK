@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / 'unity/HumanVisionDemo/Assets/HumanVision'
-VERSION = '0.4.0-preview.2'
+VERSION = '0.4.0-preview.3'
 OUTPUT = ROOT / 'out/releases' / VERSION
 NAMESPACE = uuid.UUID('9a1f16d6-9fe3-4b94-a3b2-77076251bfec')
 
@@ -102,6 +102,8 @@ def main():
     text('Assets/StreamingAssets/HumanVision/Runtime/index.json', json.dumps(runtime_index, indent=2) + '\n')
     for source in sorted((ROOT/'docs/maintenance').rglob('*.md')):
         add(source, 'Assets/HumanVision/Documentation/maintenance/' + source.relative_to(ROOT/'docs/maintenance').as_posix())
+    for source in sorted((ROOT/'docs/diagnostics').rglob('*.md')):
+        add(source, 'Assets/HumanVision/Documentation/diagnostics/' + source.relative_to(ROOT/'docs/diagnostics').as_posix())
     add(ROOT / 'docs/SDK_040_USER_GUIDE.md', 'Assets/HumanVision/README.md')
     add(ROOT / 'out/hv-ort-dml/ORT_LICENSE', 'Assets/HumanVision/Licenses/ONNXRuntime.txt')
     add(ROOT / 'out/live-deps/ffmpeg-7.1/COPYING.LGPLv2.1', 'Assets/HumanVision/Licenses/FFmpeg-LGPL-2.1.txt')

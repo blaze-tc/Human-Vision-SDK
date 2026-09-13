@@ -1,3 +1,65 @@
+# 0.4.0-preview.3 — Android provider baseline and presentation continuity (2026-09-13)
+
+Authority: `HumanVisionSDK_Android_0403_Codex_Optimization.md` and the frozen
+[diagnostic plan](diagnostics/ANDROID_0403_PLAN.md). User recordings from preview.2
+showed RTMO 3.9–5.8 raw body FPS, 299–397 ms result age and periodic
+`SampledBodies=0` on OnePlus 9 Pro / Snapdragon 888. The fixed 200 ms sample expiry
+was a confirmed cause of visible flicker; it was not the cause of slow inference.
+
+Implemented:
+
+- Motion prediction remains bounded to 25 ms. Presentation now holds the last
+  filtered body for an observation-period-based 300–800 ms window, while track loss
+  remains independently bounded at 800 ms and hand endpoints at 200 ms.
+- Added forced `android-cpu-nohands`, `android-xnnpack-nohands` and
+  `android-nnapi-nohands` profiles. Each disables hands and requests exactly one
+  provider with fallback disabled.
+- Added an Android XNNPACK session with four intra-op threads; all Android ORT
+  sessions use sequential execution, one inter-op thread and disabled spinning.
+- Added 4 Hz diagnostics for profile/pipeline/provider identity, raw/tracked/sampled
+  counts, body stage timings, result/sample age, observation EWMA, adaptive hold,
+  input/body drops and pipeline-specific detector/pose metrics.
+- Camera/settings Demo can select the three benchmark profiles. Apply/Start
+  recreates the native Runtime; the HUD shows the active profile.
+- Packaged the six-run device matrix and official ORT Mobile model-usability reports.
+  The checker did not recommend NNAPI for the current RTMO, RTMDet, Body26 or Hand21
+  models. This is graph inspection, not phone performance proof.
+- QNN remains deferred. The documented next route is QAIRT plus custom ARM64 ORT
+  with `--use_qnn static_lib`; start with FP32/HTP and optional HTP FP16 precision.
+
+## Automatically verified
+
+- `pwsh -File tools/test/run_native_tests.ps1`: 72/72 PASS, 9.91 s.
+- `pwsh -File tools/package/build_live_native.ps1`: Windows x64 and Android ARM64
+  Release PASS.
+- `pwsh -File tools/package/compile_managed.ps1`: Runtime/Demo/Editor and Android
+  conditional compilation PASS; existing serialized JsonUtility CS0649 warnings only.
+- `$env:__COMPAT_LAYER='RunAsInvoker'; pwsh -File tools/test/run_unity040_tests.ps1`:
+  Unity 2021.3 EditMode 44/44 PASS, including the benchmark-profile contract.
+- `generate_component_catalog.py --check`, `check_architecture_boundaries.py`,
+  public-surface checks and package-only autocrlf regression: PASS.
+- `verify_package_isolation.py`: PASS, 102 Unity assets, 107 UPM files, 131 GUIDs.
+- Local preview.3 tgz import in Unity 2021.3: PASS; packaged Runtime initialized,
+  all RuntimeData hashes/GUID isolation verified, camera/settings scenes generated.
+- Local artifact SHA-256 values are in
+  `out/releases/0.4.0-preview.3/SHA256SUMS.txt`; remote download verification is a
+  publication gate and has not yet been recorded in this entry.
+
+## User manual acceptance pending
+
+Run only the six combinations in
+[ANDROID_0403_DEVICE_BENCHMARK](diagnostics/ANDROID_0403_DEVICE_BENCHMARK.md) on the
+same device/camera/scene for at least 30 seconds each. Record raw body FPS, result
+age, stage timing, requested/actual backend, both drop counters, sampled bodies and
+flicker. Select the fastest provider separately for TopDown and RTMO. If best RTMO
+remains below 15 raw body FPS or above 180 ms result age, enter QNN HTP next.
+
+No automated result certifies Android camera FPS, latency, accuracy, thermal
+behavior, 1–8-person acceptance or hand quality. Publication target is main and
+`v0.4.0-preview.3`; this entry will be updated after remote artifact verification.
+
+---
+
 # 0.4.0-preview.2 — Git import newline repair (2026-09-12)
 
 User screenshot: `HumanVision runtime hash mismatch: profiles/auto.json`, followed

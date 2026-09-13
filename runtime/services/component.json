@@ -1,7 +1,7 @@
 {
   "id": "runtime.services",
   "type": "service",
-  "version": "0.4.0-preview.1",
+  "version": "0.4.0-preview.3",
   "api_version": 1,
   "capabilities": ["tracking", "regions", "canonical_skeleton", "temporal_sampling", "hand_dispatch"],
   "dependencies": ["plugin.abi", "core.latest_frame_slot"],

@@ -1,5 +1,5 @@
 {
-  "version": "0.4.0-preview.2",
+  "version": "0.4.0-preview.3",
   "files": [
     {
       "path": "modelpacks/hand21/component.json",
@@ -66,12 +66,24 @@
       "sha256": "73712b78b6305c83ee3ebdb3f34581a02b20172758692c986c1689b13216b7e4"
     },
     {
+      "path": "profiles/android-cpu-nohands.json",
+      "sha256": "9969cf1b1a6a4400f21139b8c168188c92c39bcac2f964a19f2e0e3eb9090353"
+    },
+    {
+      "path": "profiles/android-nnapi-nohands.json",
+      "sha256": "16a8e11a96363827809bb48a6ca8f6ad5938590bcd72332457b0db5c620eeaec"
+    },
+    {
+      "path": "profiles/android-xnnpack-nohands.json",
+      "sha256": "6754f27d1624c49da96d9c38f4d5860a38e9dc2a0985e1a71a2f49b549c3a588"
+    },
+    {
       "path": "profiles/auto.json",
       "sha256": "9dea68a7bd87a3b63fc19bb442a71ee7bf24c9fe4ed3653815c24f7a7f79c09e"
     },
     {
       "path": "profiles/component.json",
-      "sha256": "3d0020686e4462593b2b3496670b41c0b04a80b33dbde10c5005d584a91bb835"
+      "sha256": "9e5927e0d87544ece8c1b4651055c0001ef53dc37a8d8804f22574999716db81"
     },
     {
       "path": "profiles/cpu.json",
@@ -79,7 +91,7 @@
     },
     {
       "path": "profiles/README.md",
-      "sha256": "16cf1fa339f515e804bae8f2ff85a21675c3471706bf8ec5989f85fccc8042c9"
+      "sha256": "eaa6a03307b9bae4764d4e36b5ede8257b818f61eb55bc920ef4fc0248f243af"
     }
   ]
 }

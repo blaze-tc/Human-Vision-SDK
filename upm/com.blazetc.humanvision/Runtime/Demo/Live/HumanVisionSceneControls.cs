@@ -48,7 +48,7 @@ namespace HumanVision
         {
             if (manager == null) return;
             if (Time.unscaledTime >= _nextUpdate) {
-                _nextUpdate = Time.unscaledTime + .5f;
+                _nextUpdate = Time.unscaledTime + .25f;
                 var pipeline = manager.GetComponent<HumanVisionManager>();
                 var bridge = manager.GetComponent<Demo.VideoPlayerFrameSource>();
                 float elapsed = Time.unscaledTime - _lastStatsTime;
@@ -71,7 +71,8 @@ namespace HumanVision
                 // Keep layout controls alive throughout the slide to avoid mismatched GUILayout events.
                 GUILayout.BeginArea(panel, GUI.skin.box);
                 _scroll = GUILayout.BeginScrollView(_scroll);
-                GUILayout.Label(settingsScene ? "CAMERA SETTINGS" : "HUMAN VISION");
+                GUILayout.Label((settingsScene ? "CAMERA SETTINGS" : "HUMAN VISION") +
+                    "\nPROFILE: " + manager.ActiveRuntimeProfile);
                 GUILayout.BeginHorizontal();
                 if (GUILayout.Button(settingsScene ? "Camera" : "Settings")) {
                     if (!string.IsNullOrEmpty(targetScene)) { manager.StopCamera(); SceneManager.LoadScene(targetScene); }
