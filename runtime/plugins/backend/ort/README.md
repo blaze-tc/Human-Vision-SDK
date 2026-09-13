@@ -6,6 +6,17 @@ Windows DirectML builds or `backend.ort.nnapi` on Android. CPU-only builds rejec
 that query. BackendFactory now handles ordered creation fallback and the legacy
 pipeline requests model sessions through HostServices.
 
+`HV_QueryOrtXnnpackPlugin` registers `backend.ort.xnnpack` only on Android. It
+uses the pinned ONNX Runtime Android 1.23.0 library, sequential execution, ORT
+intra/inter-op thread counts of one, disabled ORT thread spinning, and an explicit
+XNNPACK EP with `intra_op_num_threads=4`. Provider append/session failure rejects
+creation. `actual=XNNPACK` is reported only after session creation succeeds.
+
+Profiles with `backend.allow_fallback=false` pass the selected plugin identity as
+the requested provider and stop after its first creation failure. This prevents a
+forced NNAPI or XNNPACK benchmark from being silently measured as CPU. The default
+`auto` profile retains ordered provider fallback.
+
 `HV_QueryOrtQnnPlugin` is optional (`HV_USE_QNN`). It registers `backend.ort.qnn`
 only in enabled Android builds, priority 200. It requests HTP, disables CPU EP
 fallback, and lets BackendFactory handle creation failure. See

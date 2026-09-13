@@ -49,7 +49,9 @@ HV_Result HV_CALL BackendFactory::Create(void* context,const HV_BackendConfigV1*
    auto lease=std::make_unique<Lease>();lease->module=module;
    char text[512]{};HV_ErrorBufferV1 buffer{sizeof(buffer),HV_PLUGIN_API_V1,text,sizeof(text)};
    HV_Result result=HV_ERR_INTERNAL;
-   try{result=module->api.backend->create(config,&lease->instance,&buffer);}catch(...){Copy(text,sizeof(text),"creation threw across C ABI");}
+   HV_BackendConfigV1 selected=*config;
+   if(!factory.allow_fallback_)selected.requested_provider_utf8=module->api.plugin_id;
+   try{result=module->api.backend->create(&selected,&lease->instance,&buffer);}catch(...){Copy(text,sizeof(text),"creation threw across C ABI");}
    text[sizeof(text)-1]=0;
    if(result==HV_OK&&lease->instance){
     lease->failures=failures;lease->diagnostic=std::make_shared<BackendDiagnostic>();
@@ -61,6 +63,7 @@ HV_Result HV_CALL BackendFactory::Create(void* context,const HV_BackendConfigV1*
     *api=&table;*out=lease.release();return HV_OK;
    }
    failures+=std::string(module->api.plugin_id)+": "+(text[0]?text:"creation failed")+"; ";
+   if(!factory.allow_fallback_)break;
   }
   Error(error,failures.empty()?"No backend candidates available":failures);return HV_ERR_MODEL_LOAD;
  }catch(...){Error(error,"Backend selection exception");return HV_ERR_INTERNAL;}

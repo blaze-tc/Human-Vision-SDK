@@ -12,10 +12,10 @@ bool RuntimeSession::Start(const std::filesystem::path& root,const std::string& 
  for(auto query:{HV_QueryOrtCpuPlugin,HV_QueryRtmoPipeline,HV_QueryTopDownPipeline,HV_QueryHandPipeline})
   if(!registry_.Register(query,error))return false;
  // Optional compiled providers may be absent; profile resolution records fallback.
- std::string optional;registry_.Register(HV_QueryOrtAcceleratedPlugin,optional);registry_.Register(HV_QueryOrtQnnPlugin,optional);
+ std::string optional;registry_.Register(HV_QueryOrtAcceleratedPlugin,optional);registry_.Register(HV_QueryOrtXnnpackPlugin,optional);registry_.Register(HV_QueryOrtQnnPlugin,optional);
  profile_=ProfileManager(root/"profiles").Resolve(profile,capacity,registry_,ModelPackManager(root/"modelpacks"),error);
  if(!profile_)return false;
- factory_=std::make_unique<BackendFactory>(profile_->backends);
+ factory_=std::make_unique<BackendFactory>(profile_->backends,profile_->allow_backend_fallback);
  auto start=[&](RuntimeHost& host,const PipelineSelection& selection){
   const auto asset_root=selection.pack->root.u8string();
   HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,capacity,0,selection.pack->manifest_json.c_str(),asset_root.c_str(),profile_->json.c_str()};

@@ -42,6 +42,17 @@ TEST(BackendPlugin, AcceleratedQueryMatchesCompiledCapabilities) {
  EXPECT_EQ(plugin.backend,nullptr);
 #endif
 }
+TEST(BackendPlugin, XnnpackQueryIsAndroidOnlyAndUsesDedicatedIdentity) {
+ HV_PluginApiV1 plugin{};plugin.struct_size=sizeof(plugin);
+#if defined(__ANDROID__)
+ ASSERT_EQ(HV_QueryOrtXnnpackPlugin(HV_PLUGIN_API_V1,&plugin),HV_OK);
+ EXPECT_STREQ(plugin.plugin_id,"backend.ort.xnnpack");
+ EXPECT_EQ(plugin.type,HV_PLUGIN_BACKEND);EXPECT_GT(plugin.priority,0);
+#else
+ EXPECT_EQ(HV_QueryOrtXnnpackPlugin(HV_PLUGIN_API_V1,&plugin),HV_ERR_NOT_INITIALIZED);
+ EXPECT_EQ(plugin.backend,nullptr);
+#endif
+}
 TEST(BackendPlugin, QnnIsExplicitlyUnavailableWithoutOptionalBuild) {
  HV_PluginApiV1 plugin{};plugin.struct_size=sizeof(plugin);
 #ifndef HV_USE_QNN

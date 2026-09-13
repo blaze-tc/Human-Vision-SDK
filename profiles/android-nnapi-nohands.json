@@ -8,5 +8,5 @@
   "hands": {"enabled": false, "fps": 15},
   "body_fps": 30,
   "output": {"hz": 60},
-  "backend": {"preference": ["backend.ort.nnapi"]}
+  "backend": {"preference": ["backend.ort.nnapi"], "allow_fallback": false}
 }

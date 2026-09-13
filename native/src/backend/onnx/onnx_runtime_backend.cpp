@@ -24,8 +24,8 @@ namespace humanvision {
 struct OnnxRuntimeBackend::Impl {
     std::string actual_provider = "uninitialized";
     std::string fallback_reason;
-    bool use_gpu = false;
-    bool use_qnn = false;
+    OnnxRuntimeProvider provider = OnnxRuntimeProvider::Cpu;
+    bool allow_fallback = true;
     // Declared before the session/environment so the DLL outlives their teardown.
     std::shared_ptr<void> directml_module;
     Ort::Env environment{ORT_LOGGING_LEVEL_WARNING, "HumanVisionSDK"};
@@ -35,6 +35,7 @@ struct OnnxRuntimeBackend::Impl {
     std::vector<std::string> output_names;
 #if defined(__ANDROID__)
     bool nnapi_enabled = false;
+    bool xnnpack_enabled = false;
     std::filesystem::path model_path;
     Ort::SessionOptions cpu_options;
 #endif
@@ -85,15 +86,15 @@ std::size_t ElementCount(const std::vector<std::int64_t>& shape) {
 
 }  // namespace
 
-OnnxRuntimeBackend::OnnxRuntimeBackend(bool use_gpu, bool use_qnn) : impl_(std::make_unique<Impl>()) {
-    impl_->use_gpu = use_gpu;
-    impl_->use_qnn = use_qnn;
+OnnxRuntimeBackend::OnnxRuntimeBackend(OnnxRuntimeProvider provider, bool allow_fallback) : impl_(std::make_unique<Impl>()) {
+    impl_->provider = provider;
+    impl_->allow_fallback = allow_fallback;
     impl_->session_options.SetGraphOptimizationLevel(
         GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
 #if defined(__ANDROID__)
-    // Two model sessions otherwise each create a full, spinning CPU pool.
-    // Leave cores available for Unity, camera delivery and thermal headroom.
-    impl_->session_options.SetIntraOpNumThreads(2);
+    // Keep ORT's own pool to one non-spinning thread. The XNNPACK EP owns its
+    // separately configured four-thread pool when that provider is selected.
+    impl_->session_options.SetIntraOpNumThreads(1);
     impl_->session_options.SetInterOpNumThreads(1);
     impl_->session_options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
     impl_->session_options.AddConfigEntry("session.intra_op.allow_spinning", "0");
@@ -122,21 +123,27 @@ bool OnnxRuntimeBackend::Load(
         return false;
     }
     try {
+#if !defined(__ANDROID__)
+        if(impl_->provider==OnnxRuntimeProvider::Xnnpack){
+            error="XNNPACK provider is available only in the Android runtime";
+            return false;
+        }
+#endif
 #if !defined(HV_USE_QNN)
-        if(impl_->use_qnn){error="QNN support is not enabled in this native build";return false;}
+        if(impl_->provider==OnnxRuntimeProvider::Qnn){error="QNN support is not enabled in this native build";return false;}
 #endif
 #if defined(__ANDROID__)
         impl_->cpu_options = impl_->session_options.Clone();
         impl_->model_path = model_path;
 #if defined(HV_USE_QNN)
-        if(impl_->use_qnn){
+        if(impl_->provider==OnnxRuntimeProvider::Qnn){
             const char* keys[]{"backend_path","htp_performance_mode"};
             const char* values[]{"libQnnHtp.so","balanced"};
             impl_->session_options.AddConfigEntry("session.disable_cpu_ep_fallback","1");
             Ort::ThrowOnError(Ort::GetApi().SessionOptionsAppendExecutionProvider(impl_->session_options,"QNN",keys,values,2));
         } else
 #endif
-        if (impl_->use_gpu) {
+        if (impl_->provider==OnnxRuntimeProvider::PlatformAccelerated) {
             // Keep float32 model semantics. Avoid NNAPI's slower reference CPU;
             // unsupported partitions remain on ORT CPU kernels.
             auto accelerated = impl_->session_options.Clone();
@@ -147,10 +154,17 @@ bool OnnxRuntimeBackend::Load(
             } else {
                 impl_->fallback_reason = std::string("NNAPI registration failed: ") + Ort::GetApi().GetErrorMessage(status);
                 Ort::GetApi().ReleaseStatus(status);
+                if(!impl_->allow_fallback){error=impl_->fallback_reason;return false;}
             }
+        } else if(impl_->provider==OnnxRuntimeProvider::Xnnpack) {
+            const char* keys[]{"intra_op_num_threads"};
+            const char* values[]{"4"};
+            Ort::ThrowOnError(Ort::GetApi().SessionOptionsAppendExecutionProvider(
+                impl_->session_options,"XNNPACK",keys,values,1));
+            impl_->xnnpack_enabled=true;
         }
 #elif defined(HV_USE_DIRECTML)
-        if (impl_->use_gpu) {
+        if (impl_->provider==OnnxRuntimeProvider::PlatformAccelerated) {
             // Unity resolves plugins separately; the process DLL search path does
             // not necessarily contain this directory. Preflight before delay-load
             // can raise an uncatchable loader SEH exception inside the provider.
@@ -168,7 +182,7 @@ bool OnnxRuntimeBackend::Load(
                 impl_->session_options, &device));
         }
 #else
-        if (impl_->use_gpu) {
+        if (impl_->provider==OnnxRuntimeProvider::PlatformAccelerated) {
             error = "GPU support is not enabled in this native build";
             return false;
         }
@@ -178,7 +192,7 @@ bool OnnxRuntimeBackend::Load(
         try {
             session = std::make_unique<Ort::Session>(impl_->environment, model_path.c_str(), impl_->session_options);
         } catch (const Ort::Exception& exception) {
-            if (!impl_->nnapi_enabled) throw;
+            if (!impl_->nnapi_enabled || !impl_->allow_fallback) throw;
             impl_->fallback_reason = std::string("NNAPI session creation failed: ") + exception.what();
             impl_->nnapi_enabled = false;
             impl_->session_options = impl_->cpu_options.Clone();
@@ -218,9 +232,10 @@ bool OnnxRuntimeBackend::Load(
         impl_->actual_provider = "CPU";
 #if defined(__ANDROID__)
         if (impl_->nnapi_enabled) impl_->actual_provider = "NNAPI";
-        if (impl_->use_qnn) impl_->actual_provider = "QNN_HTP";
+        if (impl_->xnnpack_enabled) impl_->actual_provider = "XNNPACK";
+        if (impl_->provider==OnnxRuntimeProvider::Qnn) impl_->actual_provider = "QNN_HTP";
 #elif defined(HV_USE_DIRECTML)
-        if (impl_->use_gpu) impl_->actual_provider = "DirectML";
+        if (impl_->provider==OnnxRuntimeProvider::PlatformAccelerated) impl_->actual_provider = "DirectML";
 #endif
         error.clear();
         return true;
@@ -292,10 +307,10 @@ bool OnnxRuntimeBackend::Run(
     } catch (const Ort::Exception& exception) {
         error = std::string("ONNX inference failed: ") + exception.what();
 #if defined(__ANDROID__)
-        if (impl_->nnapi_enabled) {
+        if (impl_->nnapi_enabled && impl_->allow_fallback) {
             impl_->fallback_reason = std::string("NNAPI inference failed: ") + exception.what();
             impl_->nnapi_enabled = false;
-            impl_->use_gpu = false;
+            impl_->provider = OnnxRuntimeProvider::Cpu;
             impl_->session_options = impl_->cpu_options.Clone();
             impl_->session.reset();
             impl_->actual_provider = "uninitialized";

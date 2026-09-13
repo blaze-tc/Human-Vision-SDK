@@ -38,6 +38,18 @@ TEST(OnnxRuntimeBackend, MissingModelReturnsActionableError) {
     EXPECT_NE(error.find("missing-fixture.onnx"), std::string::npos);
 }
 
+TEST(OnnxRuntimeBackend, XnnpackProviderIsExplicitlyUnavailableOffAndroid) {
+    humanvision::OnnxRuntimeBackend backend(humanvision::OnnxRuntimeProvider::Xnnpack, false);
+    std::string error;
+#if defined(__ANDROID__)
+    EXPECT_TRUE(backend.Load(HV_TEST_BACKEND_MODEL_PATH, error)) << error;
+    EXPECT_EQ(backend.ActualProvider(), "XNNPACK");
+#else
+    EXPECT_FALSE(backend.Load(HV_TEST_BACKEND_MODEL_PATH, error));
+    EXPECT_NE(error.find("Android"), std::string::npos);
+#endif
+}
+
 TEST(OnnxRuntimeBackend, LoadsAndRunsTinyPublicFixture) {
     humanvision::OnnxRuntimeBackend backend;
     std::string error;

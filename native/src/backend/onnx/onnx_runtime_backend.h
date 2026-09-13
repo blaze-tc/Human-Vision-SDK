@@ -6,9 +6,23 @@
 
 namespace humanvision {
 
+enum class OnnxRuntimeProvider {
+    Cpu,
+    PlatformAccelerated,
+    Qnn,
+    Xnnpack
+};
+
 class OnnxRuntimeBackend final : public IInferenceBackend {
 public:
-    explicit OnnxRuntimeBackend(bool use_gpu = false, bool use_qnn = false);
+    explicit OnnxRuntimeBackend(
+        OnnxRuntimeProvider provider = OnnxRuntimeProvider::Cpu,
+        bool allow_fallback = true);
+    explicit OnnxRuntimeBackend(bool use_gpu, bool use_qnn = false)
+        : OnnxRuntimeBackend(
+            use_qnn ? OnnxRuntimeProvider::Qnn :
+            (use_gpu ? OnnxRuntimeProvider::PlatformAccelerated : OnnxRuntimeProvider::Cpu),
+            true) {}
     ~OnnxRuntimeBackend() override;
     OnnxRuntimeBackend(const OnnxRuntimeBackend&) = delete;
     OnnxRuntimeBackend& operator=(const OnnxRuntimeBackend&) = delete;

@@ -61,13 +61,14 @@ TEST_F(PackTest, MissingProfileComponentsFailWithActionableReason) {
 }
 TEST_F(PackTest, AutoFallbackSelectsOnlyBackendsAndKeepsDiagnostic) {
  Save(Manifest());
- std::ofstream(root/"profiles"/"desktop.json")<<R"({"schema_version":1,"profile":"desktop","body_by_capacity":[{"max_people":2,"pipeline":"fixture.pose","modelPack":"fixture"},{"max_people":8,"pipeline":"fixture.pose","modelPack":"fixture"}],"backend":{"preference":["missing.gpu","auto","fixture.cpu"]}})";
+ std::ofstream(root/"profiles"/"desktop.json")<<R"({"schema_version":1,"profile":"desktop","body_by_capacity":[{"max_people":2,"pipeline":"fixture.pose","modelPack":"fixture"},{"max_people":8,"pipeline":"fixture.pose","modelPack":"fixture"}],"backend":{"preference":["missing.gpu","auto","fixture.cpu"],"allow_fallback":false}})";
  ModelPackManager packs(root/"packs"); PluginRegistry registry; ProfileManager profiles(root/"profiles"); std::string error;
  ASSERT_TRUE(registry.Register(QueryPose,error)); ASSERT_TRUE(registry.Register(QueryBackend,error));
  auto profile=profiles.Resolve("desktop",8,registry,packs,error); ASSERT_TRUE(profile)<<error;
  ASSERT_EQ(profile->backends.size(),1u); EXPECT_STREQ(profile->backends[0]->api.plugin_id,"fixture.cpu");
  EXPECT_NE(profile->fallback_reason.find("missing.gpu"),std::string::npos);
  EXPECT_EQ(profile->max_people,8); EXPECT_EQ(profile->output_hz,60); EXPECT_FALSE(profile->hands_enabled);
+ EXPECT_FALSE(profile->allow_backend_fallback);
 }
 
 TEST(AndroidBenchmarkProfiles, SelectOneProviderDisableHandsAndKeepBodyPolicy) {
@@ -93,6 +94,7 @@ TEST(AndroidBenchmarkProfiles, SelectOneProviderDisableHandsAndKeepBodyPolicy) {
   const auto& preference=profile.at("backend").at("preference");
   ASSERT_TRUE(preference.is_array());ASSERT_EQ(preference.size(),1u);
   EXPECT_EQ(preference[0],expected.second);
+  EXPECT_FALSE(profile.at("backend").at("allow_fallback").get<bool>());
  }
 }
 }

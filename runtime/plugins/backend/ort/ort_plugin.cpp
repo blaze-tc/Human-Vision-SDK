@@ -7,7 +7,8 @@
 
 namespace {
 struct Session {
- explicit Session(bool accelerated,bool qnn):backend(accelerated,qnn),requested(accelerated?"accelerated":"CPU"){}
+ explicit Session(humanvision::OnnxRuntimeProvider provider,bool allow_fallback,const char* requested_provider)
+  :backend(provider,allow_fallback),requested(requested_provider){}
  humanvision::OnnxRuntimeBackend backend;
  std::string requested;
  humanvision::Tensor input;
@@ -17,29 +18,35 @@ void Error(HV_ErrorBufferV1* out,const char* message) {
  if(!out || out->struct_size<sizeof(*out) || !out->data || !out->capacity)return;
  const auto n=std::min(std::strlen(message),size_t(out->capacity-1));std::memcpy(out->data,message,n);out->data[n]=0;
 }
-HV_Result CreateSession(const HV_BackendConfigV1* config,void** out,HV_ErrorBufferV1* error,bool accelerated,bool qnn=false) {
+HV_Result CreateSession(const HV_BackendConfigV1* config,void** out,HV_ErrorBufferV1* error,
+ humanvision::OnnxRuntimeProvider provider,const char* expected,const char* plugin_id) {
  if(!out)return HV_ERR_INVALID_ARGUMENT;*out=nullptr;
  if(!config || config->struct_size<sizeof(*config) || config->api_version!=HV_PLUGIN_API_V1 || !config->model_path_utf8)return HV_ERR_INVALID_ARGUMENT;
- const char* expected="CPU";
-#if defined(__ANDROID__)
- if(accelerated)expected="NNAPI";
-#elif defined(HV_USE_DIRECTML)
- if(accelerated)expected="DirectML";
-#endif
- if(qnn)expected="QNN_HTP";
- if(config->requested_provider_utf8 && *config->requested_provider_utf8 && std::strcmp(config->requested_provider_utf8,expected) && !( !accelerated && !qnn && !std::strcmp(config->requested_provider_utf8,"cpu"))) {
+ const char* request=config->requested_provider_utf8;
+ const bool strict=request&&*request;
+ if(strict && std::strcmp(request,expected) && std::strcmp(request,plugin_id) &&
+    !(provider==humanvision::OnnxRuntimeProvider::Cpu&&!std::strcmp(request,"cpu"))) {
   Error(error,"Backend plugin cannot satisfy the requested provider");return HV_ERR_INVALID_ARGUMENT;
  }
  try {
-  auto session=std::make_unique<Session>(accelerated,qnn);session->requested=expected;std::string detail;
+  auto session=std::make_unique<Session>(provider,!strict,expected);std::string detail;
   if(!session->backend.Load(std::filesystem::u8path(config->model_path_utf8),detail)){Error(error,detail.c_str());return HV_ERR_MODEL_LOAD;}
   *out=session.release();return HV_OK;
  }catch(const std::exception& e){Error(error,e.what());return HV_ERR_INTERNAL;}
  catch(...){Error(error,"CPU backend creation exception");return HV_ERR_INTERNAL;}
 }
-HV_Result HV_CALL Create(const HV_BackendConfigV1* c,void** out,HV_ErrorBufferV1* e){return CreateSession(c,out,e,false);}
-HV_Result HV_CALL CreateAccelerated(const HV_BackendConfigV1* c,void** out,HV_ErrorBufferV1* e){return CreateSession(c,out,e,true);}
-HV_Result HV_CALL CreateQnn(const HV_BackendConfigV1* c,void** out,HV_ErrorBufferV1* e){return CreateSession(c,out,e,false,true);}
+HV_Result HV_CALL Create(const HV_BackendConfigV1* c,void** out,HV_ErrorBufferV1* e){return CreateSession(c,out,e,humanvision::OnnxRuntimeProvider::Cpu,"CPU","backend.ort.cpu");}
+HV_Result HV_CALL CreateAccelerated(const HV_BackendConfigV1* c,void** out,HV_ErrorBufferV1* e){
+#if defined(__ANDROID__)
+ return CreateSession(c,out,e,humanvision::OnnxRuntimeProvider::PlatformAccelerated,"NNAPI","backend.ort.nnapi");
+#elif defined(HV_USE_DIRECTML)
+ return CreateSession(c,out,e,humanvision::OnnxRuntimeProvider::PlatformAccelerated,"DirectML","backend.ort.directml");
+#else
+ return HV_ERR_NOT_INITIALIZED;
+#endif
+}
+HV_Result HV_CALL CreateXnnpack(const HV_BackendConfigV1* c,void** out,HV_ErrorBufferV1* e){return CreateSession(c,out,e,humanvision::OnnxRuntimeProvider::Xnnpack,"XNNPACK","backend.ort.xnnpack");}
+HV_Result HV_CALL CreateQnn(const HV_BackendConfigV1* c,void** out,HV_ErrorBufferV1* e){return CreateSession(c,out,e,humanvision::OnnxRuntimeProvider::Qnn,"QNN_HTP","backend.ort.qnn");}
 void HV_CALL Destroy(void* p){delete static_cast<Session*>(p);}
 HV_Result HV_CALL Run(void* p,const HV_TensorViewV1* input,uint32_t inputs,HV_TensorViewV1* output,uint32_t capacity,uint32_t* count,HV_ErrorBufferV1* error){
  if(count)*count=0;
@@ -75,11 +82,12 @@ HV_Result HV_CALL Info(void* p,HV_BackendSessionInfoV1* out){
   auto copy=[](char* target,size_t size,const std::string& text){const auto n=std::min(size-1,text.size());std::memcpy(target,text.data(),n);target[n]=0;};
   const auto actual=session.backend.ActualProvider();copy(out->requested,sizeof(out->requested),session.requested);
   copy(out->actual,sizeof(out->actual),actual);copy(out->fallback_reason,sizeof(out->fallback_reason),session.backend.FallbackReason());
-  out->accelerated=actual=="NNAPI" || actual=="DirectML" || actual=="QNN_HTP";return HV_OK;
+  out->accelerated=actual=="NNAPI" || actual=="DirectML" || actual=="QNN_HTP" || actual=="XNNPACK";return HV_OK;
  }catch(...){return HV_ERR_INTERNAL;}
 }
 const HV_BackendApiV1 api{sizeof(api),HV_PLUGIN_API_V1,Create,Destroy,Run,Info};
 const HV_BackendApiV1 accelerated_api{sizeof(accelerated_api),HV_PLUGIN_API_V1,CreateAccelerated,Destroy,Run,Info};
+const HV_BackendApiV1 xnnpack_api{sizeof(xnnpack_api),HV_PLUGIN_API_V1,CreateXnnpack,Destroy,Run,Info};
 const HV_BackendApiV1 qnn_api{sizeof(qnn_api),HV_PLUGIN_API_V1,CreateQnn,Destroy,Run,Info};
 }
 extern "C" HV_Result HV_CALL HV_QueryOrtAcceleratedPlugin(uint32_t version,HV_PluginApiV1* out){
@@ -98,6 +106,14 @@ extern "C" HV_Result HV_CALL HV_QueryOrtAcceleratedPlugin(uint32_t version,HV_Pl
 extern "C" HV_Result HV_CALL HV_QueryOrtCpuPlugin(uint32_t version,HV_PluginApiV1* out){
  if(version!=HV_PLUGIN_API_V1 || !out || out->struct_size<sizeof(*out))return HV_ERR_INVALID_ARGUMENT;
  *out={sizeof(*out),HV_PLUGIN_API_V1,"backend.ort.cpu","0.4.0-preview.1",HV_PLUGIN_BACKEND,HV_CAP_TENSOR_INFERENCE,0,nullptr,&api,0};return HV_OK;
+}
+extern "C" HV_Result HV_CALL HV_QueryOrtXnnpackPlugin(uint32_t version,HV_PluginApiV1* out){
+ if(version!=HV_PLUGIN_API_V1 || !out || out->struct_size<sizeof(*out))return HV_ERR_INVALID_ARGUMENT;
+#if defined(__ANDROID__)
+ *out={sizeof(*out),HV_PLUGIN_API_V1,"backend.ort.xnnpack","0.4.0-preview.3",HV_PLUGIN_BACKEND,HV_CAP_TENSOR_INFERENCE,0,nullptr,&xnnpack_api,50};return HV_OK;
+#else
+ return HV_ERR_NOT_INITIALIZED;
+#endif
 }
 extern "C" HV_Result HV_CALL HV_QueryOrtQnnPlugin(uint32_t version,HV_PluginApiV1* out){
  if(version!=HV_PLUGIN_API_V1 || !out || out->struct_size<sizeof(*out))return HV_ERR_INVALID_ARGUMENT;

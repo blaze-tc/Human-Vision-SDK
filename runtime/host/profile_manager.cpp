@@ -45,6 +45,7 @@ std::shared_ptr<const RuntimeProfile> ProfileManager::Resolve(const std::string&
         if (result->body_fps < 1 || result->body_fps > 120 || result->hand_fps < 1 || result->hand_fps > 120 || result->output_hz < 1 || result->output_hz > 240)
             throw std::runtime_error("Profile target rates are outside supported bounds");
         const auto preference = json.at("backend").at("preference");
+        result->allow_backend_fallback=json.at("backend").value("allow_fallback",true);
         std::vector<std::string> ids;
         if (preference.is_string()) ids.push_back(preference.get<std::string>());
         else ids = preference.get<std::vector<std::string>>();
@@ -65,6 +66,8 @@ std::shared_ptr<const RuntimeProfile> ProfileManager::Resolve(const std::string&
             else if (!module) result->fallback_reason += error + "; ";
         }
         if (result->backends.empty()) throw std::runtime_error("No compatible backend: " + result->fallback_reason);
+        if(!result->allow_backend_fallback&&result->backends.size()!=1)
+            throw std::runtime_error("A forced backend profile must resolve exactly one backend");
         error.clear(); return result;
     } catch (const std::exception& exception) { error = "Profile " + id + ": " + exception.what(); return {}; }
 }

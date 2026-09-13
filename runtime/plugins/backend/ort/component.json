@@ -1,1 +1,1 @@
-{"id":"backend.ort.cpu","type":"backend","version":"0.4.0-preview.1","api_version":1,"capabilities":["tensor_inference"],"dependencies":["plugin.abi"],"test_targets":["humanvision_native_tests"],"exports":["backend.ort.directml","backend.ort.nnapi","backend.ort.qnn"]}
+{"id":"backend.ort.cpu","type":"backend","version":"0.4.0-preview.3","api_version":1,"capabilities":["tensor_inference"],"dependencies":["plugin.abi"],"test_targets":["humanvision_native_tests"],"exports":["backend.ort.directml","backend.ort.nnapi","backend.ort.xnnpack","backend.ort.qnn"]}

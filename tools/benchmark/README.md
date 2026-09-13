@@ -24,3 +24,16 @@ build/windows-release/bin/Release/hv_video_benchmark.exe `
 
 The tool writes per-frame CSV timing and a JSON summary containing body-count,
 track-ID, joint-validity, stage timing, and first-frame real body/joint samples.
+
+`check_android_model_ep.py` runs ONNX Runtime's official mobile usability checker
+for the four shipped Android body, detector, and hand models and writes focused
+NNAPI coverage reports. Use a Python environment containing the pinned checker:
+
+```powershell
+$env:PYTHONPATH = (Resolve-Path out/ort-checker-1.23.0).Path
+& .venv-reference/Scripts/python.exe tools/benchmark/check_android_model_ep.py `
+  --python .venv-reference/Scripts/python.exe
+```
+
+The reports record static partitions, node coverage, dynamic-shape caveats and
+the checker recommendation. They do not establish Android device throughput.
