@@ -13,3 +13,7 @@ here without modifying recognition. Raw and sampled rates are separate in the HU
 The native bottleneck block refreshes at 4 Hz and includes provider identity,
 pipeline timing, adaptive sample state and separate drop counters. It does not log
 per frame.
+
+The camera/settings drawer exposes the three no-hands Android benchmark profiles.
+Changing the selection takes effect on Apply/Start and recreates the native runtime;
+an empty `runtimeProfileOverride` preserves the existing auto/forceCpu behavior.

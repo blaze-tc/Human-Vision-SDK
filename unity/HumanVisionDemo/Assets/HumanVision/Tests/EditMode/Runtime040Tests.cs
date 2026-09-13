@@ -44,6 +44,15 @@ namespace HumanVision.Tests
             var config = new HumanVisionConfig { RuntimeRoot = "prepared/runtime", Profile = "auto", MaxBodies = 8 };
             Assert.DoesNotThrow(config.Validate); config.MaxBodies = 9; Assert.Throws<ArgumentException>(config.Validate);
         }
+        [Test] public void CameraDemoResolvesOnlyExplicitAndroidBenchmarkProfiles()
+        {
+            Assert.That(typeof(HumanVisionCameraManager).GetField("runtimeProfileOverride"), Is.Not.Null);
+            foreach (string profile in new[] { "android-cpu-nohands", "android-xnnpack-nohands", "android-nnapi-nohands" })
+                Assert.That(HumanVisionCameraManager.ResolveRuntimeProfile(profile, false), Is.EqualTo(profile));
+            Assert.That(HumanVisionCameraManager.ResolveRuntimeProfile("", false), Is.EqualTo("auto"));
+            Assert.That(HumanVisionCameraManager.ResolveRuntimeProfile(null, true), Is.EqualTo("cpu"));
+            Assert.Throws<ArgumentException>(() => HumanVisionCameraManager.ResolveRuntimeProfile("unknown-provider", false));
+        }
         [Test] public void RealRuntimeCopiesCanonicalAndLegacyViewsThroughPInvoke()
         {
             string marker = Path.GetFullPath(Path.Combine(Application.dataPath, "../runtime-root.txt"));

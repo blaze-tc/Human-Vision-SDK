@@ -17,6 +17,8 @@ namespace HumanVision
         private string _countText = "4";
         private bool _editing;
         private static readonly string[] SourceNames = { "WebCamera", "RTSP" };
+        private static readonly string[] ProfileNames = { "Default", "CPU / no hands", "XNNPACK / no hands", "NNAPI / no hands" };
+        private static readonly string[] ProfileIds = { "", "android-cpu-nohands", "android-xnnpack-nohands", "android-nnapi-nohands" };
         private static readonly string[] RegionNames = { "Region 0", "Region 1", "Region 2", "Region 3", "Region 4", "Region 5", "Region 6", "Region 7" };
 
         private void Start() { RefreshDevices(); }
@@ -54,6 +56,11 @@ namespace HumanVision
                     settings.useRegions = GUILayout.Toggle(settings.useRegions, "Use regions");
                     settings.mirror = GUILayout.Toggle(settings.mirror, "Mirror image");
                     GUILayout.EndHorizontal();
+                    GUILayout.Label("Android benchmark profile");
+                    int profileIndex = System.Array.IndexOf(ProfileIds, (manager.runtimeProfileOverride ?? "").Trim());
+                    if (profileIndex < 0) profileIndex = 0;
+                    int selectedProfile = GUILayout.SelectionGrid(profileIndex, ProfileNames, 2);
+                    if (selectedProfile != profileIndex) manager.runtimeProfileOverride = ProfileIds[selectedProfile];
                     GUILayout.BeginHorizontal();
                     if (GUILayout.Button(_editing ? "Finish editing" : "Edit regions")) { _editing = !_editing; if (_editing) { var controls = GetComponent<HumanVisionSceneControls>(); if (controls != null) controls.panelsOpen = false; } }
                     if (GUILayout.Button("Apply")) { _editing = false; manager.StartCamera(); }
