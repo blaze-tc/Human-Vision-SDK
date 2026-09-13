@@ -41,9 +41,11 @@ Implemented:
 - `verify_package_isolation.py`: PASS, 102 Unity assets, 107 UPM files, 131 GUIDs.
 - Local preview.3 tgz import in Unity 2021.3: PASS; packaged Runtime initialized,
   all RuntimeData hashes/GUID isolation verified, camera/settings scenes generated.
-- Local artifact SHA-256 values are in
-  `out/releases/0.4.0-preview.3/SHA256SUMS.txt`; remote download verification is a
-  publication gate and has not yet been recorded in this entry.
+- Remote Git UPM import at immutable commit
+  `052b81263e99b6124335ce6da029cd863e74f022`: PASS; packages-lock reports the
+  exact Git hash and the packaged Runtime/hash/GUID/scene checks passed again.
+- All seven GitHub Release assets were downloaded to an independent directory and
+  match the local artifacts byte-for-byte by SHA-256.
 
 ## User manual acceptance pending
 
@@ -55,8 +57,12 @@ flicker. Select the fastest provider separately for TopDown and RTMO. If best RT
 remains below 15 raw body FPS or above 180 ms result age, enter QNN HTP next.
 
 No automated result certifies Android camera FPS, latency, accuracy, thermal
-behavior, 1–8-person acceptance or hand quality. Publication target is main and
-`v0.4.0-preview.3`; this entry will be updated after remote artifact verification.
+behavior, 1–8-person acceptance or hand quality.
+
+Published [v0.4.0-preview.3](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.3)
+as a GitHub prerelease on 2026-09-13T02:28:25Z. Annotated tag and release code point
+to `052b81263e99b6124335ce6da029cd863e74f022`; remote main includes this publication
+record.
 
 ---
 
