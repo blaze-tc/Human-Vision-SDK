@@ -32,9 +32,12 @@ namespace HumanVision
         internal string Diagnostics {
             get { var text = new StringBuilder(4096); Check(RuntimeBindings.HV_RuntimeGetDiagnostics(_handle, text, 4096), "diagnostics"); return text.ToString(); }
         }
-        internal HumanVisionRuntimeSession(HumanVisionConfig config)
+        internal HumanVisionRuntimeSession(HumanVisionConfig config) : this(config, config == null ? null : config.Profile)
         {
-            _config = config.Clone(); _config.Validate();
+        }
+        internal HumanVisionRuntimeSession(HumanVisionConfig config, string profileId)
+        {
+            _config = config.Clone(); _config.Profile = profileId; _config.Validate();
             if (HeaderBytes != 72 || JointBytes != 48) throw new InvalidOperationException("Unsupported canonical ABI layout.");
             _buffer = Marshal.AllocHGlobal(BodyBytes * 8);
             try { _handle = Create(_config); } catch { Dispose(); throw; }

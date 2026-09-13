@@ -95,7 +95,7 @@ namespace HumanVision
                 config = requestedConfig?.Clone() ?? throw new ArgumentNullException(nameof(requestedConfig));
                 _session = string.IsNullOrWhiteSpace(config.RuntimeRoot)
                     ? (IHumanVisionSession)new HumanVisionSession(config)
-                    : new HumanVisionRuntimeSession(config);
+                    : new HumanVisionRuntimeSession(config, HumanVisionAndroidRuntimeSelection.ResolveProfile(config.Profile));
                 LastError = string.Empty;
                 _lastLoggedError = string.Empty;
                 _nextStatsRefreshTime = 0f;
