@@ -1,6 +1,7 @@
 #include "plugins/pipeline/rtmo/rtmo_pipeline.h"
 #include "common/plugin_backend.h"
 #include "common/config_io.h"
+#include "common/pipeline_diagnostics.h"
 #include "core/frame_buffer.h"
 #include <cmath>
 #include <chrono>
@@ -26,10 +27,11 @@ HV_Result HV_CALL Create(const HV_PipelineConfigV1* c,const HV_HostServicesV1* s
   }
   if(!loaded)throw std::runtime_error("RTMO body model role is missing");
   instance->input.name="input";instance->input.shape={1,3,instance->height,instance->width};instance->input.values.resize(size_t(instance->width)*instance->height*3);
+  if(!runtime::RegisterPipelineDiagnostics(instance.get()))throw std::runtime_error("Pipeline diagnostics capacity exhausted");
   *out=instance.release();return HV_OK;
  }catch(const std::exception& ex){Error(e,ex.what());return HV_ERR_MODEL_LOAD;}catch(...){Error(e,"RTMO creation exception");return HV_ERR_INTERNAL;}
 }
-void HV_CALL Destroy(void* p){delete static_cast<Instance*>(p);}
+void HV_CALL Destroy(void* p){runtime::UnregisterPipelineDiagnostics(p);delete static_cast<Instance*>(p);}
 float Pixel(const HV_VideoFrame& frame,int x,int y,int channel){
  if(x<0||y<0||x>=frame.width||y>=frame.height)return 114;
  const auto* p=static_cast<const uint8_t*>(frame.data)+size_t(y)*frame.stride_bytes+size_t(x)*BytesPerPixel(frame.pixel_format);
@@ -59,6 +61,8 @@ HV_Result HV_CALL Process(void* p,const HV_PipelineInputV1* in,HV_PipelineOutput
   const Tensor *dets=nullptr,*keys=nullptr;for(const auto& tensor:instance.outputs){if(tensor.name=="dets")dets=&tensor;if(tensor.name=="keypoints")keys=&tensor;}
   if(!dets||!keys||dets->shape.size()!=3||dets->shape[0]!=1||dets->shape[2]!=5||keys->shape.size()!=4||keys->shape[0]!=1||keys->shape[1]!=dets->shape[1]||keys->shape[2]!=17||keys->shape[3]!=3||dets->shape[1]<0||dets->values.size()!=size_t(dets->shape[1])*5||keys->values.size()!=size_t(dets->shape[1])*51)throw std::runtime_error("RTMO output contract must be dets[1,N,5],keypoints[1,N,17,3]");
   constexpr int mapping[]{HV_CANONICAL_NOSE,HV_CANONICAL_EYE_LEFT,HV_CANONICAL_EYE_RIGHT,HV_CANONICAL_EAR_LEFT,HV_CANONICAL_EAR_RIGHT,HV_CANONICAL_SHOULDER_LEFT,HV_CANONICAL_SHOULDER_RIGHT,HV_CANONICAL_ELBOW_LEFT,HV_CANONICAL_ELBOW_RIGHT,HV_CANONICAL_WRIST_LEFT,HV_CANONICAL_WRIST_RIGHT,HV_CANONICAL_HIP_LEFT,HV_CANONICAL_HIP_RIGHT,HV_CANONICAL_KNEE_LEFT,HV_CANONICAL_KNEE_RIGHT,HV_CANONICAL_ANKLE_LEFT,HV_CANONICAL_ANKLE_RIGHT};
+  runtime::PipelineDiagnostics diagnostics{};
+  for(size_t n=0;n<size_t(dets->shape[1]);++n){const float score=dets->values[n*5+4];if(std::isfinite(score)&&score>0){++diagnostics.raw_detection_count;diagnostics.max_detection_score=std::max(diagnostics.max_detection_score,score);}}
   for(size_t n=0;n<size_t(dets->shape[1])&&out->body_count<uint32_t(instance.capacity);++n){
    const float* box=dets->values.data()+n*5;if(!std::isfinite(box[4])||box[4]<instance.threshold)continue;
    bool finite=true;for(int i=0;i<4;++i)finite&=std::isfinite(box[i]);if(!finite||box[2]<=box[0]||box[3]<=box[1])continue;
@@ -71,7 +75,8 @@ HV_Result HV_CALL Process(void* p,const HV_PipelineInputV1* in,HV_PipelineOutput
     joint.confidence=point[2];joint.valid=point[2]>=.3F;joint.observation_timestamp_us=frame.timestamp_us;
    }
   }
-  out->postprocess_ms=std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-inferred).count();return HV_OK;
+  out->postprocess_ms=std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-inferred).count();
+  diagnostics.accepted_detection_count=out->body_count;runtime::PublishPipelineDiagnostics(p,diagnostics);return HV_OK;
  }catch(const std::exception& ex){out->body_count=0;Error(e,ex.what());return HV_ERR_INTERNAL;}catch(...){out->body_count=0;Error(e,"RTMO processing exception");return HV_ERR_INTERNAL;}
 }
 const HV_PipelineApiV1 api{sizeof(api),HV_PLUGIN_API_V1,Create,Destroy,Process};

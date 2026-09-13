@@ -48,7 +48,7 @@ namespace HumanVision
         {
             if (manager == null) return;
             if (Time.unscaledTime >= _nextUpdate) {
-                _nextUpdate = Time.unscaledTime + .5f;
+                _nextUpdate = Time.unscaledTime + .25f;
                 var pipeline = manager.GetComponent<HumanVisionManager>();
                 var bridge = manager.GetComponent<Demo.VideoPlayerFrameSource>();
                 float elapsed = Time.unscaledTime - _lastStatsTime;

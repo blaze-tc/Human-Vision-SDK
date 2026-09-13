@@ -11,3 +11,6 @@ current pose observations. Hands require caller-provided ROIs and preserve reque
 Handtip is index fingertip, thumb is thumb tip; palm is derived from measured roots.
 
 Real-model regression tests are offline functional checks, not mobile FPS proof.
+TopDown publishes detector inference duration, cumulative executions, detector
+cadence, total pose inference duration and processed-person count through the
+internal fixed diagnostic store; the public plugin output layout is unchanged.

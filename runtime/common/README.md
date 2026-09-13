@@ -12,3 +12,8 @@ schema and model-integrity cases in `humanvision_plugin_tests`.
 the C tensor ABI. It copies borrowed output data into reusable legacy buffers and
 supports at most 16 float32 outputs. It must not select concrete backend IDs.
 Real-model integration is verified by LegacyPlugin in humanvision_native_tests.
+
+`pipeline_diagnostics.h` is an internal fixed-capacity registry used by statically
+linked pipelines to publish process metrics without extending the versioned plugin
+ABI. Registration happens during pipeline creation, updates reuse an existing slot,
+and RuntimeHost copies the metrics with the matching observation result.

@@ -37,7 +37,7 @@ bool RuntimeHost::Start(std::shared_ptr<const PluginModule> module, const HV_Pip
     std::lock_guard<std::mutex> lock(lifecycle_mutex_);
     module_ = std::move(module); instance_ = replacement; max_bodies_ = config.max_bodies;
     slot_ = std::move(new_slot);
-    { std::lock_guard<std::mutex> result_lock(result_mutex_); has_result_ = false; result_ = {}; error_.clear(); }
+    { std::lock_guard<std::mutex> result_lock(result_mutex_); has_result_ = false; result_ = {}; diagnostics_={}; error_.clear(); }
     running_ = true;
     try { worker_ = std::thread(&RuntimeHost::Run, this); }
     catch (...) {
@@ -79,13 +79,17 @@ std::string RuntimeHost::LastError() const {
     std::lock_guard<std::mutex> lock(result_mutex_); return error_;
 }
 
+PipelineDiagnostics RuntimeHost::Diagnostics() const {
+    std::lock_guard<std::mutex> lock(result_mutex_);return diagnostics_;
+}
+
 void RuntimeHost::Stop() {
     { std::lock_guard<std::mutex> lock(lifecycle_mutex_); running_ = false; if (slot_) slot_->Stop(); }
     if (worker_.joinable()) worker_.join();
     std::lock_guard<std::mutex> lock(lifecycle_mutex_);
     if (instance_) { try { module_->api.pipeline->destroy(instance_); } catch (...) {} instance_ = nullptr; }
     module_.reset();
-    { std::lock_guard<std::mutex> result_lock(result_mutex_); has_result_ = false; }
+    { std::lock_guard<std::mutex> result_lock(result_mutex_); has_result_ = false; diagnostics_={}; }
 }
 
 void RuntimeHost::Run() {
@@ -122,7 +126,9 @@ void RuntimeHost::Run() {
         next.width = frame.width; next.height = frame.height;
         next.body_count = output.body_count; next.hand_count = output.hand_count;
         next.preprocess_ms = output.preprocess_ms; next.inference_ms = output.inference_ms; next.postprocess_ms = output.postprocess_ms;
-        std::lock_guard<std::mutex> lock(result_mutex_); result_ = next; result_revision_=metadata.revision;has_result_ = true; error_.clear();
+        PipelineDiagnostics diagnostics{};CopyPipelineDiagnostics(instance_,diagnostics);
+        diagnostics.accepted_detection_count=next.body_count;
+        std::lock_guard<std::mutex> lock(result_mutex_); result_ = next;diagnostics_=diagnostics;result_revision_=metadata.revision;has_result_ = true; error_.clear();
     }
 }
 }

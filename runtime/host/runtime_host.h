@@ -1,6 +1,7 @@
 #pragma once
 #include "host/plugin_registry.h"
 #include "core/latest_frame_slot.h"
+#include "common/pipeline_diagnostics.h"
 #include <thread>
 #include <array>
 #include <atomic>
@@ -19,6 +20,7 @@ public:
     bool CopyLatest(HV_ObservationFrameV1&,int64_t& revision) const;
     int64_t DroppedFrames() const;
     std::string LastError() const;
+    PipelineDiagnostics Diagnostics() const;
     void Stop();
 private:
     void Run();
@@ -30,6 +32,7 @@ private:
     bool running_ = false, has_result_ = false;
     int max_bodies_ = 0;
     HV_ObservationFrameV1 result_{};
+    PipelineDiagnostics diagnostics_{};
     std::string error_;
     struct Metadata {int64_t frame=-1,time=0,revision=0;uint32_t count=0;std::array<HV_RegionOfInterestV1,16> rois{};};
     std::array<Metadata,64> metadata_{};

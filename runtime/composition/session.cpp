@@ -5,6 +5,9 @@
 #include "plugins/legacy/legacy_pipeline.h"
 #include "plugins/backend/ort/ort_plugin.h"
 #include <cmath>
+#include <chrono>
+#include <iomanip>
+#include <sstream>
 
 namespace humanvision::runtime {
 RuntimeSession::~RuntimeSession(){input_.Stop();if(worker_.joinable())worker_.join();hand_.Stop();body_.Stop();}
@@ -60,7 +63,32 @@ BodySnapshot RuntimeSession::Copy(int64_t sample_time,HV_RuntimeStatsV1& stats){
  return sample_time?services_.Sample(sample_time):services_.Raw();
 }
 std::string RuntimeSession::LastError()const{std::lock_guard<std::mutex> lock(mutex_);if(!error_.empty())return error_;auto error=body_.LastError();return error.empty()?hand_.LastError():error;}
-std::string RuntimeSession::Diagnostics()const{return profile_->id+" / "+profile_->body.plugin->api.plugin_id+" / "+factory_->Diagnostics()+" / "+profile_->fallback_reason;}
+std::string RuntimeSession::Diagnostics()const{
+ std::lock_guard<std::mutex> lock(mutex_);
+ const auto now=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+ const auto sample=services_.Diagnostics(now);const auto pipeline=body_.Diagnostics();const auto backend=factory_->SelectionDiagnostics();
+ const auto state=sample.state==BodySampleState::Predicted?"Predicted":sample.state==BodySampleState::Held?"Held":"Stale";
+ const double age=stats_.source_timestamp_us>0&&now>=stats_.source_timestamp_us?double(now-stats_.source_timestamp_us)/1000.:-1.;
+ std::ostringstream out;out<<std::fixed<<std::setprecision(1)
+  <<"Profile="<<profile_->id<<"\nPipeline="<<profile_->body.plugin->api.plugin_id
+  <<"\nRequested backend="<<backend.requested<<"\nActual backend="<<backend.actual
+  <<"\nRaw observation bodies="<<services_.Raw().count<<"\nTracked bodies="<<sample.tracked_body_count
+  <<"\nSampled bodies="<<sample.sampled_body_count<<"\nRaw body FPS="<<stats_.body_fps
+  <<"\nBody pre/infer/post ms="<<stats_.preprocess_ms<<" / "<<stats_.inference_ms<<" / "<<stats_.postprocess_ms
+  <<"\nResult age ms="<<age<<"\nObservation period EWMA ms="<<sample.observation_period_ewma_ms
+  <<"\nRender hold ms="<<sample.render_hold_ms<<"\nSample age ms="<<sample.sample_age_ms
+  <<"\nSample state="<<state<<"\nDropped input frames="<<input_.dropped_frames()
+  <<"\nDropped body frames="<<body_.DroppedFrames()<<"\nHands enabled="<<(profile_->hands_enabled?"true":"false");
+ const std::string pipeline_id=profile_->body.plugin->api.plugin_id;
+ if(pipeline_id=="pipeline.rtmo")out<<"\nRaw detections="<<pipeline.raw_detection_count
+  <<"\nAccepted detections="<<pipeline.accepted_detection_count<<"\nMax detection score="<<pipeline.max_detection_score;
+ if(pipeline_id=="pipeline.topdown")out<<"\nDetector inference ms="<<pipeline.detector_inference_ms
+  <<"\nDetector executions="<<pipeline.detector_execution_count<<"\nDetector FPS="<<pipeline.detector_fps
+  <<"\nPose inference total ms="<<pipeline.pose_inference_total_ms<<"\nPose person count="<<pipeline.pose_person_count;
+ const auto providers=factory_->Diagnostics();if(!providers.empty())out<<"\nBackend sessions="<<providers;
+ if(!profile_->fallback_reason.empty())out<<"\nBackend selection notes="<<profile_->fallback_reason;
+ return out.str();
+}
 void RuntimeSession::Run(){
  FrameBuffer frame,masked;
  while(input_.WaitTake(frame)){

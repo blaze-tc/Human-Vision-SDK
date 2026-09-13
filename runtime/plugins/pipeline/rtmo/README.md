@@ -11,3 +11,5 @@ current pose observations. Hands require caller-provided ROIs and preserve reque
 Handtip is index fingertip, thumb is thumb tip; palm is derived from measured roots.
 
 Real-model regression tests are offline functional checks, not mobile FPS proof.
+RTMO publishes raw/accepted detection counts and maximum candidate score through
+the internal fixed diagnostic store; the public plugin output layout is unchanged.

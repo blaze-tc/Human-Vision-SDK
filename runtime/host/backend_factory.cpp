@@ -77,4 +77,11 @@ std::string BackendFactory::Diagnostics() const {
   if(!diagnostic->creation_failures.empty()||info.fallback_reason[0])result+=" ("+diagnostic->creation_failures+info.fallback_reason+")";}
  return result;
 }
+BackendSelectionDiagnostics BackendFactory::SelectionDiagnostics() const {
+ std::lock_guard<std::mutex> lock(diagnostics_mutex_);BackendSelectionDiagnostics result;
+ if(diagnostics_.empty())return result;
+ std::lock_guard<std::mutex> item(diagnostics_.front()->mutex);auto info=diagnostics_.front()->info;
+ info.requested[sizeof(info.requested)-1]=0;info.actual[sizeof(info.actual)-1]=0;
+ result.requested=info.requested;result.actual=info.actual;return result;
+}
 }

@@ -1,6 +1,7 @@
 #include "plugins/pipeline/simcc/simcc_pipeline.h"
 #include "common/plugin_backend.h"
 #include "common/config_io.h"
+#include "common/pipeline_diagnostics.h"
 #include "models/rtmdet/rtmdet_model.h"
 #include "models/rtmpose/rtmpose_preprocess.h"
 #include <cmath>
@@ -11,6 +12,7 @@ struct Instance {
  explicit Instance(HV_HostServicesV1 s,bool h):pose(s),hand(h){}
  runtime::PluginBackend pose;std::unique_ptr<RtmdetModel> detector;
  bool hand;int width=192,height=256,capacity=8,frames=0;
+ uint64_t detector_executions=0;int64_t last_detector_time=0;float detector_fps=0;
  FrameBuffer frame;PoseInput prep;Tensor input;std::vector<Tensor> outputs;
  std::vector<Detection> boxes;
 };
@@ -31,12 +33,14 @@ HV_Result Create(const HV_PipelineConfigV1* c,const HV_HostServicesV1* s,void** 
    else if(role=="detector"&&!hand){instance->detector=std::make_unique<RtmdetModel>(std::make_unique<runtime::PluginBackend>(*s),w,h,true);if(!instance->detector->Load(path,error))throw std::runtime_error(error);}
   }
   if(!loaded||(!hand&&!instance->detector))throw std::runtime_error("Missing SimCC model role");
-  instance->input.name="input";instance->input.shape={1,3,instance->height,instance->width};instance->boxes.reserve(8);*out=instance.release();return HV_OK;
+  instance->input.name="input";instance->input.shape={1,3,instance->height,instance->width};instance->boxes.reserve(8);
+  if(!runtime::RegisterPipelineDiagnostics(instance.get()))throw std::runtime_error("Pipeline diagnostics capacity exhausted");
+  *out=instance.release();return HV_OK;
  }catch(const std::exception& ex){Error(e,ex.what());return HV_ERR_MODEL_LOAD;}catch(...){Error(e,"SimCC creation exception");return HV_ERR_INTERNAL;}
 }
 HV_Result HV_CALL CreateBody(const HV_PipelineConfigV1* c,const HV_HostServicesV1* s,void** out,HV_ErrorBufferV1* e){return Create(c,s,out,e,false);}
 HV_Result HV_CALL CreateHand(const HV_PipelineConfigV1* c,const HV_HostServicesV1* s,void** out,HV_ErrorBufferV1* e){return Create(c,s,out,e,true);}
-void HV_CALL Destroy(void* p){delete static_cast<Instance*>(p);}
+ void HV_CALL Destroy(void* p){runtime::UnregisterPipelineDiagnostics(p);delete static_cast<Instance*>(p);}
 HV_Result HV_CALL Process(void* p,const HV_PipelineInputV1* in,HV_PipelineOutputV1* out,HV_ErrorBufferV1* e){
  if(!p||!in||!out||in->struct_size<sizeof(*in)||in->api_version!=HV_PLUGIN_API_V1||out->struct_size<sizeof(*out)||out->api_version!=HV_PLUGIN_API_V1)return HV_ERR_INVALID_ARGUMENT;
  out->body_count=out->hand_count=0;out->preprocess_ms=out->inference_ms=out->postprocess_ms=0;
@@ -47,14 +51,21 @@ HV_Result HV_CALL Process(void* p,const HV_PipelineInputV1* in,HV_PipelineOutput
   auto begin=std::chrono::steady_clock::now();auto& f=a.frame;const auto& source=in->frame;
   if(f.width!=source.width||f.height!=source.height)a.boxes.clear();
   f.width=source.width;f.height=source.height;f.stride_bytes=source.stride_bytes;f.pixel_format=source.pixel_format;f.timestamp_us=source.timestamp_us;f.frame_id=source.frame_id;f.bytes.resize(source.data_bytes);std::memcpy(f.bytes.data(),source.data,source.data_bytes);
-  if(!a.hand&&(a.boxes.empty()||a.frames++%5==0)){float ms=0;if(!a.detector->Detect(f,.35F,a.capacity,a.boxes,ms,error))throw std::runtime_error(error);out->inference_ms+=ms;}
-  size_t n=a.hand?in->roi_count:a.boxes.size();bool reacquire=false;
+  runtime::PipelineDiagnostics diagnostics{};
+  if(!a.hand&&(a.boxes.empty()||a.frames++%5==0)){float ms=0;if(!a.detector->Detect(f,.35F,a.capacity,a.boxes,ms,error))throw std::runtime_error(error);out->inference_ms+=ms;
+   diagnostics.detector_inference_ms=ms;++a.detector_executions;
+   if(a.last_detector_time&&source.timestamp_us>a.last_detector_time){const float fps=1e6F/float(source.timestamp_us-a.last_detector_time);a.detector_fps=a.detector_fps?a.detector_fps*.8F+fps*.2F:fps;}
+   a.last_detector_time=source.timestamp_us;
+  }
+  diagnostics.detector_execution_count=a.detector_executions;diagnostics.detector_fps=a.detector_fps;
+  size_t n=a.hand?in->roi_count:a.boxes.size();bool reacquire=false;float pose_ms=0;
+  if(!a.hand){diagnostics.raw_detection_count=uint32_t(a.boxes.size());for(const auto& box:a.boxes)diagnostics.max_detection_score=std::max(diagnostics.max_detection_score,box.score);diagnostics.pose_person_count=uint32_t(n);}
   constexpr int mapping[]{HV_CANONICAL_NOSE,HV_CANONICAL_EYE_LEFT,HV_CANONICAL_EYE_RIGHT,HV_CANONICAL_EAR_LEFT,HV_CANONICAL_EAR_RIGHT,HV_CANONICAL_SHOULDER_LEFT,HV_CANONICAL_SHOULDER_RIGHT,HV_CANONICAL_ELBOW_LEFT,HV_CANONICAL_ELBOW_RIGHT,HV_CANONICAL_WRIST_LEFT,HV_CANONICAL_WRIST_RIGHT,HV_CANONICAL_HIP_LEFT,HV_CANONICAL_HIP_RIGHT,HV_CANONICAL_KNEE_LEFT,HV_CANONICAL_KNEE_RIGHT,HV_CANONICAL_ANKLE_LEFT,HV_CANONICAL_ANKLE_RIGHT,HV_CANONICAL_HEAD,HV_CANONICAL_NECK,HV_CANONICAL_PELVIS,HV_CANONICAL_FOOT_LEFT,HV_CANONICAL_FOOT_RIGHT};
   for(size_t i=0;i<n;++i){
    Detection box;if(a.hand){auto r=in->rois[i].bbox_px;box={r.x,r.y,r.x+r.width,r.y+r.height,1};}else box=a.boxes[i];
    if(!PreprocessRtmpose(f,box,a.prep,error,a.width,a.height))throw std::runtime_error(error);
    a.input.values.swap(a.prep.normalized_chw);auto start=std::chrono::steady_clock::now();bool ok=a.pose.Run(a.input,a.outputs,error);a.input.values.swap(a.prep.normalized_chw);
-   out->inference_ms+=std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-start).count();if(!ok)throw std::runtime_error(error);
+   const float elapsed=std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-start).count();out->inference_ms+=elapsed;pose_ms+=elapsed;if(!ok)throw std::runtime_error(error);
    const Tensor *x=nullptr,*y=nullptr;for(const auto& t:a.outputs){if(t.name=="simcc_x")x=&t;if(t.name=="simcc_y")y=&t;}
    int count=a.hand?21:26;auto valid=[&](const Tensor* t,int bins){return t&&t->shape.size()==3&&t->shape[0]==1&&t->shape[1]==count&&t->shape[2]==bins&&t->values.size()==size_t(count)*bins;};
    if(!valid(x,a.width*2)||!valid(y,a.height*2))throw std::runtime_error("SimCC tensor shape mismatch");
@@ -75,7 +86,8 @@ HV_Result HV_CALL Process(void* p,const HV_PipelineInputV1* in,HV_PipelineOutput
    }
   }
   if(reacquire)a.boxes.clear();
-  out->preprocess_ms=std::max(0.F,std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-begin).count()-out->inference_ms);return HV_OK;
+  out->preprocess_ms=std::max(0.F,std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-begin).count()-out->inference_ms);
+  diagnostics.pose_inference_total_ms=pose_ms;diagnostics.accepted_detection_count=out->body_count;runtime::PublishPipelineDiagnostics(p,diagnostics);return HV_OK;
  }catch(const std::exception& ex){out->body_count=out->hand_count=0;Error(e,ex.what());return HV_ERR_INTERNAL;}catch(...){out->body_count=out->hand_count=0;Error(e,"SimCC processing exception");return HV_ERR_INTERNAL;}
 }
 const HV_PipelineApiV1 body_api{sizeof(body_api),HV_PLUGIN_API_V1,CreateBody,Destroy,Process},hand_api{sizeof(hand_api),HV_PLUGIN_API_V1,CreateHand,Destroy,Process};

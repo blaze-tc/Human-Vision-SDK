@@ -15,12 +15,16 @@
 | Android builds, phone slow | actual provider, raw FPS, thermal trace | backend/profile | build cannot prove hardware speed; not increase smoothing |
 | RTSP differs from WebCam | source status, input orientation/readback | native/input and Demo/Live | reconnect/decode/clock geometry; not tracking first |
 
-The HUD separates render/raw body/hand job rates. The hand worker is shared; the configured limit is per hand;
-sampled output is interpolation/prediction and not additional observed skeletons.
-Raw data can be retained with timestamps; sampled points expire after200ms.
+The HUD refreshes four times per second and separates render/raw body/hand job
+rates. It reports raw, tracked and sampled body counts, the observation-period
+EWMA, adaptive render hold, sample age/state and separate input/body drops. The
+hand worker is shared; the configured limit is per hand. Sampled output predicts
+for at most 25 ms, then holds the filtered body until the adaptive 300-800 ms
+render window expires. Hand endpoints retain their independent 200 ms validity.
 For runtime initialization inspect the index extraction/hash error first. UPM source
 model metadata must have independent GUIDs from StreamingAssets copies.
 
-Per-session diagnostics label the model asset, requested/actual backend and last
-tensor inference duration, so detector/body/hand costs can be distinguished. These
-are execution timings, not proof of accelerator graph coverage.
+Per-session diagnostics label the profile, pipeline, requested/actual backend and
+last tensor inference duration. RTMO adds raw/accepted detections and maximum score;
+TopDown adds detector execution cadence and pose-person cost. These are execution
+timings, not proof of accelerator graph coverage.

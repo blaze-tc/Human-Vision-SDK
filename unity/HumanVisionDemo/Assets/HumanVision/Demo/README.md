@@ -10,3 +10,6 @@ Default null prefabs select batching; old component type/GUID stays stable.
 Focused checks: managed compilation, overlay geometry/rendering tests, public surface.
 Symptoms: clipping, point/line size, orientation, touch obstruction. Change drawing
 here without modifying recognition. Raw and sampled rates are separate in the HUD.
+The native bottleneck block refreshes at 4 Hz and includes provider identity,
+pipeline timing, adaptive sample state and separate drop counters. It does not log
+per frame.

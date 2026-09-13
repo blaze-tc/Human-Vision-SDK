@@ -17,6 +17,8 @@ TEST(RtmoPlugin, RealModelMapsCenteredLetterboxToSource) {
  const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(20);
  while(!host.CopyLatest(result)&&std::chrono::steady_clock::now()<end)std::this_thread::sleep_for(std::chrono::milliseconds(10));
  ASSERT_EQ(result.source_frame_id,123)<<host.LastError();ASSERT_EQ(result.body_count,1u);
+ auto diagnostics=host.Diagnostics();EXPECT_GE(diagnostics.raw_detection_count,result.body_count);
+ EXPECT_EQ(diagnostics.accepted_detection_count,result.body_count);EXPECT_GT(diagnostics.max_detection_score,0);
  auto& nose=result.bodies[0].joints[HV_CANONICAL_NOSE];
  EXPECT_TRUE(nose.valid);EXPECT_NEAR(nose.x_px,(181.35884F-208)*346/416+109,1.5F);
  EXPECT_NEAR(nose.y_px,43.2293F*346/416,1.5F);EXPECT_EQ(nose.observation_timestamp_us,456000);

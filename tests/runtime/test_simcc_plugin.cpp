@@ -2,6 +2,7 @@
 #include "plugins/backend/ort/ort_plugin.h"
 #include "host/backend_factory.h"
 #include "host/model_pack_manager.h"
+#include "common/pipeline_diagnostics.h"
 #include "test_support.h"
 #include <gtest/gtest.h>
 TEST(SimccPlugin, RealBodyAndHandModelsUseIndependentSessions) {
@@ -27,6 +28,11 @@ TEST(SimccPlugin, RealBodyAndHandModelsUseIndependentSessions) {
    EXPECT_NEAR(hands[0].fingertip.x_px,55.5078125F,1.5F);EXPECT_NEAR(hands[0].fingertip.y_px,134.0185546875F,1.5F);
    EXPECT_NEAR(hands[0].palm.x_px,36.640625F,1.5F);EXPECT_NEAR(hands[0].palm.y_px,124.2431640625F,1.5F);
   }
-  else{ASSERT_GE(output.body_count,1u);EXPECT_TRUE(bodies[0].joints[HV_CANONICAL_NOSE].valid);EXPECT_EQ(bodies[0].joints[HV_CANONICAL_HEAD].observation_timestamp_us,12345);}
+  else{ASSERT_GE(output.body_count,1u);EXPECT_TRUE(bodies[0].joints[HV_CANONICAL_NOSE].valid);EXPECT_EQ(bodies[0].joints[HV_CANONICAL_HEAD].observation_timestamp_us,12345);
+   PipelineDiagnostics diagnostics{};ASSERT_TRUE(CopyPipelineDiagnostics(instance,diagnostics));
+   EXPECT_EQ(diagnostics.detector_execution_count,1u);EXPECT_GT(diagnostics.detector_inference_ms,0);
+   EXPECT_GT(diagnostics.pose_inference_total_ms,0);EXPECT_EQ(diagnostics.pose_person_count,output.body_count);
+   EXPECT_GE(diagnostics.raw_detection_count,diagnostics.accepted_detection_count);
+  }
  }
 }

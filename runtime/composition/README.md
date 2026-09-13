@@ -9,3 +9,7 @@ Primary files: session.cpp, runtime_c.cpp. Add a registration here, implementati
 inside its plugin. Focused tests: RuntimeSession, RuntimeHost, CommonServices.
 Symptoms: whole-session initialization, revision invalidation, worker shutdown.
 The masking worker precedes body/hand submissions; it never alters the preview.
+Existing diagnostic text now reports profile/pipeline/provider identity, raw,
+tracked and sampled counts, body stage timing, result/sample age, adaptive hold,
+separate input/body drops and pipeline-specific bottleneck metrics. It is sampled
+by the Unity HUD at 4 Hz and does not emit per-frame logs.

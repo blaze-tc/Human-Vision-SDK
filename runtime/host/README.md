@@ -51,6 +51,10 @@ while callers may create more sessions. Release does not dereference factory sta
 The generic dispatcher does not retry inference on another provider after a run
 failure; provider-specific recovery remains inside the backend (currently NNAPI).
 No model/provider ID switches belong in this dispatcher.
+Profiles may explicitly disable fallback. In that mode BackendFactory passes the
+single selected plugin identity as the requested provider and stops after its first
+creation failure. RuntimeHost also copies internal pipeline metrics with each
+accepted observation; these metrics do not alter the plugin ABI.
 
 ## Common symptoms
 Missing plugin IDs, API-version mismatch, missing callbacks, outdated frame metadata,
