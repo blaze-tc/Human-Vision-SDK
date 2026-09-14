@@ -1,8 +1,11 @@
 # ModelPack changes
 
-Each `modelpacks/ID` has manifest.json, assets, README, SOURCES and component.json.
-ModelPackManager checks schema=1, identity, capabilities, capacity, confined paths,
-unique roles and SHA-256. Profiles reference the pack ID, never an absolute model.
+Each `modelpacks/ID` has exactly one manifest: schema 1 uses `manifest.json`, while
+schema 2 may use `modelpack.json` (or `manifest.json` during migration). A pack must
+not contain both filenames. It also contains assets, README, SOURCES and
+component.json. ModelPackManager checks the supported schema, identity,
+capabilities, capacity, confined paths, unique roles, complete contracts and
+SHA-256. Profiles reference the pack ID, never an absolute model.
 
 For weights-only replacement: copy the pack to a new ID, update pack_id/version,
 source/license evidence and the asset SHA-256 (`Get-FileHash -Algorithm SHA256`).
@@ -88,5 +91,6 @@ the contract shape. Production values must come from the accepted converted file
 Both paths must be confined to the pack root and both hashes must match before the
 pack resolves. `image_format`, `color_order`, three-value `mean` and `norm`,
 `tensor_dtype`, `elempack`, dimensions, `input_blob`, and nonempty unique
-`output_blobs` are mandatory. Schema 2 also requires `vulkan`, `fp16-storage`, and
+`output_contract.decoder` equal to `decoder_id`, and nonempty unique `output_blobs`
+are mandatory. Schema 2 also requires `vulkan`, `fp16-storage`, and
 `fp16-arithmetic`; initialization names a missing field or capability in its error.

@@ -17,6 +17,22 @@ def parse_args():
     parser.add_argument('--package', action='store_true', help='reject staged or missing package dependencies')
     return parser.parse_args()
 
+def staged_capabilities(staged, key, profile_path, errors):
+    values = staged.get(key, {})
+    if not isinstance(values, dict):
+        errors.append(f'{profile_path}: staged_dependencies.{key} must map component IDs to capability arrays')
+        return {}
+    result = {}
+    for identity, capabilities in values.items():
+        if (not isinstance(identity, str) or not identity or
+                not isinstance(capabilities, list) or not capabilities or
+                any(not isinstance(capability, str) or not capability for capability in capabilities) or
+                len(capabilities) != len(set(capabilities))):
+            errors.append(f'{profile_path}: invalid staged capability declaration for {identity}')
+            continue
+        result[identity] = set(capabilities)
+    return result
+
 def main():
     args = parse_args()
     releasable = args.release or args.package
@@ -48,7 +64,15 @@ def main():
         for identity in re.findall(r'"((?:pipeline|backend)\.[a-z0-9_.-]+)"', code(path)):
             if identity not in by_id: errors.append('Registered plugin lacks metadata: ' + identity)
     packs = {}
-    manifest_paths = list((ROOT/'modelpacks').glob('*/manifest.json')) + list((ROOT/'modelpacks').glob('*/modelpack.json'))
+    manifest_paths = []
+    for directory in sorted(path for path in (ROOT/'modelpacks').iterdir() if path.is_dir()):
+        legacy = directory/'manifest.json'
+        revision_two = directory/'modelpack.json'
+        if legacy.is_file() and revision_two.is_file():
+            errors.append(f'Ambiguous ModelPack manifests: {legacy} and {revision_two}')
+            continue
+        if legacy.is_file(): manifest_paths.append(legacy)
+        elif revision_two.is_file(): manifest_paths.append(revision_two)
     for path in manifest_paths:
         pack = json.loads(path.read_text(encoding='utf-8')); packs[pack['pack_id']] = pack
         for asset in path.parent.rglob('*'):
@@ -70,38 +94,94 @@ def main():
         profile = json.loads(path.read_text(encoding='utf-8'))
         if profile.get('profile') != path.stem or profile.get('schema_version') != 1: errors.append('Invalid profile identity: ' + str(path))
         staged = profile.get('staged_dependencies', {})
-        staged_packs = set(staged.get('modelPacks', []))
-        staged_backends = set(staged.get('backends', []))
-        if releasable and (staged_packs or staged_backends):
+        staged_pipelines = staged_capabilities(staged, 'pipelines', path, errors)
+        staged_packs = staged_capabilities(staged, 'modelPacks', path, errors)
+        staged_backends = staged_capabilities(staged, 'backends', path, errors)
+        if releasable and (staged_pipelines or staged_packs or staged_backends):
             errors.append('Staged profile is not releasable/packageable: ' + str(path))
         requirements = profile.get('required_capabilities', [])
         preferences = profile['backend']['preference']; preferences = [preferences] if isinstance(preferences,str) else preferences
         if requirements and (profile['backend'].get('allow_fallback', True) or len(preferences) != 1 or preferences[0] == 'auto'):
             errors.append('Strict profile must disable fallback and select one explicit backend: ' + str(path))
-        available = set()
         choices = [(item, 'body_pose') for item in profile.get('body_by_capacity', [profile.get('body')]) if item]
         if profile.get('hands', {}).get('enabled'): choices.append((profile['hands'], 'hand_pose'))
+        selected_pipelines = set()
+        selected_packs = set()
+        compositions = []
         for choice, capability in choices:
-            plugin = by_id.get(choice['pipeline']); pack = packs.get(choice['modelPack'])
-            if not plugin or not pack:
-                missing_pack_is_staged = not pack and choice['modelPack'] in staged_packs and not releasable
-                if not plugin or not missing_pack_is_staged: errors.append('Missing profile reference: ' + str(path))
-                if plugin: available.update(plugin[1].get('export_capabilities', {}).get(choice['pipeline'], plugin[1]['capabilities']))
-                continue
-            metadata = plugin[1]; caps = metadata.get('export_capabilities', {}).get(choice['pipeline'], metadata['capabilities'])
-            if metadata['type'] != 'pipeline' or capability not in caps or capability not in pack['capabilities'] or pack['pipeline_id'] != choice['pipeline']:
+            pipeline_id = choice['pipeline']; pack_id = choice['modelPack']
+            selected_pipelines.add(pipeline_id); selected_packs.add(pack_id)
+            plugin = by_id.get(pipeline_id); pack = packs.get(pack_id)
+            pipeline_caps = set(); pack_caps = set()
+            if plugin:
+                metadata = plugin[1]
+                pipeline_caps.update(metadata.get('export_capabilities', {}).get(pipeline_id, metadata['capabilities']))
+                if metadata['type'] != 'pipeline':
+                    errors.append('Incompatible profile composition: ' + str(path))
+            elif pipeline_id not in staged_pipelines or releasable:
+                errors.append('Missing profile pipeline: ' + pipeline_id)
+            if pack:
+                pack_caps.update(pack['capabilities'])
+                if pack['pipeline_id'] != pipeline_id:
+                    errors.append('Incompatible profile composition: ' + str(path))
+            elif pack_id not in staged_packs or releasable:
+                errors.append('Missing profile ModelPack: ' + pack_id)
+            if not releasable:
+                pipeline_caps.update(staged_pipelines.get(pipeline_id, set()))
+                pack_caps.update(staged_packs.get(pack_id, set()))
+            if capability not in pipeline_caps or capability not in pack_caps:
                 errors.append('Incompatible profile composition: ' + str(path))
-            available.update(caps); available.update(pack['capabilities'])
+            compositions.append((capability, pipeline_id, pipeline_caps, pack_id, pack_caps))
+        selected_backends = {identity for identity in preferences if identity != 'auto'}
+        backend_sources = []
         for identity in preferences:
             if identity == 'auto': continue
-            if identity not in by_id or by_id[identity][1]['type'] != 'backend':
-                if identity not in staged_backends or releasable: errors.append('Missing profile backend: ' + identity)
-            else: available.update(by_id[identity][1]['capabilities'])
-        staged_platform_caps = {'gpu_input', 'vulkan', 'fp16-storage', 'fp16-arithmetic', 'android-hardware-buffer', 'external-sync-fd'}
+            module = by_id.get(identity)
+            backend_caps = set()
+            if module and module[1]['type'] == 'backend':
+                backend_caps.update(module[1]['capabilities'])
+            elif identity not in staged_backends or releasable:
+                errors.append('Missing profile backend: ' + identity)
+            if not releasable: backend_caps.update(staged_backends.get(identity, set()))
+            if 'tensor_inference' not in backend_caps:
+                errors.append(f'{path}: {identity} missing required capability tensor_inference')
+            backend_sources.append((identity, backend_caps))
+        for identity in staged_pipelines.keys() - selected_pipelines:
+            errors.append(f'{path}: unused staged pipeline {identity}')
+        for identity in staged_packs.keys() - selected_packs:
+            errors.append(f'{path}: unused staged ModelPack {identity}')
+        for identity in staged_backends.keys() - selected_backends:
+            errors.append(f'{path}: unused staged backend {identity}')
+
+        def require(identity, capabilities, requirement):
+            if requirement not in capabilities:
+                errors.append(f'{path}: {identity} missing required capability {requirement}')
+
         for requirement in requirements:
-            supplied_by_staged_backend = staged_backends and not releasable and requirement in staged_platform_caps
-            if requirement not in available and not supplied_by_staged_backend:
-                errors.append(f'{path}: missing required capability {requirement}')
+            if requirement in ('body_pose', 'multi_person'):
+                for capability, pipeline_id, pipeline_caps, pack_id, pack_caps in compositions:
+                    if capability == 'body_pose':
+                        require(pipeline_id, pipeline_caps, requirement)
+                        require(pack_id, pack_caps, requirement)
+            elif requirement == 'hand_pose':
+                hand_compositions = [composition for composition in compositions if composition[0] == 'hand_pose']
+                if not hand_compositions: errors.append(f'{path}: missing required capability hand_pose')
+                for _, pipeline_id, pipeline_caps, pack_id, pack_caps in hand_compositions:
+                    require(pipeline_id, pipeline_caps, requirement)
+                    require(pack_id, pack_caps, requirement)
+            elif requirement == 'gpu_input':
+                for capability, pipeline_id, pipeline_caps, pack_id, pack_caps in compositions:
+                    if capability == 'body_pose':
+                        require(pipeline_id, pipeline_caps, requirement)
+                        require(pack_id, pack_caps, requirement)
+                for identity, backend_caps in backend_sources: require(identity, backend_caps, requirement)
+            elif requirement in ('tensor_inference', 'vulkan', 'fp16-storage', 'fp16-arithmetic',
+                                 'android-hardware-buffer', 'external-sync-fd'):
+                for identity, backend_caps in backend_sources: require(identity, backend_caps, requirement)
+            else:
+                available = set().union(*(composition[2] | composition[4] for composition in compositions),
+                                        *(capabilities for _, capabilities in backend_sources))
+                if requirement not in available: errors.append(f'{path}: missing required capability {requirement}')
     result = subprocess.run([sys.executable, str(ROOT/'tools/package/check_public_surface.py')], cwd=ROOT)
     if result.returncode: errors.append('Public surface guard failed')
     if errors: raise SystemExit('\n'.join(errors))

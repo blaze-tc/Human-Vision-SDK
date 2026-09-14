@@ -73,6 +73,32 @@ TEST_F(ProfileManagerTest, Schema2AcceptsRevisionTwoModelpackFilename) {
  ModelPackManager packs(root/"packs");std::string error;
  auto pack=packs.Resolve("fixture",error);ASSERT_TRUE(pack)<<error;EXPECT_EQ(pack->version,"2.0.0");
 }
+TEST_F(ProfileManagerTest, Schema2RejectsAmbiguousManifestFilenames) {
+ std::ofstream(root/"packs"/"fixture"/"detector.param",std::ios::binary)<<"abc";
+ std::ofstream(root/"packs"/"fixture"/"detector.bin",std::ios::binary)<<"def";
+ Save(Schema2Manifest());
+ std::ofstream(root/"packs"/"fixture"/"modelpack.json")<<Schema2Manifest();
+ ModelPackManager packs(root/"packs");std::string error;
+ EXPECT_FALSE(packs.Resolve("fixture",error));
+ EXPECT_NE(error.find("manifest.json"),std::string::npos)<<error;
+ EXPECT_NE(error.find("modelpack.json"),std::string::npos)<<error;
+}
+TEST_F(ProfileManagerTest, Schema2NamesMissingOutputDecoder) {
+ std::ofstream(root/"packs"/"fixture"/"detector.param",std::ios::binary)<<"abc";
+ std::ofstream(root/"packs"/"fixture"/"detector.bin",std::ios::binary)<<"def";
+ auto manifest=nlohmann::json::parse(Schema2Manifest());manifest["models"][0]["output_contract"].erase("decoder");
+ Save(manifest.dump());ModelPackManager packs(root/"packs");std::string error;
+ EXPECT_FALSE(packs.Resolve("fixture",error));EXPECT_NE(error.find("output_contract.decoder"),std::string::npos)<<error;
+}
+TEST_F(ProfileManagerTest, Schema2RejectsMismatchedOutputDecoder) {
+ std::ofstream(root/"packs"/"fixture"/"detector.param",std::ios::binary)<<"abc";
+ std::ofstream(root/"packs"/"fixture"/"detector.bin",std::ios::binary)<<"def";
+ auto manifest=nlohmann::json::parse(Schema2Manifest());manifest["models"][0]["output_contract"]["decoder"]="different_decoder";
+ Save(manifest.dump());ModelPackManager packs(root/"packs");std::string error;
+ EXPECT_FALSE(packs.Resolve("fixture",error));
+ EXPECT_NE(error.find("output_contract.decoder"),std::string::npos)<<error;
+ EXPECT_NE(error.find("decoder_id"),std::string::npos)<<error;
+}
 TEST_F(ProfileManagerTest, Schema2NamesMissingTensorContractField) {
  std::ofstream(root/"packs"/"fixture"/"detector.param",std::ios::binary)<<"abc";
  std::ofstream(root/"packs"/"fixture"/"detector.bin",std::ios::binary)<<"def";

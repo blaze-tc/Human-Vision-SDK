@@ -23,7 +23,22 @@
     "allow_fallback": false
   },
   "staged_dependencies": {
-    "modelPacks": ["precision-t-26-ncnn-fp16"],
-    "backends": ["backend.ncnn.vulkan"]
+    "pipelines": {
+      "pipeline.topdown": ["gpu_input"]
+    },
+    "modelPacks": {
+      "precision-t-26-ncnn-fp16": ["body_pose", "multi_person", "gpu_input"]
+    },
+    "backends": {
+      "backend.ncnn.vulkan": [
+        "tensor_inference",
+        "gpu_input",
+        "vulkan",
+        "fp16-storage",
+        "fp16-arithmetic",
+        "android-hardware-buffer",
+        "external-sync-fd"
+      ]
+    }
   }
 }

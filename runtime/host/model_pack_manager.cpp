@@ -63,12 +63,16 @@ static void ValidateThreeNumbers(const nlohmann::json& value, const char* name) 
         if (!number.is_number()) throw std::runtime_error(std::string("Missing or invalid normalization.") + name);
 }
 
-static void ValidateSchema2Contract(const nlohmann::json& value) {
+static void ValidateSchema2Contract(const nlohmann::json& value, const std::string& decoder_id) {
     if (RequiredString(value, "format") != "ncnn") throw std::runtime_error("Schema 2 model format must be ncnn");
     const auto& input = value.at("input_contract");
     const auto& output = value.at("output_contract");
     if (!input.is_object()) throw std::runtime_error("Missing or invalid input_contract");
     if (!output.is_object()) throw std::runtime_error("Missing or invalid output_contract");
+    if (!output.contains("decoder") || !output.at("decoder").is_string() || output.at("decoder").get<std::string>().empty())
+        throw std::runtime_error("Missing or invalid output_contract.decoder");
+    if (output.at("decoder").get<std::string>() != decoder_id)
+        throw std::runtime_error("output_contract.decoder must equal decoder_id");
     RequiredString(input, "image_format");
     RequiredString(input, "color_order");
     RequiredString(input, "tensor_dtype");
@@ -102,7 +106,12 @@ std::shared_ptr<const ModelPack> ModelPackManager::Resolve(const std::string& id
         auto pack = std::make_shared<ModelPack>();
         pack->root = ConfinedPath(root_, id);
         auto manifest = pack->root / "manifest.json";
-        if (!std::filesystem::is_regular_file(manifest)) manifest = pack->root / "modelpack.json";
+        const auto modelpack = pack->root / "modelpack.json";
+        const bool has_manifest = std::filesystem::is_regular_file(manifest);
+        const bool has_modelpack = std::filesystem::is_regular_file(modelpack);
+        if (has_manifest && has_modelpack)
+            throw std::runtime_error("Ambiguous ModelPack manifests: both manifest.json and modelpack.json exist");
+        if (!has_manifest) manifest = modelpack;
         auto json = ReadConfig(manifest);
         const int schema = json.at("schema_version").get<int>();
         if (schema != 1 && schema != 2) throw std::runtime_error("Unsupported ModelPack schema version");
@@ -135,7 +144,7 @@ std::shared_ptr<const ModelPack> ModelPackManager::Resolve(const std::string& id
                 asset.sha256 = value.at("sha256").get<std::string>();
                 ValidateSha256(asset.path, asset.sha256, asset.role);
             } else {
-                ValidateSchema2Contract(value);
+                ValidateSchema2Contract(value, asset.decoder_id);
                 for (const auto& descriptor : {std::pair<const char*, const char*>("param", "param_path"),
                                                std::pair<const char*, const char*>("bin", "bin_path")}) {
                     ModelFile file;

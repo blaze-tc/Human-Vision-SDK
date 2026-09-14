@@ -15,9 +15,10 @@ provider. They do not replace `auto` as the default profile.
 Production Android builds use exactly one of `android-ncnn-vulkan`,
 `android-ort-xnnpack`, or `android-ort-cpu`. These profiles name one body pipeline,
 one ModelPack, and one explicit backend. They set `allow_fallback` to `false` and
-declare the capabilities needed by the complete composition. A requirement is
-satisfied by the selected pipeline, ModelPack, or backend; initialization reports
-the first missing capability by name.
+declare the capabilities needed by the complete composition. Body semantics must
+be supplied by both the selected pipeline and ModelPack, `gpu_input` by the
+pipeline, ModelPack and backend, and tensor/platform capabilities by the backend.
+Initialization reports the first missing capability by name.
 
 ```json
 {
@@ -45,17 +46,28 @@ the first missing capability by name.
     "allow_fallback": false
   },
   "staged_dependencies": {
-    "modelPacks": ["precision-t-26-ncnn-fp16"],
-    "backends": ["backend.ncnn.vulkan"]
+    "pipelines": {
+      "pipeline.topdown": ["gpu_input"]
+    },
+    "modelPacks": {
+      "precision-t-26-ncnn-fp16": ["body_pose", "multi_person", "gpu_input"]
+    },
+    "backends": {
+      "backend.ncnn.vulkan": [
+        "tensor_inference", "gpu_input", "vulkan", "fp16-storage",
+        "fp16-arithmetic", "android-hardware-buffer", "external-sync-fd"
+      ]
+    }
   }
 }
 ```
 
 The NCNN profile is a staged Milestone A/B contract. Normal architecture checks
-accept only the explicitly listed missing dependencies. Runtime/build validation
-continues to fail, and `check_architecture_boundaries.py --release` or `--package`
-rejects every staged profile. Remove each staged entry only after the real component
-or verified ModelPack exists. The two ORT production profiles use
+accept only capabilities bound to the exact selected component that will own them;
+the pipeline entry records the A4 `gpu_input` work explicitly. Runtime/build
+validation continues to fail, and `check_architecture_boundaries.py --release` or
+`--package` rejects every staged profile. Remove each staged capability only after
+the real component or verified ModelPack supplies it. The two ORT production profiles use
 `pipeline.topdown`, `precision-t-26`, and exactly one of `backend.ort.xnnpack` or
 `backend.ort.cpu`; their requirements are `body_pose`, `multi_person`, and
 `tensor_inference`.
