@@ -1,3 +1,72 @@
+# Android Vulkan/ncnn — Milestone A closed; hardware gates pending (2026-09-14)
+
+Authority: Revision 2 of
+`docs/superpowers/specs/2026-09-13-android-vulkan-ncnn-production-runtime-design.md`
+and the implementation plan of the same name. Milestone A closes only the
+explicit Android mode registry/bake, strict staged profiles and ModelPack
+contracts, and additive GPU plugin/Android submission ABI. Milestone B has not
+started in this commit.
+
+The Android player bakes one user-selected mode: `android-ncnn-vulkan`,
+`android-ort-xnnpack`, or `android-ort-cpu`. There is no automatic mode or
+fallback. Empty/`auto` resolves to the baked profile and a conflicting explicit
+profile fails with both IDs. Each profile has one pipeline and one backend with
+`allow_fallback: false`; missing NCNN capability/library/model requirements do
+not route into ORT. See maintenance decision
+[0002](maintenance/DECISIONS/0002-android-runtime-mode-and-gpu-abi.md).
+
+## Fresh Milestone A verification
+
+Base/commit evidence: A5 started at A4 commit
+`32066b565da85877f16931ab2532a749d846af1c` (parent
+`adb2829add9bb0260b983a44b93d123721c58cb1`) on
+`codex/android-ncnn-vulkan-implementation`. The A4 diff leaves
+`humanvision_c.h`, `humanvision_types.h`, `humanvision_plugin.h`, and
+`humanvision_v2.h` unchanged; the full native suite includes their layout and
+runtime contract snapshots. Unity public skeleton APIs remain semantic and do
+not own model/provider types. V2 adds opaque GPU-frame/pipeline/backend/host
+extension tables: backend owns GPU/tensor work, pipelines own model semantics
+and decoding, common services own region/canonical/tracking/temporal/snapshots,
+and Unity submits/renders semantic data only.
+
+- `.venv-reference/Scripts/python.exe --version`: Python 3.10.21;
+  `pwsh --version`: 7.6.5; CMake: 4.3.1-msvc1; Git: 2.49.0.windows.1;
+  Unity: 2021.3.45f1 at `D:/Developer/2021.3.45f1/Editor/Unity.exe`.
+- `pwsh -File tools/test/run_native_tests.ps1 -Fresh`: PASS, 95/95, 0 failed,
+  CTest real time 12.54 s (MSVC v143/Ninja Multi-Config).
+- `$env:__COMPAT_LAYER='RunAsInvoker'; pwsh -File tools/test/run_unity040_tests.ps1 -Unity 'D:/Developer/2021.3.45f1/Editor/Unity.exe'`:
+  PASS, 62/62 EditMode tests, 0 failed.
+- `.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py`:
+  PASS (public-surface contract and architecture/documentation boundaries).
+- `.venv-reference/Scripts/python.exe tools/maintenance/generate_component_catalog.py --check`:
+  PASS.
+- `pwsh -File tools/package/build_live_native.ps1`: PASS, Windows x64 and
+  Android ARM64 native libraries built (the package input build; tests were not
+  run by this script). `.venv-reference/Scripts/python.exe
+  tools/package/package_live_sdk.py`, then `tools/package/package_upm.py`, then
+  `tools/package/verify_package_isolation.py`: PASS, 107 Unity assets, 112 UPM
+  files, 137 GUIDs. The dry run regenerated `upm/`; those generated files were
+  restored to A4 before staging and are not part of this documentation commit.
+
+Expected staged validation: `HumanVisionAndroidRuntimeBuildValidatorTests` ran
+inside the 62/62 EditMode suite. Its complete-NCNN fixture, with only each model
+field removed in turn, reports `HasNcnnModelPackAssets` and
+`HasNcnnModelPackSha256Index` as the required errors, including “Milestone C has
+not installed them”; it does not substitute an ORT mode. This expected rejection
+exists because the schema-2 `precision-t-26-ncnn-fp16` model pack and SHA-256
+index are deliberately absent until Milestone C. It is not a production NCNN
+build, device, or performance result.
+
+`git diff --check` and `git diff --cached --check` are required again before the
+A5 commit; generated UPM files and ignored SDD artifacts are excluded from its
+staging set.
+No hardware behavior is accepted: Vulkan/AHB allocation, ncnn linking/import,
+camera copy, model conversion/inference, Android APK execution, device FPS,
+latency, accuracy, thermal behavior, and 1–8-person skeleton quality remain
+future/user acceptance gates.
+
+---
+
 # 0.4.0-preview.3 — Android provider baseline and presentation continuity (2026-09-13)
 
 Authority: `HumanVisionSDK_Android_0403_Codex_Optimization.md` and the frozen
