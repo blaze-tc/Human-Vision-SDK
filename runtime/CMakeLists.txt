@@ -12,7 +12,7 @@ target_sources(humanvision_internal PRIVATE
     plugins/legacy/legacy_pipeline.cpp
     plugins/backend/ort/ort_plugin.cpp)
 
-target_sources(humanvision PRIVATE composition/runtime_c.cpp)
+target_sources(humanvision PRIVATE composition/runtime_c.cpp composition/android_gpu_c.cpp)
 target_include_directories(humanvision_internal PRIVATE ${PROJECT_SOURCE_DIR}/third_party)
 target_include_directories(humanvision_internal PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}

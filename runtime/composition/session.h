@@ -14,6 +14,8 @@ public:
  bool SetRegions(const HV_Rect*,uint32_t count,int64_t revision,std::string& error);
  BodySnapshot Copy(int64_t sample_time,HV_RuntimeStatsV1& stats);
  std::string LastError() const;
+ // Additive platform APIs report through the same runtime error channel.
+ void ReportError(const char* error) {std::lock_guard<std::mutex> lock(mutex_);error_=error;}
  std::string Diagnostics() const;
 private:
  void Run();

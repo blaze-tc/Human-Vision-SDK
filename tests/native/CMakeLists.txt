@@ -129,3 +129,19 @@ target_sources(humanvision_native_tests PRIVATE ../runtime/test_simcc_plugin.cpp
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_runtime_session.cpp)
 target_include_directories(humanvision_native_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/native)
 target_compile_definitions(humanvision_native_tests PRIVATE HV_TEST_PROJECT_ROOT="${PROJECT_SOURCE_DIR}")
+
+target_sources(humanvision_native_tests PRIVATE
+    ../runtime/test_plugin_abi_v2.cpp
+    ../runtime/test_android_gpu_abi.cpp)
+
+if(WIN32)
+    add_library(humanvision_fixture_gpu_plugin SHARED ../runtime/fixture_plugin_v2.c)
+    target_compile_definitions(humanvision_fixture_gpu_plugin PRIVATE HV_PLUGIN_BUILD_DLL)
+    target_include_directories(humanvision_fixture_gpu_plugin PRIVATE
+        ${PROJECT_SOURCE_DIR}/native/include ${PROJECT_SOURCE_DIR}/runtime/include)
+    target_compile_features(humanvision_fixture_gpu_plugin PRIVATE c_std_11)
+    target_compile_definitions(humanvision_native_tests PRIVATE
+        HV_TEST_GPU_PLUGIN_PATH="$<TARGET_FILE:humanvision_fixture_gpu_plugin>"
+        HV_TEST_V1_PLUGIN_PATH="$<TARGET_FILE:humanvision_fixture_plugin>")
+    add_dependencies(humanvision_native_tests humanvision_fixture_gpu_plugin humanvision_fixture_plugin)
+endif()

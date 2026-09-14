@@ -1,6 +1,16 @@
 {
   "exceptions": [
     {
+      "path": "native/include/humanvision/humanvision_android_gpu.h",
+      "token": "ncnn",
+      "line": "uint8_t ncnn_device_uuid[HV_ANDROID_GPU_UUID_SIZE]"
+    },
+    {
+      "path": "native/include/humanvision/humanvision_android_gpu.h",
+      "token": "ncnn",
+      "line": "uint8_t ncnn_driver_uuid[HV_ANDROID_GPU_UUID_SIZE]"
+    },
+    {
       "path": "upm/com.blazetc.humanvision/Runtime/HumanVisionConfig.cs",
       "token": "public-model-config",
       "line": "public string DetectorModelPath"
