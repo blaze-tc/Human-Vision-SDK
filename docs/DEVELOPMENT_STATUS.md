@@ -7,6 +7,10 @@ explicit Android mode registry/bake, strict staged profiles and ModelPack
 contracts, and additive GPU plugin/Android submission ABI. Milestone B has not
 started in this commit.
 
+All Milestone A automated gates are green; Milestone B is the sole authorized
+next milestone. Physical-device acceptance remains pending and is not part of
+this transition.
+
 The Android player bakes one user-selected mode: `android-ncnn-vulkan`,
 `android-ort-xnnpack`, or `android-ort-cpu`. There is no automatic mode or
 fallback. Empty/`auto` resolves to the baked profile and a conflicting explicit
