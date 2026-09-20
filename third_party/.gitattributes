@@ -1,0 +1,6 @@
+# Preserve the audited upstream bytes (including CRLF and license notices).
+/unity-plugin-api/include/*.h -text whitespace=cr-at-eol,-blank-at-eol
+/unity-plugin-api/LICENSE.md -text whitespace=cr-at-eol,-blank-at-eol
+/ncnn/LICENSE -text
+/ncnn/patches/*.patch text eol=lf
+/ncnn/glslang-LICENSE.txt -text

@@ -1,0 +1,64 @@
+{
+  "source_url": "https://github.com/Tencent/ncnn",
+  "version": "20260526",
+  "source_commit": "e54f7b1f88434e1d844ea0551b880a1cfb079ce1",
+  "archive": {
+    "name": "ncnn-20260526-full-source.zip",
+    "url": "https://github.com/Tencent/ncnn/releases/download/20260526/ncnn-20260526-full-source.zip",
+    "size": 23279174,
+    "sha256": "754659d6fe65545cf2ef4483ffb84526fea631f8764c44b150f1601d0fb4004b"
+  },
+  "license": {
+    "id": "BSD-3-Clause",
+    "path": "third_party/ncnn/LICENSE",
+    "sha256": "7c974bac98848df46be1af5bdaa3c3c9c01f6082a90f55caeb7f60c6208aa255"
+  },
+  "patches": [
+    {
+      "path": "third_party/ncnn/patches/0001-ahb-external-acquire.patch",
+      "sha256": "42147727790e26b16686a7f81efc2d49384afb15df0605f6eb0841d21182163c",
+      "base_commit": "e54f7b1f88434e1d844ea0551b880a1cfb079ce1",
+      "files": [
+        {
+          "path": "src/command.h",
+          "before_sha256": "04264557d5db7ee0a4cec3e986153bbc4f568096088dbfe889c0acd6b0fa9d99",
+          "after_sha256": "eac48254096d814a0d2cc0bd23d450b5cf54fdb33f36f0b069dc427c41921c41"
+        },
+        {
+          "path": "src/command.cpp",
+          "before_sha256": "e1b787a6e6b47a0750c5337fd861402b35b57430546e12f44dc67dbc57964d95",
+          "after_sha256": "0e759647fc628f0962d1a85c7c079d79cca4906bf5bd5fd4d1afc8f35b894fbe"
+        }
+      ],
+      "audit": "Only command.h and command.cpp: additive overload preserving legacy default barrier behavior; external overload substitutes prior layout and queue-family indices in the existing single acquire barrier. Conversion dispatch is unchanged. GPU semaphore wait and release are caller responsibilities."
+    }
+  ],
+  "android_abi": "arm64-v8a",
+  "android_api_level": 26,
+  "ndk_version": "23.1.7779620",
+  "build_flags": {
+    "NCNN_VERSION": "20260526",
+    "NCNN_VULKAN": "ON",
+    "NCNN_SIMPLEVK": "ON",
+    "NCNN_SYSTEM_GLSLANG": "OFF",
+    "NCNN_SHARED_LIB": "OFF",
+    "NCNN_OPENMP": "OFF",
+    "NCNN_BUILD_TOOLS": "OFF",
+    "NCNN_BUILD_EXAMPLES": "OFF",
+    "NCNN_BUILD_BENCHMARK": "OFF",
+    "NCNN_BUILD_TESTS": "OFF",
+    "NCNN_DISABLE_EXCEPTION": "OFF",
+    "NCNN_DISABLE_RTTI": "OFF",
+    "NCNN_PLATFORM_API": "ON",
+    "CMAKE_POSITION_INDEPENDENT_CODE": "ON",
+    "CMAKE_BUILD_TYPE": "Release",
+    "ANDROID_STL": "c++_static"
+  },
+  "bundled_licenses": [
+    {
+      "path": "third_party/ncnn/glslang-LICENSE.txt",
+      "source_path": "glslang/LICENSE.txt",
+      "sha256": "17e70c676e1521ff3e4686f04a2053d93a7e28a33be8de7ec37ab0ff72feb677"
+    }
+  ]
+}

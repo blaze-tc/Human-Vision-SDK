@@ -1,0 +1,29 @@
+{
+  "version": "2021.3.45f1",
+  "source_path": "D:/Developer/2021.3.45f1/Editor/Data/PluginAPI",
+  "source_url": "https://unity.com/releases/editor/whats-new/2021.3.45f1",
+  "license": {
+    "id": "Unity-Companion",
+    "path": "third_party/unity-plugin-api/LICENSE.md",
+    "sha256": "dc34d09c3c3a5057244ba4e6cbb871105ec42cd1130617aceeddb9219da922d1",
+    "source_sha256": "dc34d09c3c3a5057244ba4e6cbb871105ec42cd1130617aceeddb9219da922d1",
+    "url": "https://unity.com/legal/licenses/unity-companion-license"
+  },
+  "headers": [
+    {
+      "path": "third_party/unity-plugin-api/include/IUnityInterface.h",
+      "source_sha256": "e23e267b57c049b438307542d62c30fbcd3fa77b6dac3b08842eae0df10b8239",
+      "sha256": "e23e267b57c049b438307542d62c30fbcd3fa77b6dac3b08842eae0df10b8239"
+    },
+    {
+      "path": "third_party/unity-plugin-api/include/IUnityGraphics.h",
+      "source_sha256": "dfb6dd52eef1f1b6a95a9d122ce4356e79aff5d216282ee4cd90b69137bc1b1f",
+      "sha256": "dfb6dd52eef1f1b6a95a9d122ce4356e79aff5d216282ee4cd90b69137bc1b1f"
+    },
+    {
+      "path": "third_party/unity-plugin-api/include/IUnityGraphicsVulkan.h",
+      "source_sha256": "0a8e0c24a9661c142e07f3872e2b1846c4655699f5d7efe44cb9c6a74f1053a7",
+      "sha256": "0a8e0c24a9661c142e07f3872e2b1846c4655699f5d7efe44cb9c6a74f1053a7"
+    }
+  ]
+}
