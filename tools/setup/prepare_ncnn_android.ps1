@@ -2,6 +2,7 @@ param(
     [ValidateSet('arm64-v8a')][string]$Abi = 'arm64-v8a',
     [ValidateSet(26)][int]$ApiLevel = 26,
     [string]$ArchivePath,
+    [switch]$VerifyArchiveOnly,
     [string]$AndroidNdk = 'D:/Developer/2022.3.61t4/Editor/Data/PlaybackEngines/AndroidPlayer/NDK',
     [string]$VisualStudio = 'D:/Microsoft Visual Studio',
     [ValidateRange(1,64)][int]$Jobs = 8
@@ -12,12 +13,14 @@ $root = (Resolve-Path "$PSScriptRoot/../..").Path.Replace('\','/')
 $provenancePath = "$root/third_party/ncnn/provenance.json"
 $pin = Get-Content -LiteralPath $provenancePath -Raw | ConvertFrom-Json
 $cache = "$root/out/ncnn-$($pin.version)"
+New-Item -ItemType Directory -Force $cache | Out-Null
+$downloadedTemporaryArchive = $null
 if (-not $ArchivePath) {
-    New-Item -ItemType Directory -Force $cache | Out-Null
     $ArchivePath = "$cache/$($pin.archive.name)"
     if (-not (Test-Path -LiteralPath $ArchivePath)) {
-        Invoke-WebRequest -Uri $pin.archive.url -OutFile "$ArchivePath.download"
-        $ArchivePath = "$ArchivePath.download"
+        $downloadedTemporaryArchive = "$ArchivePath.download"
+        Invoke-WebRequest -Uri $pin.archive.url -OutFile $downloadedTemporaryArchive
+        $ArchivePath = $downloadedTemporaryArchive
     }
 }
 $ArchivePath = (Resolve-Path -LiteralPath $ArchivePath).Path
@@ -27,12 +30,14 @@ if ((Get-Item -LiteralPath $ArchivePath).Length -ne $pin.archive.size) {
 if ((Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $pin.archive.sha256) {
     throw "Archive SHA-256 mismatch: expected $($pin.archive.sha256): $ArchivePath"
 }
-if ($ArchivePath.EndsWith('.download')) {
+if ($downloadedTemporaryArchive -and
+    [IO.Path]::GetFullPath($ArchivePath) -eq [IO.Path]::GetFullPath($downloadedTemporaryArchive)) {
     $verifiedArchive = "$cache/$($pin.archive.name)"
     Move-Item -LiteralPath $ArchivePath -Destination $verifiedArchive -Force
     $ArchivePath = $verifiedArchive
 }
 Write-Output "Verified archive: $($pin.archive.size) bytes SHA256=$($pin.archive.sha256)"
+if ($VerifyArchiveOnly) { return }
 
 function Assert-Hash([string]$Path, [string]$Expected) {
     if (-not (Test-Path -LiteralPath $Path) -or (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Expected) {

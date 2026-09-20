@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
 import unittest
 
@@ -88,6 +89,51 @@ class ThirdPartyProvenanceTests(unittest.TestCase):
             result = subprocess.run(["pwsh", "-NoProfile", "-File", str(script), "-ArchivePath", str(archive)], capture_output=True, text=True, encoding="utf-8")
             self.assertNotEqual(0, result.returncode)
             self.assertIn("Archive SHA-256 mismatch", result.stdout + result.stderr)
+
+    def test_explicit_download_suffix_archive_survives_success_and_failure(self):
+        script = ROOT / "tools/setup/prepare_ncnn_android.ps1"
+        with tempfile.TemporaryDirectory() as temp:
+            fixture = Path(temp) / "fixture"
+            copied_script = fixture / "tools/setup/prepare_ncnn_android.ps1"
+            copied_script.parent.mkdir(parents=True)
+            shutil.copyfile(script, copied_script)
+            provenance_dir = fixture / "third_party/ncnn"
+            provenance_dir.mkdir(parents=True)
+            license_path = provenance_dir / "LICENSE"
+            license_path.write_bytes(b"license")
+            valid_bytes = b"caller-owned valid archive"
+            provenance = {
+                "version": "test", "archive": {
+                    "name": "source.zip", "url": "https://invalid.example/source.zip",
+                    "size": len(valid_bytes), "sha256": hashlib.sha256(valid_bytes).hexdigest(),
+                },
+                "license": {"path": "third_party/ncnn/LICENSE", "sha256": hashlib.sha256(b"license").hexdigest()},
+                "bundled_licenses": [], "patches": [], "ndk_version": "test", "build_flags": {},
+            }
+            (provenance_dir / "provenance.json").write_text(json.dumps(provenance), encoding="utf-8")
+
+            for cache_exists in (False, True):
+                for succeeds in (False, True):
+                    with self.subTest(cache_exists=cache_exists, succeeds=succeeds):
+                        cache = fixture / "out/ncnn-test"
+                        if cache.exists():
+                            shutil.rmtree(cache)
+                        if cache_exists:
+                            cache.mkdir(parents=True)
+                        case = fixture / f"case-{cache_exists}-{succeeds}"
+                        case.mkdir()
+                        archive = case / "caller-owned.download"
+                        archive.write_bytes(valid_bytes)
+                        command = ["pwsh", "-NoProfile", "-File", str(copied_script),
+                            "-ArchivePath", str(archive)]
+                        if succeeds:
+                            command.append("-VerifyArchiveOnly")
+                        else:
+                            command.extend(["-AndroidNdk", str(case / "missing-ndk")])
+                        result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8")
+                        self.assertEqual(succeeds, result.returncode == 0, result.stdout + result.stderr)
+                        self.assertTrue(archive.is_file(), "Caller-owned archive was moved or deleted")
+                        self.assertEqual(valid_bytes, archive.read_bytes())
 
 
 if __name__ == "__main__":
