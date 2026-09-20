@@ -131,6 +131,8 @@ target_include_directories(humanvision_native_tests PRIVATE ${PROJECT_SOURCE_DIR
 target_compile_definitions(humanvision_native_tests PRIVATE HV_TEST_PROJECT_ROOT="${PROJECT_SOURCE_DIR}")
 
 target_sources(humanvision_native_tests PRIVATE
+    ../runtime/test_vulkan_device_identity.cpp
+    ../runtime/test_ahb_capabilities.cpp
     ../runtime/test_plugin_abi_v2.cpp
     ../runtime/test_android_gpu_abi.cpp)
 

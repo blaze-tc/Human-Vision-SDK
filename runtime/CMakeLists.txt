@@ -1,3 +1,7 @@
+set(HV_ANDROID_GPU_PROBE_SOURCES
+    gpu/vulkan/vulkan_device_identity.cpp
+    gpu/android/ahb_capabilities.cpp)
+
 target_sources(humanvision_internal PRIVATE
     composition/session.cpp
     host/plugin_registry.cpp
@@ -12,6 +16,16 @@ target_sources(humanvision_internal PRIVATE
     plugins/legacy/legacy_pipeline.cpp
     plugins/backend/ort/ort_plugin.cpp)
 
+# Android must expose the probe implementation from libhumanvision.so for the
+# production bridge. Host tests link the same sources through the internal
+# library. Keep the two placements mutually exclusive so no final target ever
+# contains a second copy of these symbols.
+if(ANDROID)
+    target_sources(humanvision PRIVATE ${HV_ANDROID_GPU_PROBE_SOURCES})
+else()
+    target_sources(humanvision_internal PRIVATE ${HV_ANDROID_GPU_PROBE_SOURCES})
+endif()
+
 target_sources(humanvision PRIVATE composition/runtime_c.cpp composition/android_gpu_c.cpp)
 target_include_directories(humanvision_internal PRIVATE ${PROJECT_SOURCE_DIR}/third_party)
 target_include_directories(humanvision_internal PUBLIC
@@ -19,6 +33,9 @@ target_include_directories(humanvision_internal PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 if(ANDROID)
+    # Keep the probe entrypoints linked before B4/B5 start calling them, so API-26
+    # ELF closure verification covers the actual Android implementation now.
+    target_include_directories(humanvision PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     if(NOT ANDROID_ABI STREQUAL "arm64-v8a" OR NOT CMAKE_SYSTEM_VERSION EQUAL 26)
         message(FATAL_ERROR "The pinned Android multi-backend build requires arm64-v8a and API 26")
     endif()
