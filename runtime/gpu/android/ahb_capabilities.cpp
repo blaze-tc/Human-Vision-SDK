@@ -34,8 +34,11 @@ bool Evaluate(const AhbCandidate& c, std::ostringstream& out) {
     require(c.source_supported, "source.single_sample_rgba_or_bgra_2d");
     const auto image = [&](const AhbImageFacts& facts, const std::string& prefix) {
         out << "\n" << prefix << " vk_format=" << facts.vk_format << " external_format=" << facts.external_format
-            << " features=" << facts.format_features << " image_usage=" << facts.image_usage
-            << " required_ahb_usage=" << facts.required_ahb_usage;
+            << " external_features=" << facts.format_features
+            << " concrete_features=" << facts.concrete_format_features
+            << " image_usage=" << facts.image_usage
+            << " optimal_ahb_usage=" << facts.optimal_ahb_usage
+            << " required_standard_ahb_usage=" << facts.required_standard_ahb_usage;
         require(facts.properties, prefix + ".properties");
         require(facts.vk_format == vk_rgba8, prefix + ".concrete_rgba8_format");
         require(facts.external_query, prefix + ".external_query");
@@ -51,6 +54,7 @@ bool Evaluate(const AhbCandidate& c, std::ostringstream& out) {
     image(c.producer, "producer");
     image(c.consumer, "consumer");
     require(c.consumer.image_usage == sampled_image, "consumer.sampled_read_only_usage");
+    require(c.consumer.view_created, "consumer.view_created");
     require(c.producer.image_usage == (blit ? 6u : 20u), "producer.image_usage");
     if (blit) {
         require(c.source_transfer_src, "source.transfer_src");
@@ -169,7 +173,12 @@ AhbImageFacts ProbeImport(const VulkanDeviceContext& context, AHardwareBuffer* b
     if (!facts.properties || format.format != VK_FORMAT_R8G8B8A8_UNORM) return facts;
     VkFormatProperties device_format{};
     vkGetPhysicalDeviceFormatProperties(context.physical_device, format.format, &device_format);
-    const auto features = format.formatFeatures & device_format.optimalTilingFeatures;
+    // format.formatFeatures describes the external-format image named by
+    // externalFormat. This generation creates a concrete RGBA image, so its
+    // capabilities come only from the concrete-format/tiling query. The two
+    // masks are deliberately retained separately in diagnostics.
+    const auto features = device_format.optimalTilingFeatures;
+    facts.concrete_format_features = features;
     out << " optimalTilingFeatures=" << device_format.optimalTilingFeatures;
     facts.sampled = (features & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) != 0;
     facts.transfer_dst = (features & VK_FORMAT_FEATURE_TRANSFER_DST_BIT) != 0;
@@ -199,8 +208,16 @@ AhbImageFacts ProbeImport(const VulkanDeviceContext& context, AHardwareBuffer* b
     const auto& memory = external_properties.externalMemoryProperties;
     facts.importable = (memory.externalMemoryFeatures & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) != 0;
     facts.compatible_handle = (memory.compatibleHandleTypes & external.handleType) != 0;
-    facts.required_ahb_usage = ahb_usage.androidHardwareBufferUsage;
-    facts.usage_compatible = (desc.usage & facts.required_ahb_usage) == facts.required_ahb_usage;
+    facts.optimal_ahb_usage = ahb_usage.androidHardwareBufferUsage;
+    facts.required_standard_ahb_usage =
+        ((usage & VK_IMAGE_USAGE_SAMPLED_BIT) ? sampled_usage : 0) |
+        ((usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) ? color_usage : 0);
+    // androidHardwareBufferUsage is optimal allocation guidance and can contain
+    // vendor-specific bits. The externally allocated contract is required to
+    // carry the standard usage equivalents only; exact Vulkan image support is
+    // still enforced by the image-format query and create/import/bind sequence.
+    facts.usage_compatible =
+        (desc.usage & facts.required_standard_ahb_usage) == facts.required_standard_ahb_usage;
     const auto& limits = image_properties.imageFormatProperties;
     facts.extent_supported = desc.width <= limits.maxExtent.width && desc.height <= limits.maxExtent.height &&
         limits.maxExtent.depth >= 1 && limits.maxArrayLayers >= desc.layers && limits.maxMipLevels >= 1 &&

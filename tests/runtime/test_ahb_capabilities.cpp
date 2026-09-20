@@ -85,6 +85,16 @@ TEST(AhbCapabilities, ColorNeedsSamplingAttachmentViewAndFramebuffer) {
     EXPECT_EQ(SelectAhbCopyPath({c}).path, HV_ANDROID_GPU_COPY_UNAVAILABLE);
 }
 
+TEST(AhbCapabilities, ConsumerViewIsRequiredForEveryPath) {
+    for (const auto path : {HV_ANDROID_GPU_COPY_BLIT, HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT}) {
+        auto c = Complete(path);
+        c.consumer.view_created = false;
+        const auto result = SelectAhbCopyPath({c});
+        EXPECT_EQ(result.path, HV_ANDROID_GPU_COPY_UNAVAILABLE);
+        EXPECT_NE(result.diagnostic.find("consumer.view_created"), std::string::npos);
+    }
+}
+
 TEST(AhbCapabilities, RejectsActualDescriptionMismatchAndRetainsMeasuredStride) {
     for (int field = 0; field < 6; ++field) {
         auto c = Complete(HV_ANDROID_GPU_COPY_BLIT);
@@ -121,7 +131,7 @@ TEST(AhbCapabilities, ReportsAllFailuresAndMeasuredFacts) {
     c.detail = "deviceUUID=123 driverUUID=456 vkBindImageMemory=-2";
     const auto result = SelectAhbCopyPath({c});
     for (const char* text : {"source.transfer_src", "source.blit_src", "producer.blit_dst",
-         "consumer.memory_bound", "stride=672", "format=1", "usage=256", "features=57005",
+         "consumer.memory_bound", "stride=672", "format=1", "usage=256", "external_features=57005",
          "deviceUUID=123", "vkBindImageMemory=-2"})
         EXPECT_NE(result.diagnostic.find(text), std::string::npos) << text;
 }

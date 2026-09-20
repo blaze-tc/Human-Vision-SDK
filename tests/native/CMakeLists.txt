@@ -72,6 +72,22 @@ endif()
 
 gtest_discover_tests(humanvision_native_tests)
 
+if(WIN32)
+    # Compile the actual Android B2 probe source against deterministic Vulkan/AHB
+    # call-boundary fakes. This covers pNext interpretation and fault cleanup on
+    # the host without claiming physical-device behavior.
+    add_executable(humanvision_ahb_vulkan_probe_tests
+        ../runtime/test_ahb_android_probe.cpp)
+    target_include_directories(humanvision_ahb_vulkan_probe_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/tests/runtime/android_probe_stubs
+        ${PROJECT_SOURCE_DIR}/runtime
+        ${PROJECT_SOURCE_DIR}/native/include)
+    target_link_libraries(humanvision_ahb_vulkan_probe_tests PRIVATE GTest::gtest_main)
+    target_compile_features(humanvision_ahb_vulkan_probe_tests PRIVATE cxx_std_17)
+    target_compile_options(humanvision_ahb_vulkan_probe_tests PRIVATE /W4 /permissive-)
+    gtest_discover_tests(humanvision_ahb_vulkan_probe_tests)
+endif()
+
 add_executable(humanvision_api_contract_tests
     test_api_contract.cpp)
 

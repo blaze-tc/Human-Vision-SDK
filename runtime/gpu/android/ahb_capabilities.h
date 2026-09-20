@@ -19,7 +19,12 @@ struct AhbImageFacts {
     bool image_created = false, memory_imported = false, memory_bound = false;
     bool view_created = false, framebuffer_created = false;
     uint32_t vk_format = 0, image_usage = 0;
-    uint64_t external_format = 0, format_features = 0, required_ahb_usage = 0;
+    // format_features belongs to external_format. concrete_format_features
+    // belongs to vk_format at the image's selected tiling. They are independent.
+    uint64_t external_format = 0, format_features = 0, concrete_format_features = 0;
+    // The Vulkan query returns optimal allocation guidance which may include
+    // vendor bits. Only required_standard_ahb_usage is an admission gate.
+    uint64_t optimal_ahb_usage = 0, required_standard_ahb_usage = 0;
 };
 struct AhbCandidate {
     HV_AndroidGpuCopyPath path = HV_ANDROID_GPU_COPY_UNAVAILABLE;
