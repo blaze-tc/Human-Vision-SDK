@@ -90,7 +90,7 @@ class NcnnCmakeBindingTests(unittest.TestCase):
             stream.write("set_property(TARGET ncnn PROPERTY IMPORTED_CONFIGURATIONS DEBUG)\n")
             stream.write(f'set_target_properties(ncnn PROPERTIES IMPORTED_LOCATION_DEBUG "{location.as_posix()}")\n')
 
-    def assert_release_consumer_selects(self, temp, install, expected_location):
+    def assert_release_consumer_selects(self, temp, install, expected_location, extra_args=None):
         source = temp / "consumer"
         build = temp / "consumer-build"
         source.mkdir()
@@ -108,6 +108,7 @@ class NcnnCmakeBindingTests(unittest.TestCase):
             "-DANDROID_ABI=arm64-v8a", "-DANDROID_PLATFORM=android-26", "-DANDROID_STL=c++_static",
             "-DCMAKE_BUILD_TYPE=Release",
         ]
+        command.extend(extra_args or [])
         result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         generated = (build / "build.ninja").read_text(encoding="utf-8")
@@ -125,7 +126,7 @@ class NcnnCmakeBindingTests(unittest.TestCase):
         receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
         return path
 
-    def configure(self, build, ncnn_root, stale_dir=None):
+    def configure(self, build, ncnn_root, stale_dir=None, extra_args=None):
         command = [str(CMAKE), "--fresh", "-S", str(ROOT), "-B", str(build), "-G", "Ninja",
             f"-DCMAKE_MAKE_PROGRAM={NINJA}",
             f"-DCMAKE_TOOLCHAIN_FILE={NDK / 'build/cmake/android.toolchain.cmake'}",
@@ -138,6 +139,7 @@ class NcnnCmakeBindingTests(unittest.TestCase):
         ]
         if stale_dir:
             command.append(f"-Dncnn_DIR={stale_dir}")
+        command.extend(extra_args or [])
         return subprocess.run(command, capture_output=True, text=True, encoding="utf-8")
 
     def test_stale_ncnn_dir_is_reset_to_verified_root(self):
@@ -214,6 +216,28 @@ class NcnnCmakeBindingTests(unittest.TestCase):
             result = self.configure(temp / "build", expected)
             self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertIn("not listed in the verified ncnn receipt", result.stdout + result.stderr)
+
+    def test_single_config_ignores_injected_configuration_types(self):
+        with tempfile.TemporaryDirectory() as temp:
+            temp = Path(temp)
+            outside = temp / "outside/libncnn.a"
+            outside.parent.mkdir(parents=True)
+            outside.write_bytes(b"release outside receipt")
+            expected = self.make_root(temp / "expected", outside)
+            config = expected / "lib/cmake/ncnn/ncnnConfig.cmake"
+            with config.open("a", encoding="utf-8") as stream:
+                for target, filename in TARGETS.items():
+                    stream.write(f'\nset_target_properties({target} PROPERTIES\n')
+                    stream.write(f'  IMPORTED_LOCATION_DEBUG "{(expected / "lib" / filename).as_posix()}")\n')
+            injected = ["-DCMAKE_CONFIGURATION_TYPES=Debug"]
+            self.assert_release_consumer_selects(temp, expected, outside, injected)
+            result = self.configure(temp / "build", expected, extra_args=injected)
+            self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn("not listed in the verified ncnn receipt", result.stdout + result.stderr)
+
+            verified = self.make_root(temp / "verified")
+            result = self.configure(temp / "verified-build", verified, extra_args=injected)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":
