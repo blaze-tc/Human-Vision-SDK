@@ -1,7 +1,9 @@
 set(HV_ANDROID_GPU_PROBE_SOURCES
     gpu/android/ahb_slot_ring.cpp
     gpu/vulkan/vulkan_device_identity.cpp
-    gpu/android/ahb_capabilities.cpp)
+    gpu/android/ahb_capabilities.cpp
+    gpu/android/unity_vulkan_bridge.cpp
+    gpu/android/unity_vulkan_plugin.cpp)
 
 target_sources(humanvision_internal PRIVATE
     composition/session.cpp
