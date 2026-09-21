@@ -19,16 +19,25 @@ bool ValidState(AhbSlotState s) noexcept { return s < AhbSlotState::Count; }
 }
 SyncFd::SyncFd(int fd) noexcept : SyncFd(fd, CloseNativeFd, nullptr) {}
 SyncFd::SyncFd(int fd, Closer closer, void* context) noexcept
-    : fd_(fd), closer_(closer ? closer : CloseNativeFd), context_(context) {}
+    : fd_(fd>=-1?fd:-1),
+      state_(fd>=0?SyncPayloadState::OwnedFd:fd==-1?SyncPayloadState::AlreadySignaled:SyncPayloadState::Empty),
+      closer_(closer ? closer : CloseNativeFd), context_(context) {}
 SyncFd::~SyncFd() { Reset(); }
 SyncFd::SyncFd(SyncFd&& other) noexcept
-    : fd_(other.Release()), closer_(other.closer_), context_(other.context_) {}
+    : fd_(std::exchange(other.fd_,-1)), state_(std::exchange(other.state_,SyncPayloadState::Empty)),
+      closer_(other.closer_), context_(other.context_) {}
 SyncFd& SyncFd::operator=(SyncFd&& other) noexcept {
-    if(this != &other) { Reset(); closer_=other.closer_;context_=other.context_;fd_=other.Release(); }
+    if(this != &other) {
+        Reset();closer_=other.closer_;context_=other.context_;
+        fd_=std::exchange(other.fd_,-1);state_=std::exchange(other.state_,SyncPayloadState::Empty);
+    }
     return *this;
 }
-int SyncFd::Release() noexcept { return std::exchange(fd_, -1); }
-void SyncFd::Reset() noexcept { const int fd=Release();if(fd>=0)closer_(context_,fd); }
+int SyncFd::Release() noexcept { state_=SyncPayloadState::Empty;return std::exchange(fd_, -1); }
+void SyncFd::Reset() noexcept {
+    const bool owned=state_==SyncPayloadState::OwnedFd;const int fd=Release();
+    if(owned)closer_(context_,fd);
+}
 
 OwnedSlotResource::OwnedSlotResource(uintptr_t handle, Deleter deleter, void* context) noexcept
     : handle_(handle), deleter_(deleter), context_(context) {}
@@ -166,7 +175,7 @@ SlotResult AhbSlotRing::PublishReady(const SlotToken& token,SyncFd& fd) {
     if(!accepting_.load(std::memory_order_acquire))return SlotResult::Closed;
     std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);if(!lock.owns_lock())return SlotResult::Busy;
     if(!accepting_.load(std::memory_order_acquire))return SlotResult::Closed;
-    if(!Matches(token)||fd.Get()<0)return SlotResult::Invalid;
+    if(!Matches(token)||!fd.HasPayload())return SlotResult::Invalid;
     auto& slot=slots_[token.index];auto expected=AhbSlotState::ProducerSignalPending;
     if(slot.state.load(std::memory_order_acquire)!=expected)return SlotResult::Invalid;
     slot.producer_fd=std::move(fd);
@@ -178,6 +187,12 @@ SlotResult AhbSlotRing::ClaimNewest(SlotToken& token,SlotMetadata& metadata) {
     token={};metadata={};if(!accepting_.load(std::memory_order_acquire))return SlotResult::Closed;
     std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);if(!lock.owns_lock())return SlotResult::Busy;
     if(!accepting_.load(std::memory_order_acquire))return SlotResult::Closed;
+    // One observation owns the consumer queue until final release completion.
+    // Leave pending frames intact and do not advance last_claimed_frame_ until
+    // that observation is retired; newest selection then coalesces them once.
+    for(const auto& slot:slots_){const auto state=slot.state.load(std::memory_order_acquire);
+        if(state==AhbSlotState::InferenceRunning||state==AhbSlotState::ConsumerReleasePending)return SlotResult::NoReady;
+    }
     uint32_t best=kSlotCount;const auto gen=generation_.load(std::memory_order_acquire);
     for(uint32_t i=0;i<kSlotCount;++i){const auto& slot=slots_[i];
         if(slot.state.load(std::memory_order_acquire)!=AhbSlotState::ReadyForNcnn)continue;
@@ -197,9 +212,9 @@ SlotResult AhbSlotRing::TakeProducerFence(const SlotToken& token,SyncFd& fd) {
     if(!accepting_.load(std::memory_order_acquire))return SlotResult::Closed;
     std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);if(!lock.owns_lock())return SlotResult::Busy;
     if(!accepting_.load(std::memory_order_acquire))return SlotResult::Closed;
-    if(!Matches(token)||fd.Get()>=0)return SlotResult::Invalid;
+    if(!Matches(token)||fd.HasPayload())return SlotResult::Invalid;
     auto& slot=slots_[token.index];const auto state=slot.state.load(std::memory_order_acquire);
-    if((state!=AhbSlotState::InferenceRunning&&state!=AhbSlotState::DropDrain)||slot.producer_fd.Get()<0)return SlotResult::Invalid;
+    if((state!=AhbSlotState::InferenceRunning&&state!=AhbSlotState::DropDrain)||!slot.producer_fd.HasPayload())return SlotResult::Invalid;
     fd=std::move(slot.producer_fd);return SlotResult::Ok;
 }
 SlotResult AhbSlotRing::Inspect(uint32_t index,SlotSnapshot& snapshot) const {

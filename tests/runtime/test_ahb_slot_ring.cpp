@@ -70,7 +70,8 @@ TEST(AhbSlotRing, LatePublishedOlderFrameCannotSupersedeAnAlreadyClaimedFrame){
  Owners o;AhbSlotRing r(o.Hooks());ASSERT_TRUE(r.Reconfigure(Contract()));SlotToken old,newest,selected;SlotMetadata data;
  ASSERT_EQ(r.Reserve(1,1,old),SlotResult::Ok);ASSERT_EQ(r.Reserve(2,2,newest),SlotResult::Ok);Ready(r,o,newest);
  ASSERT_EQ(r.ClaimNewest(selected,data),SlotResult::Ok);Ready(r,o,old);
- EXPECT_EQ(r.ClaimNewest(selected,data),SlotResult::NoReady);EXPECT_EQ(r.Counters().generation_drops,1u);
+ EXPECT_EQ(r.ClaimNewest(selected,data),SlotResult::NoReady);EXPECT_EQ(r.Counters().generation_drops,0u);
+ Complete(r,newest);EXPECT_EQ(r.ClaimNewest(selected,data),SlotResult::NoReady);EXPECT_EQ(r.Counters().generation_drops,1u);
  SlotSnapshot s;ASSERT_EQ(r.Inspect(old.index,s),SlotResult::Ok);EXPECT_EQ(s.state,AhbSlotState::DropDrain);
  EXPECT_EQ(r.Reserve(2,3,selected),SlotResult::Invalid);
 }
@@ -178,4 +179,78 @@ TEST(AhbSlotRing, ConcurrentControlOperationsCannotReopenShutdownAdmission){
  while(!shutdown_started.load())std::this_thread::yield();SlotToken t;EXPECT_EQ(r.Reserve(1,1,t),SlotResult::Closed);
  o.block_drain=false;rebuild.join();shutdown.join();EXPECT_EQ(o.created,6);EXPECT_EQ(o.released,6*19);
  EXPECT_EQ(r.Reserve(1,1,t),SlotResult::Closed);
+}
+TEST(AhbSlotRing, SignaledPayloadMovesPublishesRetriesAndTakesExactlyOnce){
+ for(int value:{9,0,-1}){
+  Owners o;AhbSlotRing r(o.Hooks());ASSERT_TRUE(r.Reconfigure(Contract()));SlotToken t;ASSERT_EQ(r.Reserve(1,1,t),SlotResult::Ok);
+  auto fd=o.Fd(value);auto moved=std::move(fd);SyncFd destination;destination=std::move(moved);
+  EXPECT_EQ(fd.State(),SyncPayloadState::Empty);EXPECT_EQ(moved.State(),SyncPayloadState::Empty);
+  EXPECT_EQ(destination.State(),value>=0?SyncPayloadState::OwnedFd:SyncPayloadState::AlreadySignaled);
+  EXPECT_EQ(r.PublishReady(t,destination),SlotResult::Invalid); // Wrong state retains a real payload.
+  ASSERT_EQ(r.Transition(t,AhbSlotState::EventReserved,AhbSlotState::UnityCopySubmitted),SlotResult::Ok);
+  ASSERT_EQ(r.Transition(t,AhbSlotState::UnityCopySubmitted,AhbSlotState::ProducerSignalPending),SlotResult::Ok);
+  EXPECT_EQ(r.PublishReady(t,fd),SlotResult::Invalid);EXPECT_EQ(r.PublishReady(t,moved),SlotResult::Invalid);
+  SyncFd empty;EXPECT_EQ(r.PublishReady(t,empty),SlotResult::Invalid);
+  ASSERT_EQ(r.PublishReady(t,destination),SlotResult::Ok);
+  EXPECT_FALSE(destination.HasPayload());
+  SlotMetadata m;ASSERT_EQ(r.ClaimNewest(t,m),SlotResult::Ok);
+  auto occupied=o.Fd(-1);EXPECT_EQ(r.TakeProducerFence(t,occupied),SlotResult::Invalid);
+  SyncFd taken;ASSERT_EQ(r.TakeProducerFence(t,taken),SlotResult::Ok);EXPECT_EQ(taken.Get(),value);
+  EXPECT_TRUE(taken.HasPayload());EXPECT_EQ(taken.State(),value>=0?SyncPayloadState::OwnedFd:SyncPayloadState::AlreadySignaled);
+  SyncFd again;EXPECT_EQ(r.TakeProducerFence(t,again),SlotResult::Invalid);
+  taken.Reset();EXPECT_EQ(taken.State(),SyncPayloadState::Empty);taken.Reset();Complete(r,t);EXPECT_TRUE(r.Shutdown());EXPECT_EQ(o.closed,value>=0?1:0);
+ }
+}
+TEST(AhbSlotRing, SignaledPayloadDropAndTeardownNeverCloseMinusOne){
+ for(bool drop:{false,true}){
+  Owners o;AhbSlotRing r(o.Hooks());ASSERT_TRUE(r.Reconfigure(Contract()));SlotToken t;ASSERT_EQ(r.Reserve(1,1,t),SlotResult::Ok);
+  ASSERT_EQ(r.Transition(t,AhbSlotState::EventReserved,AhbSlotState::UnityCopySubmitted),SlotResult::Ok);
+  ASSERT_EQ(r.Transition(t,AhbSlotState::UnityCopySubmitted,AhbSlotState::ProducerSignalPending),SlotResult::Ok);
+  auto fd=o.Fd(-1);ASSERT_EQ(r.PublishReady(t,fd),SlotResult::Ok);
+  if(drop){ASSERT_EQ(r.Transition(t,AhbSlotState::ReadyForNcnn,AhbSlotState::DropDrain),SlotResult::Ok);
+   SyncFd taken;ASSERT_EQ(r.TakeProducerFence(t,taken),SlotResult::Ok);EXPECT_EQ(taken.Release(),-1);
+   EXPECT_EQ(taken.State(),SyncPayloadState::Empty);
+   SyncFd again;EXPECT_EQ(r.TakeProducerFence(t,again),SlotResult::Invalid);
+   ASSERT_EQ(r.Transition(t,AhbSlotState::DropDrain,AhbSlotState::Free,CompletionProof::GpuQuiescent),SlotResult::Ok);}
+  EXPECT_TRUE(r.Shutdown());EXPECT_EQ(o.closed,0);EXPECT_EQ(o.released,57);
+ }
+}
+TEST(AhbSlotRing, RunningAndReleasePendingBlockAdditionalInferenceUntilFree){
+ for(bool release_pending:{false,true}){
+  Owners o;AhbSlotRing r(o.Hooks());ASSERT_TRUE(r.Reconfigure(Contract()));SlotToken first,second,third,selected;SlotMetadata m;
+  ASSERT_EQ(r.Reserve(1,1,first),SlotResult::Ok);Ready(r,o,first);ASSERT_EQ(r.ClaimNewest(selected,m),SlotResult::Ok);
+  if(release_pending)ASSERT_EQ(r.Transition(first,AhbSlotState::InferenceRunning,AhbSlotState::ConsumerReleasePending),SlotResult::Ok);
+  ASSERT_EQ(r.Reserve(2,2,second),SlotResult::Ok);Ready(r,o,second);
+  ASSERT_EQ(r.Reserve(3,3,third),SlotResult::Ok);Ready(r,o,third);
+  EXPECT_EQ(r.ClaimNewest(selected,m),SlotResult::NoReady);EXPECT_EQ(r.Counters().generation_drops,0u);
+  SlotSnapshot s;ASSERT_EQ(r.Inspect(third.index,s),SlotResult::Ok);EXPECT_EQ(s.state,AhbSlotState::ReadyForNcnn);
+  if(!release_pending)ASSERT_EQ(r.Transition(first,AhbSlotState::InferenceRunning,AhbSlotState::ConsumerReleasePending),SlotResult::Ok);
+  ASSERT_EQ(r.Transition(first,AhbSlotState::ConsumerReleasePending,AhbSlotState::Free,CompletionProof::GpuQuiescent),SlotResult::Ok);
+  ASSERT_EQ(r.ClaimNewest(selected,m),SlotResult::Ok);EXPECT_EQ(selected.frame_id,3u);EXPECT_EQ(r.Counters().generation_drops,1u);
+  EXPECT_EQ(r.ClaimNewest(selected,m),SlotResult::NoReady);EXPECT_EQ(r.Counters().generation_drops,1u);
+ }
+}
+TEST(AhbSlotRing, TwoConcurrentClaimersCanOnlyStartOneInference){
+ for(int active_state=0;active_state<=2;++active_state){
+  Owners o;AhbSlotRing r(o.Hooks());ASSERT_TRUE(r.Reconfigure(Contract()));SlotToken first;SlotMetadata metadata;
+  ASSERT_EQ(r.Reserve(1,1,first),SlotResult::Ok);Ready(r,o,first);
+  if(active_state)ASSERT_EQ(r.ClaimNewest(first,metadata),SlotResult::Ok);
+  if(active_state==2)ASSERT_EQ(r.Transition(first,AhbSlotState::InferenceRunning,AhbSlotState::ConsumerReleasePending),SlotResult::Ok);
+  for(int frame=2;frame<=3;++frame){SlotToken t;ASSERT_EQ(r.Reserve(frame,frame,t),SlotResult::Ok);Ready(r,o,t);}
+  std::atomic<bool> go{false};std::array<SlotResult,2> results{};std::array<SlotToken,2> selected{};
+  auto claim=[&](int i){while(!go.load())std::this_thread::yield();SlotMetadata m;
+   do{results[i]=r.ClaimNewest(selected[i],m);}while(results[i]==SlotResult::Busy);};
+  std::thread a(claim,0),b(claim,1);go=true;a.join();b.join();
+  if(!active_state){
+   EXPECT_EQ(int(results[0]==SlotResult::Ok)+int(results[1]==SlotResult::Ok),1);
+   EXPECT_TRUE(results[0]==SlotResult::NoReady||results[1]==SlotResult::NoReady);
+   auto winner=results[0]==SlotResult::Ok?selected[0]:selected[1];EXPECT_EQ(winner.frame_id,3u);
+   EXPECT_EQ(r.Counters().generation_drops,2u);
+  }else{
+   EXPECT_EQ(results[0],SlotResult::NoReady);EXPECT_EQ(results[1],SlotResult::NoReady);EXPECT_EQ(r.Counters().generation_drops,0u);
+   if(active_state==1)Complete(r,first);
+   else ASSERT_EQ(r.Transition(first,AhbSlotState::ConsumerReleasePending,AhbSlotState::Free,CompletionProof::GpuQuiescent),SlotResult::Ok);
+   SlotToken latest;ASSERT_EQ(r.ClaimNewest(latest,metadata),SlotResult::Ok);EXPECT_EQ(latest.frame_id,3u);EXPECT_EQ(r.Counters().generation_drops,1u);
+  }
+ }
 }

@@ -14,11 +14,16 @@ enum class AhbSlotState : uint8_t {
 enum class CompletionProof { None, GpuQuiescent };
 enum class SlotResult { Ok, Busy, Closed, NoSlot, Invalid, NoReady };
 enum class CallContext { Control, Render };
+enum class SyncPayloadState { Empty, OwnedFd, AlreadySignaled };
 
 class SyncFd {
 public:
     using Closer = void (*)(void*, int) noexcept;
     SyncFd() noexcept = default;
+    // Explicit -1 is a present, already-signaled SYNC_FD payload. A default or
+    // moved-from object is Empty even though Get() also returns -1. Values below
+    // -1 are rejected as Empty. Import/wait and ownership barriers are still
+    // required for AlreadySignaled; only OS descriptor close is omitted.
     explicit SyncFd(int fd) noexcept;
     SyncFd(int fd, Closer closer, void* context) noexcept;
     ~SyncFd();
@@ -27,11 +32,15 @@ public:
     SyncFd(SyncFd&& other) noexcept;
     SyncFd& operator=(SyncFd&& other) noexcept;
     int Get() const noexcept { return fd_; }
-    // Call only after successful Vulkan import: ownership transfers to Vulkan.
+    SyncPayloadState State() const noexcept { return state_; }
+    bool HasPayload() const noexcept { return state_ != SyncPayloadState::Empty; }
+    // Call only after successful Vulkan import of a present payload: ownership
+    // transfers to Vulkan and presence becomes Empty, including for sentinel -1.
     int Release() noexcept;
     void Reset() noexcept;
 private:
     int fd_ = -1;
+    SyncPayloadState state_ = SyncPayloadState::Empty;
     Closer closer_ = nullptr;
     void* context_ = nullptr;
 };
