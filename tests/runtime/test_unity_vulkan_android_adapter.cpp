@@ -25,6 +25,7 @@ struct AdapterFacts {
   AHardwareBuffer_Desc requested{};
   int ahb_live = 0;
   int view_creates = 0;
+  int render_view_creates = 0;
   int view_destroys = 0;
   bool dedicated_chain = false;
   bool queried_requirements = false;
@@ -33,6 +34,9 @@ struct AdapterFacts {
   uint32_t pushed_swap = 99;
   VkInstance gipa_instance = VK_NULL_HANDLE;
   std::vector<std::string> enabled_extensions;
+  std::vector<std::string> enabled_instance_extensions;
+  const void* instance_pnext = nullptr;
+  bool omit_instance_semaphore_capabilities = false;
   int unity_access_calls = 0;
   bool inside_queue = false;
   bool access_from_queue = false;
@@ -64,6 +68,11 @@ bool g_queue_async = false;
 bool g_queue_entered = false;
 bool g_queue_release = false;
 std::thread g_queue_thread;
+std::mutex g_create_mutex;
+std::condition_variable g_create_cv;
+bool g_block_view_create = false;
+bool g_view_create_entered = false;
+bool g_release_view_create = false;
 
 template <typename T> T NewHandle() { return Handle<T>(++g.next); }
 bool FailCreate() { return g.create_calls++ == g.fail_create_at; }
@@ -97,7 +106,20 @@ VkResult VKAPI_CALL CreateDevice(VkPhysicalDevice, const VkDeviceCreateInfo* ci,
   for(uint32_t i=0;i<ci->enabledExtensionCount;++i) g.enabled_extensions.emplace_back(ci->ppEnabledExtensionNames[i]);
   *out=NewHandle<VkDevice>(); return VK_SUCCESS;
 }
-VkResult VKAPI_CALL CreateInstance(const VkInstanceCreateInfo*, const VkAllocationCallbacks*, VkInstance* out) {
+VkResult VKAPI_CALL EnumerateInstance(const char*, uint32_t* count, VkExtensionProperties* p) {
+  static const char* names[]={VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
+      VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
+      VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME};
+  const uint32_t available=g.omit_instance_semaphore_capabilities?2u:3u;
+  if (!p) {*count=available;return VK_SUCCESS;}
+  *count=available;
+  for(uint32_t i=0;i<available;++i) std::strcpy(p[i].extensionName,names[i]);
+  return VK_SUCCESS;
+}
+VkResult VKAPI_CALL CreateInstance(const VkInstanceCreateInfo* ci, const VkAllocationCallbacks*, VkInstance* out) {
+  g.instance_pnext=ci->pNext;
+  g.enabled_instance_extensions.clear();
+  for(uint32_t i=0;i<ci->enabledExtensionCount;++i) g.enabled_instance_extensions.emplace_back(ci->ppEnabledExtensionNames[i]);
   *out=Handle<VkInstance>(77); return VK_SUCCESS;
 }
 void VKAPI_CALL PhysicalProperties(VkPhysicalDevice,VkPhysicalDeviceProperties* out) {out->apiVersion=VK_API_VERSION_1_1;}
@@ -107,6 +129,7 @@ void VKAPI_CALL PhysicalProperties2(VkPhysicalDevice,VkPhysicalDeviceProperties2
 }
 PFN_vkVoidFunction VKAPI_CALL LoaderGipa(VkInstance instance, const char* name) {
   if (std::strcmp(name,"vkCreateInstance")==0) return reinterpret_cast<PFN_vkVoidFunction>(CreateInstance);
+  if (std::strcmp(name,"vkEnumerateInstanceExtensionProperties")==0) return reinterpret_cast<PFN_vkVoidFunction>(EnumerateInstance);
   if (std::strcmp(name,"vkGetPhysicalDeviceProperties")==0) return instance ? reinterpret_cast<PFN_vkVoidFunction>(PhysicalProperties) : nullptr;
   if (std::strcmp(name,"vkGetPhysicalDeviceProperties2")==0) {g.identity_query_api=VK_API_VERSION_1_1;return instance ? reinterpret_cast<PFN_vkVoidFunction>(PhysicalProperties2) : nullptr;}
   if (std::strcmp(name,"vkEnumerateDeviceExtensionProperties")==0 || std::strcmp(name,"vkCreateDevice")==0)
@@ -229,7 +252,13 @@ void VKAPI_CALL vkDestroyImage(VkDevice,VkImage,const VkAllocationCallbacks*){}
 VkResult VKAPI_CALL vkAllocateMemory(VkDevice,const VkMemoryAllocateInfo* ai,const VkAllocationCallbacks*,VkDeviceMemory* o){if(FailCreate())return VK_ERROR_OUT_OF_DEVICE_MEMORY;auto* d=static_cast<const VkMemoryDedicatedAllocateInfo*>(ai->pNext);auto* i=d?static_cast<const VkImportAndroidHardwareBufferInfoANDROID*>(d->pNext):nullptr;g.dedicated_chain=d&&d->image&&i&&i->buffer;*o=NewHandle<VkDeviceMemory>();return VK_SUCCESS;}
 void VKAPI_CALL vkFreeMemory(VkDevice,VkDeviceMemory,const VkAllocationCallbacks*){}
 VkResult VKAPI_CALL vkBindImageMemory(VkDevice,VkImage,VkDeviceMemory,VkDeviceSize){return FailCreate()?VK_ERROR_OUT_OF_DEVICE_MEMORY:VK_SUCCESS;}
-VkResult VKAPI_CALL vkCreateImageView(VkDevice,const VkImageViewCreateInfo*,const VkAllocationCallbacks*,VkImageView* o){if(FailCreate())return VK_ERROR_OUT_OF_DEVICE_MEMORY;++g.view_creates;*o=NewHandle<VkImageView>();return VK_SUCCESS;}
+VkResult VKAPI_CALL vkCreateImageView(VkDevice,const VkImageViewCreateInfo*,const VkAllocationCallbacks*,VkImageView* o){
+  {std::unique_lock<std::mutex> lock(g_create_mutex);if(g_block_view_create){g_view_create_entered=true;g_create_cv.notify_all();g_create_cv.wait(lock,[]{return g_release_view_create;});}}
+  if(FailCreate())return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+  ++g.view_creates;
+  if(humanvision::gpu::AndroidProducer::TestInsideRenderEvent()) ++g.render_view_creates;
+  *o=NewHandle<VkImageView>();return VK_SUCCESS;
+}
 void VKAPI_CALL vkDestroyImageView(VkDevice,VkImageView,const VkAllocationCallbacks*){++g.view_destroys;}
 #define HV_CREATE(name,type) VkResult VKAPI_CALL name(VkDevice,const type*,const VkAllocationCallbacks*,decltype(type{} , (VkSampler*)nullptr) )
 VkResult VKAPI_CALL vkCreateCommandPool(VkDevice,const VkCommandPoolCreateInfo*,const VkAllocationCallbacks*,VkCommandPool* o){if(FailCreate())return VK_ERROR_OUT_OF_DEVICE_MEMORY;*o=NewHandle<VkCommandPool>();return VK_SUCCESS;}
@@ -325,6 +354,25 @@ TEST(UnityVulkanAndroidAdapter, UnexpectedDeviceShutdownQuarantinesWithoutWaitOr
   EXPECT_EQ(g.ahb_live,0);
   UnityPluginUnload();
 }
+TEST(UnityVulkanAndroidAdapter, DeviceShutdownWaitsForBlockedGenerationCreation) {
+  using namespace humanvision::gpu;
+  g=AdapterFacts{};
+  InstallAndCreateUnityDevice();
+  {std::lock_guard<std::mutex> lock(g_create_mutex);g_block_view_create=true;g_view_create_entered=false;g_release_view_create=false;}
+  auto configure=std::async(std::launch::async,[]{return ConfigureUnityVulkanProducer(
+      Selection(HV_ANDROID_GPU_COPY_BLIT),Contract(HV_ANDROID_GPU_COPY_BLIT));});
+  {std::unique_lock<std::mutex> lock(g_create_mutex);
+   ASSERT_TRUE(g_create_cv.wait_for(lock,std::chrono::seconds(2),[]{return g_view_create_entered;}));}
+  auto shutdown=std::async(std::launch::async,[]{g.device_event(kUnityGfxDeviceEventShutdown);});
+  EXPECT_EQ(shutdown.wait_for(std::chrono::milliseconds(30)),std::future_status::timeout);
+  {std::lock_guard<std::mutex> lock(g_create_mutex);g_release_view_create=true;g_block_view_create=false;}
+  g_create_cv.notify_all();
+  EXPECT_EQ(configure.wait_for(std::chrono::seconds(2)),std::future_status::ready);
+  EXPECT_EQ(shutdown.wait_for(std::chrono::seconds(2)),std::future_status::ready);
+  ShutdownUnityVulkanProducer();
+  EXPECT_EQ(g.ahb_live,0);
+  UnityPluginUnload();
+}
 TEST(UnityVulkanAndroidAdapter, PreloadCapturesEnabledInstanceFactsAndConfiguresPermittedEvent) {
   g=AdapterFacts{};
   InstallAndCreateUnityDevice();
@@ -394,6 +442,27 @@ TEST(UnityVulkanAndroidAdapter, InterceptionUsesNonNullInstanceAndAddsOnlySuppor
   ASSERT_EQ(AndroidProducer::TestInterceptCreateDevice(Handle<VkPhysicalDevice>(88),&ci,&device),VK_SUCCESS);
   EXPECT_EQ(g.gipa_instance,instance); EXPECT_TRUE(AndroidProducer::TestRequiredExtensionsEnabled());
   EXPECT_EQ(AndroidProducer::TestInterceptedPhysicalDevice(),88u); EXPECT_EQ(g.enabled_extensions.size(),2u);
+}
+TEST(UnityVulkanAndroidAdapter, Vulkan10InstanceAddsSupportedRequirementsAndPreservesChain) {
+  g=AdapterFacts{};
+  AndroidProducer::TestInstallGipa(LoaderGipa);
+  VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};app.apiVersion=VK_API_VERSION_1_0;
+  const char* existing="VK_existing_extension";
+  int chain=42;
+  VkInstanceCreateInfo ci{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+  ci.pApplicationInfo=&app;ci.pNext=&chain;ci.enabledExtensionCount=1;ci.ppEnabledExtensionNames=&existing;
+  VkInstance instance{};
+  ASSERT_EQ(AndroidProducer::TestInterceptCreateInstance(&ci,&instance),VK_SUCCESS);
+  EXPECT_EQ(g.instance_pnext,&chain);
+  ASSERT_EQ(g.enabled_instance_extensions.size(),4u);
+  EXPECT_EQ(g.enabled_instance_extensions[0],existing);
+  EXPECT_EQ(g.enabled_instance_extensions[1],VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+  EXPECT_EQ(g.enabled_instance_extensions[2],VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
+  EXPECT_EQ(g.enabled_instance_extensions[3],VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME);
+  g.omit_instance_semaphore_capabilities=true;
+  EXPECT_EQ(AndroidProducer::TestInterceptCreateInstance(&ci,&instance),VK_ERROR_EXTENSION_NOT_PRESENT);
+  EXPECT_NE(std::string(AndroidProducer::TestDiagnostic()).find(
+      VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME),std::string::npos);
 }
 TEST(UnityVulkanAndroidAdapter,
      MissingRequiredExtensionDoesNotCorruptUnityCreateChainAndStaysUnavailable) {
@@ -538,6 +607,8 @@ TEST(UnityVulkanAndroidAdapter, ColorSourceViewsWarmOnceAndTypedBgraDoesNotSwap)
   humanvision::gpu::UnityTextureAccess a{};a.image=901;a.format=VK_FORMAT_B8G8R8A8_UNORM;a.width=320;a.height=240;a.native_layout=VK_IMAGE_LAYOUT_GENERAL;a.native_stage=VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;a.native_access=VK_ACCESS_MEMORY_READ_BIT;
   const int generation_views=g.view_creates;
   EXPECT_EQ(AndroidProducer::TestPrepareSource(cache,a),humanvision::gpu::SourcePreparation::Warmed);
+  EXPECT_EQ(g.render_view_creates,0);
+  AndroidProducer::TestQuiesceSourceWorker();
   EXPECT_EQ(g.view_creates,generation_views+1);
   EXPECT_EQ(AndroidProducer::TestPrepareSource(cache,a),humanvision::gpu::SourcePreparation::Ready);
   EXPECT_EQ(g.view_creates,generation_views+1);
@@ -546,9 +617,12 @@ TEST(UnityVulkanAndroidAdapter, ColorSourceViewsWarmOnceAndTypedBgraDoesNotSwap)
   a.image = 902;
   EXPECT_EQ(AndroidProducer::TestPrepareSource(cache, a),
             humanvision::gpu::SourcePreparation::Warmed);
+  AndroidProducer::TestQuiesceSourceWorker();
   a.image = 903;
   EXPECT_EQ(AndroidProducer::TestPrepareSource(cache, a),
             humanvision::gpu::SourcePreparation::Warmed);
+  AndroidProducer::TestQuiesceSourceWorker();
+  EXPECT_EQ(g.render_view_creates,0);
   const int full_cache_views = g.view_creates;
   a.image = 904;
   EXPECT_EQ(AndroidProducer::TestPrepareSource(cache, a),
@@ -558,4 +632,50 @@ TEST(UnityVulkanAndroidAdapter, ColorSourceViewsWarmOnceAndTypedBgraDoesNotSwap)
                 "source-view cache exhausted"),
             std::string::npos);
   AndroidProducer::TestDrain(0,cache); EXPECT_EQ(g.view_creates,g.view_destroys);
+}
+TEST(UnityVulkanAndroidAdapter, SourceIdentityOverflowRebuildsOffRenderThread) {
+  using namespace humanvision::gpu;
+  g=AdapterFacts{};
+  InstallAndCreateUnityDevice();
+  auto selection=Selection(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT);
+  ASSERT_TRUE(ConfigureUnityVulkanProducer(selection,Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT)));
+  UnityVulkanSlotCache cache{};
+  ASSERT_TRUE(AndroidProducer::TestCreate(0,Device(),Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT),selection,cache));
+  UnityTextureAccess access{};access.format=VK_FORMAT_R8G8B8A8_UNORM;
+  const uint64_t before=AndroidProducer::TestGeneration();
+  for(uintptr_t image=901;image<=904;++image) {
+    access.image=image;
+    EXPECT_EQ(AndroidProducer::TestPrepareSource(cache,access),SourcePreparation::Warmed);
+    AndroidProducer::TestQuiesceSourceWorker();
+  }
+  EXPECT_GT(AndroidProducer::TestGeneration(),before);
+  EXPECT_EQ(g.render_view_creates,0);
+  AndroidProducer::TestDrain(0,cache);
+  ShutdownUnityVulkanProducer();
+  EXPECT_EQ(g.ahb_live,0);
+  UnityPluginUnload();
+}
+TEST(UnityVulkanAndroidAdapter, SourceViewCreationFailureClosesAdmissionWithoutRebuild) {
+  using namespace humanvision::gpu;
+  g=AdapterFacts{};
+  InstallAndCreateUnityDevice();
+  auto selection=Selection(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT);
+  ASSERT_TRUE(ConfigureUnityVulkanProducer(selection,Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT)));
+  UnityVulkanSlotCache cache{};
+  ASSERT_TRUE(AndroidProducer::TestCreate(0,Device(),Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT),selection,cache));
+  const uint64_t generation=AndroidProducer::TestGeneration();
+  g.fail_create_at=g.create_calls;
+  UnityTextureAccess access{};access.image=910;access.format=VK_FORMAT_R8G8B8A8_UNORM;
+  EXPECT_EQ(AndroidProducer::TestPrepareSource(cache,access),SourcePreparation::Warmed);
+  AndroidProducer::TestQuiesceSourceWorker();
+  EXPECT_EQ(AndroidProducer::TestGeneration(),generation);
+  EXPECT_NE(std::string(AndroidProducer::TestDiagnostic()).find("image-view creation failed"),std::string::npos);
+  HV_AndroidGpuSubmissionV1 frame{sizeof(frame),HV_ANDROID_GPU_API_V1,reinterpret_cast<void*>(1),320,240,1,1000,0,0};
+  void* event=nullptr;
+  EXPECT_EQ(PrepareUnityVulkanFrame(frame,&event),BridgeResult::Closed);
+  EXPECT_EQ(g.render_view_creates,0);
+  g.fail_create_at=-1;
+  AndroidProducer::TestDrain(0,cache);
+  ShutdownUnityVulkanProducer();
+  UnityPluginUnload();
 }

@@ -53,6 +53,7 @@ struct AndroidSlot {
   VkShaderModule vertex = VK_NULL_HANDLE;
   VkShaderModule fragment = VK_NULL_HANDLE;
   std::array<SourceView, 3> source_views{};
+  std::mutex source_mutex;
   VkImageView active_source_view = VK_NULL_HANDLE;
   VkFormat format = VK_FORMAT_UNDEFINED;
   uint32_t width = 0, height = 0;
@@ -111,7 +112,12 @@ struct AndroidSlot {
 
 class AndroidProducer {
 public:
-  AndroidProducer() : bridge_(MakeDispatch()) {}
+  AndroidProducer() : bridge_(MakeDispatch()), source_worker_([this] { SourceWorker(); }) {}
+  ~AndroidProducer() {
+    { std::lock_guard<std::mutex> lock(source_requests_mutex_); stop_source_worker_ = true; }
+    source_requests_cv_.notify_one();
+    source_worker_.join();
+  }
 
   UnityVulkanBridgeDispatch MakeDispatch() noexcept {
     return {this, Create, Drain, Access, PrepareSource, Release, QueueAccess, Blit,
@@ -127,6 +133,7 @@ public:
     }
     runtime_error_.store(0, std::memory_order_release);
     bool configured = bridge_.Initialize(device_context_, selection, contract);
+    if (configured) { configured_selection_ = selection; configured_contract_ = contract; }
     if (!device_live_.load(std::memory_order_acquire)) {
       bridge_.Shutdown();
       configured=false;
@@ -141,6 +148,10 @@ public:
   void Shutdown() noexcept {
     std::lock_guard<std::mutex> lock(control_);
     bridge_.Shutdown();
+    configured_selection_ = {};
+    configured_contract_ = {};
+    std::lock_guard<std::mutex> requests(source_requests_mutex_);
+    for (auto &request : source_requests_) request.slot = nullptr;
   }
   BridgeResult Prepare(const HV_AndroidGpuSubmissionV1 &s,
                        void **out) noexcept {
@@ -191,13 +202,10 @@ public:
     interfaces_ = nullptr;
   }
   void OnDevice(UnityGfxDeviceEventType event) noexcept {
-    std::unique_lock<std::mutex> lock(control_,std::try_to_lock);
-    if(!lock.owns_lock()) {
-      bridge_.CloseAdmission();
-      device_live_.store(false,std::memory_order_release);
-      runtime_error_.store(3,std::memory_order_release);
-      return;
-    }
+    // Unity may destroy VkDevice as soon as this callback returns. Control
+    // creation/destruction must finish before it does; frame calls use the
+    // bridge's separate nonblocking admission path.
+    std::unique_lock<std::mutex> lock(control_);
     if (event == kUnityGfxDeviceEventShutdown ||
         event == kUnityGfxDeviceEventBeforeReset) {
       // B6 must call the control seam before Unity reaches this callback.
@@ -293,6 +301,9 @@ public:
   }
 
 #if defined(HV_ANDROID_ADAPTER_TEST)
+  static inline thread_local bool test_inside_render_event = false;
+  static bool TestInsideRenderEvent() noexcept { return test_inside_render_event; }
+  static uint64_t TestGeneration() noexcept { return Get().bridge_.Generation(); }
   static bool TestCreate(uint32_t index,
                          const UnityVulkanDeviceContext &device,
                          const SlotContract &contract,
@@ -307,7 +318,10 @@ public:
   static SourcePreparation TestPrepareSource(
       const UnityVulkanSlotCache &cache,
       const UnityTextureAccess &access) noexcept {
-    return PrepareSource(&Get(), cache, access);
+    test_inside_render_event = true;
+    const auto result = PrepareSource(&Get(), cache, access);
+    test_inside_render_event = false;
+    return result;
   }
   static const char *TestDiagnostic() noexcept { return Get().Diagnostic(); }
   static bool TestBlit(const UnityVulkanSlotCache &cache,
@@ -324,6 +338,22 @@ public:
       VkPhysicalDevice physical, const VkDeviceCreateInfo *create,
       VkDevice *device) noexcept {
     return InterceptCreateDevice(physical, create, nullptr, device);
+  }
+  static VkResult TestInterceptCreateInstance(const VkInstanceCreateInfo* create,
+                                              VkInstance* instance) noexcept {
+    return InterceptCreateInstance(create, nullptr, instance);
+  }
+  static void TestQuiesceSourceWorker() noexcept {
+    auto& self = Get();
+    for (int i = 0; i < 200; ++i) {
+      {
+        std::lock_guard<std::mutex> control(self.control_);
+        std::lock_guard<std::mutex> pending(self.source_requests_mutex_);
+        if (std::all_of(self.source_requests_.begin(), self.source_requests_.end(),
+                        [](const auto& r) { return !r.slot; })) return;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
   }
   static void TestInstallGipa(PFN_vkGetInstanceProcAddr gipa) noexcept {
     Get().next_gipa_ = gipa;
@@ -363,6 +393,68 @@ public:
 #endif
 
 private:
+  struct SourceRequest { AndroidSlot* slot = nullptr; VkImage image = VK_NULL_HANDLE; VkFormat format = VK_FORMAT_UNDEFINED; };
+  void SourceWorker() noexcept {
+    for (;;) {
+      {
+        std::unique_lock<std::mutex> pending(source_requests_mutex_);
+        source_requests_cv_.wait(pending, [&] {
+          return stop_source_worker_ || std::any_of(source_requests_.begin(), source_requests_.end(),
+              [](const auto& r) { return r.slot != nullptr; });
+        });
+        if (stop_source_worker_) return;
+      }
+      // The control lock owns slot lifetime and serializes device shutdown.
+      std::lock_guard<std::mutex> control(control_);
+      SourceRequest request;
+      {
+        std::lock_guard<std::mutex> pending(source_requests_mutex_);
+        for (auto& entry : source_requests_) if (entry.slot) { request = entry; entry.slot = nullptr; break; }
+      }
+      if (!request.slot || !request.slot->Alive()) continue;
+      std::unique_lock<std::mutex> source(request.slot->source_mutex);
+      bool found = false;
+      for (const auto& entry : request.slot->source_views)
+        found |= entry.image == request.image && entry.format == request.format && entry.view != VK_NULL_HANDLE;
+      if (found) continue;
+      bool inserted = false;
+      bool creation_failed = false;
+      for (auto& entry : request.slot->source_views) {
+        if (entry.view) continue;
+        VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+        view.image = request.image;
+        view.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        view.format = request.format;
+        view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        if (vkCreateImageView(request.slot->device, &view, nullptr, &entry.view) != VK_SUCCESS) {
+          runtime_error_.store(1, std::memory_order_release);
+          creation_failed = true;
+          break;
+        }
+        entry.image = request.image;
+        entry.format = request.format;
+        inserted = true;
+        break;
+      }
+      source.unlock();
+      if (creation_failed) {
+        bridge_.CloseAdmission();
+        std::lock_guard<std::mutex> pending(source_requests_mutex_);
+        for (auto& entry : source_requests_) entry.slot = nullptr;
+        continue;
+      }
+      if (!inserted && !bridge_.IsClosed() && device_live_.load(std::memory_order_acquire)) {
+        // Identity cycling beyond this generation's bounded cache is a
+        // control rebuild. The requesting render event has already dropped.
+        bridge_.Shutdown();
+        { std::lock_guard<std::mutex> pending(source_requests_mutex_);
+          for (auto& entry : source_requests_) entry.slot = nullptr; }
+        const bool rebuilt = bridge_.Initialize(device_context_, configured_selection_, configured_contract_);
+        { std::lock_guard<std::mutex> queue(queue_mutex_); queue_closed_ = !rebuilt; }
+        if (!rebuilt) runtime_error_.store(2, std::memory_order_release);
+      }
+    }
+  }
   DeviceIdentity QueryUnityIdentity(const VulkanDeviceContext& context) const {
     DeviceIdentity id;
     const bool core=context.instance_api_version>=VK_API_VERSION_1_1;
@@ -414,11 +506,36 @@ private:
         if(std::strcmp(create->ppEnabledExtensionNames[i],name)==0)return true;
       return false;
     };
-    // Capture enabled facts, never infer instance support from a loader version.
-    self.instance_properties2_=enabled(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-    self.instance_external_memory_=enabled(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
-    self.instance_external_semaphore_=enabled(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME);
-    const VkResult result=create_instance(create,allocator,instance);
+    std::vector<const char*> extensions;
+    if (create->enabledExtensionCount && create->ppEnabledExtensionNames)
+      extensions.assign(create->ppEnabledExtensionNames,
+                        create->ppEnabledExtensionNames + create->enabledExtensionCount);
+    const bool needs_extensions = self.instance_api_version_ < VK_API_VERSION_1_1;
+    if (needs_extensions) {
+      const auto enumerate=reinterpret_cast<PFN_vkEnumerateInstanceExtensionProperties>(
+          self.next_gipa_(nullptr,"vkEnumerateInstanceExtensionProperties"));
+      if (!enumerate) return VK_ERROR_EXTENSION_NOT_PRESENT;
+      uint32_t count=0;
+      if (enumerate(nullptr,&count,nullptr)!=VK_SUCCESS) return VK_ERROR_EXTENSION_NOT_PRESENT;
+      std::vector<VkExtensionProperties> available(count);
+      if (enumerate(nullptr,&count,available.data())!=VK_SUCCESS) return VK_ERROR_EXTENSION_NOT_PRESENT;
+      const char* requirements[]={VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
+          VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
+          VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME};
+      for (const char* name:requirements) {
+        const bool supported=std::any_of(available.begin(),available.end(),[&](const auto& property){
+          return std::strcmp(property.extensionName,name)==0;});
+        if (!supported) { self.diagnostic_=std::string("Unity Vulkan instance lacks ")+name; return VK_ERROR_EXTENSION_NOT_PRESENT; }
+        if (!enabled(name)) extensions.push_back(name);
+      }
+    }
+    VkInstanceCreateInfo amended=*create;
+    amended.enabledExtensionCount=static_cast<uint32_t>(extensions.size());
+    amended.ppEnabledExtensionNames=extensions.data();
+    self.instance_properties2_=needs_extensions;
+    self.instance_external_memory_=needs_extensions;
+    self.instance_external_semaphore_=needs_extensions;
+    const VkResult result=create_instance(&amended,allocator,instance);
     self.created_instance_.store(result==VK_SUCCESS ? reinterpret_cast<uintptr_t>(*instance) : 0,
                                  std::memory_order_release);
     return result;
@@ -892,36 +1009,38 @@ private:
     }
     const auto image = reinterpret_cast<VkImage>(access.image);
     const auto format = static_cast<VkFormat>(access.format);
+    std::unique_lock<std::mutex> source_lock(slot->source_mutex, std::try_to_lock);
+    if (!source_lock.owns_lock()) return SourcePreparation::Warmed;
     for (auto &source : slot->source_views) {
       if (source.image == image && source.format == format && source.view) {
         slot->active_source_view = source.view;
         return SourcePreparation::Ready;
       }
     }
-    for (auto &source : slot->source_views) {
-      if (source.view)
-        continue;
-      VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-      view.image = image;
-      view.viewType = VK_IMAGE_VIEW_TYPE_2D;
-      view.format = format;
-      view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-      if (vkCreateImageView(slot->device, &view, nullptr, &source.view) !=
-          VK_SUCCESS) {
-        if (self)
-          self->runtime_error_.store(1, std::memory_order_release);
-        return SourcePreparation::Unsupported;
+    for (auto &source : slot->source_views) if (!source.view) {
+      if (!self) return SourcePreparation::Unsupported;
+      std::unique_lock<std::mutex> pending(self->source_requests_mutex_, std::try_to_lock);
+      if (!pending.owns_lock()) return SourcePreparation::Warmed;
+      for (auto& request : self->source_requests_) if (request.slot == slot && request.image == image) return SourcePreparation::Warmed;
+      for (auto& request : self->source_requests_) if (!request.slot) {
+        request = {slot, image, format};
+        pending.unlock();
+        self->source_requests_cv_.notify_one();
+        return SourcePreparation::Warmed;
       }
-      source.image = image;
-      source.format = format;
-      slot->active_source_view = source.view;
-      // This event is the bounded source-cache warm/rebuild event. The frame is
-      // retired without submission; accepted copy events create no driver
-      // objects and only bind one of these generation-owned views.
       return SourcePreparation::Warmed;
     }
-    if (self)
-      self->runtime_error_.store(2, std::memory_order_release);
+    if (self && !self->bridge_.IsClosed()) {
+      std::unique_lock<std::mutex> pending(self->source_requests_mutex_, std::try_to_lock);
+      if (!pending.owns_lock()) return SourcePreparation::Warmed;
+      for (auto& request : self->source_requests_) if (!request.slot) {
+        request = {slot, image, format};
+        pending.unlock(); self->source_requests_cv_.notify_one();
+        return SourcePreparation::Warmed;
+      }
+      return SourcePreparation::Warmed;
+    }
+    if (self) self->runtime_error_.store(2, std::memory_order_release);
     return SourcePreparation::Unsupported;
   }
   // Unity has no ReleaseTexture operation. The queue command restores the exact
@@ -1136,6 +1255,13 @@ private:
   std::atomic<uint32_t> runtime_error_{0};
   PFN_vkGetInstanceProcAddr next_gipa_ = nullptr;
   UnityVulkanBridge bridge_;
+  AhbSelection configured_selection_{};
+  SlotContract configured_contract_{};
+  std::mutex source_requests_mutex_;
+  std::condition_variable source_requests_cv_;
+  std::array<SourceRequest, 3> source_requests_{};
+  bool stop_source_worker_ = false;
+  std::thread source_worker_;
 };
 } // namespace
 
