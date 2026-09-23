@@ -8,6 +8,10 @@ namespace humanvision::gpu {
 // source/AHB/device contract. This never probes or silently chooses a path.
 bool ConfigureUnityVulkanProducer(const AhbSelection &,
                                   const SlotContract &) noexcept;
+// The caller retains this Unity-owned texture until End returns. End closes
+// admission and synchronously drains the source cache before Release/Destroy.
+bool BeginUnityVulkanSourceLease(void *unity_texture) noexcept;
+void EndUnityVulkanSourceLease() noexcept;
 void ShutdownUnityVulkanProducer() noexcept;
 BridgeResult PrepareUnityVulkanFrame(const HV_AndroidGpuSubmissionV1 &,
                                      void **) noexcept;

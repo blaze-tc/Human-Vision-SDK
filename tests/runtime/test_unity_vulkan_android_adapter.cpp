@@ -27,6 +27,8 @@ struct AdapterFacts {
   int view_creates = 0;
   int render_view_creates = 0;
   int view_destroys = 0;
+  std::unordered_set<uintptr_t> invalid_source_images;
+  int invalid_source_view_creates = 0;
   bool dedicated_chain = false;
   bool queried_requirements = false;
   VkImageUsageFlags image_usage = 0;
@@ -252,7 +254,11 @@ void VKAPI_CALL vkDestroyImage(VkDevice,VkImage,const VkAllocationCallbacks*){}
 VkResult VKAPI_CALL vkAllocateMemory(VkDevice,const VkMemoryAllocateInfo* ai,const VkAllocationCallbacks*,VkDeviceMemory* o){if(FailCreate())return VK_ERROR_OUT_OF_DEVICE_MEMORY;auto* d=static_cast<const VkMemoryDedicatedAllocateInfo*>(ai->pNext);auto* i=d?static_cast<const VkImportAndroidHardwareBufferInfoANDROID*>(d->pNext):nullptr;g.dedicated_chain=d&&d->image&&i&&i->buffer;*o=NewHandle<VkDeviceMemory>();return VK_SUCCESS;}
 void VKAPI_CALL vkFreeMemory(VkDevice,VkDeviceMemory,const VkAllocationCallbacks*){}
 VkResult VKAPI_CALL vkBindImageMemory(VkDevice,VkImage,VkDeviceMemory,VkDeviceSize){return FailCreate()?VK_ERROR_OUT_OF_DEVICE_MEMORY:VK_SUCCESS;}
-VkResult VKAPI_CALL vkCreateImageView(VkDevice,const VkImageViewCreateInfo*,const VkAllocationCallbacks*,VkImageView* o){
+VkResult VKAPI_CALL vkCreateImageView(VkDevice,const VkImageViewCreateInfo* info,const VkAllocationCallbacks*,VkImageView* o){
+  if (g.invalid_source_images.count(reinterpret_cast<uintptr_t>(info->image))) {
+    ++g.invalid_source_view_creates;
+    return VK_ERROR_DEVICE_LOST;
+  }
   {std::unique_lock<std::mutex> lock(g_create_mutex);if(g_block_view_create){g_view_create_entered=true;g_create_cv.notify_all();g_create_cv.wait(lock,[]{return g_release_view_create;});}}
   if(FailCreate())return VK_ERROR_OUT_OF_DEVICE_MEMORY;
   ++g.view_creates;
@@ -602,9 +608,12 @@ TEST(UnityVulkanAndroidAdapter,
   EXPECT_EQ(cache.ahb, 0u);
 }
 TEST(UnityVulkanAndroidAdapter, ColorSourceViewsWarmOnceAndTypedBgraDoesNotSwap) {
-  g=AdapterFacts{}; auto selection=Selection(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT); humanvision::gpu::UnityVulkanSlotCache cache{};
+  g=AdapterFacts{}; InstallAndCreateUnityDevice(); auto selection=Selection(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT);
+  ASSERT_TRUE(humanvision::gpu::ConfigureUnityVulkanProducer(selection,Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT)));
+  ASSERT_TRUE(humanvision::gpu::BeginUnityVulkanSourceLease(reinterpret_cast<void*>(1)));
+  humanvision::gpu::UnityVulkanSlotCache cache{};
   ASSERT_TRUE(AndroidProducer::TestCreate(0,Device(),Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT),selection,cache));
-  humanvision::gpu::UnityTextureAccess a{};a.image=901;a.format=VK_FORMAT_B8G8R8A8_UNORM;a.width=320;a.height=240;a.native_layout=VK_IMAGE_LAYOUT_GENERAL;a.native_stage=VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;a.native_access=VK_ACCESS_MEMORY_READ_BIT;
+  humanvision::gpu::UnityTextureAccess a{};a.texture=reinterpret_cast<void*>(1);a.image=901;a.format=VK_FORMAT_B8G8R8A8_UNORM;a.width=320;a.height=240;a.native_layout=VK_IMAGE_LAYOUT_GENERAL;a.native_stage=VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;a.native_access=VK_ACCESS_MEMORY_READ_BIT;
   const int generation_views=g.view_creates;
   EXPECT_EQ(AndroidProducer::TestPrepareSource(cache,a),humanvision::gpu::SourcePreparation::Warmed);
   EXPECT_EQ(g.render_view_creates,0);
@@ -616,39 +625,36 @@ TEST(UnityVulkanAndroidAdapter, ColorSourceViewsWarmOnceAndTypedBgraDoesNotSwap)
   ASSERT_TRUE(AndroidProducer::TestColor(cache,a,b.data())); EXPECT_EQ(g.pushed_swap,0u); EXPECT_EQ(g.view_creates,generation_views+1);
   a.image = 902;
   EXPECT_EQ(AndroidProducer::TestPrepareSource(cache, a),
-            humanvision::gpu::SourcePreparation::Warmed);
-  AndroidProducer::TestQuiesceSourceWorker();
-  a.image = 903;
-  EXPECT_EQ(AndroidProducer::TestPrepareSource(cache, a),
-            humanvision::gpu::SourcePreparation::Warmed);
-  AndroidProducer::TestQuiesceSourceWorker();
+            humanvision::gpu::SourcePreparation::Unsupported);
   EXPECT_EQ(g.render_view_creates,0);
   const int full_cache_views = g.view_creates;
-  a.image = 904;
-  EXPECT_EQ(AndroidProducer::TestPrepareSource(cache, a),
-            humanvision::gpu::SourcePreparation::Unsupported);
   EXPECT_EQ(g.view_creates, full_cache_views);
   EXPECT_NE(std::string(AndroidProducer::TestDiagnostic()).find(
-                "source-view cache exhausted"),
+                "source image identity changed"),
             std::string::npos);
-  AndroidProducer::TestDrain(0,cache); EXPECT_EQ(g.view_creates,g.view_destroys);
+  AndroidProducer::TestDrain(0,cache);
+  humanvision::gpu::EndUnityVulkanSourceLease();
+  EXPECT_EQ(g.view_creates,g.view_destroys);
+  UnityPluginUnload();
 }
-TEST(UnityVulkanAndroidAdapter, SourceIdentityOverflowRebuildsOffRenderThread) {
+TEST(UnityVulkanAndroidAdapter, SourceIdentityChangeRequiresControlRebuild) {
   using namespace humanvision::gpu;
   g=AdapterFacts{};
   InstallAndCreateUnityDevice();
   auto selection=Selection(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT);
   ASSERT_TRUE(ConfigureUnityVulkanProducer(selection,Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT)));
+  humanvision::runtime::RuntimeSession runtime;
+  ASSERT_EQ(HV_RuntimeBeginAndroidGpuSourceLease(&runtime,reinterpret_cast<void*>(1)),HV_OK);
   UnityVulkanSlotCache cache{};
   ASSERT_TRUE(AndroidProducer::TestCreate(0,Device(),Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT),selection,cache));
-  UnityTextureAccess access{};access.format=VK_FORMAT_R8G8B8A8_UNORM;
+  UnityTextureAccess access{};access.texture=reinterpret_cast<void*>(1);access.format=VK_FORMAT_R8G8B8A8_UNORM;
   const uint64_t before=AndroidProducer::TestGeneration();
-  for(uintptr_t image=901;image<=904;++image) {
-    access.image=image;
-    EXPECT_EQ(AndroidProducer::TestPrepareSource(cache,access),SourcePreparation::Warmed);
-    AndroidProducer::TestQuiesceSourceWorker();
-  }
-  EXPECT_GT(AndroidProducer::TestGeneration(),before);
+  access.image=901;
+  EXPECT_EQ(AndroidProducer::TestPrepareSource(cache,access),SourcePreparation::Warmed);
+  AndroidProducer::TestQuiesceSourceWorker();
+  access.image=902;
+  EXPECT_EQ(AndroidProducer::TestPrepareSource(cache,access),SourcePreparation::Unsupported);
+  EXPECT_EQ(AndroidProducer::TestGeneration(),before);
   EXPECT_EQ(g.render_view_creates,0);
   AndroidProducer::TestDrain(0,cache);
   ShutdownUnityVulkanProducer();
@@ -665,7 +671,8 @@ TEST(UnityVulkanAndroidAdapter, SourceViewCreationFailureClosesAdmissionWithoutR
   ASSERT_TRUE(AndroidProducer::TestCreate(0,Device(),Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT),selection,cache));
   const uint64_t generation=AndroidProducer::TestGeneration();
   g.fail_create_at=g.create_calls;
-  UnityTextureAccess access{};access.image=910;access.format=VK_FORMAT_R8G8B8A8_UNORM;
+  ASSERT_TRUE(BeginUnityVulkanSourceLease(reinterpret_cast<void*>(1)));
+  UnityTextureAccess access{};access.texture=reinterpret_cast<void*>(1);access.image=910;access.format=VK_FORMAT_R8G8B8A8_UNORM;
   EXPECT_EQ(AndroidProducer::TestPrepareSource(cache,access),SourcePreparation::Warmed);
   AndroidProducer::TestQuiesceSourceWorker();
   EXPECT_EQ(AndroidProducer::TestGeneration(),generation);
@@ -677,5 +684,74 @@ TEST(UnityVulkanAndroidAdapter, SourceViewCreationFailureClosesAdmissionWithoutR
   g.fail_create_at=-1;
   AndroidProducer::TestDrain(0,cache);
   ShutdownUnityVulkanProducer();
+  UnityPluginUnload();
+}
+
+TEST(UnityVulkanAndroidAdapter, ReconfigureDiscardsQueuedSourceFromPriorGeneration) {
+  using namespace humanvision::gpu;
+  g=AdapterFacts{};
+  InstallAndCreateUnityDevice();
+  auto selection=Selection(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT);
+  ASSERT_TRUE(ConfigureUnityVulkanProducer(selection,Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT)));
+  ASSERT_TRUE(BeginUnityVulkanSourceLease(reinterpret_cast<void*>(1)));
+  UnityVulkanSlotCache cache{};
+  ASSERT_TRUE(AndroidProducer::TestCreate(0,Device(),Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT),selection,cache));
+  UnityTextureAccess source{}; source.texture=reinterpret_cast<void*>(1);
+  source.image=901; source.format=VK_FORMAT_R8G8B8A8_UNORM;
+  AndroidProducer::TestPauseSourceWorker();
+  ASSERT_EQ(AndroidProducer::TestPrepareSource(cache,source),SourcePreparation::Warmed);
+  ASSERT_TRUE(ConfigureUnityVulkanProducer(selection,Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT)));
+  g.invalid_source_images.insert(901);
+  AndroidProducer::TestResumeSourceWorker();
+  AndroidProducer::TestQuiesceSourceWorker();
+  EXPECT_EQ(g.invalid_source_view_creates,0);
+  AndroidProducer::TestDrain(0,cache);
+  ShutdownUnityVulkanProducer();
+  UnityPluginUnload();
+}
+
+TEST(UnityVulkanAndroidAdapter, EndingSourceLeaseCancelsPendingViewBeforeImageDestruction) {
+  using namespace humanvision::gpu;
+  g=AdapterFacts{};
+  InstallAndCreateUnityDevice();
+  auto selection=Selection(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT);
+  ASSERT_TRUE(ConfigureUnityVulkanProducer(selection,Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT)));
+  humanvision::runtime::RuntimeSession runtime;
+  ASSERT_TRUE(BeginUnityVulkanSourceLease(reinterpret_cast<void*>(1)));
+  UnityVulkanSlotCache cache{};
+  ASSERT_TRUE(AndroidProducer::TestCreate(0,Device(),Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT),selection,cache));
+  UnityTextureAccess source{}; source.texture=reinterpret_cast<void*>(1);
+  source.image=902; source.format=VK_FORMAT_R8G8B8A8_UNORM;
+  AndroidProducer::TestPauseSourceWorker();
+  ASSERT_EQ(AndroidProducer::TestPrepareSource(cache,source),SourcePreparation::Warmed);
+  EXPECT_EQ(HV_RuntimeEndAndroidGpuSourceLease(&runtime),HV_OK);
+  g.invalid_source_images.insert(902);
+  AndroidProducer::TestResumeSourceWorker();
+  AndroidProducer::TestQuiesceSourceWorker();
+  EXPECT_EQ(g.invalid_source_view_creates,0);
+  EXPECT_EQ(AndroidProducer::TestPrepareSource(cache,source),SourcePreparation::Unsupported);
+  AndroidProducer::TestDrain(0,cache);
+  UnityPluginUnload();
+}
+
+TEST(UnityVulkanAndroidAdapter, ColorFrameAdmissionRequiresMatchingSourceLease) {
+  using namespace humanvision::gpu;
+  g=AdapterFacts{};
+  InstallAndCreateUnityDevice();
+  auto selection=Selection(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT);
+  ASSERT_TRUE(ConfigureUnityVulkanProducer(selection,Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT)));
+  humanvision::runtime::RuntimeSession runtime;
+  HV_AndroidGpuSubmissionV1 frame{sizeof(frame),HV_ANDROID_GPU_API_V1,reinterpret_cast<void*>(1),320,240,1,1000,0,0};
+  void* event=reinterpret_cast<void*>(123);
+  EXPECT_EQ(PrepareUnityVulkanFrame(frame,&event),BridgeResult::Closed);
+  EXPECT_EQ(event,nullptr);
+  ASSERT_EQ(HV_RuntimeBeginAndroidGpuSourceLease(&runtime,reinterpret_cast<void*>(1)),HV_OK);
+  frame.unity_texture=reinterpret_cast<void*>(2);
+  EXPECT_EQ(PrepareUnityVulkanFrame(frame,&event),BridgeResult::Closed);
+  frame.unity_texture=reinterpret_cast<void*>(1);
+  EXPECT_EQ(PrepareUnityVulkanFrame(frame,&event),BridgeResult::Ok);
+  EXPECT_EQ(HV_RuntimeEndAndroidGpuSourceLease(&runtime),HV_OK);
+  EXPECT_EQ(PrepareUnityVulkanFrame(frame,&event),BridgeResult::Closed);
+  EXPECT_EQ(event,nullptr);
   UnityPluginUnload();
 }

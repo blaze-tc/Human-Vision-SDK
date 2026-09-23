@@ -21,7 +21,7 @@ extern "C" {
  * The callback function is NULL when the bridge is unsupported; never issue an
  * event then. Unsupported status is initialized with COPY_UNAVAILABLE and zero
  * metrics/UUIDs. Too-small or wrong-version output storage remains untouched.
- * All three symbols exist on every platform, including builds without Vulkan.
+ * All bridge symbols exist on every platform, including builds without Vulkan.
  */
 #define HV_ANDROID_GPU_API_V1 1u
 #define HV_ANDROID_GPU_UUID_SIZE 16u
@@ -65,6 +65,17 @@ HV_API HV_Result HV_CALL HV_RuntimePrepareAndroidGpuFrame(
     HV_RuntimeHandle runtime,
     const HV_AndroidGpuSubmissionV1* submission,
     void** out_render_event_data);
+
+/* A source lease covers one Unity-owned oriented RenderTexture. The caller
+ * must keep its texture and VkImage alive from Begin through End. Call End
+ * synchronously before Release/Destroy or source replacement; it closes GPU
+ * admission and drains pending native events/views for this generation.
+ * Reconfigure and device teardown invalidate the lease. Begin again after a
+ * new measured source/generation is configured. */
+HV_API HV_Result HV_CALL HV_RuntimeBeginAndroidGpuSourceLease(
+    HV_RuntimeHandle runtime, void* unity_texture);
+HV_API HV_Result HV_CALL HV_RuntimeEndAndroidGpuSourceLease(
+    HV_RuntimeHandle runtime);
 
 HV_API void* HV_CALL HV_GetAndroidGpuRenderEventAndDataFunction(void);
 

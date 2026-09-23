@@ -22,9 +22,30 @@ HV_Result BridgeFailure(HV_RuntimeHandle runtime, const char* fallback) noexcept
 }
 }
 
-// A4 freezes the exports on all builds. The production Android Vulkan bridge is
-// added by B4; until then no platform advertises GPU submission support.
+// A4's existing exports and layouts remain frozen. B4 adds source-lease
+// exports so the Unity owner can drain before destroying its RenderTexture.
 extern "C" {
+HV_Result HV_CALL HV_RuntimeBeginAndroidGpuSourceLease(
+    HV_RuntimeHandle runtime, void* unity_texture) {
+    if (!runtime || !unity_texture) return HV_ERR_INVALID_ARGUMENT;
+#if defined(__ANDROID__)
+    return humanvision::gpu::BeginUnityVulkanSourceLease(unity_texture)
+        ? HV_OK : BridgeFailure(runtime, "Android Vulkan source lease unavailable");
+#else
+    return Unsupported(runtime);
+#endif
+}
+
+HV_Result HV_CALL HV_RuntimeEndAndroidGpuSourceLease(HV_RuntimeHandle runtime) {
+    if (!runtime) return HV_ERR_INVALID_ARGUMENT;
+#if defined(__ANDROID__)
+    humanvision::gpu::EndUnityVulkanSourceLease();
+    return HV_OK;
+#else
+    return Unsupported(runtime);
+#endif
+}
+
 HV_Result HV_CALL HV_RuntimePrepareAndroidGpuFrame(HV_RuntimeHandle runtime,
     const HV_AndroidGpuSubmissionV1* submission, void** out_render_event_data) {
     if (out_render_event_data) *out_render_event_data = nullptr;

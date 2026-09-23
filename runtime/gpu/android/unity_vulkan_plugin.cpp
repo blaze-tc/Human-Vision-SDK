@@ -116,6 +116,11 @@ public:
   ~AndroidProducer() {
     { std::lock_guard<std::mutex> lock(source_requests_mutex_); stop_source_worker_ = true; }
     source_requests_cv_.notify_one();
+#if defined(HV_ANDROID_ADAPTER_TEST)
+    { std::lock_guard<std::mutex> gate(test_worker_mutex_);
+      test_pause_source_worker_ = false; }
+    test_worker_cv_.notify_all();
+#endif
     source_worker_.join();
   }
 
@@ -127,13 +132,13 @@ public:
   bool Configure(const AhbSelection &selection,
                  const SlotContract &contract) noexcept {
     std::lock_guard<std::mutex> lock(control_);
+    InvalidateSourceLease();
     if (!vulkan_ || !have_device_ || !device_live_.load(std::memory_order_acquire)) {
       diagnostic_ = "Unity Vulkan device is not initialized";
       return false;
     }
     runtime_error_.store(0, std::memory_order_release);
     bool configured = bridge_.Initialize(device_context_, selection, contract);
-    if (configured) { configured_selection_ = selection; configured_contract_ = contract; }
     if (!device_live_.load(std::memory_order_acquire)) {
       bridge_.Shutdown();
       configured=false;
@@ -147,15 +152,35 @@ public:
   }
   void Shutdown() noexcept {
     std::lock_guard<std::mutex> lock(control_);
+    InvalidateSourceLease();
     bridge_.Shutdown();
-    configured_selection_ = {};
-    configured_contract_ = {};
-    std::lock_guard<std::mutex> requests(source_requests_mutex_);
-    for (auto &request : source_requests_) request.slot = nullptr;
+  }
+  bool BeginSourceLease(void *texture) noexcept {
+    std::lock_guard<std::mutex> lock(control_);
+    if (!texture || bridge_.IsClosed() ||
+        !device_live_.load(std::memory_order_acquire) ||
+        source_lease_texture_.load(std::memory_order_acquire)) return false;
+    source_image_.store(0, std::memory_order_release);
+    source_lease_generation_.store(bridge_.Generation(), std::memory_order_release);
+    source_lease_token_.fetch_add(1, std::memory_order_acq_rel);
+    source_lease_texture_.store(texture, std::memory_order_release);
+    return true;
+  }
+  void EndSourceLease() noexcept {
+    std::lock_guard<std::mutex> lock(control_);
+    InvalidateSourceLease();
+    bridge_.Shutdown();
+    std::lock_guard<std::mutex> queue(queue_mutex_);
+    queue_closed_ = true;
   }
   BridgeResult Prepare(const HV_AndroidGpuSubmissionV1 &s,
                        void **out) noexcept {
     if (!device_live_.load(std::memory_order_acquire)) { if(out)*out=nullptr; return BridgeResult::Closed; }
+    if (source_lease_texture_.load(std::memory_order_acquire) != s.unity_texture ||
+        source_lease_generation_.load(std::memory_order_acquire) != bridge_.Generation()) {
+      if (out) *out = nullptr;
+      return BridgeResult::Closed;
+    }
     return bridge_.Prepare(s, out);
   }
   void Status(HV_AndroidGpuBridgeStatusV1 &s) noexcept { bridge_.GetStatus(s); }
@@ -164,7 +189,7 @@ public:
     case 1:
       return "Android Vulkan source image-view creation failed; rebuild the bridge generation";
     case 2:
-      return "Android Vulkan source-view cache exhausted; rebuild the bridge generation for the new source identity";
+      return "Android Vulkan source image identity changed during its lease; end the source lease and rebuild the bridge generation before replacing the RenderTexture";
     case 3:
       return "Unity Vulkan device shutdown occurred before required control teardown; generation quarantined, call ShutdownUnityVulkanProducer before device destruction";
     default:
@@ -208,6 +233,7 @@ public:
     std::unique_lock<std::mutex> lock(control_);
     if (event == kUnityGfxDeviceEventShutdown ||
         event == kUnityGfxDeviceEventBeforeReset) {
+      InvalidateSourceLease();
       // B6 must call the control seam before Unity reaches this callback.
       // This callback cannot wait for events or GPU completion.
       if (!bridge_.IsClosed()) {
@@ -355,6 +381,17 @@ public:
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
   }
+  static void TestPauseSourceWorker() noexcept {
+    auto& self=Get();
+    std::lock_guard<std::mutex> lock(self.test_worker_mutex_);
+    self.test_pause_source_worker_=true;
+  }
+  static void TestResumeSourceWorker() noexcept {
+    auto& self=Get();
+    {std::lock_guard<std::mutex> lock(self.test_worker_mutex_);
+     self.test_pause_source_worker_=false;}
+    self.test_worker_cv_.notify_all();
+  }
   static void TestInstallGipa(PFN_vkGetInstanceProcAddr gipa) noexcept {
     Get().next_gipa_ = gipa;
     Get().required_extensions_enabled_.store(false);
@@ -393,7 +430,21 @@ public:
 #endif
 
 private:
-  struct SourceRequest { AndroidSlot* slot = nullptr; VkImage image = VK_NULL_HANDLE; VkFormat format = VK_FORMAT_UNDEFINED; };
+  struct SourceRequest {
+    AndroidSlot* slot = nullptr;
+    VkImage image = VK_NULL_HANDLE;
+    VkFormat format = VK_FORMAT_UNDEFINED;
+    uint64_t bridge_generation = 0;
+    uint64_t lease_token = 0;
+  };
+  void InvalidateSourceLease() noexcept {
+    source_lease_texture_.store(nullptr, std::memory_order_release);
+    source_lease_generation_.store(0, std::memory_order_release);
+    source_image_.store(0, std::memory_order_release);
+    source_lease_token_.fetch_add(1, std::memory_order_acq_rel);
+    std::lock_guard<std::mutex> pending(source_requests_mutex_);
+    for (auto& request : source_requests_) request = {};
+  }
   void SourceWorker() noexcept {
     for (;;) {
       {
@@ -404,14 +455,23 @@ private:
         });
         if (stop_source_worker_) return;
       }
+#if defined(HV_ANDROID_ADAPTER_TEST)
+      { std::unique_lock<std::mutex> gate(test_worker_mutex_);
+        test_worker_cv_.wait(gate, [&] { return !test_pause_source_worker_; }); }
+#endif
       // The control lock owns slot lifetime and serializes device shutdown.
       std::lock_guard<std::mutex> control(control_);
       SourceRequest request;
       {
         std::lock_guard<std::mutex> pending(source_requests_mutex_);
+        if (stop_source_worker_) return;
         for (auto& entry : source_requests_) if (entry.slot) { request = entry; entry.slot = nullptr; break; }
       }
-      if (!request.slot || !request.slot->Alive()) continue;
+      if (!request.slot || request.bridge_generation != bridge_.Generation() ||
+          request.lease_token != source_lease_token_.load(std::memory_order_acquire) ||
+          !source_lease_texture_.load(std::memory_order_acquire) ||
+          reinterpret_cast<uintptr_t>(request.image) != source_image_.load(std::memory_order_acquire) ||
+          !request.slot->Alive()) continue;
       std::unique_lock<std::mutex> source(request.slot->source_mutex);
       bool found = false;
       for (const auto& entry : request.slot->source_views)
@@ -443,15 +503,10 @@ private:
         for (auto& entry : source_requests_) entry.slot = nullptr;
         continue;
       }
-      if (!inserted && !bridge_.IsClosed() && device_live_.load(std::memory_order_acquire)) {
-        // Identity cycling beyond this generation's bounded cache is a
-        // control rebuild. The requesting render event has already dropped.
-        bridge_.Shutdown();
-        { std::lock_guard<std::mutex> pending(source_requests_mutex_);
-          for (auto& entry : source_requests_) entry.slot = nullptr; }
-        const bool rebuilt = bridge_.Initialize(device_context_, configured_selection_, configured_contract_);
-        { std::lock_guard<std::mutex> queue(queue_mutex_); queue_closed_ = !rebuilt; }
-        if (!rebuilt) runtime_error_.store(2, std::memory_order_release);
+      if (!inserted) {
+        runtime_error_.store(2, std::memory_order_release);
+        bridge_.CloseAdmission();
+        InvalidateSourceLease();
       }
     }
   }
@@ -986,6 +1041,7 @@ private:
       return false;
     const VkImageLayout prior = observed.layout;
     out.image = reinterpret_cast<uintptr_t>(observed.image);
+    out.texture = texture;
     out.layout = BridgeImageLayout::SourceCurrent;
     out.native_layout = static_cast<uint32_t>(prior);
     out.native_stage = static_cast<uint32_t>(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
@@ -1003,6 +1059,16 @@ private:
     auto *slot = S(cache);
     if (!slot || !slot->Alive())
       return SourcePreparation::Unsupported;
+    if (!self || self->source_lease_texture_.load(std::memory_order_acquire) != access.texture ||
+        self->source_lease_generation_.load(std::memory_order_acquire) != self->bridge_.Generation())
+      return SourcePreparation::Unsupported;
+    uintptr_t expected_image = 0;
+    if (!self->source_image_.compare_exchange_strong(expected_image, access.image,
+                                                     std::memory_order_acq_rel) &&
+        expected_image != access.image) {
+      self->runtime_error_.store(2, std::memory_order_release);
+      return SourcePreparation::Unsupported;
+    }
     if (!slot->pipeline) {
       slot->active_source_view = VK_NULL_HANDLE;
       return SourcePreparation::Ready;
@@ -1023,19 +1089,10 @@ private:
       if (!pending.owns_lock()) return SourcePreparation::Warmed;
       for (auto& request : self->source_requests_) if (request.slot == slot && request.image == image) return SourcePreparation::Warmed;
       for (auto& request : self->source_requests_) if (!request.slot) {
-        request = {slot, image, format};
+        request = {slot, image, format, self->bridge_.Generation(),
+                   self->source_lease_token_.load(std::memory_order_acquire)};
         pending.unlock();
         self->source_requests_cv_.notify_one();
-        return SourcePreparation::Warmed;
-      }
-      return SourcePreparation::Warmed;
-    }
-    if (self && !self->bridge_.IsClosed()) {
-      std::unique_lock<std::mutex> pending(self->source_requests_mutex_, std::try_to_lock);
-      if (!pending.owns_lock()) return SourcePreparation::Warmed;
-      for (auto& request : self->source_requests_) if (!request.slot) {
-        request = {slot, image, format};
-        pending.unlock(); self->source_requests_cv_.notify_one();
         return SourcePreparation::Warmed;
       }
       return SourcePreparation::Warmed;
@@ -1255,19 +1312,32 @@ private:
   std::atomic<uint32_t> runtime_error_{0};
   PFN_vkGetInstanceProcAddr next_gipa_ = nullptr;
   UnityVulkanBridge bridge_;
-  AhbSelection configured_selection_{};
-  SlotContract configured_contract_{};
   std::mutex source_requests_mutex_;
   std::condition_variable source_requests_cv_;
   std::array<SourceRequest, 3> source_requests_{};
   bool stop_source_worker_ = false;
   std::thread source_worker_;
+  std::atomic<void*> source_lease_texture_{nullptr};
+  std::atomic<uint64_t> source_lease_generation_{0};
+  std::atomic<uint64_t> source_lease_token_{0};
+  std::atomic<uintptr_t> source_image_{0};
+#if defined(HV_ANDROID_ADAPTER_TEST)
+  std::mutex test_worker_mutex_;
+  std::condition_variable test_worker_cv_;
+  bool test_pause_source_worker_ = false;
+#endif
 };
 } // namespace
 
 bool ConfigureUnityVulkanProducer(const AhbSelection &s,
                                   const SlotContract &c) noexcept {
   return AndroidProducer::Get().Configure(s, c);
+}
+bool BeginUnityVulkanSourceLease(void *texture) noexcept {
+  return AndroidProducer::Get().BeginSourceLease(texture);
+}
+void EndUnityVulkanSourceLease() noexcept {
+  AndroidProducer::Get().EndSourceLease();
 }
 void ShutdownUnityVulkanProducer() noexcept {
   AndroidProducer::Get().Shutdown();
@@ -1301,6 +1371,8 @@ bool ConfigureUnityVulkanProducer(const AhbSelection &,
                                   const SlotContract &) noexcept {
   return false;
 }
+bool BeginUnityVulkanSourceLease(void *) noexcept { return false; }
+void EndUnityVulkanSourceLease() noexcept {}
 void ShutdownUnityVulkanProducer() noexcept {}
 BridgeResult PrepareUnityVulkanFrame(const HV_AndroidGpuSubmissionV1 &,
                                      void **out) noexcept {
