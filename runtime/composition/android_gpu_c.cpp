@@ -31,17 +31,18 @@ HV_Result HV_CALL HV_RuntimePrepareAndroidGpuFrame(HV_RuntimeHandle runtime,
     if (!runtime || !submission || !out_render_event_data ||
         submission->struct_size < sizeof(*submission) || submission->api_version != HV_ANDROID_GPU_API_V1 ||
         !submission->unity_texture || submission->width <= 0 || submission->height <= 0 ||
+        submission->frame_id <= 0 || submission->timestamp_us < 0 ||
         (submission->rotation_degrees != 0 && submission->rotation_degrees != 90 &&
          submission->rotation_degrees != 180 && submission->rotation_degrees != 270) || submission->mirrored > 1)
         return HV_ERR_INVALID_ARGUMENT;
 #if defined(__ANDROID__)
-    switch (humanvision::gpu::PrepareUnityVulkanFrame(*submission, out_render_event_data)) {
-    case humanvision::gpu::BridgeResult::Ok: return HV_OK;
-    case humanvision::gpu::BridgeResult::DroppedNoSlot:
-    case humanvision::gpu::BridgeResult::Busy: return HV_NO_NEW_RESULT;
-    case humanvision::gpu::BridgeResult::Invalid: return HV_ERR_INVALID_ARGUMENT;
-    default: return BridgeFailure(runtime, "Android Vulkan producer bridge is not configured");
-    }
+    const HV_Result result = humanvision::gpu::AndroidBridgeResultCode(
+        humanvision::gpu::PrepareUnityVulkanFrame(*submission,
+                                                  out_render_event_data));
+    return result == HV_ANDROID_GPU_ERR_UNSUPPORTED_PLATFORM
+               ? BridgeFailure(runtime,
+                               "Android Vulkan producer bridge is not configured")
+               : result;
 #else
     return Unsupported(runtime);
 #endif

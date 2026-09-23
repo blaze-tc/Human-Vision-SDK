@@ -35,9 +35,19 @@ struct AhbCandidate {
     AhbImageFacts producer, consumer;
     std::string detail;
 };
+// Filled from the observed UnityVulkanImage; usage/tiling cannot be inferred from
+// the pixel format. No Unity header or object enters the runtime boundary.
+struct VulkanSourceImage {
+    uint32_t width = 0, height = 0, format = 0, usage = 0, tiling = 0;
+    uint32_t samples = 0, layers = 0, image_type = 0;
+};
 struct AhbSelection {
     HV_AndroidGpuCopyPath path = HV_ANDROID_GPU_COPY_UNAVAILABLE;
     AhbDescription contract;
+    // Exact inputs measured by the Android probe. Generic candidate selection
+    // leaves these unset; B4 must bind admission to the measured source/devices.
+    VulkanSourceImage source;
+    DeviceIdentity producer_identity, consumer_identity;
     std::vector<AhbCandidate> candidates;
     std::string diagnostic;
 };
@@ -47,12 +57,6 @@ AhbSelection SelectAhbCopyPath(const std::vector<AhbCandidate>& candidates);
 using AhbProbe = std::function<AhbCandidate(const AhbDescription&, HV_AndroidGpuCopyPath)>;
 AhbSelection ProbeAhbContracts(uint32_t width, uint32_t height, const AhbProbe& probe);
 #if defined(__ANDROID__)
-// Filled from the observed UnityVulkanImage; usage/tiling cannot be inferred from
-// the pixel format. No Unity header or object enters the runtime boundary.
-struct VulkanSourceImage {
-    uint32_t width = 0, height = 0, format = 0, usage = 0, tiling = 0;
-    uint32_t samples = 0, layers = 0, image_type = 0;
-};
 // Initialization/control-thread only. Each candidate owns a temporary allocation
 // and both temporary imports, destroyed before the next candidate is allocated.
 // The returned description is the contract B3 must re-describe for every slot.

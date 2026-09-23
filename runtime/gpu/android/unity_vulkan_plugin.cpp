@@ -20,11 +20,19 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
+#include <chrono>
+#include <vector>
 
 namespace humanvision::gpu {
 namespace {
 
 struct AndroidSlot {
+  struct SourceView {
+    VkImage image = VK_NULL_HANDLE;
+    VkImageView view = VK_NULL_HANDLE;
+    VkFormat format = VK_FORMAT_UNDEFINED;
+  };
   AHardwareBuffer *ahb = nullptr;
   VkDevice device = VK_NULL_HANDLE;
   VkImage image = VK_NULL_HANDLE;
@@ -33,6 +41,7 @@ struct AndroidSlot {
   VkCommandPool command_pool = VK_NULL_HANDLE;
   VkCommandBuffer command = VK_NULL_HANDLE;
   VkSemaphore semaphore = VK_NULL_HANDLE;
+  VkFence submission_fence = VK_NULL_HANDLE;
   VkSampler sampler = VK_NULL_HANDLE;
   VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
   VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
@@ -43,17 +52,23 @@ struct AndroidSlot {
   VkPipeline pipeline = VK_NULL_HANDLE;
   VkShaderModule vertex = VK_NULL_HANDLE;
   VkShaderModule fragment = VK_NULL_HANDLE;
-  VkImageView source_view = VK_NULL_HANDLE;
-  VkImage source_image = VK_NULL_HANDLE;
-  VkFormat source_format = VK_FORMAT_UNDEFINED;
+  std::array<SourceView, 3> source_views{};
+  VkImageView active_source_view = VK_NULL_HANDLE;
   VkFormat format = VK_FORMAT_UNDEFINED;
   uint32_t width = 0, height = 0;
   bool destination_initialized = false;
+  bool submitted = false;
+  bool export_pending = false;
+  const std::atomic<bool>* device_live = nullptr;
+  bool Alive() const noexcept { return !device_live || device_live->load(std::memory_order_acquire); }
   ~AndroidSlot() {
-    if (!device)
-      return;
-    if (source_view)
-      vkDestroyImageView(device, source_view, nullptr);
+    // An out-of-order Unity device shutdown quarantines the generation. The
+    // VkDevice owner reclaims its children; later control cleanup must never
+    // issue Vulkan destruction calls against that dead device.
+    if (device && Alive()) {
+    for (auto &source : source_views)
+      if (source.view)
+        vkDestroyImageView(device, source.view, nullptr);
     if (pipeline)
       vkDestroyPipeline(device, pipeline, nullptr);
     if (vertex)
@@ -72,7 +87,9 @@ struct AndroidSlot {
       vkDestroyDescriptorSetLayout(device, descriptor_layout, nullptr);
     if (sampler)
       vkDestroySampler(device, sampler, nullptr);
-    if (semaphore)
+        if (submission_fence)
+          vkDestroyFence(device, submission_fence, nullptr);
+        if (semaphore)
       vkDestroySemaphore(device, semaphore, nullptr);
     if (command_pool)
       vkDestroyCommandPool(device, command_pool, nullptr);
@@ -82,6 +99,7 @@ struct AndroidSlot {
       vkDestroyImage(device, image, nullptr);
     if (memory)
       vkFreeMemory(device, memory, nullptr);
+    }
     // Future ncnn owner, Unity importer owner, allocation owner (last).
     if (ahb) {
       AHardwareBuffer_release(ahb);
@@ -96,18 +114,29 @@ public:
   AndroidProducer() : bridge_(MakeDispatch()) {}
 
   UnityVulkanBridgeDispatch MakeDispatch() noexcept {
-    return {this, Create, Drain,  Access, Release, QueueAccess,
-            Blit, Color,  Submit, Export, Cancel};
+    return {this, Create, Drain, Access, PrepareSource, Release, QueueAccess, Blit,
+            Color, Submit, Export, Complete, Cancel};
   }
 
   bool Configure(const AhbSelection &selection,
                  const SlotContract &contract) noexcept {
     std::lock_guard<std::mutex> lock(control_);
-    if (!vulkan_ || !have_device_) {
+    if (!vulkan_ || !have_device_ || !device_live_.load(std::memory_order_acquire)) {
       diagnostic_ = "Unity Vulkan device is not initialized";
       return false;
     }
-    return bridge_.Initialize(device_context_, selection, contract);
+    runtime_error_.store(0, std::memory_order_release);
+    bool configured = bridge_.Initialize(device_context_, selection, contract);
+    if (!device_live_.load(std::memory_order_acquire)) {
+      bridge_.Shutdown();
+      configured=false;
+    }
+    if (!configured && diagnostic_.empty()) diagnostic_="Android Vulkan generation creation rejected measured source/device/AHB contract or failed allocating cached resources";
+    {
+      std::lock_guard<std::mutex> queue_lock(queue_mutex_);
+      queue_closed_ = !configured;
+    }
+    return configured;
   }
   void Shutdown() noexcept {
     std::lock_guard<std::mutex> lock(control_);
@@ -115,15 +144,39 @@ public:
   }
   BridgeResult Prepare(const HV_AndroidGpuSubmissionV1 &s,
                        void **out) noexcept {
+    if (!device_live_.load(std::memory_order_acquire)) { if(out)*out=nullptr; return BridgeResult::Closed; }
     return bridge_.Prepare(s, out);
   }
   void Status(HV_AndroidGpuBridgeStatusV1 &s) noexcept { bridge_.GetStatus(s); }
-  const char *Diagnostic() const noexcept { return diagnostic_.c_str(); }
+  const char *Diagnostic() const noexcept {
+    switch (runtime_error_.load(std::memory_order_acquire)) {
+    case 1:
+      return "Android Vulkan source image-view creation failed; rebuild the bridge generation";
+    case 2:
+      return "Android Vulkan source-view cache exhausted; rebuild the bridge generation for the new source identity";
+    case 3:
+      return "Unity Vulkan device shutdown occurred before required control teardown; generation quarantined, call ShutdownUnityVulkanProducer before device destruction";
+    default:
+      break;
+    }
+    const char* bridge_error=bridge_.Diagnostic();
+    if(*bridge_error)return bridge_error;
+    thread_local std::string snapshot;
+    std::lock_guard<std::mutex> lock(control_);
+    snapshot = diagnostic_;
+    return snapshot.c_str();
+  }
 
   void Load(IUnityInterfaces *interfaces) noexcept {
     interfaces_ = interfaces;
     graphics_ = interfaces ? interfaces->Get<IUnityGraphics>() : nullptr;
     vulkan_ = interfaces ? interfaces->Get<IUnityGraphicsVulkanV2>() : nullptr;
+    if (vulkan_) {
+      interception_installed_ =
+          vulkan_->InterceptInitialization(InitializeVulkan, this);
+      if (!interception_installed_)
+        diagnostic_ = "Unity Vulkan interception was installed too late; preload libhumanvision.so";
+    }
     if (graphics_) {
       graphics_->RegisterDeviceEventCallback(DeviceEvent);
       DeviceEvent(kUnityGfxDeviceEventInitialize);
@@ -138,10 +191,22 @@ public:
     interfaces_ = nullptr;
   }
   void OnDevice(UnityGfxDeviceEventType event) noexcept {
-    std::lock_guard<std::mutex> lock(control_);
+    std::unique_lock<std::mutex> lock(control_,std::try_to_lock);
+    if(!lock.owns_lock()) {
+      bridge_.CloseAdmission();
+      device_live_.store(false,std::memory_order_release);
+      runtime_error_.store(3,std::memory_order_release);
+      return;
+    }
     if (event == kUnityGfxDeviceEventShutdown ||
         event == kUnityGfxDeviceEventBeforeReset) {
-      bridge_.Shutdown();
+      // B6 must call the control seam before Unity reaches this callback.
+      // This callback cannot wait for events or GPU completion.
+      if (!bridge_.IsClosed()) {
+        bridge_.CloseAdmission();
+        runtime_error_.store(3,std::memory_order_release);
+      }
+      device_live_.store(false,std::memory_order_release);
       have_device_ = false;
       device_context_ = {};
       return;
@@ -149,16 +214,36 @@ public:
     if (event != kUnityGfxDeviceEventInitialize &&
         event != kUnityGfxDeviceEventAfterReset)
       return;
+    have_device_ = false;
+    device_context_ = {};
     if (!graphics_ || graphics_->GetRenderer() != kUnityGfxRendererVulkan ||
         !vulkan_) {
       diagnostic_ =
           "Android GPU bridge requires Unity Vulkan as the active renderer";
       return;
     }
+    if (!bridge_.IsClosed()) {
+      diagnostic_="Unity Vulkan prior generation still requires control teardown";
+      return;
+    }
+    if (!interception_installed_ || !required_extensions_enabled_.load(std::memory_order_acquire)) {
+      diagnostic_ = "Unity Vulkan device is missing enabled VK_ANDROID_external_memory_android_hardware_buffer or VK_KHR_external_semaphore_fd";
+      return;
+    }
     const UnityVulkanInstance instance = vulkan_->Instance();
     if (!instance.instance || !instance.physicalDevice || !instance.device ||
         !instance.graphicsQueue) {
       diagnostic_ = "Unity returned an incomplete Vulkan device context";
+      return;
+    }
+    if (intercepted_physical_device_.load(std::memory_order_acquire) !=
+        reinterpret_cast<uintptr_t>(instance.physicalDevice) ||
+        intercepted_device_.load(std::memory_order_acquire) !=
+            reinterpret_cast<uintptr_t>(instance.device) ||
+        created_instance_.load(std::memory_order_acquire) !=
+            reinterpret_cast<uintptr_t>(instance.instance)) {
+      diagnostic_ =
+          "Unity Vulkan intercepted instance/physical/logical device does not match active device";
       return;
     }
     device_context_.instance = reinterpret_cast<uintptr_t>(instance.instance);
@@ -172,10 +257,33 @@ public:
     query.instance = instance.instance;
     query.physical_device = instance.physicalDevice;
     query.device = instance.device;
-    const DeviceIdentity id = QueryDeviceIdentity(query);
+    query.instance_api_version = instance_api_version_;
+    query.properties2_extension = instance_properties2_;
+    query.external_memory_capabilities_extension = instance_external_memory_;
+    query.ahb_extension = true;
+    const DeviceIdentity id = QueryUnityIdentity(query);
+    const auto nonzero=[](const auto& uuid){return std::any_of(uuid.begin(),uuid.end(),[](uint8_t b){return b!=0;});};
+    if (!id.queried || !nonzero(id.device_uuid) || !nonzero(id.driver_uuid)) {
+      diagnostic_ = "Unity Vulkan physical-device UUID query failed";
+      have_device_ = false;
+      device_context_ = {};
+      return;
+    }
     device_context_.device_uuid = id.device_uuid;
     device_context_.driver_uuid = id.driver_uuid;
     have_device_ = true;
+    device_live_.store(true,std::memory_order_release);
+    runtime_error_.store(0,std::memory_order_release);
+    const UnityVulkanPluginEventConfig config{
+        kUnityVulkanRenderPass_EnsureOutside,
+        kUnityVulkanGraphicsQueueAccess_DontCare,
+        kUnityVulkanEventConfigFlag_EnsurePreviousFrameSubmission};
+    if (!vulkan_->ConfigureEvent) {
+      have_device_=false;
+      diagnostic_="Unity Vulkan ConfigureEvent is unavailable";
+      return;
+    }
+    vulkan_->ConfigureEvent(0, &config);
     diagnostic_.clear();
   }
 
@@ -184,7 +292,197 @@ public:
     return producer;
   }
 
+#if defined(HV_ANDROID_ADAPTER_TEST)
+  static bool TestCreate(uint32_t index,
+                         const UnityVulkanDeviceContext &device,
+                         const SlotContract &contract,
+                         const AhbSelection &selection,
+                         UnityVulkanSlotCache &out) noexcept {
+    return Create(nullptr, index, device, contract, selection, out);
+  }
+  static void TestDrain(uint32_t index, UnityVulkanSlotCache &cache) noexcept {
+    SyncFd fd;
+    Drain(nullptr, index, AhbSlotState::Free, cache, fd);
+  }
+  static SourcePreparation TestPrepareSource(
+      const UnityVulkanSlotCache &cache,
+      const UnityTextureAccess &access) noexcept {
+    return PrepareSource(&Get(), cache, access);
+  }
+  static const char *TestDiagnostic() noexcept { return Get().Diagnostic(); }
+  static bool TestBlit(const UnityVulkanSlotCache &cache,
+                       const UnityTextureAccess &access,
+                       const BridgeBarrier *barriers) noexcept {
+    return Blit(nullptr, cache, access, barriers, 4);
+  }
+  static bool TestColor(const UnityVulkanSlotCache &cache,
+                        const UnityTextureAccess &access,
+                        const BridgeBarrier *barriers) noexcept {
+    return Color(nullptr, cache, access, barriers, 4, true);
+  }
+  static VkResult TestInterceptCreateDevice(
+      VkPhysicalDevice physical, const VkDeviceCreateInfo *create,
+      VkDevice *device) noexcept {
+    return InterceptCreateDevice(physical, create, nullptr, device);
+  }
+  static void TestInstallGipa(PFN_vkGetInstanceProcAddr gipa) noexcept {
+    Get().next_gipa_ = gipa;
+    Get().required_extensions_enabled_.store(false);
+    Get().intercepted_physical_device_.store(0);
+    Get().intercept_instance_.store(0);
+    Get().instance_api_version_ = VK_API_VERSION_1_1;
+  }
+  static PFN_vkVoidFunction TestInterceptGipa(VkInstance instance,
+                                               const char *name) noexcept {
+    return InterceptGetInstanceProcAddr(instance, name);
+  }
+  static bool TestRequiredExtensionsEnabled() noexcept {
+    return Get().required_extensions_enabled_.load();
+  }
+  static uintptr_t TestInterceptedPhysicalDevice() noexcept {
+    return Get().intercepted_physical_device_.load();
+  }
+  static void TestInstallUnityVulkan(IUnityGraphicsVulkanV2 *vulkan) noexcept {
+    auto &self = Get();
+    self.vulkan_ = vulkan;
+    self.device_live_.store(true);
+    std::lock_guard<std::mutex> lock(self.queue_mutex_);
+    self.queue_closed_ = false;
+  }
+  static bool TestAccess(void *texture, UnityTextureAccess &out) noexcept {
+    return Access(&Get(), texture, out);
+  }
+  static void TestRelease(void *texture,
+                          const UnityTextureAccess &access) noexcept {
+    Release(&Get(), texture, access);
+  }
+  static bool TestQueue() noexcept {
+    return QueueAccess(&Get(), &UnityVulkanBridge::QueueEvent, nullptr);
+  }
+  static void TestCancel() noexcept { Cancel(&Get()); }
+#endif
+
 private:
+  DeviceIdentity QueryUnityIdentity(const VulkanDeviceContext& context) const {
+    DeviceIdentity id;
+    const bool core=context.instance_api_version>=VK_API_VERSION_1_1;
+    if(!next_gipa_ || (!core && !(context.properties2_extension && context.external_memory_capabilities_extension)))return id;
+    const auto query=reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2>(next_gipa_(context.instance,
+        core ? "vkGetPhysicalDeviceProperties2" : "vkGetPhysicalDeviceProperties2KHR"));
+    if(!query)return id;
+    VkPhysicalDeviceIDProperties ids{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES};
+    VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,&ids};
+    query(context.physical_device,&properties);
+    std::copy_n(ids.deviceUUID,16,id.device_uuid.begin());
+    std::copy_n(ids.driverUUID,16,id.driver_uuid.begin());
+    id.queried=true;
+    return id;
+  }
+  static PFN_vkGetInstanceProcAddr UNITY_INTERFACE_API InitializeVulkan(
+      PFN_vkGetInstanceProcAddr next, void *userdata) {
+    auto &self = *static_cast<AndroidProducer *>(userdata);
+    self.next_gipa_ = next;
+    self.required_extensions_enabled_.store(false);
+    self.created_instance_.store(0);
+    self.intercepted_device_.store(0);
+    return InterceptGetInstanceProcAddr;
+  }
+  static PFN_vkVoidFunction VKAPI_PTR InterceptGetInstanceProcAddr(VkInstance instance,
+                                                                    const char* name) {
+    auto& self = Get();
+    if (name && std::strcmp(name,"vkCreateInstance")==0)
+      return reinterpret_cast<PFN_vkVoidFunction>(&InterceptCreateInstance);
+    const bool create_device =
+        name && std::strcmp(name, "vkCreateDevice") == 0;
+    if (create_device && instance)
+      self.intercept_instance_.store(reinterpret_cast<uintptr_t>(instance),
+                                     std::memory_order_release);
+    if (create_device && instance)
+      return reinterpret_cast<PFN_vkVoidFunction>(&InterceptCreateDevice);
+    return self.next_gipa_ ? self.next_gipa_(instance, name) : nullptr;
+  }
+  static VkResult VKAPI_PTR InterceptCreateInstance(const VkInstanceCreateInfo* create,
+      const VkAllocationCallbacks* allocator, VkInstance* instance) {
+    auto& self=Get();
+    if (!self.next_gipa_ || !create || !instance) return VK_ERROR_INITIALIZATION_FAILED;
+    const auto create_instance=reinterpret_cast<PFN_vkCreateInstance>(self.next_gipa_(nullptr,"vkCreateInstance"));
+    if(!create_instance)return VK_ERROR_INITIALIZATION_FAILED;
+    self.instance_api_version_=create->pApplicationInfo && create->pApplicationInfo->apiVersion ?
+        create->pApplicationInfo->apiVersion : VK_API_VERSION_1_0;
+    const auto enabled=[&](const char* name){
+      for(uint32_t i=0;i<create->enabledExtensionCount;++i)
+        if(std::strcmp(create->ppEnabledExtensionNames[i],name)==0)return true;
+      return false;
+    };
+    // Capture enabled facts, never infer instance support from a loader version.
+    self.instance_properties2_=enabled(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+    self.instance_external_memory_=enabled(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
+    self.instance_external_semaphore_=enabled(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME);
+    const VkResult result=create_instance(create,allocator,instance);
+    self.created_instance_.store(result==VK_SUCCESS ? reinterpret_cast<uintptr_t>(*instance) : 0,
+                                 std::memory_order_release);
+    return result;
+  }
+  static VkResult VKAPI_PTR InterceptCreateDevice(VkPhysicalDevice physical,
+      const VkDeviceCreateInfo* create, const VkAllocationCallbacks* allocator, VkDevice* device) {
+    auto& self = Get();
+    if (!self.next_gipa_ || !self.intercept_instance_.load()) return VK_ERROR_INITIALIZATION_FAILED;
+    auto enumerate = reinterpret_cast<PFN_vkEnumerateDeviceExtensionProperties>(
+        self.next_gipa_(
+            reinterpret_cast<VkInstance>(
+                self.intercept_instance_.load(std::memory_order_acquire)),
+            "vkEnumerateDeviceExtensionProperties"));
+    auto create_device = reinterpret_cast<PFN_vkCreateDevice>(
+        self.next_gipa_(
+            reinterpret_cast<VkInstance>(
+                self.intercept_instance_.load(std::memory_order_acquire)),
+            "vkCreateDevice"));
+    if (!enumerate || !create_device || !create) return VK_ERROR_INITIALIZATION_FAILED;
+    uint32_t count=0;
+    if(enumerate(physical,nullptr,&count,nullptr)!=VK_SUCCESS)return VK_ERROR_EXTENSION_NOT_PRESENT;
+    std::vector<VkExtensionProperties> props(count);
+    if (enumerate(physical,nullptr,&count,props.data()) != VK_SUCCESS) return VK_ERROR_EXTENSION_NOT_PRESENT;
+    const char* required[] = {VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME,
+                              VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME};
+    std::vector<const char *> extensions;
+    if (create->enabledExtensionCount && create->ppEnabledExtensionNames)
+      extensions.assign(create->ppEnabledExtensionNames,
+                        create->ppEnabledExtensionNames +
+                            create->enabledExtensionCount);
+    const auto query_properties=reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(self.next_gipa_(
+        reinterpret_cast<VkInstance>(self.intercept_instance_.load()),"vkGetPhysicalDeviceProperties"));
+    VkPhysicalDeviceProperties physical_properties{};
+    if(query_properties)query_properties(physical,&physical_properties);
+    const bool core=self.instance_api_version_>=VK_API_VERSION_1_1 && physical_properties.apiVersion>=VK_API_VERSION_1_1;
+    bool all_supported = core || (self.instance_properties2_ && self.instance_external_memory_ && self.instance_external_semaphore_);
+    for (const char* requirement : required) {
+      const bool supported=std::any_of(props.begin(),props.end(),[&](const VkExtensionProperties& p){return std::strcmp(p.extensionName,requirement)==0;});
+      if (!supported) { all_supported = false; continue; }
+      if (std::none_of(extensions.begin(),extensions.end(),[&](const char* e){return std::strcmp(e,requirement)==0;})) extensions.push_back(requirement);
+    }
+    // Vulkan 1.0 requires the unpromoted AHB/external-semaphore dependencies.
+    if (!core) {
+      const char* dependencies[]={VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
+          VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME, VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
+          VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME, VK_KHR_BIND_MEMORY_2_EXTENSION_NAME,
+          VK_KHR_MAINTENANCE1_EXTENSION_NAME, VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME};
+      for(const char* dependency:dependencies) {
+        const bool supported=std::any_of(props.begin(),props.end(),[&](const auto& p){return std::strcmp(p.extensionName,dependency)==0;});
+        if(!supported){all_supported=false;continue;}
+        if(std::none_of(extensions.begin(),extensions.end(),[&](const char* e){return std::strcmp(e,dependency)==0;}))extensions.push_back(dependency);
+      }
+    }
+    VkDeviceCreateInfo amended=*create; amended.enabledExtensionCount=static_cast<uint32_t>(extensions.size()); amended.ppEnabledExtensionNames=extensions.data();
+    const VkResult result=create_device(physical,&amended,allocator,device);
+    self.required_extensions_enabled_.store(result == VK_SUCCESS && all_supported,
+                                             std::memory_order_release);
+    if (result == VK_SUCCESS && all_supported)
+      self.intercepted_physical_device_.store(
+          reinterpret_cast<uintptr_t>(physical), std::memory_order_release);
+    self.intercepted_device_.store(result==VK_SUCCESS && all_supported ? reinterpret_cast<uintptr_t>(*device):0,
+                                   std::memory_order_release);
+    return result;
+  }
   static void UNITY_INTERFACE_API DeviceEvent(UnityGfxDeviceEventType event) {
     Get().OnDevice(event);
   }
@@ -408,11 +706,12 @@ private:
     return vkCreateGraphicsPipelines(s.device, VK_NULL_HANDLE, 1, &gp, nullptr,
                                      &s.pipeline) == VK_SUCCESS;
   }
-  static bool Create(void *, uint32_t, const UnityVulkanDeviceContext &c,
+  static bool Create(void *p, uint32_t, const UnityVulkanDeviceContext &c,
                      const SlotContract &contract,
                      const AhbSelection &selection,
                      UnityVulkanSlotCache &out) noexcept {
     auto slot = std::make_unique<AndroidSlot>();
+    slot->device_live=p ? &static_cast<AndroidProducer*>(p)->device_live_ : nullptr;
     slot->device = D(c);
     slot->width = contract.width;
     slot->height = contract.height;
@@ -434,6 +733,13 @@ private:
     // generation-long owner reference.
     AHardwareBuffer_acquire(slot->ahb);
     AHardwareBuffer_acquire(slot->ahb);
+    AHardwareBuffer_Desc actual{};
+    AHardwareBuffer_describe(slot->ahb, &actual);
+    if (actual.width != contract.width || actual.height != contract.height ||
+        actual.layers != 1 || actual.format != contract.actual_format ||
+        actual.usage != contract.actual_usage ||
+        actual.stride < actual.width)
+      return false;
     VkExternalMemoryImageCreateInfo ext{
         VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO};
     ext.handleTypes =
@@ -455,20 +761,29 @@ private:
         reinterpret_cast<PFN_vkGetAndroidHardwareBufferPropertiesANDROID>(
             vkGetDeviceProcAddr(slot->device,
                                 "vkGetAndroidHardwareBufferPropertiesANDROID"));
+    VkAndroidHardwareBufferFormatPropertiesANDROID format_props{
+        VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID};
     VkAndroidHardwareBufferPropertiesANDROID props{
-        VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID};
+        VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID, &format_props};
     if (!get_ahb_properties ||
         get_ahb_properties(slot->device, slot->ahb, &props) != VK_SUCCESS)
       return false;
-    VkMemoryRequirements req{};
-    vkGetImageMemoryRequirements(slot->device, slot->image, &req);
-    uint32_t type = MemoryType(P(c), req.memoryTypeBits & props.memoryTypeBits);
+    // A concrete VkFormat image is gated by B2's concrete-format/tiling query.
+    // AHB formatFeatures describes the external-format path and is retained by
+    // the measured candidate for diagnostics; it is not intersected here.
+    if (!props.allocationSize || !props.memoryTypeBits ||
+        format_props.format != slot->format)
+      return false;
+    uint32_t type = MemoryType(P(c), props.memoryTypeBits);
     if (type == UINT32_MAX)
       return false;
     VkImportAndroidHardwareBufferInfoANDROID imp{
         VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID, nullptr,
         slot->ahb};
-    VkMemoryAllocateInfo alloc{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, &imp,
+    VkMemoryDedicatedAllocateInfo dedicated{
+        VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO, &imp, slot->image,
+        VK_NULL_HANDLE};
+    VkMemoryAllocateInfo alloc{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, &dedicated,
                                props.allocationSize, type};
     if (vkAllocateMemory(slot->device, &alloc, nullptr, &slot->memory) !=
             VK_SUCCESS ||
@@ -505,6 +820,9 @@ private:
     if (vkCreateSemaphore(slot->device, &sem, nullptr, &slot->semaphore) !=
         VK_SUCCESS)
       return false;
+    VkFenceCreateInfo fence{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    if (vkCreateFence(slot->device, &fence, nullptr, &slot->submission_fence) != VK_SUCCESS)
+      return false;
     if (selection.path == HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT &&
         !CreateColor(*slot))
       return false;
@@ -532,12 +850,16 @@ private:
     std::unique_ptr<AndroidSlot> s(S(cache));
     if (!s)
       return;
-    vkDeviceWaitIdle(s->device);
+    // Queue admission and callbacks have already been joined by the control
+    // shutdown. Only this plugin's submitted fence is ours to wait on; Unity's
+    // other queues are not externally synchronized by this bridge.
+    if (s->submitted && s->Alive())
+      vkWaitForFences(s->device, 1, &s->submission_fence, VK_TRUE, UINT64_MAX);
     cache = {};
   }
   static bool Access(void *p, void *texture, UnityTextureAccess &out) noexcept {
     auto &self = *static_cast<AndroidProducer *>(p);
-    if (!self.vulkan_)
+    if (!self.vulkan_ || !self.device_live_.load(std::memory_order_acquire))
       return false;
     UnityVulkanImage observed{};
     if (!self.vulkan_->AccessTexture(
@@ -546,57 +868,91 @@ private:
             kUnityVulkanResourceAccess_ObserveOnly, &observed))
       return false;
     const VkImageLayout prior = observed.layout;
-    const VkImageLayout requested = VK_IMAGE_LAYOUT_GENERAL;
-    if (!self.vulkan_->AccessTexture(
-            texture, UnityVulkanWholeImage, requested,
-            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_READ_BIT,
-            kUnityVulkanResourceAccess_PipelineBarrier, &observed))
-      return false;
     out.image = reinterpret_cast<uintptr_t>(observed.image);
     out.layout = BridgeImageLayout::SourceCurrent;
-    {
-      std::lock_guard<std::mutex> lock(self.access_);
-      self.prior_layout_ = prior;
-      self.source_format_ = observed.format;
-      self.source_extent_ = observed.extent;
-    }
+    out.native_layout = static_cast<uint32_t>(prior);
+    out.native_stage = static_cast<uint32_t>(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+    out.native_access = static_cast<uint32_t>(VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
+    out.format = static_cast<uint32_t>(observed.format);
+    out.width = observed.extent.width; out.height = observed.extent.height;
+    out.usage = observed.usage; out.samples = observed.samples; out.image_type = observed.type;
+    out.tiling = observed.tiling; out.layers = static_cast<uint32_t>(observed.layers);
     return true;
   }
-  static void Release(void *p, void *texture,
-                      const UnityTextureAccess &) noexcept {
-    auto &self = *static_cast<AndroidProducer *>(p);
-    if (!self.vulkan_)
-      return;
-    UnityVulkanImage ignored{};
-    VkImageLayout prior;
-    {
-      std::lock_guard<std::mutex> lock(self.access_);
-      prior = self.prior_layout_;
+  static SourcePreparation PrepareSource(
+      void *p, const UnityVulkanSlotCache &cache,
+      const UnityTextureAccess &access) noexcept {
+    auto *self = static_cast<AndroidProducer *>(p);
+    auto *slot = S(cache);
+    if (!slot || !slot->Alive())
+      return SourcePreparation::Unsupported;
+    if (!slot->pipeline) {
+      slot->active_source_view = VK_NULL_HANDLE;
+      return SourcePreparation::Ready;
     }
-    self.vulkan_->AccessTexture(
-        texture, UnityVulkanWholeImage, prior,
-        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-        VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
-        kUnityVulkanResourceAccess_PipelineBarrier, &ignored);
+    const auto image = reinterpret_cast<VkImage>(access.image);
+    const auto format = static_cast<VkFormat>(access.format);
+    for (auto &source : slot->source_views) {
+      if (source.image == image && source.format == format && source.view) {
+        slot->active_source_view = source.view;
+        return SourcePreparation::Ready;
+      }
+    }
+    for (auto &source : slot->source_views) {
+      if (source.view)
+        continue;
+      VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+      view.image = image;
+      view.viewType = VK_IMAGE_VIEW_TYPE_2D;
+      view.format = format;
+      view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+      if (vkCreateImageView(slot->device, &view, nullptr, &source.view) !=
+          VK_SUCCESS) {
+        if (self)
+          self->runtime_error_.store(1, std::memory_order_release);
+        return SourcePreparation::Unsupported;
+      }
+      source.image = image;
+      source.format = format;
+      slot->active_source_view = source.view;
+      // This event is the bounded source-cache warm/rebuild event. The frame is
+      // retired without submission; accepted copy events create no driver
+      // objects and only bind one of these generation-owned views.
+      return SourcePreparation::Warmed;
+    }
+    if (self)
+      self->runtime_error_.store(2, std::memory_order_release);
+    return SourcePreparation::Unsupported;
   }
+  // Unity has no ReleaseTexture operation. The queue command restores the exact
+  // per-event prior layout/access; this callback only closes bridge bookkeeping.
+  static void Release(void *, void *, const UnityTextureAccess &) noexcept {}
   static void UNITY_INTERFACE_API QueueCallback(int, void *data) noexcept {
     UnityVulkanBridge::QueueEvent(data);
     auto &self = Get();
-    self.queued_callbacks_.fetch_sub(1, std::memory_order_acq_rel);
+    { std::lock_guard<std::mutex> lock(self.queue_mutex_);
+      self.queued_callbacks_.fetch_sub(1, std::memory_order_acq_rel); }
     self.queue_cv_.notify_all();
   }
   static bool QueueAccess(void *p, void (*callback)(void *) noexcept,
                           void *data) noexcept {
     auto &self = *static_cast<AndroidProducer *>(p);
-    if (!self.vulkan_ || callback != &UnityVulkanBridge::QueueEvent)
-      return false;
-    self.queued_callbacks_.fetch_add(1, std::memory_order_acq_rel);
+    {
+      std::lock_guard<std::mutex> lock(self.queue_mutex_);
+      if (!self.vulkan_ || self.queue_closed_ ||
+          callback != &UnityVulkanBridge::QueueEvent)
+        return false;
+      self.queued_callbacks_.fetch_add(1, std::memory_order_acq_rel);
+    }
+    // AccessQueue may invoke the callback synchronously. Do not hold the drain
+    // mutex across the Unity call; the admitted callback count prevents
+    // teardown from observing a false zero in either schedule.
     self.vulkan_->AccessQueue(&QueueCallback, 0, data, true);
     return true;
   }
-  static bool Begin(AndroidSlot &s, const BridgeBarrier *b,
-                    uint32_t n) noexcept {
-    if (n != 4 || vkResetCommandBuffer(s.command, 0) != VK_SUCCESS)
+  static bool Begin(AndroidSlot &s, const UnityTextureAccess& access,
+                    const BridgeBarrier *b, uint32_t n) noexcept {
+    if (!s.Alive() || n != 4 || vkResetCommandBuffer(s.command, 0) != VK_SUCCESS)
       return false;
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -604,70 +960,62 @@ private:
       return false;
     for (uint32_t i = 0; i < 2; ++i) {
       auto v = Barrier(b[i]);
+      if (i == 0) {
+        v.oldLayout = static_cast<VkImageLayout>(access.native_layout);
+        v.srcAccessMask = static_cast<VkAccessFlags>(access.native_access);
+      }
       if (i == 1 && !s.destination_initialized)
         v.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-      vkCmdPipelineBarrier(s.command, Stage(b[i].old_layout),
+      vkCmdPipelineBarrier(s.command,
+                           i == 0 ? static_cast<VkPipelineStageFlags>(
+                                        access.native_stage)
+                                  : Stage(b[i].old_layout),
                            Stage(b[i].new_layout), 0, 0, nullptr, 0, nullptr, 1,
                            &v);
     }
     return true;
   }
-  static void EndBarriers(AndroidSlot &s, const BridgeBarrier *b) noexcept {
+  static void EndBarriers(AndroidSlot &s, const UnityTextureAccess& access,
+                          const BridgeBarrier *b) noexcept {
     for (uint32_t i = 2; i < 4; ++i) {
       auto v = Barrier(b[i]);
+      if (i == 3) {
+        v.newLayout = static_cast<VkImageLayout>(access.native_layout);
+        v.dstAccessMask = static_cast<VkAccessFlags>(access.native_access);
+      }
       vkCmdPipelineBarrier(s.command, Stage(b[i].old_layout),
-                           Stage(b[i].new_layout), 0, 0, nullptr, 0, nullptr, 1,
+                           i == 3 ? static_cast<VkPipelineStageFlags>(access.native_stage) : Stage(b[i].new_layout), 0, 0, nullptr, 0, nullptr, 1,
                            &v);
     }
   }
   static bool Blit(void *, const UnityVulkanSlotCache &c,
-                   const UnityTextureAccess &, const BridgeBarrier *b,
+                   const UnityTextureAccess &access, const BridgeBarrier *b,
                    uint32_t n) noexcept {
     auto *s = S(c);
-    if (!s || !Begin(*s, b, n))
+    if (!s || !Begin(*s, access, b, n))
       return false;
     VkImageBlit region{};
     region.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-    region.srcOffsets[1] = {int32_t(s->width), int32_t(s->height), 1};
+    region.srcOffsets[1] = {int32_t(access.width), int32_t(access.height), 1};
     region.dstSubresource = region.srcSubresource;
-    region.dstOffsets[1] = region.srcOffsets[1];
+    region.dstOffsets[1] = {int32_t(s->width), int32_t(s->height), 1};
     vkCmdBlitImage(s->command, reinterpret_cast<VkImage>(b[0].image),
                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, s->image,
                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region,
                    VK_FILTER_LINEAR);
-    EndBarriers(*s, b);
+    EndBarriers(*s, access, b);
     return vkEndCommandBuffer(s->command) == VK_SUCCESS;
   }
   static bool Color(void *p, const UnityVulkanSlotCache &c,
-                    const UnityTextureAccess &, const BridgeBarrier *b,
+                    const UnityTextureAccess &access, const BridgeBarrier *b,
                     uint32_t n, bool gpu_shader_conversion) noexcept {
-    auto &self = *static_cast<AndroidProducer *>(p);
+    (void)p;
     auto *s = S(c);
-    if (!s || !gpu_shader_conversion || !Begin(*s, b, n))
+    if (!s || !gpu_shader_conversion || !Begin(*s, access, b, n))
       return false;
-    VkFormat format;
-    VkExtent3D extent;
-    {
-      std::lock_guard<std::mutex> lock(self.access_);
-      format = self.source_format_;
-      extent = self.source_extent_;
-    }
-    if (!s->source_view ||
-        s->source_image != reinterpret_cast<VkImage>(b[0].image)) {
-      if (s->source_view)
-        vkDestroyImageView(s->device, s->source_view, nullptr);
-      VkImageViewCreateInfo vi{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-      vi.image = reinterpret_cast<VkImage>(b[0].image);
-      vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
-      vi.format = format;
-      vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-      if (vkCreateImageView(s->device, &vi, nullptr, &s->source_view) !=
-          VK_SUCCESS)
-        return false;
-      s->source_image = vi.image;
-      s->source_format = format;
-    }
-    VkDescriptorImageInfo di{s->sampler, s->source_view,
+    if (!s->active_source_view)
+      return false;
+    VkDescriptorImageInfo di{s->sampler, s->active_source_view,
                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
     VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
     write.dstSet = s->descriptor;
@@ -685,34 +1033,37 @@ private:
     vkCmdBindDescriptorSets(s->command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             s->pipeline_layout, 0, 1, &s->descriptor, 0,
                             nullptr);
-    uint32_t swap = (format == VK_FORMAT_B8G8R8A8_UNORM ||
-                     format == VK_FORMAT_B8G8R8A8_SRGB)
-                        ? 1u
-                        : 0u;
+    // Typed BGRA sampling already yields semantic RGBA components.
+    uint32_t swap = 0u;
     vkCmdPushConstants(s->command, s->pipeline_layout,
                        VK_SHADER_STAGE_FRAGMENT_BIT, 0, 4, &swap);
     vkCmdDraw(s->command, 3, 1, 0, 0);
     vkCmdEndRenderPass(s->command);
-    EndBarriers(*s, b);
-    (void)extent;
+    EndBarriers(*s, access, b);
     return vkEndCommandBuffer(s->command) == VK_SUCCESS;
   }
   static bool Submit(void *, const UnityVulkanDeviceContext &dc,
                      const UnityVulkanSlotCache &c) noexcept {
     auto *s = S(c);
+    if(!s || !s->Alive())return false;
+    if (vkResetFences(s->device, 1, &s->submission_fence) != VK_SUCCESS) return false;
     VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     si.commandBufferCount = 1;
     si.pCommandBuffers = &s->command;
     si.signalSemaphoreCount = 1;
     si.pSignalSemaphores = &s->semaphore;
-    const bool ok = vkQueueSubmit(Q(dc), 1, &si, VK_NULL_HANDLE) == VK_SUCCESS;
-    if (ok)
+    const bool ok = vkQueueSubmit(Q(dc), 1, &si, s->submission_fence) == VK_SUCCESS;
+    if (ok) {
       s->destination_initialized = true;
+      s->submitted = true;
+      s->export_pending = true;
+    }
     return ok;
   }
   static bool Export(void *, const UnityVulkanDeviceContext &dc,
                      const UnityVulkanSlotCache &c, SyncFd &out) noexcept {
     auto *s = S(c);
+    if(!s || !s->Alive())return false;
     auto fn = reinterpret_cast<PFN_vkGetSemaphoreFdKHR>(
         vkGetDeviceProcAddr(D(dc), "vkGetSemaphoreFdKHR"));
     if (!fn)
@@ -723,6 +1074,7 @@ private:
     int fd = -2;
     if (fn(D(dc), &info, &fd) != VK_SUCCESS)
       return false;
+    s->export_pending = false;
     out = SyncFd(
         fd,
         [](void *, int owned) noexcept {
@@ -732,14 +1084,27 @@ private:
         nullptr);
     return out.HasPayload();
   }
+  static bool Complete(void *p, const UnityVulkanDeviceContext &dc,
+                       const UnityVulkanSlotCache &c) noexcept {
+    auto* s = S(c);
+    if (!s || !s->Alive() || vkGetFenceStatus(s->device, s->submission_fence) != VK_SUCCESS)
+      return false;
+    // A completed queue signal still leaves the binary semaphore signaled if
+    // export failed. Retry the payload transfer and close the discarded fd;
+    // never recycle it for another signal until that transfer succeeds.
+    if (s->export_pending) {
+      SyncFd discarded;
+      if (!Export(p, dc, c, discarded)) return false;
+    }
+    return true;
+  }
   static void Cancel(void *p) noexcept {
     auto &self = *static_cast<AndroidProducer *>(p);
     std::unique_lock<std::mutex> lock(self.queue_mutex_);
+    self.queue_closed_ = true;
     self.queue_cv_.wait(lock, [&] {
       return self.queued_callbacks_.load(std::memory_order_acquire) == 0;
     });
-    if (self.have_device_)
-      vkDeviceWaitIdle(reinterpret_cast<VkDevice>(self.device_context_.device));
   }
 
   IUnityInterfaces *interfaces_ = nullptr;
@@ -747,14 +1112,29 @@ private:
   IUnityGraphicsVulkanV2 *vulkan_ = nullptr;
   UnityVulkanDeviceContext device_context_{};
   bool have_device_ = false;
+  std::atomic<bool> device_live_{false};
   std::string diagnostic_ = "Unity Vulkan device is not initialized";
-  std::mutex control_, access_;
+  mutable std::mutex control_;
+  std::mutex access_;
   VkImageLayout prior_layout_ = VK_IMAGE_LAYOUT_GENERAL;
   VkFormat source_format_ = VK_FORMAT_UNDEFINED;
   VkExtent3D source_extent_{};
   std::atomic<uint32_t> queued_callbacks_{0};
   std::mutex queue_mutex_;
   std::condition_variable queue_cv_;
+  bool queue_closed_ = true;
+  bool interception_installed_ = false;
+  std::atomic<bool> required_extensions_enabled_{false};
+  std::atomic<uintptr_t> intercepted_physical_device_{0};
+  std::atomic<uintptr_t> intercepted_device_{0};
+  std::atomic<uintptr_t> created_instance_{0};
+  std::atomic<uintptr_t> intercept_instance_{0};
+  uint32_t instance_api_version_ = 0;
+  bool instance_properties2_ = false;
+  bool instance_external_memory_ = false;
+  bool instance_external_semaphore_ = false;
+  std::atomic<uint32_t> runtime_error_{0};
+  PFN_vkGetInstanceProcAddr next_gipa_ = nullptr;
   UnityVulkanBridge bridge_;
 };
 } // namespace

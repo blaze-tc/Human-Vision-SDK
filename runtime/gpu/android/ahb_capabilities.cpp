@@ -321,10 +321,18 @@ AhbImageFacts ProbeImport(const VulkanDeviceContext& context, AHardwareBuffer* b
 AhbSelection ProbeAndroidAhbCapabilities(const VulkanDeviceContext& unity,
     const VulkanDeviceContext& consumer, const VulkanSourceImage& source, uint32_t width, uint32_t height) {
     const auto match = MatchNcnnDevice(unity);
-    const auto consumer_match = MatchDevice(QueryDeviceIdentity(unity), {{match.index, QueryDeviceIdentity(consumer)}});
+    const auto producer_identity = QueryDeviceIdentity(unity);
+    const auto consumer_identity = QueryDeviceIdentity(consumer);
+    const auto consumer_match = MatchDevice(producer_identity, {{match.index, consumer_identity}});
+    const auto bind_measurement = [&](AhbSelection& result) {
+        result.source = source;
+        result.producer_identity = producer_identity;
+        result.consumer_identity = consumer_identity;
+        result.diagnostic += "\n" + match.diagnostic + "\nconsumer " + consumer_match.diagnostic;
+    };
     if (match.status != DeviceMatchStatus::Matched || consumer_match.status != DeviceMatchStatus::Matched) {
         auto result = SelectAhbCopyPath({});
-        result.diagnostic += "\n" + match.diagnostic + "\nconsumer " + consumer_match.diagnostic;
+        bind_measurement(result);
         return result;
     }
     auto result = ProbeAhbContracts(width, height, [&](const AhbDescription& request, HV_AndroidGpuCopyPath path) {
@@ -379,7 +387,7 @@ AhbSelection ProbeAndroidAhbCapabilities(const VulkanDeviceContext& unity,
         c.detail = detail.str();
         return c;
     });
-    result.diagnostic += "\n" + match.diagnostic + "\nconsumer " + consumer_match.diagnostic;
+    bind_measurement(result);
     return result;
 }
 #endif

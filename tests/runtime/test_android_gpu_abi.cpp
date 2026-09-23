@@ -5,6 +5,7 @@
 #include <type_traits>
 #include "humanvision/humanvision_android_gpu.h"
 #include "composition/session.h"
+#include "gpu/android/unity_vulkan_plugin.h"
 TEST(AndroidGpuAbi, Exact64BitLayoutAndExportSignatures) {
 #define O(T,F,N) static_assert(offsetof(T,F)==N); EXPECT_EQ(offsetof(T,F),size_t(N))
  static_assert(sizeof(HV_AndroidGpuSubmissionV1)==48);EXPECT_EQ(sizeof(HV_AndroidGpuSubmissionV1),48u);
@@ -38,4 +39,15 @@ TEST(AndroidGpuAbi, RejectsInvalidArgumentsWithoutTouchingCallerStorage) {
  EXPECT_EQ(HV_RuntimePrepareAndroidGpuFrame(&runtime,&s,&event),HV_ERR_INVALID_ARGUMENT);EXPECT_EQ(event,nullptr);}
  HV_AndroidGpuBridgeStatusV1 status{8,1};auto before=status;
  EXPECT_EQ(HV_RuntimeGetAndroidGpuBridgeStatus(&runtime,&status),HV_ERR_INVALID_ARGUMENT);EXPECT_EQ(std::memcmp(&before,&status,sizeof(status)),0);
+}
+TEST(AndroidGpuAbi, ValidSubmissionToUnavailableBridgeMapsToUnsupported) {
+ EXPECT_EQ(humanvision::gpu::AndroidBridgeResultCode(
+               humanvision::gpu::BridgeResult::Closed),
+           HV_ANDROID_GPU_ERR_UNSUPPORTED_PLATFORM);
+ EXPECT_EQ(humanvision::gpu::AndroidBridgeResultCode(
+               humanvision::gpu::BridgeResult::GpuError),
+           HV_ANDROID_GPU_ERR_UNSUPPORTED_PLATFORM);
+ EXPECT_EQ(humanvision::gpu::AndroidBridgeResultCode(
+               humanvision::gpu::BridgeResult::Invalid),
+           HV_ERR_INVALID_ARGUMENT);
 }

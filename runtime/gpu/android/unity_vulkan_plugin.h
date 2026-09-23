@@ -15,4 +15,20 @@ void GetUnityVulkanProducerStatus(HV_AndroidGpuBridgeStatusV1 &) noexcept;
 void *UnityVulkanRenderEventFunction() noexcept;
 const char *UnityVulkanProducerDiagnostic() noexcept;
 
+inline HV_Result AndroidBridgeResultCode(BridgeResult result) noexcept {
+  switch (result) {
+  case BridgeResult::Ok:
+    return HV_OK;
+  case BridgeResult::DroppedNoSlot:
+  case BridgeResult::Busy:
+    return HV_NO_NEW_RESULT;
+  case BridgeResult::Invalid:
+    return HV_ERR_INVALID_ARGUMENT;
+  case BridgeResult::Closed:
+  case BridgeResult::GpuError:
+    return HV_ANDROID_GPU_ERR_UNSUPPORTED_PLATFORM;
+  }
+  return HV_ERR_INTERNAL;
+}
+
 } // namespace humanvision::gpu

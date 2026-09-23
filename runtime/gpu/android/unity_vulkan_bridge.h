@@ -6,11 +6,14 @@
 
 #include <array>
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
+#include <mutex>
 
 namespace humanvision::gpu {
 
 enum class BridgeResult { Ok, DroppedNoSlot, Busy, Closed, Invalid, GpuError };
+enum class SourcePreparation : uint8_t { Ready, Warmed, Unsupported };
 enum class BridgeImageLayout : uint32_t {
   Undefined,
   SourceCurrent,
@@ -42,6 +45,17 @@ struct BridgeBarrier {
 struct UnityTextureAccess {
   uintptr_t image = 0;
   BridgeImageLayout layout = BridgeImageLayout::SourceCurrent;
+  uint32_t native_layout = 0;
+  uint32_t native_stage = 0;
+  uint32_t native_access = 0;
+  uint32_t format = 0;
+  uint32_t width = 0;
+  uint32_t height = 0;
+  uint32_t usage = 0;
+  uint32_t samples = 0;
+  uint32_t image_type = 0;
+  uint32_t tiling = 0;
+  uint32_t layers = 0;
 };
 
 struct UnityVulkanSlotCache {
@@ -73,6 +87,8 @@ struct UnityVulkanBridgeDispatch {
                      SyncFd &) noexcept = nullptr;
   bool (*access_texture)(void *, void *,
                          UnityTextureAccess &) noexcept = nullptr;
+  SourcePreparation (*prepare_source)(void *, const UnityVulkanSlotCache &,
+                                      const UnityTextureAccess &) noexcept = nullptr;
   void (*release_texture)(void *, void *,
                           const UnityTextureAccess &) noexcept = nullptr;
   bool (*queue_access)(void *, void (*)(void *) noexcept,
@@ -88,6 +104,8 @@ struct UnityVulkanBridgeDispatch {
   bool (*export_sync_fd)(void *, const UnityVulkanDeviceContext &,
                          const UnityVulkanSlotCache &,
                          SyncFd &) noexcept = nullptr;
+  bool (*submission_complete)(void *, const UnityVulkanDeviceContext &,
+                              const UnityVulkanSlotCache &) noexcept = nullptr;
   void (*cancel_and_drain_events)(void *) noexcept = nullptr;
 };
 
@@ -98,6 +116,9 @@ public:
     SlotToken token{};
     void *unity_texture = nullptr;
     uint64_t generation = 0;
+    std::atomic<uint64_t> reservation_id{0};
+    uint32_t submitted_width = 0;
+    uint32_t submitted_height = 0;
     std::atomic<bool> pending{false};
     std::atomic<bool> queue_pending{false};
     std::atomic<bool> texture_accessed{false};
@@ -115,8 +136,11 @@ public:
   void Shutdown() noexcept;
   BridgeResult Prepare(const HV_AndroidGpuSubmissionV1 &,
                        void **event_data) noexcept;
-  BridgeResult Render(EventRecord *) noexcept;
+  BridgeResult Render(void *event_identity) noexcept;
   void GetStatus(HV_AndroidGpuBridgeStatusV1 &) const noexcept;
+  void CloseAdmission() noexcept { accepting_calls_.store(false, std::memory_order_release); }
+  bool IsClosed() const noexcept { return !initialized_.load(std::memory_order_acquire); }
+  const char* Diagnostic() const noexcept;
   uint64_t Generation() const noexcept { return ring_.Generation(); }
   static void RenderEvent(int event_id, void *data) noexcept;
   static void QueueEvent(void *data) noexcept;
@@ -128,6 +152,18 @@ private:
                         SyncFd &) noexcept;
   void RetireWithoutSubmission(const SlotToken &) noexcept;
   BridgeResult ExecuteQueue(EventRecord *) noexcept;
+  bool Enter() const noexcept;
+  void Leave() const noexcept;
+  void Recover() noexcept;
+  void ShutdownLocked() noexcept;
+  static void *EncodeIdentity(uint32_t index, uint64_t reservation) noexcept;
+  bool DecodeIdentity(void *, uint32_t &, uint64_t &) const noexcept;
+
+  struct RecoveryRecord {
+    SlotToken token{};
+    SyncFd fd{};
+    std::atomic<uint8_t> kind{0}; // 0 none, 1 pre-submit, 2 submitted, 3 publish retry
+  };
 
   UnityVulkanBridgeDispatch dispatch_;
   UnityVulkanDeviceContext device_{};
@@ -135,10 +171,20 @@ private:
   SlotContract contract_{};
   std::array<UnityVulkanSlotCache, AhbSlotRing::kSlotCount> slots_{};
   std::array<EventRecord, AhbSlotRing::kSlotCount> records_{};
+  std::array<RecoveryRecord, AhbSlotRing::kSlotCount> recovery_{};
   AhbSlotRing ring_;
   std::atomic<bool> initialized_{false};
+  std::atomic<bool> accepting_calls_{false};
+  mutable std::atomic<uint32_t> active_calls_{0};
+  mutable std::mutex active_mutex_;
+  mutable std::condition_variable active_cv_;
+  std::mutex control_mutex_;
+  std::atomic<uint64_t> next_reservation_{1};
+  std::atomic<uint64_t> source_contract_signature_{0};
   std::atomic<uint64_t> submitted_frames_{0};
   std::atomic<uint64_t> imported_frames_{0};
+  std::atomic<uint32_t> last_error_{0};
+  static std::atomic<UnityVulkanBridge *> callback_bridge_;
 };
 
 } // namespace humanvision::gpu

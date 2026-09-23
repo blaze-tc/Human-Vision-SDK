@@ -86,6 +86,51 @@ if(WIN32)
     target_compile_features(humanvision_ahb_vulkan_probe_tests PRIVATE cxx_std_17)
     target_compile_options(humanvision_ahb_vulkan_probe_tests PRIVATE /W4 /permissive-)
     gtest_discover_tests(humanvision_ahb_vulkan_probe_tests)
+
+    # Compile the production B4 Android adapter itself against the pinned Unity
+    # interface and deterministic Vulkan/AHB boundaries. The test supplies the
+    # platform entry points and executes the real allocation/interception/cache
+    # code without claiming physical-driver behavior.
+    set(HV_ADAPTER_NDK_ROOT "$ENV{ANDROID_NDK_ROOT}")
+    if(NOT EXISTS "${HV_ADAPTER_NDK_ROOT}/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/include/vulkan/vulkan.h")
+        file(GLOB HV_UNITY_NDK_CANDIDATES
+            "D:/Developer/*/Editor/Data/PlaybackEngines/AndroidPlayer/NDK")
+        list(SORT HV_UNITY_NDK_CANDIDATES COMPARE NATURAL ORDER DESCENDING)
+        list(LENGTH HV_UNITY_NDK_CANDIDATES HV_UNITY_NDK_CANDIDATE_COUNT)
+        if(HV_UNITY_NDK_CANDIDATE_COUNT GREATER 0)
+            list(GET HV_UNITY_NDK_CANDIDATES 0 HV_ADAPTER_NDK_ROOT)
+        endif()
+    endif()
+    set(HV_ADAPTER_NDK_INCLUDE
+        "${HV_ADAPTER_NDK_ROOT}/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/include")
+    if(EXISTS "${HV_ADAPTER_NDK_INCLUDE}/vulkan/vulkan.h")
+        set(HV_ADAPTER_VULKAN_INCLUDE "${CMAKE_CURRENT_BINARY_DIR}/pinned-vulkan")
+        file(MAKE_DIRECTORY "${HV_ADAPTER_VULKAN_INCLUDE}/vulkan")
+        foreach(HV_VULKAN_HEADER vulkan.h vulkan_core.h vulkan_android.h vk_platform.h)
+            configure_file(
+                "${HV_ADAPTER_NDK_INCLUDE}/vulkan/${HV_VULKAN_HEADER}"
+                "${HV_ADAPTER_VULKAN_INCLUDE}/vulkan/${HV_VULKAN_HEADER}"
+                COPYONLY)
+        endforeach()
+        file(COPY "${HV_ADAPTER_NDK_INCLUDE}/vk_video"
+             DESTINATION "${HV_ADAPTER_VULKAN_INCLUDE}")
+        add_executable(humanvision_unity_vulkan_adapter_tests
+            ../runtime/test_unity_vulkan_android_adapter.cpp
+            ${PROJECT_SOURCE_DIR}/runtime/gpu/android/unity_vulkan_bridge.cpp
+            ${PROJECT_SOURCE_DIR}/runtime/gpu/android/ahb_slot_ring.cpp
+            ${PROJECT_SOURCE_DIR}/runtime/gpu/android/ahb_capabilities.cpp)
+        target_include_directories(humanvision_unity_vulkan_adapter_tests PRIVATE
+            ${PROJECT_SOURCE_DIR}/tests/runtime/android_adapter_stubs
+            ${HV_ADAPTER_VULKAN_INCLUDE}
+            ${PROJECT_SOURCE_DIR}/third_party/unity-plugin-api/include
+            ${PROJECT_SOURCE_DIR}/runtime
+            ${PROJECT_SOURCE_DIR}/native/include)
+        target_link_libraries(humanvision_unity_vulkan_adapter_tests PRIVATE
+            GTest::gtest_main)
+        target_compile_features(humanvision_unity_vulkan_adapter_tests PRIVATE cxx_std_17)
+        target_compile_options(humanvision_unity_vulkan_adapter_tests PRIVATE /W4 /permissive-)
+        gtest_discover_tests(humanvision_unity_vulkan_adapter_tests)
+    endif()
 endif()
 
 add_executable(humanvision_api_contract_tests

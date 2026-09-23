@@ -12,6 +12,9 @@ VkFormatFeatureFlags external_features = concrete_features;
 uint64_t optimal_usage_extra = 0;
 int fail_stage = 0;
 int live_resources = 0;
+int identity_queries = 0;
+AHardwareBuffer_Desc allocated_description{};
+AHardwareBuffer allocated_buffer{};
 
 VkResult VKAPI_CALL BufferProperties(VkDevice, const AHardwareBuffer*, VkAndroidHardwareBufferPropertiesANDROID* properties) {
     properties->allocationSize = 4096;
@@ -48,6 +51,7 @@ void Reset() {
     external_features = concrete_features;
     optimal_usage_extra = 0;
     fail_stage = 0;
+    identity_queries = 0;
     ASSERT_EQ(live_resources, 0);
 }
 
@@ -112,13 +116,85 @@ void VKAPI_CALL vkDestroyRenderPass(VkDevice, VkRenderPass, const VkAllocationCa
 void VKAPI_CALL vkDestroyFramebuffer(VkDevice, VkFramebuffer, const VkAllocationCallbacks*) { --live_resources; }
 }
 
-int AHardwareBuffer_allocate(const AHardwareBuffer_Desc*, AHardwareBuffer**) { return -1; }
-void AHardwareBuffer_describe(const AHardwareBuffer*, AHardwareBuffer_Desc*) {}
+int AHardwareBuffer_allocate(const AHardwareBuffer_Desc* description, AHardwareBuffer** buffer) {
+    allocated_description = *description;
+    allocated_description.stride = description->width;
+    *buffer = &allocated_buffer;
+    return 0;
+}
+void AHardwareBuffer_describe(const AHardwareBuffer*, AHardwareBuffer_Desc* description) {
+    *description = allocated_description;
+}
 void AHardwareBuffer_release(AHardwareBuffer*) {}
 namespace humanvision::gpu {
-DeviceIdentity QueryDeviceIdentity(const VulkanDeviceContext&) { return {}; }
-DeviceMatch MatchNcnnDevice(const VulkanDeviceContext&) { return {}; }
-DeviceMatch MatchDevice(const DeviceIdentity&, const std::vector<IndexedDevice>&) { return {}; }
+DeviceIdentity QueryDeviceIdentity(const VulkanDeviceContext& context) {
+    ++identity_queries;
+    DeviceIdentity identity;
+    identity.queried = true;
+    identity.device_uuid.fill(11);
+    identity.driver_uuid.fill(12);
+    identity.pipeline_cache_uuid.fill(13);
+    identity.vendor_id = 14;
+    identity.device_id = 15;
+    identity.driver_version = 16;
+    identity.name = context.device == reinterpret_cast<VkDevice>(3) ? "producer" : "consumer";
+    return identity;
+}
+DeviceMatch MatchNcnnDevice(const VulkanDeviceContext&) {
+    DeviceMatch match;
+    match.status = DeviceMatchStatus::Matched;
+    match.index = 7;
+    return match;
+}
+DeviceMatch MatchDevice(const DeviceIdentity&, const std::vector<IndexedDevice>& candidates) {
+    DeviceMatch match;
+    match.status = DeviceMatchStatus::Matched;
+    match.index = candidates.front().index;
+    match.identity = candidates.front().identity;
+    return match;
+}
+}
+
+TEST(AhbAndroidProbe, SelectionRetainsMeasuredSourceAndBothDeviceQueryResults) {
+    for (const auto path : {HV_ANDROID_GPU_COPY_BLIT, HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT}) {
+        Reset();
+        if (path == HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT)
+            concrete_features &= ~VK_FORMAT_FEATURE_BLIT_DST_BIT;
+        auto consumer = Context();
+        consumer.device = reinterpret_cast<VkDevice>(4);
+        const VulkanSourceImage source{1280, 720, VK_FORMAT_B8G8R8A8_UNORM,
+            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_TILING_LINEAR,
+            VK_SAMPLE_COUNT_1_BIT, 1, VK_IMAGE_TYPE_2D};
+        const auto result = ProbeAndroidAhbCapabilities(Context(), consumer, source, 640, 480);
+        ASSERT_EQ(result.path, path);
+        EXPECT_EQ(result.source.width, 1280u);
+        EXPECT_EQ(result.source.height, 720u);
+        EXPECT_EQ(result.source.format, VK_FORMAT_B8G8R8A8_UNORM);
+        EXPECT_EQ(result.source.usage, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+        EXPECT_EQ(result.source.tiling, VK_IMAGE_TILING_LINEAR);
+        EXPECT_EQ(result.source.samples, VK_SAMPLE_COUNT_1_BIT);
+        EXPECT_EQ(result.source.layers, 1u);
+        EXPECT_EQ(result.source.image_type, VK_IMAGE_TYPE_2D);
+        EXPECT_EQ(result.producer_identity.name, "producer");
+        EXPECT_EQ(result.consumer_identity.name, "consumer");
+        for (const auto* identity : {&result.producer_identity, &result.consumer_identity}) {
+            EXPECT_TRUE(identity->queried);
+            for (const auto byte : identity->device_uuid) EXPECT_EQ(byte, 11);
+            for (const auto byte : identity->driver_uuid) EXPECT_EQ(byte, 12);
+            for (const auto byte : identity->pipeline_cache_uuid) EXPECT_EQ(byte, 13);
+            EXPECT_EQ(identity->vendor_id, 14u);
+            EXPECT_EQ(identity->device_id, 15u);
+            EXPECT_EQ(identity->driver_version, 16u);
+        }
+        EXPECT_EQ(identity_queries, 2);
+        EXPECT_EQ(live_resources, 0);
+
+        const auto generic = SelectAhbCopyPath(result.candidates);
+        EXPECT_EQ(generic.path, path);
+        EXPECT_EQ(generic.source.width, 0u);
+        EXPECT_FALSE(generic.producer_identity.queried);
+        EXPECT_FALSE(generic.consumer_identity.queried);
+    }
 }
 
 TEST(AhbAndroidProbe, ConcreteFormatFeaturesAreIndependentFromExternalFormatFeatures) {

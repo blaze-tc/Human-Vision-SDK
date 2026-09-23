@@ -4,11 +4,23 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <condition_variable>
+#include <future>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace humanvision::gpu {
 namespace {
+
+// Exercise the real B3 transition mutex/state without a production test API.
+template<class Tag, typename Tag::type Member> struct MemberAccess {
+  friend typename Tag::type GetMember(Tag) { return Member; }
+};
+struct RingMember { using type = AhbSlotRing UnityVulkanBridge::*; friend type GetMember(RingMember); };
+template struct MemberAccess<RingMember, &UnityVulkanBridge::ring_>;
 
 struct FakeVulkan {
   std::vector<std::string> calls;
@@ -17,6 +29,13 @@ struct FakeVulkan {
   bool record_ok = true;
   bool submit_ok = true;
   bool export_ok = true;
+  bool complete = true;
+  int create_fail_at = -1;
+  uint32_t source_format = 37;
+  uint32_t source_width = 640;
+  uint32_t source_height = 480;
+  uint32_t source_usage = 0x5;
+  SourcePreparation source_preparation = SourcePreparation::Ready;
   int next_fd = -1;
   uint32_t created = 0;
   uint32_t drained = 0;
@@ -25,10 +44,14 @@ struct FakeVulkan {
   bool defer_queue = false;
   void (*queued_callback)(void *) noexcept = nullptr;
   void *queued_data = nullptr;
+  std::mutex access_mutex;
+  std::condition_variable access_cv;
+  bool block_access = false;
+  bool access_entered = false;
 
   UnityVulkanBridgeDispatch Dispatch() {
-    return {this, Create, Drain,  Access, Release, Queue,
-            Blit, Color,  Submit, Export, Cancel};
+    return {this, Create, Drain, Access, PrepareSource, Release, Queue, Blit,
+            Color, Submit, Export, Complete, Cancel};
   }
   static bool Create(void *p, uint32_t index,
                      const UnityVulkanDeviceContext &device,
@@ -37,6 +60,8 @@ struct FakeVulkan {
     auto &f = *static_cast<FakeVulkan *>(p);
     f.calls.push_back("create:" + std::to_string(index));
     ++f.created;
+    if (static_cast<int>(index) == f.create_fail_at)
+      return false;
     f.last_device = device;
     out.ahb = 100 + index;
     out.image = 200 + index;
@@ -65,8 +90,31 @@ struct FakeVulkan {
   static bool Access(void *p, void *, UnityTextureAccess &out) noexcept {
     auto &f = *static_cast<FakeVulkan *>(p);
     f.calls.push_back("access");
+    {
+      std::unique_lock<std::mutex> lock(f.access_mutex);
+      f.access_entered = true;
+      f.access_cv.notify_all();
+      f.access_cv.wait(lock, [&] { return !f.block_access; });
+    }
     out = {77, BridgeImageLayout::SourceCurrent};
+    out.native_layout = 1;
+    out.native_stage = 0x10000;
+    out.native_access = 0x20;
+    out.format = f.source_format;
+    out.width = f.source_width;
+    out.height = f.source_height;
+    out.usage = f.source_usage;
+    out.samples = 1;
+    out.image_type = 1;
+    out.layers = 1;
     return f.access_ok;
+  }
+  static SourcePreparation PrepareSource(
+      void *p, const UnityVulkanSlotCache &,
+      const UnityTextureAccess &) noexcept {
+    auto &f = *static_cast<FakeVulkan *>(p);
+    f.calls.push_back("prepare-source");
+    return f.source_preparation;
   }
   static void Release(void *p, void *, const UnityTextureAccess &) noexcept {
     auto &f = *static_cast<FakeVulkan *>(p);
@@ -127,6 +175,10 @@ struct FakeVulkan {
     fd = SyncFd(f.next_fd);
     return true;
   }
+  static bool Complete(void *p, const UnityVulkanDeviceContext &,
+                       const UnityVulkanSlotCache &) noexcept {
+    return static_cast<FakeVulkan *>(p)->complete;
+  }
   static void Cancel(void *p) noexcept {
     auto &f = *static_cast<FakeVulkan *>(p);
     f.calls.push_back("cancel-events");
@@ -138,10 +190,30 @@ struct FakeVulkan {
 };
 
 AhbSelection Selection(HV_AndroidGpuCopyPath path) {
-  AhbSelection selection;
-  selection.path = path;
-  selection.contract = {640, 480, 1, 1, 0x1234, 640};
-  selection.candidates.push_back({path});
+  if (path == HV_ANDROID_GPU_COPY_UNAVAILABLE) return {};
+  AhbCandidate c;
+  c.path = path;
+  c.requested = {640, 480, 1, 1,
+      path == HV_ANDROID_GPU_COPY_BLIT ? 256u : 768u, 0};
+  c.actual = c.requested; c.actual.stride = 640;
+  c.allocated = c.described = c.source_supported = true;
+  c.source_transfer_src = c.source_blit_src = c.source_sampled = true;
+  c.blit_conversion = true;
+  const auto fill = [](AhbImageFacts& f, uint32_t usage) {
+    f.properties=f.external_query=f.importable=f.compatible_handle=true;
+    f.usage_compatible=f.extent_supported=f.sampled=true;
+    f.image_created=f.memory_imported=f.memory_bound=f.view_created=true;
+    f.vk_format=37; f.image_usage=usage;
+  };
+  fill(c.producer, path == HV_ANDROID_GPU_COPY_BLIT ? 6u : 20u);
+  fill(c.consumer, 4);
+  c.producer.transfer_dst=c.producer.blit_dst=c.producer.color_attachment=true;
+  c.producer.framebuffer_created=true;
+  auto selection=SelectAhbCopyPath({c});
+  selection.source={640,480,37,5,0,1,1,1};
+  selection.producer_identity.queried=selection.consumer_identity.queried=true;
+  selection.producer_identity.device_uuid[0]=selection.consumer_identity.device_uuid[0]=0x11;
+  selection.producer_identity.driver_uuid[0]=selection.consumer_identity.driver_uuid[0]=0x22;
   return selection;
 }
 SlotContract Contract() {
@@ -149,7 +221,7 @@ SlotContract Contract() {
   contract.width = 640;
   contract.height = 480;
   contract.actual_format = 1;
-  contract.actual_usage = 0x1234;
+  contract.actual_usage = 256;
   contract.camera_session = 9;
   return contract;
 }
@@ -189,7 +261,7 @@ TEST(UnityVulkanBridgeContract, BlitUsesMeasuredPathAndExactOwnershipBarriers) {
             BridgeResult::Ok);
   EXPECT_EQ(fake.calls,
             (std::vector<std::string>{"create:0", "create:1", "create:2",
-                                      "access", "queue-access", "blit",
+                                      "access", "prepare-source", "queue-access", "blit",
                                       "signal", "export", "release"}));
   ASSERT_EQ(fake.barriers.size(), 4u);
   EXPECT_EQ(fake.barriers[0].old_layout, BridgeImageLayout::SourceCurrent);
@@ -216,8 +288,9 @@ TEST(UnityVulkanBridgeContract, BlitUsesMeasuredPathAndExactOwnershipBarriers) {
 TEST(UnityVulkanBridgeContract, ColorPathReusesGenerationCachedGpuObjects) {
   FakeVulkan fake;
   UnityVulkanBridge bridge(fake.Dispatch());
+  auto contract = Contract(); contract.actual_usage = 768;
   ASSERT_TRUE(bridge.Initialize(
-      Device(), Selection(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT), Contract()));
+      Device(), Selection(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT), contract));
   void *data = nullptr;
   ASSERT_EQ(bridge.Prepare(Submission(2), &data), BridgeResult::Ok);
   ASSERT_EQ(bridge.Render(static_cast<UnityVulkanBridge::EventRecord *>(data)),
@@ -345,6 +418,211 @@ TEST(UnityVulkanBridgeContract, RejectsUnmeasuredAndUnavailableSelections) {
   selection.contract.usage ^= 1;
   EXPECT_FALSE(bridge.Initialize(Device(), selection, Contract()));
   EXPECT_EQ(fake.created, 0u);
+}
+
+TEST(UnityVulkanBridgeContract,
+     StalePreparedIdentityCannotConsumeReservationAfterRebuild) {
+  FakeVulkan fake;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT),
+                                Contract()));
+  void *stale = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &stale), BridgeResult::Ok);
+  bridge.Shutdown();
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT),
+                                Contract()));
+  void *current = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(2), &current), BridgeResult::Ok);
+  ASSERT_NE(stale, current);
+  EXPECT_EQ(bridge.Render(stale), BridgeResult::Closed);
+  EXPECT_EQ(bridge.Render(current), BridgeResult::Ok);
+  EXPECT_EQ(std::count(fake.calls.begin(), fake.calls.end(), "access"), 1);
+}
+
+TEST(UnityVulkanBridgeContract,
+     FailedGenerationConstructionRollsBackEveryCompletedCache) {
+  for (int failure = 0; failure < 3; ++failure) {
+    FakeVulkan fake;
+    fake.create_fail_at = failure;
+    UnityVulkanBridge bridge(fake.Dispatch());
+    EXPECT_FALSE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT),
+                                   Contract()));
+    EXPECT_EQ(fake.drained, static_cast<uint32_t>(failure + 1));
+  }
+}
+
+TEST(UnityVulkanBridgeContract,
+     SubmitAndExportFailuresEventuallyRecoverAllThreeSlots) {
+  for (const bool submit_failure : {true, false}) {
+    FakeVulkan fake;
+    fake.submit_ok = !submit_failure;
+    fake.export_ok = submit_failure;
+    UnityVulkanBridge bridge(fake.Dispatch());
+    ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT),
+                                  Contract()));
+    for (int64_t frame = 1; frame <= 3; ++frame) {
+      void *data = nullptr;
+      ASSERT_EQ(bridge.Prepare(Submission(frame), &data), BridgeResult::Ok);
+      EXPECT_EQ(bridge.Render(data), BridgeResult::Ok);
+    }
+    fake.submit_ok = true;
+    fake.export_ok = true;
+    void *recovered = nullptr;
+    EXPECT_EQ(bridge.Prepare(Submission(4), &recovered), BridgeResult::Ok);
+    ASSERT_NE(recovered, nullptr);
+    EXPECT_EQ(bridge.Render(recovered), BridgeResult::Ok);
+  }
+}
+
+TEST(UnityVulkanBridgeContract, RecoveryResumesAfterDropDrainTransitionWasAlreadyCommitted) {
+  FakeVulkan fake;
+  fake.submit_ok=false;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(),Selection(HV_ANDROID_GPU_COPY_BLIT),Contract()));
+  std::array<void*,3> events{};
+  for (int i=0;i<3;++i) ASSERT_EQ(bridge.Prepare(Submission(i+1),&events[i]),BridgeResult::Ok);
+  auto& ring=bridge.*GetMember(RingMember{});
+  for (uint32_t i=0;i<3;++i) {
+    ASSERT_EQ(bridge.Render(events[i]),BridgeResult::Ok);
+    SlotSnapshot snapshot;
+    ASSERT_EQ(ring.Inspect(i,snapshot),SlotResult::Ok);
+    SlotToken token{i,snapshot.metadata.generation,snapshot.metadata.frame_id};
+    ASSERT_EQ(ring.Transition(token,AhbSlotState::EventReserved,AhbSlotState::DropDrain,
+                             CompletionProof::GpuQuiescent),SlotResult::Ok);
+  }
+  fake.submit_ok=true;
+  void* recovered=nullptr;
+  EXPECT_EQ(bridge.Prepare(Submission(4),&recovered),BridgeResult::Ok);
+  EXPECT_NE(recovered,nullptr);
+}
+
+TEST(UnityVulkanBridgeContract,
+     ShutdownWaitsForRenderCallerBeforeDrainingSlotCaches) {
+  FakeVulkan fake;
+  fake.block_access = true;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT),
+                                Contract()));
+  void *data = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &data), BridgeResult::Ok);
+  auto render = std::async(std::launch::async,
+                           [&] { return bridge.Render(data); });
+  {
+    std::unique_lock<std::mutex> lock(fake.access_mutex);
+    ASSERT_TRUE(fake.access_cv.wait_for(
+        lock, std::chrono::seconds(2), [&] { return fake.access_entered; }));
+  }
+  auto shutdown = std::async(std::launch::async, [&] { bridge.Shutdown(); });
+  EXPECT_EQ(shutdown.wait_for(std::chrono::milliseconds(30)),
+            std::future_status::timeout);
+  EXPECT_EQ(fake.drained, 0u);
+  {
+    std::lock_guard<std::mutex> lock(fake.access_mutex);
+    fake.block_access = false;
+  }
+  fake.access_cv.notify_all();
+  EXPECT_EQ(render.wait_for(std::chrono::seconds(2)),
+            std::future_status::ready);
+  EXPECT_EQ(shutdown.wait_for(std::chrono::seconds(2)),
+            std::future_status::ready);
+  EXPECT_EQ(fake.drained, 3u);
+}
+
+TEST(UnityVulkanBridgeContract,
+     SourceWarmEventDropsWithoutQueueThenAcceptedFrameUsesCache) {
+  FakeVulkan fake;
+  fake.source_preparation = SourcePreparation::Warmed;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  auto contract = Contract();
+  contract.actual_usage = 768;
+  ASSERT_TRUE(bridge.Initialize(
+      Device(), Selection(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT), contract));
+  void *warm = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &warm), BridgeResult::Ok);
+  EXPECT_EQ(bridge.Render(warm), BridgeResult::Busy);
+  EXPECT_EQ(std::count(fake.calls.begin(), fake.calls.end(), "queue-access"), 0);
+  fake.source_preparation = SourcePreparation::Ready;
+  void *accepted = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(2), &accepted), BridgeResult::Ok);
+  EXPECT_EQ(bridge.Render(accepted), BridgeResult::Ok);
+  EXPECT_EQ(std::count(fake.calls.begin(), fake.calls.end(), "queue-access"), 1);
+}
+
+TEST(UnityVulkanBridgeContract, UnconfiguredValidSubmissionIsClosedNotInvalid) {
+  FakeVulkan fake;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  void *data = nullptr;
+  EXPECT_EQ(bridge.Prepare(Submission(1), &data), BridgeResult::Closed);
+  EXPECT_EQ(data, nullptr);
+}
+
+TEST(UnityVulkanBridgeContract,
+     ObservedSourceContractChangesAreRejectedWithoutQueueSubmission) {
+  FakeVulkan fake;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT),
+                                Contract()));
+  void *first = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &first), BridgeResult::Ok);
+  ASSERT_EQ(bridge.Render(first), BridgeResult::Ok);
+  fake.source_format = 44;
+  void *changed = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(2), &changed), BridgeResult::Ok);
+  EXPECT_EQ(bridge.Render(changed), BridgeResult::Closed);
+  EXPECT_EQ(std::count(fake.calls.begin(), fake.calls.end(), "queue-access"), 1);
+}
+
+TEST(UnityVulkanBridgeContract,
+     SrgbSourceIsRejectedBecauseGenerationColorContractIsLinearUnorm) {
+  FakeVulkan fake;
+  fake.source_format = 43; // VK_FORMAT_R8G8B8A8_SRGB
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT),
+                                Contract()));
+  void *data = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &data), BridgeResult::Ok);
+  EXPECT_EQ(bridge.Render(data), BridgeResult::Closed);
+  EXPECT_EQ(std::count(fake.calls.begin(), fake.calls.end(), "queue-access"), 0);
+}
+
+TEST(UnityVulkanBridgeContract,
+     SourceGeometryMayDifferFromAnalysisGeometryWhenSubmissionMatchesSource) {
+  FakeVulkan fake;
+  fake.source_width = 1280;
+  fake.source_height = 720;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  auto selection=Selection(HV_ANDROID_GPU_COPY_BLIT);
+  selection.source.width=1280;selection.source.height=720;
+  ASSERT_TRUE(bridge.Initialize(Device(), selection,
+                                Contract()));
+  auto submission = Submission(1);
+  submission.width = 1280;
+  submission.height = 720;
+  void *data = nullptr;
+  ASSERT_EQ(bridge.Prepare(submission, &data), BridgeResult::Ok);
+  EXPECT_EQ(bridge.Render(data), BridgeResult::Ok);
+}
+
+TEST(UnityVulkanBridgeContract, RejectsSelectionFromOtherDeviceOrUnmeasuredSource) {
+  FakeVulkan fake;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  auto selection=Selection(HV_ANDROID_GPU_COPY_BLIT);
+  selection.producer_identity.device_uuid[0]^=1;
+  EXPECT_FALSE(bridge.Initialize(Device(),selection,Contract()));
+  selection=Selection(HV_ANDROID_GPU_COPY_BLIT);
+  selection.consumer_identity.driver_uuid[0]^=1;
+  EXPECT_FALSE(bridge.Initialize(Device(),selection,Contract()));
+  selection=Selection(HV_ANDROID_GPU_COPY_BLIT);
+  selection.source={};
+  EXPECT_FALSE(bridge.Initialize(Device(),selection,Contract()));
+}
+TEST(UnityVulkanBridgeContract, FirstSourceMustMatchTheActuallyMeasuredSourceFormat) {
+  FakeVulkan fake;fake.source_format=44;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(),Selection(HV_ANDROID_GPU_COPY_BLIT),Contract()));
+  void* data=nullptr;ASSERT_EQ(bridge.Prepare(Submission(1),&data),BridgeResult::Ok);
+  EXPECT_EQ(bridge.Render(data),BridgeResult::Closed);
+  EXPECT_EQ(std::count(fake.calls.begin(),fake.calls.end(),"queue-access"),0);
 }
 
 } // namespace
