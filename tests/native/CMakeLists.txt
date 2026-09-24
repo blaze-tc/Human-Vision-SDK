@@ -200,7 +200,11 @@ target_sources(humanvision_native_tests PRIVATE
     ../runtime/test_android_gpu_abi.cpp)
 target_sources(humanvision_native_tests PRIVATE
     ../runtime/test_ncnn_input_contract.cpp
-    ../runtime/test_ncnn_backend_registration.cpp)
+    ../runtime/test_ncnn_dense_output.cpp
+    ../runtime/test_ncnn_preprocess_contract.cpp
+    ../runtime/test_ncnn_backend_registration.cpp
+    ${PROJECT_SOURCE_DIR}/runtime/plugins/backend/ncnn/ncnn_preprocess.cpp
+    ${PROJECT_SOURCE_DIR}/runtime/plugins/backend/ncnn/ncnn_dense_output.cpp)
 target_include_directories(humanvision_native_tests PRIVATE ${PROJECT_SOURCE_DIR}/third_party)
 
 if(WIN32)

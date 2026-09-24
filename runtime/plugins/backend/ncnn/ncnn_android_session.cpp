@@ -2,6 +2,7 @@
 
 #if defined(__ANDROID__)
 #include "common/config_io.h"
+#include "plugins/backend/ncnn/ncnn_dense_output.h"
 #include "picosha2/picosha2.h"
 #include <algorithm>
 #include <cmath>
@@ -116,9 +117,10 @@ struct AndroidSession::Slot {
     std::unique_ptr<ncnn::Extractor> extractor;
     std::vector<ncnn::VkMat> gpu_outputs, fp32_outputs;
     std::vector<ncnn::Mat> cpu_outputs;
+    std::vector<std::vector<float>> dense_outputs;
     ~Slot() {
         extractor.reset();
-        gpu_outputs.clear(); fp32_outputs.clear(); cpu_outputs.clear();
+        gpu_outputs.clear(); fp32_outputs.clear(); cpu_outputs.clear(); dense_outputs.clear();
         prepared_input.release(); normalized.release(); imported_rgb.release();
         compute.reset(); import_pipeline.reset(); image.release(); allocator.reset();
         if (import_semaphore && device && device->vkdevice())
@@ -130,6 +132,10 @@ void AndroidSession::SlotDeleter::operator()(Slot* slot) const noexcept { delete
 AndroidSession::AndroidSession() = default;
 
 AndroidSession::~AndroidSession() {
+    if (active_consumer_) {
+        std::string ignored;
+        FinishObservation(*active_consumer_, ignored);
+    }
     for (auto& slot : slots_) slot.reset();
     preprocess_.reset();
     net_.reset();
@@ -198,7 +204,11 @@ bool AndroidSession::InitializeSlots(gpu::UnityVulkanBridge& bridge, std::string
         slot->image = ncnn::VkImageMat::from_android_hardware_buffer(slot->allocator.get());
         if (slot->image.empty()) { error = "ncnn sampled AHB import failed"; return false; }
         slot->import_pipeline = std::make_unique<ncnn::ImportAndroidHardwareBufferPipeline>(device_);
-        if (slot->import_pipeline->create(slot->allocator.get(), 1, 1, option_) != 0) {
+        ncnn::Option import_option = option_;
+        import_option.use_fp16_packed = false;
+        import_option.use_fp16_storage = false;
+        import_option.use_fp16_arithmetic = false;
+        if (slot->import_pipeline->create(slot->allocator.get(), 1, 1, import_option) != 0) {
             error = "ncnn RGB AHB import pipeline creation failed"; return false;
         }
         ExportSemaphoreCreateInfo export_info{kExportSemaphoreCreateInfo};
@@ -210,7 +220,9 @@ bool AndroidSession::InitializeSlots(gpu::UnityVulkanBridge& bridge, std::string
         slot->compute = std::make_unique<ncnn::VkCompute>(device_);
         slot->imported_rgb.create(generation_.contract.width, generation_.contract.height, 3,
                                   sizeof(float), 1, blob_allocator_);
-        slot->normalized.create(contract_.width, contract_.height, 3, sizeof(float), 1, blob_allocator_);
+        slot->normalized.create(contract_.width, contract_.height,
+                                NormalizedChannelCount(contract_.output_elempack),
+                                sizeof(float), 1, blob_allocator_);
         const int channels = (3 + contract_.output_elempack - 1) / contract_.output_elempack;
         const size_t elemsize = static_cast<size_t>(contract_.output_elempack) *
             (contract_.output_type == HV_GPU_TENSOR_FP16 ? 2u : 4u);
@@ -226,6 +238,7 @@ bool AndroidSession::InitializeSlots(gpu::UnityVulkanBridge& bridge, std::string
         slot->gpu_outputs.resize(contract_.output_blobs.size());
         slot->fp32_outputs.resize(contract_.output_blobs.size());
         slot->cpu_outputs.resize(contract_.output_blobs.size());
+        slot->dense_outputs.resize(contract_.output_blobs.size());
         slots_[i] = std::move(slot);
     }
     error.clear(); return true;
@@ -391,77 +404,84 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
     if (!consumer.claimed || consumer.token.index >= slots_.size()) {
         error = "ncnn borrowed slot is invalid"; return HV_ERR_INVALID_ARGUMENT;
     }
+    if (active_consumer_ && active_consumer_ != &consumer) {
+        error = "ncnn observation must finish before another slot is run";
+        return HV_ERR_INVALID_ARGUMENT;
+    }
+    const bool first_run = active_consumer_ == nullptr;
+    if (first_run && consumer.role_owner) {
+        error = "ncnn previous model role must release the observation before handoff";
+        return HV_ERR_INVALID_ARGUMENT;
+    }
     auto& slot = *slots_[consumer.token.index];
-    bool imported = false, acquired = false, released = false, pending = false, unproven = false;
-    gpu::SyncFd producer_proof;
-    const auto prove_after_submit_failure = [&]() noexcept {
-        // The original fd belongs to Vulkan after import. A retained duplicate
-        // proves Unity completion even if queue submission failed before wait.
-        return ncnn::vkDeviceWaitIdle(device_->vkdevice()) == VK_SUCCESS &&
-               WaitProducerFd(producer_proof);
-    };
+    bool imported = false, acquired = !first_run, released = false, pending = false, unproven = false;
     const auto retire = [&](gpu::ConsumerFrame* lease) noexcept {
         if (unproven) {
             terminal_gpu_fault_ = true;
             bridge_->QuarantineConsumer(*lease);
+            active_consumer_ = nullptr;
             return;
         }
+        if (acquired && !released) {
+            slot.compute->record_release_android_hardware_buffer(slot.image,
+                device_->info.compute_queue_family_index(), VK_QUEUE_FAMILY_EXTERNAL_KHR);
+            released = true;
+            pending = true;
+        }
         if (imported) {
-            if (acquired && !released)
-                slot.compute->record_release_android_hardware_buffer(slot.image,
-                    device_->info.compute_queue_family_index(), VK_QUEUE_FAMILY_EXTERNAL_KHR);
             const int submitted = slot.compute->submit_and_wait(slot.import_semaphore,
                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
             if (submitted != 0) {
-                if (!prove_after_submit_failure()) {
-                    terminal_gpu_fault_ = true; bridge_->QuarantineConsumer(*lease); return;
-                }
+                terminal_gpu_fault_ = true;
+                bridge_->QuarantineConsumer(*lease);
+                active_consumer_ = nullptr;
+                return;
             } else if (slot.compute->reset() != 0) {
-                terminal_gpu_fault_ = true; bridge_->QuarantineConsumer(*lease); return;
+                terminal_gpu_fault_ = true; bridge_->QuarantineConsumer(*lease);
+                active_consumer_ = nullptr; return;
             }
         } else if (pending) {
             if (slot.compute->submit_and_wait() != 0) {
-                if (ncnn::vkDeviceWaitIdle(device_->vkdevice()) != VK_SUCCESS) {
-                    terminal_gpu_fault_ = true; bridge_->QuarantineConsumer(*lease); return;
-                }
+                terminal_gpu_fault_ = true; bridge_->QuarantineConsumer(*lease);
+                active_consumer_ = nullptr; return;
             } else if (slot.compute->reset() != 0) {
-                terminal_gpu_fault_ = true; bridge_->QuarantineConsumer(*lease); return;
+                terminal_gpu_fault_ = true; bridge_->QuarantineConsumer(*lease);
+                active_consumer_ = nullptr; return;
             }
         }
-        if (!WaitProducerFd(producer_proof) || !WaitProducerFd(lease->producer_fd)) {
+        if (!WaitProducerFd(lease->producer_fd)) {
             terminal_gpu_fault_ = true; bridge_->QuarantineConsumer(*lease); return;
         }
         bridge_->RetireConsumer(*lease, gpu::CompletionProof::GpuQuiescent);
+        active_consumer_ = nullptr;
     };
     std::unique_ptr<gpu::ConsumerFrame, decltype(retire)> lease_guard(&consumer, retire);
     if (capacity < contract_.output_blobs.size() || !outputs) {
         error = "ncnn output capacity is insufficient"; return HV_ERR_INVALID_ARGUMENT;
     }
     if (!ValidateTransform(frame, transform, consumer, error)) return HV_ERR_INVALID_ARGUMENT;
-    if (!DrainDropped(error)) return HV_ERR_INTERNAL;
-    {
-        if (!consumer.producer_fd.HasPayload()) {
-            error = "ncnn producer sync-fd is absent"; return HV_ERR_INVALID_ARGUMENT;
+    if (first_run && !DrainDropped(error)) return HV_ERR_INTERNAL;
+    if (first_run) {
+        const auto start = gpu::NextNcnnRole(consumer);
+        if (start == gpu::NcnnRoleStart::Invalid) {
+            error = "ncnn observation has no valid producer or prior GPU role proof";
+            return HV_ERR_INVALID_ARGUMENT;
         }
-        if (consumer.producer_fd.Get() >= 0) {
-            const int duplicate = fcntl(consumer.producer_fd.Get(), F_DUPFD_CLOEXEC, 0);
-            if (duplicate < 0) {
-                error = "ncnn cannot retain producer completion proof"; return HV_ERR_INTERNAL;
+        const bool producer_wait = start == gpu::NcnnRoleStart::WaitForProducer;
+        if (producer_wait) {
+            const auto import = reinterpret_cast<ImportSemaphoreFd>(
+                ncnn::vkGetDeviceProcAddr(device_->vkdevice(), "vkImportSemaphoreFdKHR"));
+            ImportSemaphoreFdInfo fd_info{kImportSemaphoreFdInfo};
+            fd_info.semaphore = slot.import_semaphore;
+            fd_info.flags = kTemporaryImport;
+            fd_info.handleType = kSyncFdHandleType;
+            fd_info.fd = consumer.producer_fd.Get();
+            if (!import || import(device_->vkdevice(), &fd_info) != VK_SUCCESS) {
+                error = "ncnn temporary sync-fd semaphore import failed"; return HV_ERR_INTERNAL;
             }
-            producer_proof = gpu::SyncFd(duplicate);
+            consumer.producer_fd.Release(); // Vulkan owns the first role's fd.
+            imported = true;
         }
-        const auto import = reinterpret_cast<ImportSemaphoreFd>(
-            ncnn::vkGetDeviceProcAddr(device_->vkdevice(), "vkImportSemaphoreFdKHR"));
-        ImportSemaphoreFdInfo fd_info{kImportSemaphoreFdInfo};
-        fd_info.semaphore = slot.import_semaphore;
-        fd_info.flags = kTemporaryImport;
-        fd_info.handleType = kSyncFdHandleType;
-        fd_info.fd = consumer.producer_fd.Get();
-        if (!import || import(device_->vkdevice(), &fd_info) != VK_SUCCESS) {
-            error = "ncnn temporary sync-fd semaphore import failed"; return HV_ERR_INTERNAL;
-        }
-        consumer.producer_fd.Release(); // Vulkan now owns fd, including the -1 signaled payload.
-        imported = true;
         slot.compute->record_import_android_hardware_buffer(slot.import_pipeline.get(),
             slot.image, slot.imported_rgb, VK_IMAGE_LAYOUT_GENERAL, VK_QUEUE_FAMILY_EXTERNAL_KHR,
             device_->info.compute_queue_family_index());
@@ -472,25 +492,44 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
             contract_.output_elempack, contract_.cast_type_to, *slot.compute, option_);
         if (slot.prepared_input.empty() || slot.prepared_input.w != contract_.width ||
             slot.prepared_input.h != contract_.height ||
+            slot.prepared_input.c != (3 + contract_.output_elempack - 1) / contract_.output_elempack ||
             slot.prepared_input.elempack != contract_.output_elempack ||
             slot.prepared_input.elembits() != (contract_.output_type == HV_GPU_TENSOR_FP16 ? 16 : 32)) {
             error = "ncnn explicit FP16/packing conversion produced the wrong tensor";
             return HV_ERR_INTERNAL;
         }
-        slot.compute->record_release_android_hardware_buffer(slot.image,
-            device_->info.compute_queue_family_index(), VK_QUEUE_FAMILY_EXTERNAL_KHR);
-        released = true;
-        if (slot.compute->submit_and_wait(slot.import_semaphore,
-                                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) != 0) {
-            unproven = !prove_after_submit_failure();
+        const int submitted = producer_wait
+            ? slot.compute->submit_and_wait(slot.import_semaphore, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)
+            : slot.compute->submit_and_wait();
+        if (submitted != 0) {
+            unproven = true;
             imported = false;
             error = "ncnn GPU wait/import/preprocess submission failed"; return HV_ERR_INTERNAL;
         }
         imported = false;
         if (slot.compute->reset() != 0) {
+            unproven = true;
             error = "ncnn GPU preprocessing command reset failed"; return HV_ERR_INTERNAL;
         }
-        producer_proof.Reset();
+        active_consumer_ = &consumer;
+        active_token_ = consumer.token;
+    } else {
+        if (consumer.producer_fd.HasPayload()) {
+            error = "ncnn repeated observation unexpectedly owns producer sync-fd";
+            return HV_ERR_INVALID_ARGUMENT;
+        }
+        if (!preprocess_->Record(slot.imported_rgb, transform, slot.normalized, *slot.compute, error))
+            return HV_ERR_INVALID_ARGUMENT;
+        device_->convert_packing(slot.normalized, slot.prepared_input,
+            contract_.output_elempack, contract_.cast_type_to, *slot.compute, option_);
+        if (slot.compute->submit_and_wait() != 0) {
+            unproven = true;
+            error = "ncnn repeated observation preprocessing failed"; return HV_ERR_INTERNAL;
+        }
+        if (slot.compute->reset() != 0) {
+            unproven = true;
+            error = "ncnn repeated observation command reset failed"; return HV_ERR_INTERNAL;
+        }
     }
     pending = true;
     slot.extractor->clear();
@@ -514,36 +553,99 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
         slot.compute->record_download(slot.fp32_outputs[i], slot.cpu_outputs[i], option_);
     }
     if (slot.compute->submit_and_wait() != 0) {
-        unproven = ncnn::vkDeviceWaitIdle(device_->vkdevice()) != VK_SUCCESS;
+        unproven = true;
         pending = false;
         error = "ncnn GPU inference/download failed"; return HV_ERR_INTERNAL;
     }
     pending = false;
     if (slot.compute->reset() != 0) {
+        unproven = true;
         error = "ncnn GPU inference command reset failed"; return HV_ERR_INTERNAL;
     }
     pending = false;
     for (size_t i = 0; i < contract_.output_blobs.size(); ++i) {
         const auto& mat = slot.cpu_outputs[i];
-        const uint64_t bytes = mat.total() * mat.elemsize;
-        if (mat.empty() || bytes > output_byte_limits_[i] || mat.elemsize != sizeof(float)) {
+        DenseOutputLayout layout;
+        if (mat.empty() || mat.elemsize != sizeof(float) ||
+            !DescribeDenseOutput(mat.dims, mat.w, mat.h, mat.d, mat.c, mat.cstep,
+                                 output_byte_limits_[i], layout)) {
             error = "ncnn downloaded output violates shape/dtype bound"; return HV_ERR_MODEL_LOAD;
+        }
+        const size_t values = layout.logical_bytes / sizeof(float);
+        if (slot.dense_outputs[i].size() < values) slot.dense_outputs[i].resize(values);
+        if (!CompactDenseFp32(reinterpret_cast<const float*>(mat.data), layout,
+                              slot.dense_outputs[i].data(), slot.dense_outputs[i].size())) {
+            error = "ncnn downloaded output has invalid channel stride"; return HV_ERR_MODEL_LOAD;
         }
         auto& view = outputs[i];
         view = {};
         view.struct_size = sizeof(view); view.api_version = HV_PLUGIN_API_V1;
         view.name = contract_.output_blobs[i].c_str();
         view.element_type = 1;
-        view.rank = static_cast<uint32_t>(mat.dims);
-        if (mat.dims >= 1) view.dimensions[view.rank - 1] = mat.w;
-        if (mat.dims >= 2) view.dimensions[view.rank - 2] = mat.h;
-        if (mat.dims >= 3) view.dimensions[view.rank - 3] = mat.c;
-        view.data = mat.data;
-        view.byte_count = bytes;
+        view.rank = layout.rank;
+        std::copy(layout.dimensions.begin(), layout.dimensions.end(), view.dimensions);
+        view.data = slot.dense_outputs[i].data();
+        view.byte_count = layout.logical_bytes;
     }
     count = static_cast<uint32_t>(contract_.output_blobs.size());
     error.clear();
+    consumer.role_owner = this;
+    consumer.complete_role = &AndroidSession::CompleteRoleCallback;
+    lease_guard.release(); // The observation worker calls FinishObservation after all roles.
     return HV_OK;
+}
+
+bool AndroidSession::CompleteRoleCallback(void* owner, gpu::ConsumerFrame& frame,
+                                           bool final_role, std::string& error) noexcept {
+    auto& session = *static_cast<AndroidSession*>(owner);
+    return final_role ? session.FinishObservation(frame, error)
+                      : session.YieldObservation(frame, error);
+}
+
+bool AndroidSession::ReleaseActiveRole(gpu::ConsumerFrame& frame, std::string& error) noexcept {
+    if (active_consumer_ != &frame || !frame.claimed || frame.token.index >= slots_.size() ||
+        frame.token.index != active_token_.index ||
+        frame.token.generation != active_token_.generation ||
+        frame.token.frame_id != active_token_.frame_id ||
+        frame.metadata.generation != generation_.generation ||
+        frame.ahb_buffer != generation_.retained_ahb[frame.token.index]) {
+        terminal_gpu_fault_ = true;
+        if (active_consumer_ && active_consumer_->claimed)
+            bridge_->QuarantineConsumer(*active_consumer_);
+        if (active_consumer_ != &frame && frame.claimed)
+            bridge_->QuarantineConsumer(frame);
+        active_consumer_ = nullptr;
+        error = "ncnn observation lease identity changed before GPU release";
+        return false;
+    }
+    auto& slot = *slots_[frame.token.index];
+    slot.compute->record_release_android_hardware_buffer(slot.image,
+        device_->info.compute_queue_family_index(), VK_QUEUE_FAMILY_EXTERNAL_KHR);
+    if (slot.compute->submit_and_wait() != 0 || slot.compute->reset() != 0) {
+        terminal_gpu_fault_ = true;
+        bridge_->QuarantineConsumer(frame);
+        active_consumer_ = nullptr;
+        error = "ncnn observation release could not establish external ownership";
+        return false;
+    }
+    active_consumer_ = nullptr;
+    frame.ncnn_role_complete = true;
+    error.clear(); return true;
+}
+
+bool AndroidSession::YieldObservation(gpu::ConsumerFrame& frame, std::string& error) noexcept {
+    std::lock_guard<std::mutex> lock(run_mutex_);
+    return ReleaseActiveRole(frame, error);
+}
+
+bool AndroidSession::FinishObservation(gpu::ConsumerFrame& frame, std::string& error) noexcept {
+    std::lock_guard<std::mutex> lock(run_mutex_);
+    if (!ReleaseActiveRole(frame, error)) return false;
+    const auto retired = bridge_->RetireConsumer(frame, gpu::CompletionProof::GpuQuiescent);
+    if (retired != gpu::SlotResult::Ok) {
+        error = "ncnn observation lease retirement failed"; return false;
+    }
+    error.clear(); return true;
 }
 
 HV_Result AndroidSession::Info(HV_BackendSessionInfoV1& info) const {
@@ -558,6 +660,16 @@ void AndroidSession::RetireUnsubmitted(void* opaque_slot) noexcept {
     if (!opaque_slot || !bridge_) return;
     auto& lease = *static_cast<gpu::ConsumerFrame*>(opaque_slot);
     if (!lease.claimed) return;
+    if (lease.role_owner) {
+        std::string ignored;
+        gpu::CompleteGpuRole(lease, true, ignored);
+        return;
+    }
+    if (active_consumer_ == &lease) {
+        std::string ignored;
+        FinishObservation(lease, ignored);
+        return;
+    }
     if (WaitProducerFd(lease.producer_fd))
         bridge_->RetireConsumer(lease, gpu::CompletionProof::GpuQuiescent);
     else {

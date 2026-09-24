@@ -1,5 +1,18 @@
 #include "plugins/backend/ncnn/ncnn_preprocess.h"
 
+namespace humanvision::runtime::ncnn_backend {
+int NormalizedChannelCount(int output_elempack) noexcept {
+    return output_elempack == 4 ? 4 : output_elempack == 1 ? 3 : 0;
+}
+bool NormalizeRgbPixel(const float rgb[3], const float mean[3],
+                       const float norm[3], int channels, float output[4]) noexcept {
+    if (!rgb || !mean || !norm || !output || (channels != 3 && channels != 4)) return false;
+    for (int i = 0; i < 3; ++i) output[i] = (rgb[i] - mean[i]) * norm[i];
+    if (channels == 4) output[3] = 0.0f;
+    return true;
+}
+}
+
 #if defined(__ANDROID__)
 #include <cmath>
 
@@ -16,6 +29,7 @@ layout(push_constant) uniform parameter {
     int target_width;
     int target_height;
     int target_cstep;
+    int target_channels;
     float rect_x;
     float rect_y;
     float rect_width;
@@ -39,7 +53,11 @@ void main() {
     int x = int(gl_GlobalInvocationID.x);
     int y = int(gl_GlobalInvocationID.y);
     int output_channel = int(gl_GlobalInvocationID.z);
-    if (x >= p.target_width || y >= p.target_height || output_channel >= 3) return;
+    if (x >= p.target_width || y >= p.target_height || output_channel >= p.target_channels) return;
+    if (output_channel == 3) {
+        target_data[output_channel * p.target_cstep + y * p.target_width + x] = 0.0;
+        return;
+    }
     int source_channel = p.channel_order == 2 ? 2 - output_channel : output_channel;
     float fx = p.rect_x + ((float(x) + 0.5) * p.rect_width / float(p.target_width)) - 0.5;
     float fy = p.rect_y + ((float(y) + 0.5) * p.rect_height / float(p.target_height)) - 0.5;
@@ -67,12 +85,12 @@ bool GpuPreprocess::Initialize(const ncnn::VulkanDevice* device,
     pipeline->set_local_size_xyz(8, 8, 1);
     if (pipeline->create(spirv.data(), spirv.size() * sizeof(uint32_t), {}) != 0 ||
         pipeline->shader_info().binding_count != 2 ||
-        pipeline->shader_info().push_constant_count != 17) {
+        pipeline->shader_info().push_constant_count != 18) {
         error = "ncnn GPU preprocessing pipeline contract is invalid"; return false;
     }
     pipeline_ = std::move(pipeline);
     bindings_.resize(2);
-    constants_.resize(17);
+    constants_.resize(18);
     error.clear();
     return true;
 }
@@ -83,7 +101,8 @@ bool GpuPreprocess::Record(const ncnn::VkMat& rgb, const HV_GpuImageTransformV1&
     const auto& r = transform.source_rect_px;
     if (!pipeline_ || rgb.empty() || normalized.empty() || rgb.dims != 3 || rgb.c != 3 ||
         rgb.elempack != 1 || rgb.elemsize != sizeof(float) || normalized.dims != 3 ||
-        normalized.c != 3 || normalized.elempack != 1 || normalized.elemsize != sizeof(float) ||
+        normalized.c != NormalizedChannelCount(transform.output_elempack) ||
+        normalized.elempack != 1 || normalized.elemsize != sizeof(float) ||
         normalized.w != transform.output_width || normalized.h != transform.output_height ||
         transform.channel_order != 1 && transform.channel_order != 2 ||
         !std::isfinite(r.x) || !std::isfinite(r.y) || !std::isfinite(r.width) || !std::isfinite(r.height) ||
@@ -99,13 +118,14 @@ bool GpuPreprocess::Record(const ncnn::VkMat& rgb, const HV_GpuImageTransformV1&
     constants_[2].i = static_cast<int>(rgb.cstep);
     constants_[3].i = normalized.w; constants_[4].i = normalized.h;
     constants_[5].i = static_cast<int>(normalized.cstep);
-    constants_[6].f = r.x; constants_[7].f = r.y;
-    constants_[8].f = r.width; constants_[9].f = r.height;
+    constants_[6].i = normalized.c;
+    constants_[7].f = r.x; constants_[8].f = r.y;
+    constants_[9].f = r.width; constants_[10].f = r.height;
     for (int i = 0; i < 3; ++i) {
-        constants_[10 + i].f = transform.mean[i];
-        constants_[13 + i].f = transform.norm[i];
+        constants_[11 + i].f = transform.mean[i];
+        constants_[14 + i].f = transform.norm[i];
     }
-    constants_[16].i = static_cast<int>(transform.channel_order);
+    constants_[17].i = static_cast<int>(transform.channel_order);
     bindings_[0] = rgb;
     bindings_[1] = normalized;
     compute.record_pipeline(pipeline_.get(), bindings_, constants_, normalized);

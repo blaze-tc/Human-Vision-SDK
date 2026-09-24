@@ -23,6 +23,9 @@ public:
                   HV_TensorViewV1*, uint32_t capacity, uint32_t& count, std::string& error);
     HV_Result Info(HV_BackendSessionInfoV1& info) const;
     void RetireUnsubmitted(void* opaque_slot) noexcept;
+    // Internal worker boundary: one borrowed slot spans detector and every pose ROI.
+    bool FinishObservation(gpu::ConsumerFrame& frame, std::string& error) noexcept;
+    bool YieldObservation(gpu::ConsumerFrame& frame, std::string& error) noexcept;
     bool IsQuarantined() const noexcept { return terminal_gpu_fault_; }
 private:
     struct Slot;
@@ -32,12 +35,17 @@ private:
     bool ValidateTransform(const HV_GpuFrameRefV1&, const HV_GpuImageTransformV1&,
                            const gpu::ConsumerFrame&, std::string& error) const;
     bool DrainDropped(std::string& error);
+    bool ReleaseActiveRole(gpu::ConsumerFrame& frame, std::string& error) noexcept;
+    static bool CompleteRoleCallback(void* owner, gpu::ConsumerFrame& frame,
+                                     bool final_role, std::string& error) noexcept;
     std::mutex run_mutex_;
     std::unique_ptr<ncnn::Net> net_;
     const ncnn::VulkanDevice* device_ = nullptr;
     gpu::UnityVulkanBridge* bridge_ = nullptr;
     bool gpu_instance_lease_ = false;
     bool terminal_gpu_fault_ = false;
+    gpu::ConsumerFrame* active_consumer_ = nullptr;
+    gpu::SlotToken active_token_{};
     ncnn::Option option_;
     InputContract contract_;
     gpu::ConsumerGeneration generation_{};

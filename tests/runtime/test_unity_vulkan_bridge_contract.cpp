@@ -321,6 +321,78 @@ TEST(UnityVulkanBridgeContract, ConsumerLeaseBorrowsCachedAhbAndFenceUntilGpuPro
   EXPECT_EQ(bridge.ClaimConsumer(frame), SlotResult::NoReady);
 }
 
+TEST(UnityVulkanBridgeContract, OneProducerFenceSpansDetectorAndPoseRoleHandoff) {
+  struct Role {
+    UnityVulkanBridge* bridge;
+    int calls = 0;
+    static bool Finish(void* owner, ConsumerFrame& frame, bool final_role,
+                       std::string& error) noexcept {
+      auto& role = *static_cast<Role*>(owner);
+      ++role.calls;
+      if (final_role) return role.bridge->RetireConsumer(frame, CompletionProof::GpuQuiescent) == SlotResult::Ok;
+      frame.ncnn_role_complete = true;
+      error.clear(); return true;
+    }
+  };
+  FakeVulkan fake;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  void* event = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &event), BridgeResult::Ok);
+  ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+  ConsumerFrame frame;
+  ASSERT_EQ(bridge.ClaimConsumer(frame), SlotResult::Ok);
+  EXPECT_EQ(NextNcnnRole(frame), NcnnRoleStart::WaitForProducer);
+  frame.producer_fd.Release(); // The first Vulkan role imports the one producer fd.
+  EXPECT_EQ(NextNcnnRole(frame), NcnnRoleStart::Invalid);
+  Role detector{&bridge};
+  frame.role_owner = &detector; frame.complete_role = &Role::Finish;
+  EXPECT_EQ(NextNcnnRole(frame), NcnnRoleStart::Invalid); // Handoff waits for release.
+  std::string error;
+  ASSERT_TRUE(CompleteGpuRole(frame, false, error)); // Detector GPU release.
+  EXPECT_EQ(detector.calls, 1);
+  EXPECT_FALSE(CompleteGpuRole(frame, false, error)); // One-shot callback.
+  EXPECT_EQ(NextNcnnRole(frame), NcnnRoleStart::AcquireAfterPriorRole);
+  EXPECT_TRUE(frame.claimed); // Pose still owns the same observation slot.
+  EXPECT_EQ(bridge.RetireConsumer(frame, CompletionProof::None), SlotResult::Invalid);
+  Role pose{&bridge};
+  frame.role_owner = &pose; frame.complete_role = &Role::Finish;
+  ASSERT_TRUE(CompleteGpuRole(frame, true, error));
+  EXPECT_EQ(pose.calls, 1);
+  EXPECT_FALSE(CompleteGpuRole(frame, true, error));
+  EXPECT_EQ(NextNcnnRole(frame), NcnnRoleStart::Invalid);
+}
+
+TEST(UnityVulkanBridgeContract, FailedRoleCompletionQuarantinesAndClearsCallback) {
+  struct FailingRole {
+    UnityVulkanBridge* bridge;
+    static bool Finish(void* owner, ConsumerFrame& frame, bool,
+                       std::string& error) noexcept {
+      auto& role = *static_cast<FailingRole*>(owner);
+      role.bridge->QuarantineConsumer(frame);
+      error = "GPU release failed";
+      return false;
+    }
+  };
+  FakeVulkan fake;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  void* event = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &event), BridgeResult::Ok);
+  ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+  ConsumerFrame frame;
+  ASSERT_EQ(bridge.ClaimConsumer(frame), SlotResult::Ok);
+  FailingRole role{&bridge};
+  frame.role_owner = &role; frame.complete_role = &FailingRole::Finish;
+  std::string error;
+  EXPECT_FALSE(CompleteGpuRole(frame, true, error));
+  EXPECT_EQ(error, "GPU release failed");
+  EXPECT_FALSE(frame.claimed);
+  EXPECT_EQ(frame.role_owner, nullptr);
+  EXPECT_EQ(frame.complete_role, nullptr);
+  EXPECT_FALSE(CompleteGpuRole(frame, true, error));
+}
+
 TEST(UnityVulkanBridgeContract, SupersededFramesExposeFenceAndRetireAfterGpuProof) {
   FakeVulkan fake;
   UnityVulkanBridge bridge(fake.Dispatch());

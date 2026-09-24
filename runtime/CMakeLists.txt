@@ -18,7 +18,9 @@ target_sources(humanvision_internal PRIVATE
     plugins/pipeline/simcc/simcc_pipeline.cpp
     plugins/legacy/legacy_pipeline.cpp
     plugins/backend/ort/ort_plugin.cpp)
-target_sources(humanvision_internal PRIVATE plugins/backend/ncnn/ncnn_vulkan_backend.cpp)
+target_sources(humanvision_internal PRIVATE
+    plugins/backend/ncnn/ncnn_vulkan_backend.cpp
+    plugins/backend/ncnn/ncnn_dense_output.cpp)
 if(ANDROID)
     target_sources(humanvision_internal PRIVATE
         plugins/backend/ncnn/ncnn_android_session.cpp

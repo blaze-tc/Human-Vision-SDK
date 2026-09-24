@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>
+#include <string>
 
 namespace humanvision::gpu {
 
@@ -83,7 +84,18 @@ struct ConsumerFrame {
   uintptr_t ahb_buffer = 0;
   SyncFd producer_fd{};
   bool claimed = false;
+  // Internal ncnn role handoff. The producer fd is consumed by the first
+  // role; later roles acquire after the prior role has completed and released.
+  bool ncnn_role_complete = false;
+  // A one-shot internal completion hook installed by the backend that last
+  // ran this observation. It is cleared before dispatch and on retirement.
+  void* role_owner = nullptr;
+  bool (*complete_role)(void*, ConsumerFrame&, bool, std::string&) noexcept = nullptr;
 };
+
+enum class NcnnRoleStart { Invalid, WaitForProducer, AcquireAfterPriorRole };
+NcnnRoleStart NextNcnnRole(const ConsumerFrame& frame) noexcept;
+bool CompleteGpuRole(ConsumerFrame& frame, bool final_role, std::string& error) noexcept;
 
 struct ConsumerGeneration {
   uint64_t generation = 0;

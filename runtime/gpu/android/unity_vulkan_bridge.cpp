@@ -336,6 +336,24 @@ BridgeResult UnityVulkanBridge::Render(void* identity) noexcept {
     return BridgeResult::Ok;
 }
 
+NcnnRoleStart NextNcnnRole(const ConsumerFrame& frame) noexcept {
+    if (!frame.claimed || frame.role_owner || frame.complete_role) return NcnnRoleStart::Invalid;
+    if (frame.producer_fd.HasPayload())
+        return frame.ncnn_role_complete ? NcnnRoleStart::Invalid : NcnnRoleStart::WaitForProducer;
+    return frame.ncnn_role_complete ? NcnnRoleStart::AcquireAfterPriorRole : NcnnRoleStart::Invalid;
+}
+
+bool CompleteGpuRole(ConsumerFrame& frame, bool final_role, std::string& error) noexcept {
+    if (!frame.claimed || !frame.role_owner || !frame.complete_role) {
+        error = "GPU observation has no active model role"; return false;
+    }
+    auto* owner = frame.role_owner;
+    const auto complete = frame.complete_role;
+    frame.role_owner = nullptr;
+    frame.complete_role = nullptr;
+    return complete(owner, frame, final_role, error);
+}
+
 SlotResult UnityVulkanBridge::ClaimConsumer(ConsumerFrame& frame) noexcept {
     if (frame.claimed || frame.producer_fd.HasPayload()) return SlotResult::Invalid;
     if (!Enter()) return SlotResult::Closed;
@@ -357,6 +375,8 @@ SlotResult UnityVulkanBridge::ClaimConsumer(ConsumerFrame& frame) noexcept {
     frame.ahb_buffer = ahb;
     frame.producer_fd = std::move(fd);
     frame.claimed = true;
+    frame.ncnn_role_complete = false;
+    frame.role_owner = nullptr; frame.complete_role = nullptr;
     consumer_leases_.fetch_add(1, std::memory_order_acq_rel);
     return SlotResult::Ok;
 }
@@ -368,6 +388,8 @@ SlotResult UnityVulkanBridge::RetireConsumer(ConsumerFrame& frame, CompletionPro
     frame.producer_fd.Reset();
     frame.ahb_buffer = 0;
     frame.claimed = false;
+    frame.ncnn_role_complete = false;
+    frame.role_owner = nullptr; frame.complete_role = nullptr;
     if (consumer_leases_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
         std::lock_guard<std::mutex> lock(active_mutex_);
         active_cv_.notify_all();
@@ -382,6 +404,8 @@ SlotResult UnityVulkanBridge::QuarantineConsumer(ConsumerFrame& frame) noexcept 
     frame.producer_fd.Reset();
     frame.ahb_buffer = 0;
     frame.claimed = false;
+    frame.ncnn_role_complete = false;
+    frame.role_owner = nullptr; frame.complete_role = nullptr;
     if (consumer_leases_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
         std::lock_guard<std::mutex> lock(active_mutex_);
         active_cv_.notify_all();
@@ -399,6 +423,8 @@ SlotResult UnityVulkanBridge::ClaimDropped(ConsumerFrame& frame) noexcept {
     frame.token = token; frame.metadata = metadata;
     frame.ahb_buffer = slots_[token.index].ahb_buffer;
     frame.producer_fd = std::move(fd); frame.claimed = true;
+    frame.ncnn_role_complete = false;
+    frame.role_owner = nullptr; frame.complete_role = nullptr;
     consumer_leases_.fetch_add(1, std::memory_order_acq_rel);
     return SlotResult::Ok;
 }

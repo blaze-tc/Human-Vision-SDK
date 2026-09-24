@@ -1,5 +1,12 @@
 #pragma once
 
+namespace humanvision::runtime::ncnn_backend {
+// The fourth lane is explicit zero padding for a three-channel RGB model.
+int NormalizedChannelCount(int output_elempack) noexcept;
+bool NormalizeRgbPixel(const float rgb[3], const float mean[3],
+                       const float norm[3], int channels, float output[4]) noexcept;
+}
+
 #if defined(__ANDROID__)
 #include "humanvision_plugin_v2.h"
 #include <command.h>
