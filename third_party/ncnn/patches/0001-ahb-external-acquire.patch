@@ -1,29 +1,41 @@
 --- a/src/command.h
 +++ b/src/command.h
-@@ -61,5 +61,8 @@
+@@ -61,10 +61,17 @@
  #if NCNN_PLATFORM_API
  #if __ANDROID_API__ >= 26
      void record_import_android_hardware_buffer(const ImportAndroidHardwareBufferPipeline* pipeline, const VkImageMat& src, const VkMat& dst);
 +    // External ownership acquire; caller must GPU-wait the producer semaphore before this command.
 +    // prior_layout must preserve producer contents; queue indices describe external -> consumer.
 +    void record_import_android_hardware_buffer(const ImportAndroidHardwareBufferPipeline* pipeline, const VkImageMat& src, const VkMat& dst, VkImageLayout prior_layout, uint32_t src_queue_family, uint32_t dst_queue_family);
++    void record_release_android_hardware_buffer(const VkImageMat& src, uint32_t src_queue_family, uint32_t dst_queue_family);
  #endif // __ANDROID_API__ >= 26
  #endif // NCNN_PLATFORM_API
+
+     int submit_and_wait();
++    // Submit the recorded import with a GPU wait for an imported sync-fd
++    // semaphore. The caller owns the semaphore through completion.
++    int submit_and_wait(VkSemaphore wait_semaphore, VkPipelineStageFlags wait_stage);
+
+     int reset();
+
 --- a/src/command.cpp
 +++ b/src/command.cpp
-@@ -1600,17 +1600,22 @@
+@@ -1600,17 +1600,23 @@
  #if __ANDROID_API__ >= 26
  void VkCompute::record_import_android_hardware_buffer(const ImportAndroidHardwareBufferPipeline* pipeline, const VkImageMat& src, const VkMat& dst)
  {
 -    // image layout transform undefined @ null to general @ compute
+-    {
+-        VkImageMemoryBarrier* barriers = new VkImageMemoryBarrier[1];
 +    record_import_android_hardware_buffer(pipeline, src, dst, VK_IMAGE_LAYOUT_UNDEFINED, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED);
 +}
 +
 +void VkCompute::record_import_android_hardware_buffer(const ImportAndroidHardwareBufferPipeline* pipeline, const VkImageMat& src, const VkMat& dst, VkImageLayout prior_layout, uint32_t src_queue_family, uint32_t dst_queue_family)
 +{
 +    // Acquire once, preserving producer contents for external image reuse.
-     {
-         VkImageMemoryBarrier* barriers = new VkImageMemoryBarrier[1];
++    {
++        VkImageMemoryBarrier barrier = {};
++        VkImageMemoryBarrier* barriers = &barrier;
          barriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
          barriers[0].pNext = 0;
          barriers[0].srcAccessMask = 0;
@@ -38,3 +50,278 @@
          barriers[0].image = src.image();
          barriers[0].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
          barriers[0].subresourceRange.baseMipLevel = 0;
+@@ -1624,10 +1630,10 @@
+         if (vkdev->info.support_VK_KHR_push_descriptor())
+         {
+             vkCmdPipelineBarrier(d->compute_command_buffer, src_stage, dst_stage, 0, 0, 0, 0, 0, 1, barriers);
+-            delete[] barriers;
+         }
+         else
+         {
++            barriers = new VkImageMemoryBarrier[1]{barrier};
+             VkComputePrivate::record r;
+             r.type = VkComputePrivate::record::TYPE_image_barrers;
+             r.command_buffer = d->compute_command_buffer;
+@@ -1818,11 +1824,50 @@
+         }
+     }
+ }
++
++void VkCompute::record_release_android_hardware_buffer(const VkImageMat& src, uint32_t src_queue_family, uint32_t dst_queue_family)
++{
++    VkImageMemoryBarrier barrier = {};
++    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
++    barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
++    barrier.dstAccessMask = 0;
++    barrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
++    barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
++    barrier.srcQueueFamilyIndex = src_queue_family;
++    barrier.dstQueueFamilyIndex = dst_queue_family;
++    barrier.image = src.image();
++    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
++    barrier.subresourceRange.levelCount = 1;
++    barrier.subresourceRange.layerCount = 1;
++    if (vkdev->info.support_VK_KHR_push_descriptor())
++    {
++        vkCmdPipelineBarrier(d->compute_command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
++                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, 0, 0, 0, 1, &barrier);
++    }
++    else
++    {
++        VkImageMemoryBarrier* delayed_barrier = new VkImageMemoryBarrier[1]{barrier};
++        VkComputePrivate::record r;
++        r.type = VkComputePrivate::record::TYPE_image_barrers;
++        r.command_buffer = d->compute_command_buffer;
++        r.image_barrers.src_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
++        r.image_barrers.dst_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
++        r.image_barrers.barrier_count = 1;
++        r.image_barrers.barriers = delayed_barrier;
++        d->delayed_records.push_back(r);
++    }
++}
+ #endif // __ANDROID_API__ >= 26
+ #endif // NCNN_PLATFORM_API
+
+ int VkCompute::submit_and_wait()
+ {
++    return submit_and_wait(VK_NULL_HANDLE, 0);
++}
++
++int VkCompute::submit_and_wait(VkSemaphore wait_semaphore, VkPipelineStageFlags wait_stage)
++{
++    if (wait_semaphore && !wait_stage) return -1;
+     //     NCNN_LOGE("submit_and_wait");
+
+     if (!vkdev->info.support_VK_KHR_push_descriptor())
+@@ -1941,9 +1986,9 @@
+         VkSubmitInfo submitInfo;
+         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+         submitInfo.pNext = 0;
+-        submitInfo.waitSemaphoreCount = 0;
+-        submitInfo.pWaitSemaphores = 0;
+-        submitInfo.pWaitDstStageMask = 0;
++        submitInfo.waitSemaphoreCount = wait_semaphore ? 1u : 0u;
++        submitInfo.pWaitSemaphores = wait_semaphore ? &wait_semaphore : 0;
++        submitInfo.pWaitDstStageMask = wait_semaphore ? &wait_stage : 0;
+         submitInfo.commandBufferCount = 1;
+         submitInfo.pCommandBuffers = &d->compute_command_buffer;
+         submitInfo.signalSemaphoreCount = 0;
+--- a/src/gpu.h
++++ b/src/gpu.h
+@@ -137,6 +137,7 @@
+ extern int support_VK_EXT_validation_flags;
+ #if __ANDROID_API__ >= 26
+ extern int support_VK_KHR_android_surface;
++extern int support_VK_KHR_external_semaphore_capabilities;
+ #endif // __ANDROID_API__ >= 26
+
+ // VK_KHR_cooperative_matrix
+@@ -359,6 +360,7 @@
+     int support_VK_AMD_device_coherent_memory() const;
+ #if __ANDROID_API__ >= 26
+     int support_VK_ANDROID_external_memory_android_hardware_buffer() const;
++    int support_VK_KHR_external_semaphore_fd() const;
+ #endif // __ANDROID_API__ >= 26
+     int support_VK_NV_cooperative_matrix() const;
+     int support_VK_NV_cooperative_matrix2() const;
+--- a/src/gpu.cpp
++++ b/src/gpu.cpp
+@@ -233,6 +233,7 @@
+ int support_VK_EXT_validation_flags = 0;
+ #if __ANDROID_API__ >= 26
+ int support_VK_KHR_android_surface = 0;
++int support_VK_KHR_external_semaphore_capabilities = 0;
+ #endif // __ANDROID_API__ >= 26
+
+ // VK_KHR_cooperative_matrix
+@@ -387,6 +388,8 @@
+     int support_VK_AMD_device_coherent_memory;
+ #if __ANDROID_API__ >= 26
+     int support_VK_ANDROID_external_memory_android_hardware_buffer;
++    int support_VK_KHR_external_semaphore;
++    int support_VK_KHR_external_semaphore_fd;
+ #endif // __ANDROID_API__ >= 26
+     int support_VK_NV_cooperative_matrix;
+     int support_VK_NV_cooperative_matrix2;
+@@ -756,6 +759,8 @@
+     support_VK_AMD_device_coherent_memory = 0;
+ #if __ANDROID_API__ >= 26
+     support_VK_ANDROID_external_memory_android_hardware_buffer = 0;
++    support_VK_KHR_external_semaphore = 0;
++    support_VK_KHR_external_semaphore_fd = 0;
+ #endif // __ANDROID_API__ >= 26
+     support_VK_NV_cooperative_matrix = 0;
+     support_VK_NV_cooperative_matrix2 = 0;
+@@ -856,6 +861,10 @@
+ #if __ANDROID_API__ >= 26
+         else if (strcmp(exp.extensionName, "VK_ANDROID_external_memory_android_hardware_buffer") == 0)
+             support_VK_ANDROID_external_memory_android_hardware_buffer = exp.specVersion;
++        else if (strcmp(exp.extensionName, "VK_KHR_external_semaphore") == 0)
++            support_VK_KHR_external_semaphore = exp.specVersion;
++        else if (strcmp(exp.extensionName, "VK_KHR_external_semaphore_fd") == 0)
++            support_VK_KHR_external_semaphore_fd = exp.specVersion;
+ #endif // __ANDROID_API__ >= 26
+         else if (strcmp(exp.extensionName, "VK_NV_cooperative_matrix") == 0)
+             support_VK_NV_cooperative_matrix = exp.specVersion;
+@@ -945,6 +954,10 @@
+         support_VK_ANDROID_external_memory_android_hardware_buffer = 0;
+     if (!support_VK_VERSION_1_1 && (!support_VK_KHR_sampler_ycbcr_conversion || !support_VK_KHR_external_memory || !support_VK_KHR_dedicated_allocation))
+         support_VK_ANDROID_external_memory_android_hardware_buffer = 0;
++    if (!support_VK_VERSION_1_1 && !support_VK_KHR_external_semaphore_capabilities)
++        support_VK_KHR_external_semaphore = 0;
++    if (!support_VK_VERSION_1_1 && !support_VK_KHR_external_semaphore)
++        support_VK_KHR_external_semaphore_fd = 0;
+ #endif // __ANDROID_API__ >= 26
+
+     if (support_VK_KHR_buffer_device_address)
+@@ -2227,6 +2240,11 @@
+ int GpuInfo::support_VK_ANDROID_external_memory_android_hardware_buffer() const
+ {
+     return d->support_VK_ANDROID_external_memory_android_hardware_buffer;
++}
++
++int GpuInfo::support_VK_KHR_external_semaphore_fd() const
++{
++    return d->support_VK_KHR_external_semaphore_fd;
+ }
+ #endif // __ANDROID_API__ >= 26
+
+@@ -2799,6 +2817,7 @@
+     support_VK_EXT_validation_flags = 0;
+ #if __ANDROID_API__ >= 26
+     support_VK_KHR_android_surface = 0;
++    support_VK_KHR_external_semaphore_capabilities = 0;
+ #endif // __ANDROID_API__ >= 26
+     for (uint32_t j = 0; j < instanceExtensionPropertyCount; j++)
+     {
+@@ -2826,6 +2845,8 @@
+ #if __ANDROID_API__ >= 26
+         else if (strcmp(exp.extensionName, "VK_KHR_android_surface") == 0)
+             support_VK_KHR_android_surface = exp.specVersion;
++        else if (strcmp(exp.extensionName, "VK_KHR_external_semaphore_capabilities") == 0)
++            support_VK_KHR_external_semaphore_capabilities = exp.specVersion;
+ #endif // __ANDROID_API__ >= 26
+     }
+
+@@ -2883,6 +2904,8 @@
+ #if __ANDROID_API__ >= 26
+     if (support_VK_KHR_android_surface)
+         enabledExtensions.push_back("VK_KHR_android_surface");
++    if (support_VK_KHR_external_semaphore_capabilities)
++        enabledExtensions.push_back("VK_KHR_external_semaphore_capabilities");
+ #endif // __ANDROID_API__ >= 26
+
+     VkApplicationInfo applicationInfo;
+@@ -3805,6 +3828,10 @@
+ #if __ANDROID_API__ >= 26
+     if (info.support_VK_ANDROID_external_memory_android_hardware_buffer())
+         enabledExtensions.push_back("VK_ANDROID_external_memory_android_hardware_buffer");
++    if (info.support_VK_KHR_external_semaphore_fd())
++        enabledExtensions.push_back("VK_KHR_external_semaphore_fd");
++    if (info.support_VK_KHR_external_semaphore_fd() && info.api_version() < VK_MAKE_VERSION(1, 1, 0))
++        enabledExtensions.push_back("VK_KHR_external_semaphore");
+ #endif // __ANDROID_API__ >= 26
+     if (info.support_VK_NV_cooperative_matrix())
+         enabledExtensions.push_back("VK_NV_cooperative_matrix");
+--- a/src/allocator.cpp
++++ b/src/allocator.cpp
+@@ -2320,6 +2320,13 @@
+ {
+     VkResult ret;
+
++    const bool has_external_format = bufferFormatProperties.externalFormat != 0;
++    if (!has_external_format && bufferFormatProperties.format == VK_FORMAT_UNDEFINED)
++    {
++        NCNN_LOGE("Android hardware buffer has neither external nor concrete VkFormat");
++        return 0;
++    }
++
+     VkExternalFormatANDROID externalFormat;
+     externalFormat.sType = VK_STRUCTURE_TYPE_EXTERNAL_FORMAT_ANDROID;
+     externalFormat.pNext = 0;
+@@ -2327,7 +2334,7 @@
+
+     VkExternalMemoryImageCreateInfo externalMemoryImageCreateInfo;
+     externalMemoryImageCreateInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
+-    externalMemoryImageCreateInfo.pNext = &externalFormat,
++    externalMemoryImageCreateInfo.pNext = has_external_format ? &externalFormat : 0,
+     externalMemoryImageCreateInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
+
+     VkImageCreateInfo imageCreateInfo;
+@@ -2335,7 +2342,7 @@
+     imageCreateInfo.pNext = &externalMemoryImageCreateInfo;
+     imageCreateInfo.flags = 0;
+     imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+-    imageCreateInfo.format = VK_FORMAT_UNDEFINED;
++    imageCreateInfo.format = has_external_format ? VK_FORMAT_UNDEFINED : bufferFormatProperties.format;
+     imageCreateInfo.extent.width = bufferDesc.width;
+     imageCreateInfo.extent.height = bufferDesc.height;
+     imageCreateInfo.extent.depth = 1;
+@@ -2409,11 +2416,11 @@
+
+     VkImageViewCreateInfo imageViewCreateInfo;
+     imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+-    imageViewCreateInfo.pNext = &samplerYcbcrConversionInfo;
++    imageViewCreateInfo.pNext = has_external_format ? &samplerYcbcrConversionInfo : 0;
+     imageViewCreateInfo.flags = 0;
+     imageViewCreateInfo.image = image;
+     imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+-    imageViewCreateInfo.format = VK_FORMAT_UNDEFINED;
++    imageViewCreateInfo.format = has_external_format ? VK_FORMAT_UNDEFINED : bufferFormatProperties.format;
+     imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+     imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+     imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+@@ -2475,6 +2482,11 @@
+         NCNN_LOGE("vkGetAndroidHardwareBufferPropertiesANDROID failed %d", ret);
+         return -1;
+     }
++
++    // Only external formats require a YCbCr conversion. Concrete RGBA formats
++    // use their VkFormat directly for the image, view, and sampler.
++    if (bufferFormatProperties.externalFormat == 0)
++        return bufferFormatProperties.format == VK_FORMAT_UNDEFINED ? -1 : 0;
+
+     // setup samplerYcbcrConversion
+     VkExternalFormatANDROID externalFormat;
+--- a/src/pipeline.cpp
++++ b/src/pipeline.cpp
+@@ -471,6 +471,10 @@
+ {
+     VkResult ret;
+
++    const bool has_external_format = ahb_im_allocator->external_format() != 0;
++    if (has_external_format && !ahb_im_allocator->samplerYcbcrConversion)
++        return -1;
++
+     VkExternalFormatANDROID externalFormatANDROID;
+     externalFormatANDROID.sType = VK_STRUCTURE_TYPE_EXTERNAL_FORMAT_ANDROID;
+     externalFormatANDROID.pNext = 0;
+@@ -483,7 +487,7 @@
+
+     VkSamplerCreateInfo samplerCreateInfo;
+     samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+-    samplerCreateInfo.pNext = &samplerYcbcrConversionInfo;
++    samplerCreateInfo.pNext = has_external_format ? &samplerYcbcrConversionInfo : 0;
+     samplerCreateInfo.magFilter = need_resize ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+     samplerCreateInfo.minFilter = need_resize ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+     samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;

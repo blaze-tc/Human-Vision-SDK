@@ -217,6 +217,33 @@ SlotResult AhbSlotRing::TakeProducerFence(const SlotToken& token,SyncFd& fd) {
     if((state!=AhbSlotState::InferenceRunning&&state!=AhbSlotState::DropDrain)||!slot.producer_fd.HasPayload())return SlotResult::Invalid;
     fd=std::move(slot.producer_fd);return SlotResult::Ok;
 }
+SlotResult AhbSlotRing::ClaimDropped(SlotToken& token,SlotMetadata& metadata,SyncFd& fd) {
+    token={};metadata={};if(fd.HasPayload())return SlotResult::Invalid;
+    if(!accepting_.load(std::memory_order_acquire))return SlotResult::Closed;
+    std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);if(!lock.owns_lock())return SlotResult::Busy;
+    if(!accepting_.load(std::memory_order_acquire))return SlotResult::Closed;
+    uint32_t first=kSlotCount;
+    for(uint32_t i=0;i<kSlotCount;++i){const auto& slot=slots_[i];
+        if(slot.state.load(std::memory_order_acquire)==AhbSlotState::DropDrain&&
+           slot.producer_fd.HasPayload()&&
+           (first==kSlotCount||slot.metadata.frame_id<slots_[first].metadata.frame_id))first=i;
+    }
+    if(first==kSlotCount)return SlotResult::NoReady;
+    auto& slot=slots_[first];metadata=slot.metadata;
+    token={first,metadata.generation,metadata.frame_id};
+    fd=std::move(slot.producer_fd);return SlotResult::Ok;
+}
+SlotResult AhbSlotRing::RetireConsumer(const SlotToken& token,CompletionProof proof) {
+    if(proof!=CompletionProof::GpuQuiescent)return SlotResult::Invalid;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if(!Matches(token))return SlotResult::Invalid;
+    auto& slot=slots_[token.index];
+    auto state=slot.state.load(std::memory_order_acquire);
+    if(state!=AhbSlotState::InferenceRunning&&state!=AhbSlotState::ConsumerReleasePending&&
+       state!=AhbSlotState::DropDrain)return SlotResult::Invalid;
+    RecycleLocked(slot);
+    return SlotResult::Ok;
+}
 SlotResult AhbSlotRing::Inspect(uint32_t index,SlotSnapshot& snapshot) const {
     std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);if(!lock.owns_lock())return SlotResult::Busy;
     if(index>=kSlotCount)return SlotResult::Invalid;

@@ -222,8 +222,12 @@ HV_Result BackendFactory::CreateGpuBackend(const HV_GpuBackendConfigV1* config,
     }
     try {
         std::string reason;
-        auto module = FindV2(config->requested_provider_utf8,
-            HV_CAP_GPU_INPUT | HV_CAP_TENSOR_INFERENCE, reason);
+        const std::string provider = config->requested_provider_utf8;
+        const uint64_t required = HV_CAP_GPU_INPUT | HV_CAP_TENSOR_INFERENCE |
+            (provider == "backend.ncnn.vulkan" ?
+                HV_CAP_VULKAN | HV_CAP_FP16_STORAGE | HV_CAP_FP16_ARITHMETIC |
+                HV_CAP_ANDROID_HARDWARE_BUFFER | HV_CAP_EXTERNAL_SYNC_FD : 0);
+        auto module = FindV2(provider, required, reason);
         if (!module || !module->api.gpu_backend) {
             Error(error, module ? "Selected V2 plugin has no GPU backend" : reason);
             return HV_ERR_MODEL_LOAD;

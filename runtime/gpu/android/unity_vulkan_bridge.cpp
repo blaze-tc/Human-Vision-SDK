@@ -8,7 +8,7 @@ namespace {
 constexpr uint32_t kExternalQueueFamily = UINT32_MAX - 1u;
 
 bool HasRequiredObjects(const UnityVulkanSlotCache& slot, HV_AndroidGpuCopyPath path) noexcept {
-    const bool common = slot.ahb && slot.image && slot.memory && slot.image_view &&
+    const bool common = slot.ahb && slot.ahb_buffer && slot.image && slot.memory && slot.image_view &&
                         slot.command_buffer && slot.export_semaphore;
     if (!common) return false;
     if (path != HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT) return true;
@@ -71,6 +71,7 @@ bool UnityVulkanBridge::Initialize(const UnityVulkanDeviceContext& device,
                                    const AhbSelection& selection,
                                    const SlotContract& contract) noexcept {
     std::lock_guard<std::mutex> control(control_mutex_);
+    if (quarantined_.load(std::memory_order_acquire)) return false;
     ShutdownLocked();
     if (!dispatch_.create_slot || !dispatch_.drain_slot || !dispatch_.access_texture ||
         !dispatch_.prepare_source || !dispatch_.release_texture ||
@@ -135,14 +136,16 @@ void UnityVulkanBridge::ShutdownLocked() noexcept {
     bool has_resources = false;
     for (const auto& slot : slots_) has_resources = has_resources || slot.ahb != 0;
     if (!initialized_.load(std::memory_order_acquire) && !accepting_calls_.load(std::memory_order_acquire) &&
-        active_calls_.load(std::memory_order_acquire) == 0 && !has_resources) return;
+        active_calls_.load(std::memory_order_acquire) == 0 &&
+        consumer_leases_.load(std::memory_order_acquire) == 0 && !has_resources) return;
     accepting_calls_.store(false, std::memory_order_release);
     initialized_.store(false, std::memory_order_release);
     for (auto& record : records_) record.pending.store(false, std::memory_order_release);
     if (dispatch_.cancel_and_drain_events) dispatch_.cancel_and_drain_events(dispatch_.context);
     {
         std::unique_lock<std::mutex> lock(active_mutex_);
-        active_cv_.wait(lock, [&] { return active_calls_.load(std::memory_order_acquire) == 0; });
+        active_cv_.wait(lock, [&] { return active_calls_.load(std::memory_order_acquire) == 0 &&
+            consumer_leases_.load(std::memory_order_acquire) == 0; });
     }
     for (auto& record : records_) record.queue_pending.store(false, std::memory_order_release);
     ring_.Shutdown();
@@ -166,6 +169,12 @@ bool UnityVulkanBridge::CreateSlot(void* context, uint32_t index, const SlotCont
 void UnityVulkanBridge::DrainSlot(void* context, uint32_t index, AhbSlotState state,
                                   SlotResources&, SyncFd& fd) noexcept {
     auto& self = *static_cast<UnityVulkanBridge*>(context);
+    if (self.quarantined_.load(std::memory_order_acquire)) {
+        // Deliberately leak the AndroidSlot heap owner and Vulkan handles on
+        // terminal device loss. Their GPU use cannot be proven complete.
+        self.slots_[index] = {};
+        return;
+    }
     self.dispatch_.drain_slot(self.dispatch_.context, index, state, self.slots_[index], fd);
     self.slots_[index] = {};
 }
@@ -325,6 +334,91 @@ BridgeResult UnityVulkanBridge::Render(void* identity) noexcept {
         record.texture_accessed.store(false); RetireWithoutSubmission(record.token); return BridgeResult::GpuError;
     }
     return BridgeResult::Ok;
+}
+
+SlotResult UnityVulkanBridge::ClaimConsumer(ConsumerFrame& frame) noexcept {
+    if (frame.claimed || frame.producer_fd.HasPayload()) return SlotResult::Invalid;
+    if (!Enter()) return SlotResult::Closed;
+    struct Guard { const UnityVulkanBridge* b; ~Guard(){b->Leave();} } guard{this};
+    Recover();
+    SlotToken token;
+    SlotMetadata metadata;
+    const auto claimed = ring_.ClaimNewest(token, metadata);
+    if (claimed != SlotResult::Ok) return claimed;
+    SyncFd fd;
+    SlotResult taken;
+    do { taken = ring_.TakeProducerFence(token, fd); } while (taken == SlotResult::Busy);
+    if (taken != SlotResult::Ok) return taken;
+    const auto ahb = slots_[token.index].ahb_buffer;
+    // Slot creation requires the borrowed buffer handle. It stays alive until
+    // this consumer lease has been retired and shutdown drains the generation.
+    frame.token = token;
+    frame.metadata = metadata;
+    frame.ahb_buffer = ahb;
+    frame.producer_fd = std::move(fd);
+    frame.claimed = true;
+    consumer_leases_.fetch_add(1, std::memory_order_acq_rel);
+    return SlotResult::Ok;
+}
+
+SlotResult UnityVulkanBridge::RetireConsumer(ConsumerFrame& frame, CompletionProof proof) noexcept {
+    if (!frame.claimed || proof != CompletionProof::GpuQuiescent) return SlotResult::Invalid;
+    const auto result = ring_.RetireConsumer(frame.token, proof);
+    if (result != SlotResult::Ok) return result;
+    frame.producer_fd.Reset();
+    frame.ahb_buffer = 0;
+    frame.claimed = false;
+    if (consumer_leases_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+        std::lock_guard<std::mutex> lock(active_mutex_);
+        active_cv_.notify_all();
+    }
+    return SlotResult::Ok;
+}
+
+SlotResult UnityVulkanBridge::QuarantineConsumer(ConsumerFrame& frame) noexcept {
+    if (!frame.claimed) return SlotResult::Invalid;
+    accepting_calls_.store(false, std::memory_order_release);
+    quarantined_.store(true, std::memory_order_release);
+    frame.producer_fd.Reset();
+    frame.ahb_buffer = 0;
+    frame.claimed = false;
+    if (consumer_leases_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+        std::lock_guard<std::mutex> lock(active_mutex_);
+        active_cv_.notify_all();
+    }
+    return SlotResult::Ok;
+}
+
+SlotResult UnityVulkanBridge::ClaimDropped(ConsumerFrame& frame) noexcept {
+    if (frame.claimed || frame.producer_fd.HasPayload()) return SlotResult::Invalid;
+    if (!Enter()) return SlotResult::Closed;
+    struct Guard { const UnityVulkanBridge* b; ~Guard(){b->Leave();} } guard{this};
+    SlotToken token; SlotMetadata metadata; SyncFd fd;
+    const auto result = ring_.ClaimDropped(token, metadata, fd);
+    if (result != SlotResult::Ok) return result;
+    frame.token = token; frame.metadata = metadata;
+    frame.ahb_buffer = slots_[token.index].ahb_buffer;
+    frame.producer_fd = std::move(fd); frame.claimed = true;
+    consumer_leases_.fetch_add(1, std::memory_order_acq_rel);
+    return SlotResult::Ok;
+}
+
+SlotResult UnityVulkanBridge::RetainGeneration(ConsumerGeneration& generation,
+                                               void (*retain_ahb)(uintptr_t) noexcept) noexcept {
+    if (!retain_ahb) return SlotResult::Invalid;
+    if (!Enter()) return SlotResult::Closed;
+    struct Guard { const UnityVulkanBridge* b; ~Guard(){b->Leave();} } guard{this};
+    ConsumerGeneration result;
+    result.generation = ring_.Generation();
+    result.contract = contract_;
+    for (uint32_t i = 0; i < slots_.size(); ++i) {
+        const auto ahb = slots_[i].ahb_buffer;
+        if (!ahb) return SlotResult::Invalid;
+        result.retained_ahb[i] = ahb;
+    }
+    for (const auto ahb : result.retained_ahb) retain_ahb(ahb);
+    generation = result;
+    return SlotResult::Ok;
 }
 
 BridgeResult UnityVulkanBridge::ExecuteQueue(EventRecord* record) noexcept {

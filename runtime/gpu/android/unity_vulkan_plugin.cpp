@@ -101,9 +101,9 @@ struct AndroidSlot {
     if (memory)
       vkFreeMemory(device, memory, nullptr);
     }
-    // Future ncnn owner, Unity importer owner, allocation owner (last).
+    // Unity importer owner, then allocation owner. The ncnn backend retains
+    // its own generation reference when it warms the consumer slot cache.
     if (ahb) {
-      AHardwareBuffer_release(ahb);
       AHardwareBuffer_release(ahb);
       AHardwareBuffer_release(ahb);
     }
@@ -901,9 +901,8 @@ private:
     desc.usage = contract.actual_usage;
     if (AHardwareBuffer_allocate(&desc, &slot->ahb) != 0)
       return false;
-    // Allocation, Unity importer and future ncnn importer each retain one
-    // generation-long owner reference.
-    AHardwareBuffer_acquire(slot->ahb);
+    // The allocation and Unity importer own these two references. The ncnn
+    // importer retains its reference independently during control warm-up.
     AHardwareBuffer_acquire(slot->ahb);
     AHardwareBuffer_Desc actual{};
     AHardwareBuffer_describe(slot->ahb, &actual);
@@ -999,6 +998,7 @@ private:
         !CreateColor(*slot))
       return false;
     out.ahb = reinterpret_cast<uintptr_t>(slot.get());
+    out.ahb_buffer = reinterpret_cast<uintptr_t>(slot->ahb);
     out.image = reinterpret_cast<uintptr_t>(slot->image);
     out.memory = reinterpret_cast<uintptr_t>(slot->memory);
     out.image_view = reinterpret_cast<uintptr_t>(slot->view);

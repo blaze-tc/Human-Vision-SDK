@@ -118,7 +118,13 @@ public:
     // Failed publication leaves fd owned by the caller for retry/error cleanup.
     SlotResult PublishReady(const SlotToken&, SyncFd& fd);
     SlotResult ClaimNewest(SlotToken& token, SlotMetadata& metadata);
+    // Native worker takes a superseded ready frame's fence for a GPU-only
+    // ownership drain before its AHB can be reused.
+    SlotResult ClaimDropped(SlotToken& token, SlotMetadata& metadata, SyncFd& fd);
     SlotResult TakeProducerFence(const SlotToken&, SyncFd& fd);
+    // A claimed consumer may finish while control admission is closed. The
+    // caller supplies GPU completion proof before the slot can be recycled.
+    SlotResult RetireConsumer(const SlotToken&, CompletionProof);
     SlotResult Inspect(uint32_t index, SlotSnapshot& snapshot) const;
     SlotCounters Counters() const noexcept;
     uint64_t Generation() const noexcept { return generation_.load(std::memory_order_acquire); }

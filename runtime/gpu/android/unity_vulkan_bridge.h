@@ -61,6 +61,7 @@ struct UnityTextureAccess {
 
 struct UnityVulkanSlotCache {
   uintptr_t ahb = 0;
+  uintptr_t ahb_buffer = 0; // Borrowed AHardwareBuffer, valid for this generation.
   uintptr_t image = 0;
   uintptr_t memory = 0;
   uintptr_t image_view = 0;
@@ -74,6 +75,20 @@ struct UnityVulkanSlotCache {
   uintptr_t render_pass = 0;
   uintptr_t pipeline_layout = 0;
   uintptr_t pipeline = 0;
+};
+
+struct ConsumerFrame {
+  SlotToken token{};
+  SlotMetadata metadata{};
+  uintptr_t ahb_buffer = 0;
+  SyncFd producer_fd{};
+  bool claimed = false;
+};
+
+struct ConsumerGeneration {
+  uint64_t generation = 0;
+  SlotContract contract{};
+  std::array<uintptr_t, 3> retained_ahb{};
 };
 
 // Deliberately contains no wait, readback, staging-buffer or host-mapping hook.
@@ -138,6 +153,18 @@ public:
   BridgeResult Prepare(const HV_AndroidGpuSubmissionV1 &,
                        void **event_data) noexcept;
   BridgeResult Render(void *event_identity) noexcept;
+  // Native worker only. The borrowed AHB and fd stay valid until RetireConsumer.
+  SlotResult ClaimConsumer(ConsumerFrame&) noexcept;
+  SlotResult ClaimDropped(ConsumerFrame&) noexcept;
+  SlotResult RetireConsumer(ConsumerFrame&, CompletionProof) noexcept;
+  // Terminal device fault: abandon this generation's GPU handles in place
+  // when completion cannot be proved. Allows shutdown to finish without
+  // falsely recycling or destroying an in-flight AHB.
+  SlotResult QuarantineConsumer(ConsumerFrame&) noexcept;
+  // Control-thread warm-up borrows each AHB while shutdown is excluded. Caller
+  // releases exactly the references it retained after all ncnn imports drain.
+  SlotResult RetainGeneration(ConsumerGeneration&,
+                              void (*retain_ahb)(uintptr_t) noexcept) noexcept;
   void GetStatus(HV_AndroidGpuBridgeStatusV1 &) const noexcept;
   void CloseAdmission() noexcept { accepting_calls_.store(false, std::memory_order_release); }
   bool IsClosed() const noexcept { return !initialized_.load(std::memory_order_acquire); }
@@ -177,6 +204,8 @@ private:
   std::atomic<bool> initialized_{false};
   std::atomic<bool> accepting_calls_{false};
   mutable std::atomic<uint32_t> active_calls_{0};
+  std::atomic<uint32_t> consumer_leases_{0};
+  std::atomic<bool> quarantined_{false};
   mutable std::mutex active_mutex_;
   mutable std::condition_variable active_cv_;
   std::mutex control_mutex_;

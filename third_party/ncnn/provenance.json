@@ -16,21 +16,41 @@
   "patches": [
     {
       "path": "third_party/ncnn/patches/0001-ahb-external-acquire.patch",
-      "sha256": "42147727790e26b16686a7f81efc2d49384afb15df0605f6eb0841d21182163c",
+      "sha256": "ec127f7b9e3d7c442c5cee9d7cd06d6c43d3d3d87fe7cab8ff21934144e1f140",
       "base_commit": "e54f7b1f88434e1d844ea0551b880a1cfb079ce1",
       "files": [
         {
           "path": "src/command.h",
           "before_sha256": "04264557d5db7ee0a4cec3e986153bbc4f568096088dbfe889c0acd6b0fa9d99",
-          "after_sha256": "eac48254096d814a0d2cc0bd23d450b5cf54fdb33f36f0b069dc427c41921c41"
+          "after_sha256": "cd7a0bc7138b0627bcd128c8564d91e1bc0f45e9414873a1b80e1f9d4f92518b"
         },
         {
           "path": "src/command.cpp",
           "before_sha256": "e1b787a6e6b47a0750c5337fd861402b35b57430546e12f44dc67dbc57964d95",
-          "after_sha256": "0e759647fc628f0962d1a85c7c079d79cca4906bf5bd5fd4d1afc8f35b894fbe"
+          "after_sha256": "68139dd2c5d9ca0d66cad2b2513fd84b8cf662305172b756d01f85904426e105"
+        },
+        {
+          "path": "src/gpu.h",
+          "before_sha256": "44d6c30af774fad6896a80ca48dea6cc5deb507ee22fc3e7d8e2e8ee346756d3",
+          "after_sha256": "f7564a69754b20bf1ce20440c4c333a28bef61a9c58538e7bccf74e4314b30da"
+        },
+        {
+          "path": "src/gpu.cpp",
+          "before_sha256": "29f949fcec3d7653a2b97ab96949bd7e1778382b59b614c27c78ea004f80ed84",
+          "after_sha256": "74c5ef164c5bc9d89d7b218b48ac8bf0f7e4a0b3bb7abf67141b28a3fd7d25f1"
+        },
+        {
+          "path": "src/allocator.cpp",
+          "before_sha256": "fe8f6bc2fcee095ed172763445ddcd6c8e39070a561eaf5048fdb433246dd6b0",
+          "after_sha256": "74f0a062e472b4e4a64d3df30802191a4fff1c6db8542f6089cd21d2f6c46414"
+        },
+        {
+          "path": "src/pipeline.cpp",
+          "before_sha256": "a555f95614261bac732e3bde77c51010285c4d2d8aa339512299f358d38d9949",
+          "after_sha256": "d5866337cf504769fb516badb4c0f9b56bb1b96fa97ca47342879036e1f54f0f"
         }
       ],
-      "audit": "Only command.h and command.cpp: additive overload preserving legacy default barrier behavior; external overload substitutes prior layout and queue-family indices in the existing single acquire barrier. Conversion dispatch is unchanged. GPU semaphore wait and release are caller responsibilities."
+      "audit": "Only command.h/cpp, gpu.h/cpp, allocator.cpp and pipeline.cpp: preserve legacy APIs; external acquire uses producer layout and queue ownership, optional GPU semaphore wait and release. Android Vulkan device enables VK_KHR_external_semaphore_fd and its dependencies only when available; GpuInfo exposes support_VK_KHR_external_semaphore_fd. Concrete-format AHB images and views use queried VkFormat without external-format or YCbCr chains; nonzero external formats retain existing conversion. AHB import image remains sampled-only. Push-descriptor barriers use stack storage; delayed-record mode retains allocated barriers until submission. Conversion dispatch is unchanged."
     }
   ],
   "android_abi": "arm64-v8a",

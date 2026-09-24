@@ -1,0 +1,1 @@
+{"id":"gpu.android.ahb","type":"runtime","version":"0.4.0-preview.4","api_version":1,"capabilities":["gpu_input","vulkan","android-hardware-buffer","external-sync-fd"],"dependencies":["plugin.abi"],"test_targets":["humanvision_native_tests"]}

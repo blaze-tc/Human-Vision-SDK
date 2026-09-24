@@ -66,6 +66,23 @@ TEST(AhbSlotRing, ThreeSlotsNewestWinsDropsRequireCompletionAndOldTokensFail){
  EXPECT_EQ(r.Transition(t[0],AhbSlotState::EventReserved,AhbSlotState::UnityCopySubmitted),SlotResult::Invalid);
  EXPECT_EQ(r.Counters().generation_drops,2u);
 }
+TEST(AhbSlotRing, DroppedReadyFramesTransferTheirFenceOnceForGpuDrain){
+ Owners o; AhbSlotRing r(o.Hooks()); ASSERT_TRUE(r.Reconfigure(Contract()));
+ SlotToken first, second, newest; SlotMetadata metadata;
+ for(int i=0;i<3;++i){SlotToken* token=i==0?&first:(i==1?&second:&newest);
+  ASSERT_EQ(r.Reserve(i+1,i+1,*token),SlotResult::Ok);Ready(r,o,*token);}
+ ASSERT_EQ(r.ClaimNewest(newest,metadata),SlotResult::Ok);
+ SlotToken dropped; SyncFd fd;
+ ASSERT_EQ(r.ClaimDropped(dropped,metadata,fd),SlotResult::Ok);
+ EXPECT_EQ(dropped.frame_id,1u);EXPECT_EQ(fd.Get(),1);
+ SlotToken occupied;SlotMetadata ignored;
+ EXPECT_EQ(r.ClaimDropped(occupied,ignored,fd),SlotResult::Invalid);
+ fd.Reset(); ASSERT_EQ(r.RetireConsumer(dropped,CompletionProof::GpuQuiescent),SlotResult::Ok);
+ ASSERT_EQ(r.ClaimDropped(dropped,metadata,fd),SlotResult::Ok);
+ EXPECT_EQ(dropped.frame_id,2u);fd.Reset();
+ ASSERT_EQ(r.RetireConsumer(dropped,CompletionProof::GpuQuiescent),SlotResult::Ok);
+ EXPECT_EQ(r.ClaimDropped(dropped,metadata,fd),SlotResult::NoReady);
+}
 TEST(AhbSlotRing, LatePublishedOlderFrameCannotSupersedeAnAlreadyClaimedFrame){
  Owners o;AhbSlotRing r(o.Hooks());ASSERT_TRUE(r.Reconfigure(Contract()));SlotToken old,newest,selected;SlotMetadata data;
  ASSERT_EQ(r.Reserve(1,1,old),SlotResult::Ok);ASSERT_EQ(r.Reserve(2,2,newest),SlotResult::Ok);Ready(r,o,newest);

@@ -198,6 +198,10 @@ target_sources(humanvision_native_tests PRIVATE
     ../runtime/test_unity_vulkan_bridge_contract.cpp
     ../runtime/test_plugin_abi_v2.cpp
     ../runtime/test_android_gpu_abi.cpp)
+target_sources(humanvision_native_tests PRIVATE
+    ../runtime/test_ncnn_input_contract.cpp
+    ../runtime/test_ncnn_backend_registration.cpp)
+target_include_directories(humanvision_native_tests PRIVATE ${PROJECT_SOURCE_DIR}/third_party)
 
 if(WIN32)
     add_library(humanvision_fixture_gpu_plugin SHARED ../runtime/fixture_plugin_v2.c)
