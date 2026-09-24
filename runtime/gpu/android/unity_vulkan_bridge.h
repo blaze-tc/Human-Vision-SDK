@@ -13,6 +13,8 @@
 
 namespace humanvision::gpu {
 
+class UnityVulkanBridge;
+
 enum class BridgeResult { Ok, DroppedNoSlot, Busy, Closed, Invalid, GpuError };
 enum class SourcePreparation : uint8_t { Ready, Warmed, Unsupported };
 enum class BridgeImageLayout : uint32_t {
@@ -96,6 +98,9 @@ struct ConsumerFrame {
 enum class NcnnRoleStart { Invalid, WaitForProducer, AcquireAfterPriorRole };
 NcnnRoleStart NextNcnnRole(const ConsumerFrame& frame) noexcept;
 bool CompleteGpuRole(ConsumerFrame& frame, bool final_role, std::string& error) noexcept;
+using ProducerProofWait = bool (*)(void*, SyncFd&) noexcept;
+SlotResult RetireUnsubmittedConsumer(UnityVulkanBridge& bridge, ConsumerFrame& frame,
+                                     ProducerProofWait wait, void* context) noexcept;
 
 struct ConsumerGeneration {
   uint64_t generation = 0;

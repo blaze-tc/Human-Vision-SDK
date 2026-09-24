@@ -4,6 +4,17 @@
 using humanvision::runtime::ncnn_backend::DenseOutputLayout;
 using humanvision::runtime::ncnn_backend::DescribeDenseOutput;
 using humanvision::runtime::ncnn_backend::CompactDenseFp32;
+using humanvision::runtime::ncnn_backend::ValidateDenseDownload;
+
+TEST(NcnnDenseOutput, LogicalByteLimitAcceptsAlignedPhysicalChannelStride) {
+    DenseOutputLayout layout;
+    ASSERT_TRUE(DescribeDenseOutput(3, 3, 1, 1, 2, 4, 24, layout));
+    EXPECT_EQ(layout.logical_bytes, 24u);
+    EXPECT_EQ(layout.storage_bytes, 32u);
+    EXPECT_TRUE(ValidateDenseDownload(layout, 8));
+    EXPECT_FALSE(ValidateDenseDownload(layout, 7));
+    EXPECT_FALSE(DescribeDenseOutput(3, 3, 1, 1, 2, 100, 24, layout));
+}
 
 TEST(NcnnDenseOutput, CopiesOnlyLogicalValuesFromPaddedThreeDimensionalChannels) {
     DenseOutputLayout layout;

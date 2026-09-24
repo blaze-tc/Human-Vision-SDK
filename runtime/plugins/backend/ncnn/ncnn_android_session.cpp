@@ -402,14 +402,35 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
     if (!frame.opaque_slot) { error = "ncnn borrowed slot is missing"; return HV_ERR_INVALID_ARGUMENT; }
     auto& consumer = *static_cast<gpu::ConsumerFrame*>(frame.opaque_slot);
     if (!consumer.claimed || consumer.token.index >= slots_.size()) {
+        if (consumer.claimed) {
+            if (active_consumer_ == &consumer) {
+                terminal_gpu_fault_ = true;
+                bridge_->QuarantineConsumer(consumer);
+                active_consumer_ = nullptr;
+            } else {
+                RetireUnsubmitted(&consumer);
+            }
+        }
         error = "ncnn borrowed slot is invalid"; return HV_ERR_INVALID_ARGUMENT;
     }
     if (active_consumer_ && active_consumer_ != &consumer) {
+        if (consumer.role_owner == this) {
+            terminal_gpu_fault_ = true;
+            bridge_->QuarantineConsumer(consumer);
+        } else {
+            RetireUnsubmitted(&consumer);
+        }
         error = "ncnn observation must finish before another slot is run";
         return HV_ERR_INVALID_ARGUMENT;
     }
     const bool first_run = active_consumer_ == nullptr;
     if (first_run && consumer.role_owner) {
+        if (consumer.role_owner == this) {
+            terminal_gpu_fault_ = true;
+            bridge_->QuarantineConsumer(consumer);
+        } else {
+            RetireUnsubmitted(&consumer);
+        }
         error = "ncnn previous model role must release the observation before handoff";
         return HV_ERR_INVALID_ARGUMENT;
     }
@@ -544,9 +565,14 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
             return HV_ERR_INTERNAL;
         }
         device_->convert_packing(slot.gpu_outputs[i], slot.fp32_outputs[i], 1, 1, *slot.compute, option_);
+        DenseOutputLayout gpu_layout;
         if (slot.fp32_outputs[i].empty() || slot.fp32_outputs[i].elempack != 1 ||
             slot.fp32_outputs[i].elembits() != 32 ||
-            slot.fp32_outputs[i].total() * sizeof(float) > output_byte_limits_[i]) {
+            !DescribeDenseOutput(slot.fp32_outputs[i].dims, slot.fp32_outputs[i].w,
+                                 slot.fp32_outputs[i].h, slot.fp32_outputs[i].d,
+                                 slot.fp32_outputs[i].c, slot.fp32_outputs[i].cstep,
+                                 output_byte_limits_[i], gpu_layout) ||
+            !ValidateDenseDownload(gpu_layout, slot.fp32_outputs[i].total())) {
             error = "ncnn output shape/dtype exceeds declared bounds: " + contract_.output_blobs[i];
             return HV_ERR_MODEL_LOAD;
         }
@@ -568,7 +594,8 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
         DenseOutputLayout layout;
         if (mat.empty() || mat.elemsize != sizeof(float) ||
             !DescribeDenseOutput(mat.dims, mat.w, mat.h, mat.d, mat.c, mat.cstep,
-                                 output_byte_limits_[i], layout)) {
+                                 output_byte_limits_[i], layout) ||
+            !ValidateDenseDownload(layout, mat.total())) {
             error = "ncnn downloaded output violates shape/dtype bound"; return HV_ERR_MODEL_LOAD;
         }
         const size_t values = layout.logical_bytes / sizeof(float);
@@ -660,21 +687,15 @@ void AndroidSession::RetireUnsubmitted(void* opaque_slot) noexcept {
     if (!opaque_slot || !bridge_) return;
     auto& lease = *static_cast<gpu::ConsumerFrame*>(opaque_slot);
     if (!lease.claimed) return;
-    if (lease.role_owner) {
-        std::string ignored;
-        gpu::CompleteGpuRole(lease, true, ignored);
-        return;
-    }
-    if (active_consumer_ == &lease) {
+    if (active_consumer_ == &lease && !lease.role_owner) {
         std::string ignored;
         FinishObservation(lease, ignored);
         return;
     }
-    if (WaitProducerFd(lease.producer_fd))
-        bridge_->RetireConsumer(lease, gpu::CompletionProof::GpuQuiescent);
-    else {
+    const auto wait = [](void*, gpu::SyncFd& fd) noexcept { return WaitProducerFd(fd); };
+    const auto retired = gpu::RetireUnsubmittedConsumer(*bridge_, lease, wait, nullptr);
+    if (retired != gpu::SlotResult::Ok) {
         terminal_gpu_fault_ = true;
-        bridge_->QuarantineConsumer(lease);
     }
 }
 }

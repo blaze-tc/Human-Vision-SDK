@@ -354,6 +354,27 @@ bool CompleteGpuRole(ConsumerFrame& frame, bool final_role, std::string& error) 
     return complete(owner, frame, final_role, error);
 }
 
+SlotResult RetireUnsubmittedConsumer(UnityVulkanBridge& bridge, ConsumerFrame& frame,
+                                     ProducerProofWait wait, void* context) noexcept {
+    if (!frame.claimed || !wait) return SlotResult::Invalid;
+    if (frame.role_owner) {
+        std::string error;
+        if (CompleteGpuRole(frame, true, error) && !frame.claimed) return SlotResult::Ok;
+        if (frame.claimed) bridge.QuarantineConsumer(frame);
+        return SlotResult::Closed;
+    }
+    const bool producer_complete = frame.producer_fd.HasPayload()
+        ? wait(context, frame.producer_fd)
+        : frame.ncnn_role_complete;
+    if (!producer_complete) {
+        bridge.QuarantineConsumer(frame);
+        return SlotResult::Closed;
+    }
+    const auto retired = bridge.RetireConsumer(frame, CompletionProof::GpuQuiescent);
+    if (retired != SlotResult::Ok && frame.claimed) bridge.QuarantineConsumer(frame);
+    return retired;
+}
+
 SlotResult UnityVulkanBridge::ClaimConsumer(ConsumerFrame& frame) noexcept {
     if (frame.claimed || frame.producer_fd.HasPayload()) return SlotResult::Invalid;
     if (!Enter()) return SlotResult::Closed;

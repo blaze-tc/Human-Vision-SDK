@@ -363,6 +363,127 @@ TEST(UnityVulkanBridgeContract, OneProducerFenceSpansDetectorAndPoseRoleHandoff)
   EXPECT_EQ(NextNcnnRole(frame), NcnnRoleStart::Invalid);
 }
 
+TEST(UnityVulkanBridgeContract, RejectingSecondConsumerRetiresOnlyThatLease) {
+  FakeVulkan fake;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  void* event = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &event), BridgeResult::Ok);
+  ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+  ASSERT_EQ(bridge.Prepare(Submission(2), &event), BridgeResult::Ok);
+  ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+  ASSERT_EQ(bridge.Prepare(Submission(3), &event), BridgeResult::Ok);
+  ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+  ConsumerFrame active;
+  ASSERT_EQ(bridge.ClaimConsumer(active), SlotResult::Ok);
+  ConsumerFrame rejected;
+  const auto claimed = bridge.ClaimDropped(rejected);
+  if (claimed != SlotResult::Ok) {
+    bridge.RetireConsumer(active, CompletionProof::GpuQuiescent);
+    FAIL() << "expected a superseded second consumer";
+  }
+  int waits = 0;
+  auto wait = [](void* context, SyncFd& fd) noexcept {
+    ++*static_cast<int*>(context);
+    return fd.HasPayload();
+  };
+  EXPECT_EQ(RetireUnsubmittedConsumer(bridge, rejected, wait, &waits), SlotResult::Ok);
+  EXPECT_EQ(waits, 1);
+  EXPECT_FALSE(rejected.claimed);
+  EXPECT_TRUE(active.claimed);
+  ASSERT_EQ(bridge.RetireConsumer(active, CompletionProof::GpuQuiescent), SlotResult::Ok);
+  bridge.Shutdown();
+  EXPECT_EQ(fake.drained, 3u);
+}
+
+TEST(UnityVulkanBridgeContract, FailedProducerProofQuarantinesRejectedLease) {
+  FakeVulkan fake;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  void* event = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &event), BridgeResult::Ok);
+  ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+  ConsumerFrame rejected;
+  ASSERT_EQ(bridge.ClaimConsumer(rejected), SlotResult::Ok);
+  auto fail = [](void*, SyncFd&) noexcept { return false; };
+  EXPECT_EQ(RetireUnsubmittedConsumer(bridge, rejected, fail, nullptr), SlotResult::Closed);
+  EXPECT_FALSE(rejected.claimed);
+  EXPECT_EQ(bridge.Prepare(Submission(2), &event), BridgeResult::Closed);
+}
+
+TEST(UnityVulkanBridgeContract, RejectedRoleOwnerUsesFinalCallbackAndLeavesNoLease) {
+  struct Role {
+    UnityVulkanBridge* bridge;
+    int calls = 0;
+    static bool Finish(void* owner, ConsumerFrame& frame, bool final_role,
+                       std::string&) noexcept {
+      auto& role = *static_cast<Role*>(owner);
+      ++role.calls;
+      return final_role &&
+          role.bridge->RetireConsumer(frame, CompletionProof::GpuQuiescent) == SlotResult::Ok;
+    }
+  };
+  FakeVulkan fake;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  void* event = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &event), BridgeResult::Ok);
+  ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+  ConsumerFrame rejected;
+  ASSERT_EQ(bridge.ClaimConsumer(rejected), SlotResult::Ok);
+  Role role{&bridge};
+  rejected.role_owner = &role;
+  rejected.complete_role = &Role::Finish;
+  int waits = 0;
+  auto wait = [](void* context, SyncFd&) noexcept {
+    ++*static_cast<int*>(context);
+    return true;
+  };
+  EXPECT_EQ(RetireUnsubmittedConsumer(bridge, rejected, wait, &waits), SlotResult::Ok);
+  EXPECT_EQ(role.calls, 1);
+  EXPECT_EQ(waits, 0);
+  EXPECT_FALSE(rejected.claimed);
+}
+
+TEST(UnityVulkanBridgeContract, RejectedRoleFailureCannotLeaveClaimedLease) {
+  FakeVulkan fake;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  void* event = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &event), BridgeResult::Ok);
+  ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+  ConsumerFrame rejected;
+  ASSERT_EQ(bridge.ClaimConsumer(rejected), SlotResult::Ok);
+  int calls = 0;
+  rejected.role_owner = &calls;
+  rejected.complete_role = [](void* owner, ConsumerFrame&, bool final_role,
+                              std::string&) noexcept {
+    ++*static_cast<int*>(owner);
+    return !final_role;
+  };
+  auto wait = [](void*, SyncFd&) noexcept { return true; };
+  EXPECT_EQ(RetireUnsubmittedConsumer(bridge, rejected, wait, nullptr), SlotResult::Closed);
+  EXPECT_EQ(calls, 1);
+  EXPECT_FALSE(rejected.claimed);
+  EXPECT_EQ(bridge.Prepare(Submission(2), &event), BridgeResult::Closed);
+}
+
+TEST(UnityVulkanBridgeContract, InvalidRejectedTokenQuarantinesInsteadOfLeakingLease) {
+  FakeVulkan fake;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  void* event = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &event), BridgeResult::Ok);
+  ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+  ConsumerFrame rejected;
+  ASSERT_EQ(bridge.ClaimConsumer(rejected), SlotResult::Ok);
+  ++rejected.token.generation;
+  auto wait = [](void*, SyncFd&) noexcept { return true; };
+  EXPECT_NE(RetireUnsubmittedConsumer(bridge, rejected, wait, nullptr), SlotResult::Ok);
+  EXPECT_FALSE(rejected.claimed);
+  EXPECT_EQ(bridge.Prepare(Submission(2), &event), BridgeResult::Closed);
+}
+
 TEST(UnityVulkanBridgeContract, FailedRoleCompletionQuarantinesAndClearsCallback) {
   struct FailingRole {
     UnityVulkanBridge* bridge;

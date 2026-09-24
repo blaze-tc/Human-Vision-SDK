@@ -11,10 +11,13 @@ struct DenseOutputLayout {
     size_t channels = 0;
     size_t channel_stride = 0;
     size_t logical_bytes = 0;
+    size_t storage_bytes = 0;
 };
 
 bool DescribeDenseOutput(int dims, int w, int h, int d, int c, size_t cstep,
                          uint64_t max_output_bytes, DenseOutputLayout& result) noexcept;
 bool CompactDenseFp32(const float* padded, const DenseOutputLayout& layout,
                       float* dense, size_t dense_capacity) noexcept;
+bool ValidateDenseDownload(const DenseOutputLayout& layout,
+                           size_t physical_values) noexcept;
 }
