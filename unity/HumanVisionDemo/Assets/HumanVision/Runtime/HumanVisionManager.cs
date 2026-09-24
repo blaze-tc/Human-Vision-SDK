@@ -31,6 +31,8 @@ namespace HumanVision
         public HumanVisionBody[] SampledBodies => (_session as HumanVisionRuntimeSession)?.SampledBodies ?? Bodies;
         public int SampledBodyCount => (_session as HumanVisionRuntimeSession)?.SampledCount ?? BodyCount;
         public bool UsesRuntimeProfile => _session is HumanVisionRuntimeSession;
+        public bool UsesAndroidGpuFrames => (_session as HumanVisionRuntimeSession)?.UsesGpuFrames ?? false;
+        public string ActiveRuntimeProfile => (_session as HumanVisionRuntimeSession)?.ProfileId ?? string.Empty;
         public float HandInferenceFps => (_session as HumanVisionRuntimeSession)?.HandFps ?? 0;
         public string RuntimeDiagnostics => (_session as HumanVisionRuntimeSession)?.Diagnostics ?? "V1 compatibility session";
         public string LastError { get; private set; }
@@ -141,6 +143,22 @@ namespace HumanVision
                 ReportError(exception.Message);
                 return false;
             }
+        }
+        public void BeginAndroidGpuSourceLease(RenderTexture texture)
+        {
+            try { (_session as HumanVisionRuntimeSession)?.BeginGpuSourceLease(texture); }
+            catch (Exception exception) { ReportError(exception.Message); throw; }
+        }
+        public void EndAndroidGpuSourceLease()
+        {
+            try { (_session as HumanVisionRuntimeSession)?.EndGpuSourceLease(); }
+            catch (Exception exception) { ReportError(exception.Message); throw; }
+        }
+        public bool SubmitAndroidGpuFrame(RenderTexture texture, int rotationDegrees, bool mirrored, long frameId, long timestampUs)
+        {
+            try { bool accepted = (_session as HumanVisionRuntimeSession)?.SubmitGpuFrame(texture, rotationDegrees, mirrored, frameId, timestampUs) ?? false;
+                LastError = string.Empty; return accepted; }
+            catch (Exception exception) { ReportError(exception.Message); throw; }
         }
 
         public bool TrySetMaxBodies(int maxBodies)

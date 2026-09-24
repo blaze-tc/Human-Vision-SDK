@@ -151,7 +151,7 @@ namespace HumanVision.Demo
     [DefaultExecutionOrder(-50)]
     [DisallowMultipleComponent]
     [RequireComponent(typeof(VideoPlayer))]
-    public sealed class VideoPlayerFrameSource : MonoBehaviour
+    public sealed class VideoPlayerFrameSource : MonoBehaviour, IAndroidFrameSubmission
     {
         private const int ReadbackPoolSize = 3;
 
@@ -201,7 +201,7 @@ namespace HumanVision.Demo
             _livePreview = smoothPreview;
             _externalInput = true;
             LastError = string.Empty;
-            if (!_rowOrderReady && !_rowProbePending && SystemInfo.supportsAsyncGPUReadback) BeginRowOrderProbe();
+            if (manager != null && !manager.UsesAndroidGpuFrames && !_rowOrderReady && !_rowProbePending && SystemInfo.supportsAsyncGPUReadback) BeginRowOrderProbe();
             maxAnalysisWidth = Math.Max(64, analysisWidth); maxAnalysisHeight = Math.Max(64, analysisHeight);
             _liveTexture = null; _nextLiveSubmitTime = 0; _livePendingFrameId = -1;
         }
@@ -261,9 +261,22 @@ namespace HumanVision.Demo
             });
         }
 
-        public bool SubmitExternalTexture(Texture texture, long timestampUs)
+        public bool SubmitExternalTexture(Texture texture, long timestampUs, int rotationDegrees = 0, bool mirrored = false)
         {
             if (texture == null || manager == null || !manager.IsInitialized) return false;
+            if (Application.platform == RuntimePlatform.Android)
+                return HumanVisionAndroidFrameRoute.Submit(manager.ActiveRuntimeProfile, this,
+                    texture, timestampUs, rotationDegrees, mirrored);
+            return SubmitExternalCpuTexture(texture, timestampUs);
+        }
+
+        bool IAndroidFrameSubmission.SubmitGpuFrame(Texture texture, long timestampUs, int rotationDegrees, bool mirrored)
+            => SubmitExternalGpuTexture(texture as RenderTexture, timestampUs, rotationDegrees, mirrored);
+        bool IAndroidFrameSubmission.SubmitCpuFrame(Texture texture, long timestampUs)
+            => SubmitExternalCpuTexture(texture, timestampUs);
+
+        private bool SubmitExternalCpuTexture(Texture texture, long timestampUs)
+        {
             if (_livePreview) PresentLiveTexture(texture);
             if (!SystemInfo.supportsAsyncGPUReadback) { SetError("Async GPU readback is unavailable."); return false; }
             if (!_rowOrderReady) return false;
@@ -298,6 +311,26 @@ namespace HumanVision.Demo
             } else CapturePresentationFrame(slot.FrameId);
             slot.Request = AsyncGPUReadback.RequestIntoNativeArray(ref slot.Buffer, _renderTexture,
                 0, TextureFormat.RGBA32, slot.Completion);
+            return true;
+        }
+
+        private bool SubmitExternalGpuTexture(RenderTexture texture, long timestampUs, int rotationDegrees, bool mirrored)
+        {
+            if (texture == null) { SetError("NCNN Vulkan input requires the oriented RenderTexture."); return false; }
+            if (_livePreview) PresentLiveTexture(texture);
+            double now = Time.realtimeSinceStartupAsDouble;
+            if (now < _nextLiveSubmitTime) return false;
+            if (SourceWidth != texture.width || SourceHeight != texture.height) {
+                SourceWidth = texture.width; SourceHeight = texture.height;
+                VideoLayoutChanged?.Invoke();
+            }
+            long frameId = ++_nextSubmissionFrameId;
+            bool accepted = manager.SubmitAndroidGpuFrame(texture, rotationDegrees, mirrored, frameId, timestampUs);
+            if (!accepted) { if (!string.IsNullOrEmpty(manager.LastError)) SetError(manager.LastError); return false; }
+            _acceptReadbacks = true;
+            _latestSubmittedFrameId = _presentationFrameId = frameId;
+            _nextLiveSubmitTime = now + 1.0 / 30.0;
+            PresentationFrameChanged?.Invoke();
             return true;
         }
 
@@ -385,6 +418,11 @@ namespace HumanVision.Demo
 
         public bool PlayUrl(string path)
         {
+            if (Application.platform == RuntimePlatform.Android && manager != null && manager.UsesAndroidGpuFrames)
+            {
+                SetError("android-ncnn-vulkan requires the live oriented camera texture. Select an ORT mode in Project Settings for file input.");
+                return false;
+            }
             if (_videoPlayer == null)
             {
                 SetError("VideoPlayerFrameSource has not completed Awake.");

@@ -13,6 +13,8 @@ namespace HumanVision
         private static readonly int[] HandMap = {8,9,10,15,16,17};
         private HumanVisionConfig _config;
         private IntPtr _handle, _buffer;
+        private HumanVisionAndroidGpuFrameBridge _gpuBridge;
+        private RenderTexture _gpuSourceTexture;
         private RuntimeStatsNative _native;
         private readonly int[] _regions = new int[8];
         private long _lastHand, _submitted;
@@ -29,8 +31,10 @@ namespace HumanVision
         public long SourceTimestampUs => _native.Timestamp;
         public HumanVisionStats Stats { get; private set; }
         internal float HandFps => _native.HandFps;
+        internal string ProfileId => _config.Profile;
+        internal bool UsesGpuFrames => HumanVisionAndroidFrameRoute.UsesGpu(_config.Profile);
         internal string Diagnostics {
-            get { var text = new StringBuilder(4096); Check(RuntimeBindings.HV_RuntimeGetDiagnostics(_handle, text, 4096), "diagnostics"); return text.ToString(); }
+            get { var text = new StringBuilder(4096); Check(RuntimeBindings.HV_RuntimeGetDiagnostics(_handle, text, 4096), "diagnostics"); return "Android mode: " + _config.Profile + "; input: " + (UsesGpuFrames ? "GPU" : "CPU") + "\n" + (_gpuBridge == null ? "" : _gpuBridge.Diagnostics + "\n") + text; }
         }
         internal HumanVisionRuntimeSession(HumanVisionConfig config) : this(config, config == null ? null : config.Profile)
         {
@@ -40,7 +44,7 @@ namespace HumanVision
             _config = config.Clone(); _config.Profile = profileId; _config.Validate();
             if (HeaderBytes != 72 || JointBytes != 48) throw new InvalidOperationException("Unsupported canonical ABI layout.");
             _buffer = Marshal.AllocHGlobal(BodyBytes * 8);
-            try { _handle = Create(_config); } catch { Dispose(); throw; }
+            try { _handle = Create(_config); if (UsesGpuFrames) _gpuBridge = new HumanVisionAndroidGpuFrameBridge(_handle); } catch { Dispose(); throw; }
         }
         private static HumanVisionBody[] AllocateBodies()
         { var bodies = new HumanVisionBody[8]; for (int i = 0; i < 8; i++) bodies[i] = new HumanVisionBody(); return bodies; }
@@ -66,9 +70,27 @@ namespace HumanVision
         }
         public bool SubmitFrame(IntPtr data, int width, int height, int strideBytes, HumanVisionPixelFormat format, long frameId, long timestampUs, int bytes)
         {
+            if (UsesGpuFrames) throw new InvalidOperationException("android-ncnn-vulkan accepts GPU textures only; CPU frame submission is disabled.");
             var frame = new HVVideoFrameNative { StructSize = NativeBindings.VideoFrameSize, Data = data, Width = width, Height = height,
                 StrideBytes = strideBytes, PixelFormat = (HVPixelFormat)format, FrameId = frameId, TimestampUs = timestampUs, DataBytes = bytes };
             Check(RuntimeBindings.HV_RuntimeSubmit(_handle, ref frame), "frame submission"); _submitted++; return true;
+        }
+        internal void BeginGpuSourceLease(RenderTexture texture)
+        {
+            _gpuBridge?.Begin(texture);
+            if (_gpuBridge != null) _gpuSourceTexture = texture;
+        }
+        internal void EndGpuSourceLease()
+        {
+            _gpuBridge?.End();
+            _gpuSourceTexture = null;
+        }
+        internal bool SubmitGpuFrame(RenderTexture texture, int rotationDegrees, bool mirrored, long frameId, long timestampUs)
+        {
+            if (_gpuBridge == null) throw new InvalidOperationException("The selected Android runtime mode does not accept GPU frames.");
+            bool accepted = _gpuBridge.Submit(texture, rotationDegrees, mirrored, frameId, timestampUs);
+            if (accepted) _submitted++;
+            return accepted;
         }
         public bool PollLatestResult()
         {
@@ -116,11 +138,21 @@ namespace HumanVision
         {
             if (maxBodies == MaxBodies) return;
             var updated = _config.Clone(); updated.MaxBodies = maxBodies; updated.Validate();
-            IntPtr replacement = Create(updated); RuntimeBindings.HV_RuntimeDestroy(_handle); _handle = replacement; _config = updated;
+            RenderTexture activeGpuSource = _gpuSourceTexture;
+            IntPtr replacement = Create(updated);
+            HumanVisionAndroidGpuFrameBridge replacementBridge;
+            try { replacementBridge = UsesGpuFrames ? new HumanVisionAndroidGpuFrameBridge(replacement) : null; }
+            catch { RuntimeBindings.HV_RuntimeDestroy(replacement); throw; }
+            try { _gpuBridge?.Dispose(); }
+            catch { replacementBridge?.Dispose(); RuntimeBindings.HV_RuntimeDestroy(replacement); throw; }
+            RuntimeBindings.HV_RuntimeDestroy(_handle); _handle = replacement; _config = updated;
+            _gpuBridge = replacementBridge;
+            _gpuSourceTexture = null;
+            if (_gpuBridge != null && activeGpuSource != null) BeginGpuSourceLease(activeGpuSource);
             BodyCount = SampledCount = 0; _native = default; _lastHand = 0;
         }
         public void Dispose()
-        { if (_handle != IntPtr.Zero) { RuntimeBindings.HV_RuntimeDestroy(_handle); _handle = IntPtr.Zero; }
+        { if (_handle != IntPtr.Zero) { _gpuBridge?.Dispose(); RuntimeBindings.HV_RuntimeDestroy(_handle); _handle = IntPtr.Zero; _gpuBridge = null; _gpuSourceTexture = null; }
           if (_buffer != IntPtr.Zero) { Marshal.FreeHGlobal(_buffer); _buffer = IntPtr.Zero; } }
     }
 }

@@ -99,6 +99,10 @@ namespace HumanVision
                 _webcam = new WebCamTexture(device, _settings.width, _settings.height, _settings.framesPerSecond);
                 _webcam.Play();
             } else {
+                if (Application.platform == RuntimePlatform.Android && GetComponent<HumanVisionManager>().UsesAndroidGpuFrames) {
+                    Status = "android-ncnn-vulkan requires a GPU camera texture; this RTSP decoder produces CPU frames.";
+                    yield break;
+                }
                 if (!Uri.TryCreate(_settings.rtspUrl, UriKind.Absolute, out var uri) || uri.Scheme != "rtsp") {
                     Status = "Enter a valid rtsp:// camera URL"; yield break;
                 }
@@ -150,6 +154,7 @@ namespace HumanVision
                     // Discard results from the old coordinate system, including 180-degree turns.
                     if (_lastRotation != rotation || _lastFlipY != flipY) {
                         // Reset tracked crops as well as displayed results when coordinates change.
+                        ReleaseOrientedTexture();
                         if (_lastRotation >= 0) GetComponent<HumanVisionCameraManager>()?.ApplySettings();
                         _bridge.StopFrames();
                         _lastRotation = rotation; _lastFlipY = flipY;
@@ -157,15 +162,17 @@ namespace HumanVision
                     int w = rotation % 180 == 0 ? input.width : input.height;
                     int h = rotation % 180 == 0 ? input.height : input.width;
                     if (_oriented == null || _oriented.width != w || _oriented.height != h) {
-                        if (_oriented != null) { _oriented.Release(); Destroy(_oriented); }
+                        ReleaseOrientedTexture();
                         _oriented = new RenderTexture(w, h, 0, RenderTextureFormat.ARGB32);
                         _oriented.Create();
+                        if (_bridge != null && GetComponent<HumanVisionManager>().UsesAndroidGpuFrames)
+                            GetComponent<HumanVisionManager>().BeginAndroidGpuSourceLease(_oriented);
                     }
                     _orientation.SetFloat("_Rotation", rotation / 90);
                     _orientation.SetFloat("_FlipY", flipY ? 1 : 0);
                     _orientation.SetFloat("_Mirror", _settings.mirror ? 1 : 0);
                     Graphics.Blit(input, _oriented, _orientation);
-                    _bridge.SubmitExternalTexture(_oriented, timestamp);
+                    _bridge.SubmitExternalTexture(_oriented, timestamp, rotation, _settings.mirror);
                     _lastFrameTime = Time.realtimeSinceStartup;
                     _invalidated = false;
                     Status = _webcam != null ? "WebCamera streaming" : "RTSP streaming";
@@ -193,8 +200,15 @@ namespace HumanVision
             if (_pin.IsAllocated) _pin.Free();
             _rgba = null; _rtspSequence = 0;
             if (_rtspTexture != null) { Destroy(_rtspTexture); _rtspTexture = null; }
-            if (_oriented != null) { _oriented.Release(); Destroy(_oriented); _oriented = null; }
+            ReleaseOrientedTexture();
             if (_orientation != null) { Destroy(_orientation); _orientation = null; }
+        }
+        private void ReleaseOrientedTexture()
+        {
+            if (_oriented == null) return;
+            // The synchronous native drain owns all outstanding render events/views for this texture.
+            GetComponent<HumanVisionManager>()?.EndAndroidGpuSourceLease();
+            _oriented.Release(); Destroy(_oriented); _oriented = null;
         }
         private void OnDisable() { Close(); }
         private void OnApplicationPause(bool paused)

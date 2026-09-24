@@ -44,6 +44,16 @@ namespace HumanVision.Interop
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
         internal static extern int HV_RuntimeGetDiagnostics(IntPtr handle, StringBuilder text, uint capacity);
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern int HV_RuntimePrepareAndroidGpuFrame(IntPtr handle, ref AndroidGpuSubmissionNative frame, out IntPtr renderEventData);
+        [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern int HV_RuntimeBeginAndroidGpuSourceLease(IntPtr handle, IntPtr unityTexture);
+        [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern int HV_RuntimeEndAndroidGpuSourceLease(IntPtr handle);
+        [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern IntPtr HV_GetAndroidGpuRenderEventAndDataFunction();
+        [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern int HV_RuntimeGetAndroidGpuBridgeStatus(IntPtr handle, ref AndroidGpuBridgeStatusNative status);
+        [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
         internal static extern void HV_RuntimeDestroy(IntPtr handle);
     }
 }

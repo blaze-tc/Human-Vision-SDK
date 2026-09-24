@@ -117,6 +117,7 @@ namespace HumanVision.Demo
                 .Append(stats.ProcessedFrames).Append(" / ").Append(stats.DroppedFrames).Append('\n');
             _builder.Append("GPU readback pool drops/errors: ").Append(frameSource.ReadbackDrops).Append(" / ")
                 .Append(frameSource.ReadbackErrors);
+            if (manager.UsesRuntimeProfile) _builder.Append("\n").Append(manager.RuntimeDiagnostics);
 
             string error = !string.IsNullOrWhiteSpace(manager.LastError)
                 ? manager.LastError

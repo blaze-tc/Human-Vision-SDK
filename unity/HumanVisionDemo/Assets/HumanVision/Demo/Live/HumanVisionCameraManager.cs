@@ -91,7 +91,15 @@ namespace HumanVision
             } catch (Exception e) { Status = e.Message; return false; }
         }
         private string ResolveRuntimeProfile()
-            => ResolveRuntimeProfile(runtimeProfileOverride, forceCpu);
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (forceCpu || !string.IsNullOrWhiteSpace(runtimeProfileOverride))
+                throw new InvalidOperationException("Android runtime mode is selected in Project Settings > Human Vision > Android Runtime. Remove the Demo provider override and rebuild.");
+            return "auto";
+#else
+            return ResolveRuntimeProfile(runtimeProfileOverride, forceCpu);
+#endif
+        }
         internal static string ResolveRuntimeProfile(string overrideValue, bool forceCpuValue)
         {
             string requested = (overrideValue ?? "").Trim();
@@ -102,7 +110,8 @@ namespace HumanVision
         }
         private bool TryInitializeRuntime(string profile)
         {
-            if (IsReady && string.Equals(_activeRuntimeProfile, profile, StringComparison.Ordinal)) return true;
+            if (IsReady && (string.Equals(_activeRuntimeProfile, profile, StringComparison.Ordinal) ||
+                (Application.platform == RuntimePlatform.Android && profile == "auto"))) return true;
             if (IsReady) {
                 _source.Close();
                 _bridge.StopFrames();
@@ -114,7 +123,7 @@ namespace HumanVision
                 Status = _manager.LastError;
                 return false;
             }
-            _activeRuntimeProfile = profile;
+            _activeRuntimeProfile = _manager.ActiveRuntimeProfile;
             return true;
         }
         public void StartCamera()
