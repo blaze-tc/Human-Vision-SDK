@@ -7,6 +7,7 @@
   },
   "hands": {"enabled": false, "fps": 15},
   "body_fps": 30,
+  "detector": {"person_score_threshold": 0.35},
   "output": {"hz": 60},
   "required_capabilities": [
     "body_pose",

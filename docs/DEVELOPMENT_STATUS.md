@@ -1,3 +1,32 @@
+# Android Vulkan/ncnn — Milestone C Task C1 model-conversion gates complete (2026-09-25)
+
+Task C1 adds pinned checkpoint/source/ONNX/ncnn-tool hashes, fixed RGB and
+FP16 pack4 contracts, static ONNX/ncnn graph audits, and model-bound detector
+and Body26 SimCC golden comparisons. The Android NCNN profile now declares a
+person score threshold of `0.35`, matching the existing TopDown runtime and
+reference exporter; detector golden comparisons cannot override it. Tests
+were added before implementation and failed as expected, including adversarial
+fixtures for forged manifests, changed model assets, disconnected outputs,
+external ONNX weights, invalid pose crops, and missed detections.
+
+Fresh C1 verification: `.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -p test_ncnn_model_contract.py -v` **30/30 PASS**; the full
+`tests/reference` suite passed **41/41**;
+`.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py`
+**PASS**; `git diff --check` **PASS**. PowerShell converter parsing and Python
+compilation checks passed. Independent task review found **SPEC APPROVED** and
+**QUALITY APPROVED** after the threshold binding fix. The Revision 2 design
+requires that profile binding, so C1 adds one profile field beyond the plan's
+initial file list; C3 must use that field in the GPU pipeline and regenerate
+golden provenance after its final profile/model-pack update.
+
+No RTMDet Nano or RTMPose ncnn graph has yet passed conversion, golden parity,
+or Snapdragon 888 inference. Task C2 (time-boxed RTMDet Nano conversion) is
+next; Milestone C and the 30 fresh complete observation frames/s acceptance
+remain open. Main merge and Release remain prohibited until final physical
+acceptance.
+
+---
+
 # Android Vulkan/ncnn — B7 Snapdragon 888 gate accepted; Milestone B complete (2026-09-25)
 
 Authority: Revision 2 design and the ordered implementation plan. The user

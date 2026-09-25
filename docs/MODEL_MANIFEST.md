@@ -2,6 +2,88 @@
 
 # D0 Model Baseline
 
+## Android ncnn C1 conversion contract (2026-09-25)
+
+The Android production candidate uses a **separate** `precision-t-26-ncnn-fp16`
+ModelPack; it does not replace the D0 RTMDet-tiny/RTMPose-s baselines below.
+`tools/models/ncnn/` pins the RTMDet Nano checkpoint SHA-256
+`05d8511e7b3fabc62e27d2f624179e004ad14ee63a86ca9d9d22c88f3db0eee1`
+and the existing OpenMMLab source revisions. The RTMPose-t Body26 source is
+the official checkpoint linked in MMPose's pinned model card; its full SHA-256
+is `6020f8a6746639c0144eb979df0be0baa707af428d0e20a2db8991cf7452e5d6`
+(verified from the downloaded 14,130,769-byte `.pth`). Both exporters check the
+full checkpoint SHA-256 before loading the model.
+Each exporter also requires a clean, exact-revision vendor checkout before
+adding it to Python's import path; tracked, untracked and ignored files fail
+closed so an unpinned module cannot shadow the source. C1 Python tools accept
+both `python -m ...` and direct script invocation from the repository root.
+
+The candidate detector input is static NCHW `[1,3,320,320]` RGB with bilinear
+letterbox/pad RGB 114 and explicit RGB mean `[123.675,116.28,103.53]`, norm
+`[1/58.395,1/57.12,1/57.375]`. Its named `cls` output is raw, objectness-fused
+logits and `bbox` is stride-scaled LTRB distance, before TopDown grid decode,
+thresholding and person-only NMS. The candidate pose input is static NCHW
+`[1,3,256,192]` RGB, bbox affine crop with factor 1.25, the same RGB mean/norm,
+and named `simcc_x` / `simcc_y` outputs for 26 joints. Input `VkMat` conversion
+to FP16 pack4 is explicit in the native backend; the converter does not prove
+runtime packing. The ncnn graph audit rejects unsupported/custom or cast layers,
+dynamic input/output shapes, and unnamed outputs. The ONNX image input and
+numeric outputs must be FLOAT32; FP16 pack4 is the separate ncnn runtime input
+contract. Detector outputs must share a batch-1 candidate axis, with one person
+logit and four LTRB coordinates per candidate. Body26 SimCC outputs must have
+26 joints and static x/y lengths of 384/512 (split ratio 2).
+ONNX models with external tensor sidecars are rejected before loading those
+bytes; the manifest's ONNX SHA-256 therefore binds the complete graph data.
+In the ncnn param audit, negative dimension rejection is limited to declared
+Input/Reshape dimensions; a `BinaryOp` scalar value of `-1` is valid.
+
+The C1 tools require checkpoint/ONNX/tool/fixture hashes, capture export and
+conversion commands, source revisions, opset and output hashes. Golden comparison
+uses identical post-NMS candidate counts, bbox IoU ≥0.95, score error ≤0.01,
+no missed reference person above threshold. Detector goldens are person-only:
+an explicit nonperson entry is an error even if its score is below threshold.
+Pose uses equal valid masks,
+normalized joint distance P95 ≤0.01 and max ≤0.03 of bbox diagonal, confidence
+error P95 ≤0.02, with at least three valid Body26 joints. Repeated ncnn outputs
+must pass against both the candidate run and the reference, preventing cumulative
+drift. Conversion provenance requires canonical top-level SHA-256 hashes for
+both `onnx2ncnn` and `ncnnoptimize`. The PowerShell converter verifies the actual
+tool files before execution; Python audit/comparator CLIs verify those files when
+their optional paths are supplied. All conversion/golden checks require the
+hashes even without local tool paths. Unit fixtures only exercise these checks. Real converted
+graphs and golden parity remain C2/C3 gates;
+they are not established by C1.
+The pose comparator reads image dimensions from the SHA-bound fixture image and
+accepts only a positive, ordered bbox inside that image. Its bbox comes from
+the separately SHA-bound reference output; candidate/repeat bbox fields, when
+present, must match. This prevents an inflated reference bbox from reducing
+normalized joint error. The ncnn and ONNX graph audits also require each
+terminal output to depend on image input `in0`; constant branches may contribute
+to an output but cannot replace the image-dependent path. `build_provenance`
+checks any caller-supplied input contract, output names and output contract,
+including the latter against the actual static ONNX graph before recording it.
+The detector golden threshold is fixed to the production profile's
+`detector.person_score_threshold = 0.35`, matching the existing TopDown
+`Detect(..., .35F, ...)` call and the reference export's runtime threshold.
+The golden manifest records the canonical `android-ncnn-vulkan` profile ID and
+its SHA-256. Its comparator reads that checked-in profile, rejects a changed
+hash or threshold, and offers no CLI threshold override. Revision 2's
+profile-owned production behavior takes precedence over C1's original file map;
+adding this one field to `profiles/android-ncnn-vulkan.json` is the C1 ruling.
+The C3 GPU pipeline must consume the same profile field before production
+acceptance; C1 tooling alone does not change runtime inference behavior.
+
+Revision 2 §8.3 requires each downloaded tensor's static shape and maximum byte
+count in the production ModelPack before runtime starts. C1 derives
+`output_contract` entries (`shape`, `download_dtype=fp32`, `max_bytes`) from each
+actual static ONNX output, checks ONNX shape inference against its declaration,
+and caps each FP32 pack1 download at 16 MiB. No production output dimensions are
+pre-filled here: C2/C3 must export and audit the real detector/pose graphs, then
+copy their verified entries into the schema-2 ModelPack. Conversion refuses a
+different pinned input contract, checkpoint, source revision, or output shape.
+Both golden comparison commands recheck checkpoint, ONNX, param, bin, fixture,
+reference, candidate and repeat SHA-256 values before accepting a result.
+
 The goal of this file is to stop model selection from becoming an open-ended Codex task.
 
 ## Detector - locked for D0
