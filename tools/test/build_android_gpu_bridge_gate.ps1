@@ -39,6 +39,11 @@ $started = [DateTime]::UtcNow
 $process = Start-Process -FilePath $Unity -ArgumentList $arguments -WindowStyle Hidden -PassThru
 $process.WaitForExit()
 if ($process.ExitCode -ne 0) { throw "Unity gate build failed ($($process.ExitCode)); see $log" }
+$gatePluginMeta = Join-Path $plugins 'libhumanvision.so.meta'
+if (!(Test-Path -LiteralPath $gatePluginMeta) -or
+    (Get-Content -LiteralPath $gatePluginMeta -Raw) -notmatch '(?m)^  isPreloaded: 1\s*$') {
+    throw "Gate libhumanvision.so is not preloaded: $gatePluginMeta"
+}
 $apk = Join-Path $out 'humanvision-gpu-bridge-gate.apk'
 if (!(Test-Path -LiteralPath $apk) -or (Get-Item -LiteralPath $apk).LastWriteTimeUtc -lt $started) { throw 'Gate APK missing or stale' }
 & pwsh -NoProfile -File (Join-Path $root 'tools/test/verify_android_gpu_bridge_gate_libs.ps1') -Mode Verify -ApkPath $apk

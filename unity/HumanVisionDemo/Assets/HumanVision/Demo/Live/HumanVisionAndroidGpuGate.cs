@@ -71,8 +71,8 @@ namespace HumanVision.Demo
                 _mirror = mirror;
                 _source = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32);
                 _source.Create();
-                if (HV_AndroidGpuGateBegin(_source.GetNativeTexturePtr(), inputContract.text) != 0)
-                    throw new InvalidOperationException("Gate source lease failed");
+                int beginResult = HV_AndroidGpuGateBegin(_source.GetNativeTexturePtr(), inputContract.text);
+                if (beginResult != 0) FailGate("source lease", beginResult);
                 _begun = true;
                 if (_pendingRecovery != null)
                 {
@@ -94,7 +94,7 @@ namespace HumanVision.Demo
                 _commands.IssuePluginEventAndData(_renderEvent, eventId, data);
                 Graphics.ExecuteCommandBuffer(_commands);
             }
-            if (result != 0 && result != 1) throw new InvalidOperationException("Gate submit failed: " + result);
+            if (result != 0 && result != 1) FailGate("submit", result);
             if (Time.realtimeSinceStartup >= _nextLog)
             {
                 _nextLog = Time.realtimeSinceStartup + 0.25f;
@@ -129,6 +129,21 @@ namespace HumanVision.Demo
             var text = new StringBuilder(32);
             for (int i = 0; i < 16; ++i) text.Append(bytes[i].ToString("x2"));
             return text.ToString();
+        }
+        private void FailGate(string operation, int result)
+        {
+            var status = new Status { size = 128, version = 1 };
+            var error = new StringBuilder(2048);
+            HV_AndroidGpuGateStatus(ref status, out ulong converted, error, 2048);
+            string diagnostic = error.Length == 0 ? "<none>" :
+                error.ToString().Replace("\\", "\\\\").Replace("\r", "\\r").Replace("\n", "\\n");
+            enabled = false;
+            _lastStatus = "Gate " + operation + " failed result=" + result +
+                " path=" + status.path + " submitted=" + status.submitted +
+                " imported=" + status.imported + " converted=" + converted +
+                " diagnostic=" + diagnostic;
+            Debug.LogError("HV_GPU_GATE " + _lastStatus);
+            throw new InvalidOperationException(_lastStatus);
         }
         private void OnGUI()
         {

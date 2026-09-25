@@ -60,7 +60,12 @@ namespace HumanVision.Editor
             plugin.SetCompatibleWithAnyPlatform(false);
             plugin.SetCompatibleWithPlatform(BuildTarget.Android, true);
             plugin.SetPlatformData("Android", "CPU", "ARM64");
+            // UnityPluginLoad must install Vulkan interception before Unity creates VkDevice.
+            plugin.isPreloaded = true;
             plugin.SaveAndReimport();
+            plugin = PluginImporter.GetAtPath("Assets/Plugins/Android/arm64-v8a/libhumanvision.so") as PluginImporter;
+            if (plugin == null || !plugin.isPreloaded)
+                throw new InvalidOperationException("Gate libhumanvision.so must be preloaded before Vulkan initialization");
             string output = Path.GetFullPath("../humanvision-gpu-bridge-gate.apk");
             Directory.CreateDirectory(Path.GetDirectoryName(output));
             _active = true;
