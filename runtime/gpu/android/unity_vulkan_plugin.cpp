@@ -306,6 +306,20 @@ public:
     snapshot = diagnostic_;
     return snapshot.c_str();
   }
+#if defined(HV_ANDROID_GPU_GATE)
+  const char *GateError() const noexcept {
+    if (runtime_error_.load(std::memory_order_acquire) ||
+        configuration_failed_.load(std::memory_order_acquire)) return Diagnostic();
+    const char* bridge_error = bridge_.Diagnostic();
+    return *bridge_error ? bridge_error : "";
+  }
+  const char *GateProbe() const noexcept {
+    thread_local std::string snapshot;
+    std::lock_guard<std::mutex> lock(control_);
+    snapshot = diagnostic_;
+    return snapshot.c_str();
+  }
+#endif
 
   void Load(IUnityInterfaces *interfaces) noexcept {
     interfaces_ = interfaces;
@@ -1549,6 +1563,12 @@ UnityVulkanBridge* UnityVulkanProducerBridge() noexcept {
 }
 bool UnityVulkanProducerContext(VulkanDeviceContext& out) noexcept {
   return AndroidProducer::Get().GateContext(out);
+}
+const char* UnityVulkanProducerGateError() noexcept {
+  return AndroidProducer::Get().GateError();
+}
+const char* UnityVulkanProducerGateProbe() noexcept {
+  return AndroidProducer::Get().GateProbe();
 }
 #endif
 } // namespace humanvision::gpu

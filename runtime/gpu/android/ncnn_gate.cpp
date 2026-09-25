@@ -45,12 +45,22 @@ public:
             std::lock_guard<std::mutex> lock(mutex_);
             message = error_;
         }
-        if (message.empty()) message = humanvision::gpu::UnityVulkanProducerDiagnostic();
+        if (message.empty()) message = humanvision::gpu::UnityVulkanProducerGateError();
         if (error && capacity) {
             const auto length = std::min<size_t>(message.size(), capacity - 1);
             std::memcpy(error, message.data(), length);
             error[length] = 0;
         }
+    }
+    uint32_t Probe(char* probe, uint32_t capacity) {
+        const char* diagnostic = humanvision::gpu::UnityVulkanProducerGateProbe();
+        const size_t length = std::strlen(diagnostic);
+        if (probe && capacity) {
+            const auto copied = std::min<size_t>(length, capacity - 1);
+            std::memcpy(probe, diagnostic, copied);
+            probe[copied] = 0;
+        }
+        return static_cast<uint32_t>(length + 1);
     }
 private:
     void Fail(const std::string& error) {
@@ -128,6 +138,9 @@ __attribute__((visibility("default"))) void HV_CALL HV_AndroidGpuGateStatus(
     if (!status || !converted || status->struct_size != sizeof(*status) ||
         status->api_version != HV_ANDROID_GPU_API_V1) return;
     Gate::Get().Status(*status, *converted, error, capacity);
+}
+__attribute__((visibility("default"))) uint32_t HV_CALL HV_AndroidGpuGateProbe(char* probe, uint32_t capacity) {
+    return Gate::Get().Probe(probe, capacity);
 }
 }
 #endif

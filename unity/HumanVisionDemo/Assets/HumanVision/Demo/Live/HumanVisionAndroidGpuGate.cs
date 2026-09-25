@@ -32,6 +32,7 @@ namespace HumanVision.Demo
         [DllImport("humanvision")] private static extern void HV_AndroidGpuGateEnd();
         [DllImport("humanvision")] private static extern int HV_AndroidGpuGateSubmit(ref Submission submission, out IntPtr eventData, out int eventId);
         [DllImport("humanvision")] private static extern void HV_AndroidGpuGateStatus(ref Status status, out ulong converted, StringBuilder error, uint capacity);
+        [DllImport("humanvision")] private static extern uint HV_AndroidGpuGateProbe(StringBuilder probe, uint capacity);
         [DllImport("humanvision")] private static extern IntPtr HV_GetAndroidGpuRenderEventAndDataFunction();
         private WebCamTexture _camera;
         private RenderTexture _source;
@@ -44,6 +45,7 @@ namespace HumanVision.Demo
         private bool _mirror;
         private string _pendingRecovery;
         private string _lastStatus = "Starting camera";
+        private string _lastProbe;
         private void Start()
         {
             if (inputContract == null) throw new InvalidOperationException("Gate input contract is missing");
@@ -66,6 +68,8 @@ namespace HumanVision.Demo
             if (_source == null || _source.width != width || _source.height != height ||
                 _rotation != rotation || _mirror != mirror)
             {
+                Debug.Log("HV_GPU_GATE source rebuilding width=" + width + " height=" + height +
+                    " rotation=" + rotation + " mirror=" + mirror);
                 EndSource();
                 _rotation = rotation;
                 _mirror = mirror;
@@ -101,6 +105,7 @@ namespace HumanVision.Demo
                 var status = new Status { size = 128, version = 1 };
                 var error = new StringBuilder(2048);
                 HV_AndroidGpuGateStatus(ref status, out ulong converted, error, 2048);
+                LogProbe();
                 string statusError = error.Length == 0 ? "<none>" :
                     error.ToString().Replace("\\", "\\\\").Replace("\r", "\\r").Replace("\n", "\\n");
                 unsafe
@@ -130,11 +135,27 @@ namespace HumanVision.Demo
             for (int i = 0; i < 16; ++i) text.Append(bytes[i].ToString("x2"));
             return text.ToString();
         }
+        private void LogProbe()
+        {
+            uint required = HV_AndroidGpuGateProbe(null, 0);
+            if (required <= 1 || required > 65536) return;
+            var probe = new StringBuilder((int)required);
+            if (HV_AndroidGpuGateProbe(probe, required) > required) return;
+            string measured = probe.ToString();
+            if (measured == _lastProbe || !measured.Contains("candidate=")) return;
+            _lastProbe = measured;
+            foreach (string line in measured.Split('\n'))
+            {
+                string entry = line.TrimEnd('\r');
+                if (entry.Length != 0) Debug.Log("HV_GPU_GATE probe " + entry);
+            }
+        }
         private void FailGate(string operation, int result)
         {
             var status = new Status { size = 128, version = 1 };
             var error = new StringBuilder(2048);
             HV_AndroidGpuGateStatus(ref status, out ulong converted, error, 2048);
+            LogProbe();
             string diagnostic = error.Length == 0 ? "<none>" :
                 error.ToString().Replace("\\", "\\\\").Replace("\r", "\\r").Replace("\n", "\\n");
             enabled = false;
@@ -174,6 +195,7 @@ namespace HumanVision.Demo
         {
             if (_begun) { HV_AndroidGpuGateEnd(); _begun = false; }
             if (_source != null) { _source.Release(); Destroy(_source); _source = null; }
+            _lastProbe = null;
         }
         private void OnDestroy()
         {

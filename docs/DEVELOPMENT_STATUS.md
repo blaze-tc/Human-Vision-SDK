@@ -1,3 +1,39 @@
+# Android Vulkan/ncnn — B7 device smoke reached GPU path; status contract repaired (2026-09-25)
+
+The first Snapdragon 888 smoke after APK dependency repair reached the bridge:
+the sampled-only blit path selected actual AHB format 1 and usage `0x100`,
+Unity/ncnn device and driver UUIDs matched, and imported/converted each rose
+from 0 to 1261. It was a short smoke, not the ten-minute lifecycle gate.
+Its status lines incorrectly placed successful B2 AHB probe measurements in
+`error=`, so the strict collector reported `no_status_error=False` even while
+conversion progressed. Replaying `out/device-gates/smoke-preload/logcat.txt`
+through the analyzer reproduced that expected failure before the fix.
+
+The development gate now queries producer faults separately from AHB probe
+evidence. Every measured candidate line is logged once per source generation
+as `HV_GPU_GATE probe ...`; routine status uses `error=<none>`. Native
+producer/configuration/bridge and ncnn consumer faults still surface as errors.
+The collector accepts transient `result=1/path=0` with zero AHB fields and
+UUIDs while initial measurement is pending. A later pending status requires
+an explicit source-rebuild marker and recovery to path 1/2 within 30 seconds;
+an unmarked fallback or non-pending path zero fails. It validates the selected
+nonzero path's actual AHB contract and exact UUIDs. A rejected blit candidate remains in the probe log
+when the measured color-attachment candidate succeeds.
+
+Fresh host verification:
+
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1`: **193/193 PASS**.
+- `$env:__COMPAT_LAYER='RunAsInvoker'; pwsh -NoProfile -File tools/test/run_unity040_tests.ps1 -Unity 'D:/Developer/2021.3.45f1/Editor/Unity.exe'`: **75/75 PASS**.
+- `pwsh -NoProfile -File tools/test/test_android_gpu_bridge_gate_analysis.ps1`: **32/32 PASS**, including a real Snapdragon 888 smoke excerpt, initial and post-rebuild pending path, unmarked path-zero regression, separate probe, rejected-blit color fallback and erroneous status probe.
+- `pwsh -NoProfile -File tools/test/build_android_gpu_bridge_gate.ps1 -ProjectPath unity/HumanVisionDemo`: **PASS**; Android ARM64 API 26 native and Unity Development IL2CPP/Vulkan APK, seven-library dependency closure verified. APK SHA-256: `fb888c1f68a709fe31c042344b05d988b13cdfe26b0588417693e2eceda7f7c2`.
+- `pwsh -NoProfile -File tools/test/collect_android_gpu_bridge_gate.ps1 -DurationMinutes 10 -OutputPath out/device-gates/milestone-b -DryRun`: **PASS**, same APK/hash; no ADB command executed.
+- `.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py` and `git diff --check`: **PASS**.
+
+B7 and Milestone B remain open for the full Snapdragon 888 lifecycle run and
+user acceptance. C/D remain unopened.
+
+---
+
 # Android Vulkan/ncnn — B7 APK dependency repair; device acceptance open (2026-09-25)
 
 The first Snapdragon 888 launch reached Android's dynamic loader but failed

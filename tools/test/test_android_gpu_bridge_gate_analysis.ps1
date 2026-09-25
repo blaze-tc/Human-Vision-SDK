@@ -22,7 +22,8 @@ foreach ($event in @(
     @(210, 'HV_GPU_GATE source resumed after=pause'),
     @(250, 'HV_GPU_GATE focus=False'), @(260, 'HV_GPU_GATE focus=True'),
     @(300, 'HV_GPU_GATE camera restart requested'),
-    @(305, 'HV_GPU_GATE source resumed after=restart'))) {
+    @(305, 'HV_GPU_GATE source resumed after=restart'),
+    @(306, 'HV_GPU_GATE source rebuilding width=320 height=240 rotation=90 mirror=False'))) {
     $entries.Add([pscustomobject]@{ epoch = $baseEpoch + $event[0]; text = $event[1] })
 }
 function Format-Entry($entry) {
@@ -40,6 +41,28 @@ function Assert-Fail([string]$name, [string]$raw, [string]$check = '') {
 }
 $baseline = Analyze $valid
 if ($baseline.result -ne 'PASS_CANDIDATE_REQUIRES_USER_REVIEW') { throw "Valid fixture failed: $($baseline.checks | ConvertTo-Json -Compress)" }
+$pending = "HV_GPU_GATE frame=0 result=1 orientation=Portrait path=0 ahbFormat=0 ahbUsage=0x0 formatFeatures=0x0 submitted=0 imported=0 converted=0 unityDeviceUUID=$('0' * 32) ncnnDeviceUUID=$('0' * 32) unityDriverUUID=$('0' * 32) ncnnDriverUUID=$('0' * 32) error=<none>"
+$withPending = $probe + "`n" + (Format-Entry ([pscustomobject]@{epoch=$baseEpoch; text=$pending})) + "`n" + (($entries | Sort-Object epoch | ForEach-Object { Format-Entry $_ }) -join "`n")
+if ((Analyze $withPending).result -ne 'PASS_CANDIDATE_REQUIRES_USER_REVIEW') { throw 'Pending source probe incorrectly failed' }
+$afterRestartPending = $pending.Replace('frame=0', 'frame=62')
+$withRestartPending = $probe + "`n" + ((@($entries) + @([pscustomobject]@{epoch=$baseEpoch + 306; text=$afterRestartPending}) | Sort-Object epoch | ForEach-Object { Format-Entry $_ }) -join "`n")
+if ((Analyze $withRestartPending).result -ne 'PASS_CANDIDATE_REQUIRES_USER_REVIEW') { throw 'Pending measurement after camera restart incorrectly failed' }
+$smoke = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'fixtures/android_gpu_gate_smoke_status.log') -Raw
+$smokeResult = Get-AndroidGpuBridgeGateAnalysis -RawLog $smoke -DurationMinutes 10 -GateSource 'safe gate source' -CaptureStartEpoch 1790316286.8 -CaptureEndEpoch 1790316287.7
+foreach ($check in @('pending_source_measurements_recover', 'selected_copy_path', 'selected_path_matches_actual_contract', 'exact_nonzero_device_and_driver_uuids', 'no_status_error')) {
+    if (!$smokeResult.checks[$check]) { throw "Real smoke excerpt failed $check" }
+}
+if ($smokeResult.checks.timestamped_status_coverage) { throw 'Short real smoke excerpt incorrectly met ten-minute coverage' }
+$probeLines = ($probe -split "`r?`n" | Where-Object { $_ } | ForEach-Object { "1790000001.000 I Unity: HV_GPU_GATE probe $_" }) -join "`n"
+if ((Analyze ($valid + "`n" + $probeLines)).result -ne 'PASS_CANDIDATE_REQUIRES_USER_REVIEW') { throw 'Separate probe lines incorrectly failed' }
+$colorProbe = $probe.Replace('candidate=blit width=320 height=240 layers=1 format=1 usage=256', 'candidate=color_attachment width=320 height=240 layers=1 format=1 usage=768').Replace('image_usage=6 ', 'image_usage=20 ')
+$colorFallback = $valid.Replace($probe, $probe + "`nfailed: source.blit_src`n" + $colorProbe).Replace(' path=1 ', ' path=2 ').Replace('ahbUsage=0x100', 'ahbUsage=0x300')
+if ((Analyze $colorFallback).result -ne 'PASS_CANDIDATE_REQUIRES_USER_REVIEW') { throw 'Successful color fallback after rejected blit incorrectly failed' }
+Assert-Fail 'healthy probe in status error' ($valid.Replace(' error=<none>', ' error=\ncandidate=blit width=320')) 'no_status_error'
+$spurious = @($valid -split "`r?`n" | Where-Object { $_ -match ' frame=81 ' })[0]
+$spuriousPending = $spurious.Replace('result=0', 'result=1').Replace('path=1 ahbFormat=1 ahbUsage=0x100 formatFeatures=0x1', 'path=0 ahbFormat=0 ahbUsage=0x0 formatFeatures=0x0').Replace($uuidA, '0' * 32).Replace($uuidB, '0' * 32)
+Assert-Fail 'later path-zero regression without source change' ($valid.Replace($spurious, $spuriousPending)) 'pending_source_measurements_recover'
+Assert-Fail 'non-pending path-zero regression' ($valid.Replace($spurious, $spurious.Replace('path=1', 'path=0'))) 'pending_source_measurements_recover'
 Assert-Fail 'later error' ($valid + "`n" + (Format-Entry ([pscustomobject]@{epoch=$endEpoch;text='HV_GPU_GATE frame=121 imported=121 converted=121 error=ncnn_import_failed'}))) 'no_status_error'
 Assert-Fail 'stalled import' ($valid -replace ' imported=\d+ ', ' imported=1 ') 'gpu_import_observed'
 Assert-Fail 'stalled conversion' ($valid -replace ' converted=\d+ ', ' converted=1 ') 'gpu_conversion_observed'
@@ -78,4 +101,4 @@ if ($collectorSource -match "'Unity:I','AndroidRuntime:E','\*:S'" -or $collector
 }
 $warning = Analyze ($valid + "`n1790000590.000 W Unity: harmless texture warning")
 if ($warning.result -ne 'PASS_CANDIDATE_REQUIRES_USER_REVIEW') { throw 'Harmless Unity warning incorrectly failed' }
-Write-Output 'Android GPU bridge gate analyzer: 24/24 PASS'
+Write-Output 'Android GPU bridge gate analyzer: 32/32 PASS'

@@ -13,6 +13,8 @@ function Get-AndroidGpuBridgeGateAnalysis {
                 epoch = [double]::Parse($epochText, [Globalization.CultureInfo]::InvariantCulture)
                 imported = [long]$Matches[1]
                 converted = [long]$Matches[2]
+                path = [int]([regex]::Match($_, ' path=(\d+)')).Groups[1].Value
+                text = $_
             }
         }
     } | Sort-Object epoch)
@@ -29,13 +31,36 @@ function Get-AndroidGpuBridgeGateAnalysis {
         $lateFinal[0].converted -gt $lateBaseline[0].converted
     $paths = @($statuses | ForEach-Object { if ($_ -match ' path=(\d+)') { [int]$Matches[1] } } | Select-Object -Unique)
     $orientations = @($statuses | ForEach-Object { if ($_ -match ' orientation=([^ ]+)') { $Matches[1] } } | Select-Object -Unique)
-    $uuidRows = @($statuses | Where-Object { $_ -match 'unityDeviceUUID=([0-9a-f]{32}) ncnnDeviceUUID=\1 unityDriverUUID=([0-9a-f]{32}) ncnnDriverUUID=\2' -and $_ -notmatch 'UUID=0{32}' })
-    $selected = if ($paths.Count -eq 1) { $paths[0] } else { 0 }
+    $activeStatuses = @($statuses | Where-Object { $_ -match ' path=[12] ' })
+    $uuidRows = @($activeStatuses | Where-Object { $_ -match 'unityDeviceUUID=([0-9a-f]{32}) ncnnDeviceUUID=\1 unityDriverUUID=([0-9a-f]{32}) ncnnDriverUUID=\2' -and $_ -notmatch 'UUID=0{32}' })
+    $activePaths = @($paths | Where-Object { $_ -in @(1,2) })
+    $selected = if ($activePaths.Count -eq 1) { $activePaths[0] } else { 0 }
+    $lifecycleEpochs = @($lines | Where-Object { $_ -match 'HV_GPU_GATE source rebuilding ' } | ForEach-Object {
+        if ($_ -match '^\s*(\d{10}(?:\.\d+)?)\s+') { [double]::Parse($Matches[1], [Globalization.CultureInfo]::InvariantCulture) }
+    })
+    $pendingValid = $true
+    $previousActive = $null
+    foreach ($record in $statusRecords) {
+        if ($record.path -in @(1,2)) { $previousActive = $record; continue }
+        if ($record.path -ne 0 -or $record.text -notmatch ' result=1 ' -or
+            $record.text -notmatch ' ahbFormat=0 ahbUsage=0x0 formatFeatures=0x0 ' -or
+            $record.text -notmatch 'unityDeviceUUID=0{32} ncnnDeviceUUID=0{32} unityDriverUUID=0{32} ncnnDriverUUID=0{32}') {
+            $pendingValid = $false
+            continue
+        }
+        if ($null -ne $previousActive) {
+            $afterLifecycle = @($lifecycleEpochs | Where-Object { $_ -ge $previousActive.epoch -and $_ -le $record.epoch }).Count -gt 0
+            if (!$afterLifecycle) { $pendingValid = $false }
+        }
+        if (@($statusRecords | Where-Object { $_.epoch -gt $record.epoch -and $_.epoch -le ($record.epoch + 30) -and $_.path -in @(1,2) }).Count -eq 0) {
+            $pendingValid = $false
+        }
+    }
     $candidateName = if ($selected -eq 1) { 'blit' } elseif ($selected -eq 2) { 'color_attachment' } else { '' }
     $candidate = @($RawLog -split 'candidate=' | Where-Object { $_ -match "^$candidateName width=" } | Select-Object -Last 1)
     $expectedAhbUsage = if ($selected -eq 1) { 256 } elseif ($selected -eq 2) { 768 } else { 0 }
     $expectedProducerUsage = if ($selected -eq 1) { 6 } elseif ($selected -eq 2) { 20 } else { 0 }
-    $usageMatches = $selected -ne 0 -and $statuses.Count -gt 0 -and @($statuses | Where-Object {
+    $usageMatches = $selected -ne 0 -and $activeStatuses.Count -gt 0 -and @($activeStatuses | Where-Object {
         if ($_ -notmatch ' ahbFormat=(\d+) ahbUsage=0x([0-9A-Fa-f]+) formatFeatures=0x([0-9A-Fa-f]+)') { return $true }
         [int]$Matches[1] -ne 1 -or [Convert]::ToUInt64($Matches[2], 16) -ne $expectedAhbUsage -or
             [Convert]::ToUInt64($Matches[3], 16) -eq 0
@@ -73,9 +98,10 @@ function Get-AndroidGpuBridgeGateAnalysis {
         imported_and_converted_progress_near_end = $lateProgress
         gpu_conversion_observed = $converted.Count -gt 1 -and $converted[-1] -gt $converted[0]
         gpu_import_observed = $imported.Count -gt 1 -and $imported[-1] -gt $imported[0]
-        selected_copy_path = $selected -in @(1,2)
+        selected_copy_path = $selected -in @(1,2) -and @($paths | Where-Object { $_ -notin @(0,$selected) }).Count -eq 0
+        pending_source_measurements_recover = $pendingValid
         selected_path_matches_actual_contract = $usageMatches -and $probeMatches
-        exact_nonzero_device_and_driver_uuids = $statuses.Count -gt 0 -and $uuidRows.Count -eq $statuses.Count
+        exact_nonzero_device_and_driver_uuids = $activeStatuses.Count -gt 0 -and $uuidRows.Count -eq $activeStatuses.Count
         portrait_and_both_landscapes = @(@('Portrait','LandscapeLeft','LandscapeRight') | Where-Object { $orientations -notcontains $_ }).Count -eq 0
         pause_resume = $pauseStart -ge 0 -and $pauseEnd -gt $pauseStart
         background_foreground = $focusLost -ge 0 -and $focusGained -gt $focusLost

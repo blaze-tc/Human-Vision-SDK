@@ -21,6 +21,8 @@ const char *UnityVulkanProducerDiagnostic() noexcept;
 #if defined(HV_ANDROID_GPU_GATE)
 UnityVulkanBridge* UnityVulkanProducerBridge() noexcept;
 bool UnityVulkanProducerContext(VulkanDeviceContext&) noexcept;
+const char* UnityVulkanProducerGateError() noexcept;
+const char* UnityVulkanProducerGateProbe() noexcept;
 #endif
 
 inline HV_Result AndroidBridgeResultCode(BridgeResult result) noexcept {

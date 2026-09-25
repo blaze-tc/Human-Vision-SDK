@@ -66,8 +66,18 @@ requires status within 30 seconds of capture start and end, at least 570
 seconds between first and last status, and no status gap over 60 seconds.
 Imported and converted counters must increase again in the last 90 seconds
 and within 30 seconds after each pause or camera-restart recovery marker.
-The gate escapes nonempty errors onto one line; a missing clean sentinel or
-any nonempty error fails the screen. These checks expose stalled or truncated
+The gate emits the complete B2 measurement once per source generation as
+separate `HV_GPU_GATE probe` lines. A rejected blit candidate remains visible
+when the color-attachment fallback succeeds. Routine status lines carry
+`error=<none>` while the selected bridge and consumer run; producer, bridge,
+configuration and consumer failures remain in the error field or raise a gate
+exception. The collector permits `result=1/path=0` with zero AHB fields and
+UUIDs while the initial measurement is pending. Later pending measurements
+require an explicit `HV_GPU_GATE source rebuilding` marker and must recover
+to a configured path within 30 seconds. An unmarked path-zero fallback or a
+non-pending path-zero status fails. The selected nonzero path must match the
+actual contract and UUIDs. The gate escapes nonempty errors onto one line; a
+missing clean sentinel or any nonempty error fails the screen. These checks expose stalled or truncated
 collections, while the user still inspects raw device behavior.
 An error-severity Unity log or a gate `InvalidOperationException` also fails
 the screen, including source-lease, submit and startup exceptions. Ordinary
