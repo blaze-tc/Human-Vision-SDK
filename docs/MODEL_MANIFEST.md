@@ -24,12 +24,16 @@ letterbox/pad RGB 114 and explicit RGB mean `[123.675,116.28,103.53]`, norm
 logits and `bbox` is stride-scaled LTRB distance, before TopDown grid decode,
 thresholding and person-only NMS. The candidate pose input is static NCHW
 `[1,3,256,192]` RGB, bbox affine crop with factor 1.25, the same RGB mean/norm,
-and named `simcc_x` / `simcc_y` outputs for 26 joints. Input `VkMat` conversion
-to FP16 pack4 is explicit in the native backend; the converter does not prove
-runtime packing. The ncnn graph audit rejects unsupported/custom or cast layers,
+and named `simcc_x` / `simcc_y` outputs for 26 joints. The detector's
+three-channel ncnn graph requires FP16 pack1 at `Extractor::input`; device
+comparison against FP16 pack4 diverges at its first convolution. The pose
+input contract remains FP16 pack4. Input `VkMat` conversion is explicit in
+the native backend; the converter does not prove runtime packing. The ncnn
+graph audit rejects unsupported/custom or cast layers,
 dynamic input/output shapes, and unnamed outputs. The ONNX image input and
-numeric outputs must be FLOAT32; FP16 pack4 is the separate ncnn runtime input
-contract. Detector outputs must share a batch-1 candidate axis, with one person
+numeric outputs must be FLOAT32; FP16 pack1 for detector and FP16 pack4 for
+pose are separate ncnn runtime input contracts. Detector outputs must share a
+batch-1 candidate axis, with one person
 logit and four LTRB coordinates per candidate. Body26 SimCC outputs must have
 26 joints and static x/y lengths of 384/512 (split ratio 2).
 ONNX models with external tensor sidecars are rejected before loading those

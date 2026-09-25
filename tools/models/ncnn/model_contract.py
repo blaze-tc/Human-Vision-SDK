@@ -58,7 +58,7 @@ _INPUTS = {
     "detector": {"image_format": "rgba8-unorm", "color_order": "rgb",
                  "normalization": {"mean": [123.675, 116.28, 103.53],
                                    "norm": [1.0 / 58.395, 1.0 / 57.12, 1.0 / 57.375]},
-                 "tensor_dtype": "fp16", "elempack": 4,
+                 "tensor_dtype": "fp16", "elempack": 1,
                  "width": 320, "height": 320, "crop": "letterbox", "pad_rgb": [114, 114, 114],
                  "resize_interpolation": "bilinear", "input_blob": "in0",
                  "raw_class_values": "logits", "raw_bbox_values": "stride_scaled_ltrb"},
@@ -171,7 +171,7 @@ def _require_metadata(manifest: Mapping, role: str, conversion: bool) -> None:
     if type(manifest["opset"]) is not int or manifest["opset"] < 1:
         raise ValueError("opset must be a positive integer")
     if manifest["input_contract"] != model_input_contract(role):
-        raise ValueError("input contract differs from pinned RGB FP16 pack4 contract")
+        raise ValueError("input contract differs from pinned RGB FP16 contract for this model")
     if tuple(manifest["output_blobs"]) != output_blobs(role):
         raise ValueError("output_blobs differ from pinned names")
     validate_output_contract(role, manifest["output_contract"])

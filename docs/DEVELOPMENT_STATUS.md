@@ -1,7 +1,33 @@
+# Android Vulkan/ncnn — Milestone C Task C2 BLOCKED by detector performance (2026-09-25)
+
+Task C2 exhausted the two approved detector paths on the authorized OnePlus 9
+Pro / Snapdragon 888. RTMDet Nano passed its real four-image ONNX/ncnn Vulkan
+golden gate, but complete warmed detector P95 (pre-uploaded FP16 input through
+graph, required FP32 output downloads, and host decode/NMS) was
+**38.7561/39.6981/39.3521 ms** across three 100-frame runs. The approved
+official NanoDet-Plus-m 320 substitution also failed: after fixed person/DFL
+GPU output crop, its complete P95 was **48.2666/49.5960/49.0909 ms**.
+Both exceed the **33.33 ms** TopDown frame period. The selected production
+detector ModelPack is empty; no detector is accepted. See
+`docs/validation/RTMDET_NCNN_CONVERSION_GATE.md` for source, hashes, golden,
+raw logs, and exit evidence. Task C2 is at a plan impasse pending an explicit
+design ruling. **C3 is not authorized.** No merge, release, or substitute
+third detector is authorized.
+After the failure diagnostic was moved out of default test discovery,
+`python -m unittest discover -s tests/reference -q` passed **41/41**;
+`python -m tools.models.ncnn.diagnose_c2_failure -q` passed **4/4** against
+the ignored local evidence, including raw-to-JSON binding, both models'
+hashed failure logs, and converter executable hashes. Controlled missing
+evidence and forged converter runs failed as required.
+Architecture boundaries and `git diff --check` passed. These are evidence
+checks for the impasse, not a C2 detector acceptance.
+
+---
+
 # Android Vulkan/ncnn — Milestone C Task C1 model-conversion gates complete (2026-09-25)
 
 Task C1 adds pinned checkpoint/source/ONNX/ncnn-tool hashes, fixed RGB and
-FP16 pack4 contracts, static ONNX/ncnn graph audits, and model-bound detector
+role-specific FP16 packing contracts, static ONNX/ncnn graph audits, and model-bound detector
 and Body26 SimCC golden comparisons. The Android NCNN profile now declares a
 person score threshold of `0.35`, matching the existing TopDown runtime and
 reference exporter; detector golden comparisons cannot override it. Tests
