@@ -1,3 +1,19 @@
+# Android Vulkan/ncnn — Revision 3 Task 2 first-Conv padding gate blocked (2026-09-25)
+
+One hash-pinned official ONNX transform padded the first Body26 convolution
+from 12×3×3×3 to 12×4×3×3 with an exactly zero fourth input plane. The pinned
+MMDeploy converter and ncnn optimizer accepted it; the shape-only Vulkan
+finalizer retained 169/169 Vulkan-supported layers. On the same crop, original
+versus padded ncnn CPU final SimCC differs by at most 0.0000051. The real
+Snapdragon 888 FP16 pack4 first Conv now matches the original CPU result with
+P95 absolute error 0.00605, but final SimCC X and Y are each entirely NaN.
+The first full-body case therefore fails and the required four-case golden
+cannot pass. Task 2 remains **BLOCKED**; no schema-2 ModelPack was promoted.
+Exact commands, hashes and raw log paths are in
+[`RTMPOSE_NCNN_CONVERSION_GATE.md`](validation/RTMPOSE_NCNN_CONVERSION_GATE.md).
+
+---
+
 # Android Vulkan/ncnn — Revision 3 Task 2 official-path failure evidence (2026-09-25)
 
 The pinned MMDeploy ncnn FP16 static RTMPose-t Body26 preset and its modified

@@ -1,5 +1,83 @@
 # RTMPose-t Body26 ncnn conversion gate — blocked (2026-09-25)
 
+## Bounded first-Conv 3→4 padding attempt (2026-09-25)
+
+The source is the official MMDeploy ONNX SHA-256
+`afb78fb13754e0cb4ada4d757c73674d84316f96a39bcfc10eced545ade6c59e`.
+`pad_rtmpose_first_conv.py` rejects a changed source hash, input shape, first
+Conv identity/input names, or first weight shape/hash. It changes only input
+`in0` from `[1,3,256,192]` to `[1,4,256,192]` and the first Conv weight from
+`[12,3,3,3]` to `[12,4,3,3]`, with the fourth plane exactly zero. The
+original 324 weights retain their values. The pinned official converter and
+FP16 optimizer exited 0; the optimized param differs from the original only
+at first Conv `6=432` versus `6=324`. The hash-pinned Vulkan shape finalizer
+replaced the same 12 proven shape-only operators.
+
+From the worktree root, the focused test was RED (`ModuleNotFoundError` for the
+padding module) then GREEN (1/1). The shape-finalizer focused test was GREEN
+(1/1). The host and Android runner builds passed, with the host build using
+`out/c3-local-runtime/shape-proof/build-host-pose.cmd` to initialize the MSVC
+environment. The architecture guard passed. Key reproduction commands:
+
+```powershell
+.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -p test_rtmpose_first_conv_pad.py -v
+.venv-reference/Scripts/python.exe -m tools.models.ncnn.pad_rtmpose_first_conv out/c3-local-runtime/official-preset/model.onnx out/c3-local-runtime/padded-first-conv/model.onnx
+& 'out/c3-local-runtime/official-converter-build-v2/onnx2ncnn/Release/mmdeploy_onnx2ncnn.exe' out/c3-local-runtime/padded-first-conv/model.onnx out/c3-local-runtime/padded-first-conv/mmdeploy.param out/c3-local-runtime/padded-first-conv/mmdeploy.bin
+& 'out/c2-ncnn-host/ncnn-20260526-windows-vs2022/x64/bin/ncnnoptimize.exe' out/c3-local-runtime/padded-first-conv/mmdeploy.param out/c3-local-runtime/padded-first-conv/mmdeploy.bin out/c3-local-runtime/padded-first-conv/model.param out/c3-local-runtime/padded-first-conv/model.bin 65536
+.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -p test_rtmpose_shape_finalizer.py -v
+.venv-reference/Scripts/python.exe -c "from pathlib import Path; from tools.models.ncnn.finalize_rtmpose_vulkan_shapes import finalize; print(finalize(Path('out/c3-local-runtime/padded-first-conv/model.param'), Path('out/c3-local-runtime/padded-first-conv/vulkan.param')))"
+& 'out/c3-local-runtime/shape-proof/build-host-pose.cmd'
+& 'D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build out/c2-ncnn-runner-android --config Release --target c3_pose_golden
+```
+
+The original and padded ncnn CPU runs used the same
+`pose-golden-quarter/full-body/input.fp32` crop, with the preserved original
+`vulkan.param`/bin and the padded `vulkan.param`/bin respectively. The runner
+used `diagnostic-cpu` and `diagnostic-cpu-pack4` modes. CPU final X/Y P95
+absolute differences were `0.0000017434/0.0000016503`, maxima
+`0.0000050217/0.0000042915`. On the actual OnePlus 9 Pro / Adreno 660, the
+runner audited **169/169 Vulkan-supported layers**, requested FP16
+packed/storage/arithmetic, and reported input `elempack=4`, 16 bits. The first
+Conv was finite and matched the original CPU output to P95 absolute `0.00605035`
+(correlation `0.99999958`). Final SimCC X/Y each had **0 finite values**
+(`0/9984` and `0/13312`). Thus the first `full-body` case fails; the four-case
+golden and schema-2 ModelPack gate remain closed. The expected ModelPack path
+`out/c3-local-runtime/modelpacks/precision-t-26-ncnn-fp16/modelpack.json` is
+absent. No redistribution claim is made.
+
+| Ignored artifact under `out/c3-local-runtime/padded-first-conv/` | SHA-256 |
+| --- | --- |
+| `model.onnx` | `bd27e32830dd11e378576b0d389999f9ba06f5d83640d29dd04f947cafa29315` |
+| `model.param` | `e0f4bd853c3de542f344baaef87c065239c9d5730240189d7768e216efe2d8c3` |
+| `vulkan.param` | `aaada52ba44e57d67e440bd7873b9381207f5bddbecc85c823f63ffeb99040c5` |
+| `model.bin` | `0f8a0a864be7af7990366bfb8ce89d4fca911a08b967c00e3b8180725d5054a4` |
+| `device-firstconv.log` | `499e131052fb315e7c43f2bd7ba2377672269bd46f9ef70cb35f017f1008ebea` |
+| `device-firstconv.fp32` | `9de6708afacff2d3bbcd3e60c8435079591bd23e3a51d143a96057e10278846b` |
+| `device-full.log` | `28c50a7b83ef48d8b845dbafcfae73a34b93c3e01f362c5c1d9d02fac4a4391f` |
+| `device-x.fp32` | `bfd5696662705ca9fad5dea2742795e0e18c2ab611f0697cd466215953323d9d` |
+| `device-y.fp32` | `b262a0513ef82ab9e8d5165874067fa47b8b7d0e9579347a932edfc07a1a4fc8` |
+
+The layer diagnostic ran with the same `use_fp16_arithmetic=1` configuration
+and stopped with exit 12 at the first nonfinite blob. Layer 115
+`/mlp/mlp.0/Pow_output_0` was entirely finite (1248 values); layer 116
+`/mlp/mlp.0/ReduceSum_output_0` contained two `+Inf` values, at flattened
+indices 1 and 16 (bits `7f800000`). This locates the remaining failure at
+the first L2 reduction after the corrected Conv path. It does not establish
+whether changing arithmetic precision would meet the strict golden; no such
+change was attempted in this bounded run. Ignored `device-layers.log` SHA-256
+is `6f25c80c99bc7ffd54ea841e6b39cb1062bc905608285dbced499c9358b48129`.
+The five experimental source/test files were preserved byte-for-byte under
+ignored `out/c3-local-runtime/blocked-first-conv-task2/` for reproduction;
+their SHA-256 values, in test-first-Conv, test-shape-finalizer,
+shape-finalizer, ONNX-padding, runner order, are
+`3ece4e0c753fa8e8fa4823322faa70106b57e9d47e5fd957f79ea605bb6d1e79`,
+`c0d4f7a8d2d6ca50bf0a3e3c7e7d7c7ee93736c491d4e589170dec5f330f73bf`,
+`090f9e8f0b7fd0ca7e2c606ee73367d0e4c2dada197d4bc3b5445a9091a0394b`,
+`76dec450d7517d4341f1ff228eb9c4cde4dff64be10f08d2fd1c056252d68106`,
+and `f803eebbd5ceb8ab82a6d433d0123d94d35e56d334b1b30458836806d659aa18`.
+Restore them to their test/tool paths before replaying the commands above.
+
+
 ## Bounded shape-equivalent Vulkan diagnostic (2026-09-25)
 
 The 12 unsupported shape-only operators in the official optimized graph were
