@@ -1,10 +1,12 @@
 # Android Vulkan/ncnn — Milestone C Task C2 bounded detector search exhausted (2026-09-25)
 
-Design review only: `docs/superpowers/specs/2026-09-25-android-ncnn-detector-cadence-revision-3-proposal.md`
-proposes bounded detector keyframes with current-frame pose inference. It is
-**not approved**, does not supersede Revision 2, and does not authorize C3 or
-runtime code changes. If approved, a revised implementation plan must be
-reviewed before development resumes.
+The user approved Revision 3 on 2026-09-25. It proposes bounded detector
+keyframes with current-frame pose inference while retaining the 30 fresh
+complete observation frames/s hard target. The revised Milestone C plan is
+`docs/superpowers/plans/2026-09-25-android-ncnn-topdown-cadence-revision-3.md`.
+That plan is **awaiting user review**; no runtime code changes or C3 work are
+authorized until its ordered execution is confirmed. The failed every-frame
+C2 result below remains historical evidence rather than a passed detector.
 
 The user-approved C2 extension has evaluated its maximum of two additional
 detector candidates after RTMDet Nano and NanoDet-Plus-m 320 failed. PP-PicoDet-XS

@@ -1,5 +1,11 @@
 # Android Vulkan ncnn Production Runtime Implementation Plan
 
+> Milestone C Tasks C2–C6 below are historical after the user approved Revision
+> 3 on 2026-09-25. The replacement plan is
+> `docs/superpowers/plans/2026-09-25-android-ncnn-topdown-cadence-revision-3.md`.
+> It awaits user review before implementation resumes. Milestones A/B/C1 and
+> the A→B→C→D sequence remain intact.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver an API 26+ Android production runtime in which Unity camera textures stay on the GPU, cross into a three-slot AHardwareBuffer bridge, run ncnn Vulkan/FP16 inference, and publish the unchanged HumanVision canonical skeleton API. Users explicitly select `NCNN Vulkan`, `ORT XNNPACK`, or `ORT CPU` in Project Settings; NCNN failures are explicit and never fall back.
