@@ -5,6 +5,15 @@ Date: 2026-09-25
 Base: approved [Revision 2](2026-09-13-android-vulkan-ncnn-production-runtime-design.md), implementation branch `codex/android-ncnn-vulkan-implementation` at `c6425acdaca72cce8cd75f513233ffd44bae3b7e`  
 Scope: Milestone C TopDown detection scheduling and its acceptance sequence only
 
+**User outcome:** On the Android device, the live camera image stays smooth and
+the visible skeleton stays attached to moving people without flashing, long
+pauses, or accumulating delay. Detector cadence is only a means to that end;
+model microbenchmarks do not constitute acceptance. The integrated camera
+scene and the user's physical test decide whether the SDK works. The user
+reaffirmed on 2026-09-25 that **30 fresh complete skeleton observation
+frames/s remains a hard acceptance requirement**; visual smoothness alone
+cannot waive it.
+
 If approved, this revision supersedes Revision 2 §9.1's per-detector frame-period
 exit, §10's detector-on-every-processed-frame steps, and the detector/pose
 wording of §13.2 only to the extent needed to count current-frame pose with
