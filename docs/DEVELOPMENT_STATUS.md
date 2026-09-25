@@ -1,4 +1,16 @@
-# Android Vulkan/ncnn — Milestone C Task C2 BLOCKED by detector performance (2026-09-25)
+# Android Vulkan/ncnn — Milestone C Task C2 bounded detector search authorized (2026-09-25)
+
+The user approved a C2 plan amendment after both prescribed detector paths
+failed the Snapdragon 888 performance gate. At most two additional mature
+ncnn Android person detectors may be evaluated under Revision 2 §9.1, with
+source/weights/license provenance, real-image golden parity, all-Vulkan FP16
+execution, and three warmed complete-detector P95 runs per candidate. The
+combined attempt is time-boxed in the implementation plan. No third detector
+has been selected or accepted. **C3 remains unauthorized.**
+
+---
+
+# Android Vulkan/ncnn — Milestone C Task C2 prescribed paths failed (2026-09-25)
 
 Task C2 exhausted the two approved detector paths on the authorized OnePlus 9
 Pro / Snapdragon 888. RTMDet Nano passed its real four-image ONNX/ncnn Vulkan
@@ -10,9 +22,9 @@ GPU output crop, its complete P95 was **48.2666/49.5960/49.0909 ms**.
 Both exceed the **33.33 ms** TopDown frame period. The selected production
 detector ModelPack is empty; no detector is accepted. See
 `docs/validation/RTMDET_NCNN_CONVERSION_GATE.md` for source, hashes, golden,
-raw logs, and exit evidence. Task C2 is at a plan impasse pending an explicit
-design ruling. **C3 is not authorized.** No merge, release, or substitute
-third detector is authorized.
+raw logs, and exit evidence. This result triggered the bounded candidate
+search authorized above. **C3 is not authorized.** No merge or release is
+authorized.
 After the failure diagnostic was moved out of default test discovery,
 `python -m unittest discover -s tests/reference -q` passed **41/41**;
 `python -m tools.models.ncnn.diagnose_c2_failure -q` passed **4/4** against
