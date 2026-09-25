@@ -1,3 +1,25 @@
+# Android Vulkan/ncnn — Revision 3 Task 2 official-path failure evidence (2026-09-25)
+
+The pinned MMDeploy ncnn FP16 static RTMPose-t Body26 preset and its modified
+converter produced a 169-layer graph. After each of its seven `ExpandDims` and
+five `Squeeze` boundaries was proven shape- and value-equivalent on this fixed
+graph, a hash-pinned finalizer replaced those CPU-only operators with Vulkan
+`Reshape`. The Snapdragon 888 runtime audit then passed **169/169 Vulkan
+layers**. Pinned ncnn CPU final SimCC matched PyTorch closely (X/Y P95 absolute
+error `0.001402/0.001529`), but the real first GPU golden case failed: explicit
+GPU FP16 pack4 input yielded X/Y P95 error `17.4789/19.9902` and 0/26 argmax
+agreement on each axis. FP32 pack1 input matched CPU at the first Conv (P95
+`0.00605`) yet ended in all-NaN SimCC. GPU-uploaded FP16 pack4 reproduced the
+manual pack4 route byte-for-byte, diverging at the first Conv (P95 `6.9510`).
+The pack4 Conv mismatch's exact cause is unresolved. The next architecture
+decision must provide a GPU FP16 pack4 path with first-Conv and final SimCC
+parity before repeating the four-case golden. Task 2 remains **BLOCKED**; no
+ModelPack is eligible, no Task 2 completion is claimed, and Task 3 is closed.
+Commands, hashes and preserved diagnostics are in
+[`RTMPOSE_NCNN_CONVERSION_GATE.md`](validation/RTMPOSE_NCNN_CONVERSION_GATE.md).
+
+---
+
 # Android Vulkan/ncnn — Revision 3 Task 2 blocked pose conversion (2026-09-25)
 
 Task 2 remains **BLOCKED**. The official RTMPose-t Body26 static ncnn graph
