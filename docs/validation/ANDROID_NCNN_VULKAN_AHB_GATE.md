@@ -46,7 +46,7 @@ the exact APK hash, the current commit and a machine-readable report. A
 `PASS_CANDIDATE_REQUIRES_USER_REVIEW` result is only an automated screen;
 the user reviews and returns `report.json` and `logcat.txt` before B7 can close.
 The collector now requires progress in both imported and converted counters,
-an empty `error=` on every status line, a selected path consistent with the
+`error=<none>` on every status line, a selected path consistent with the
 actual AHB and Vulkan image usage, and no native or Unity fatal log. It also
 requires portrait and both landscape orientations, pause/resume, explicit
 background/foreground focus events, a camera restart request, and a subsequent
@@ -54,6 +54,17 @@ source lease resumption after both pause and restart. If any evidence is absent,
 the report is `FAIL`; the device run can be repeated after correcting the
 capture sequence. The `tools/test/test_android_gpu_bridge_gate_analysis.ps1`
 fixture exercises these rejection cases on the host.
+
+The collector captures unfiltered `main`, `system` and `crash` logcat
+buffers, so libc and crash-dump fatal records remain visible alongside Unity
+status. Every status carries a logcat epoch timestamp. A pass candidate now
+requires status within 30 seconds of capture start and end, at least 570
+seconds between first and last status, and no status gap over 60 seconds.
+Imported and converted counters must increase again in the last 90 seconds
+and within 30 seconds after each pause or camera-restart recovery marker.
+The gate escapes nonempty errors onto one line; a missing clean sentinel or
+any nonempty error fails the screen. These checks expose stalled or truncated
+collections, while the user still inspects raw device behavior.
 
 Review the raw log for:
 

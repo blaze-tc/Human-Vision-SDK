@@ -1,3 +1,31 @@
+# Android Vulkan/ncnn — B7 collector review round 2; device acceptance open (2026-09-25)
+
+Independent rereview found that the filtered logcat omitted native crash
+records, and a ten-minute sleep with only three early status lines could still
+produce a pass candidate. The previous `error=` check also accepted a
+multiline diagnostic whose first line was empty, and lifecycle recovery did
+not require later GPU progress. A new sparse-status fixture first **failed**
+against the prior analyzer: it incorrectly returned a pass candidate.
+
+The collector now captures unfiltered `main`, `system` and `crash` buffers.
+The gate emits `error=<none>` for clean status or a single-line escaped error.
+The analyzer requires timestamped statuses spanning at least 570 seconds,
+starting and ending within 30 seconds of the capture bounds, with no gap over
+60 seconds. Import and conversion must progress in the final 90 seconds and
+after both pause and restart recovery. All checks remain a screen for user
+device acceptance, not a device pass.
+
+Fresh verification on this worktree:
+
+- `pwsh -NoProfile -File tools/test/test_android_gpu_bridge_gate_analysis.ps1`: **19/19 PASS**; sparse, missing-tail, long-gap, late-stall, crash-dump, multiline-error and post-recovery-stall fixtures reject.
+- `$env:__COMPAT_LAYER='RunAsInvoker'; pwsh -NoProfile -File tools/test/run_unity040_tests.ps1 -Unity 'D:/Developer/2021.3.45f1/Editor/Unity.exe'`: **75/75 EditMode PASS**.
+- `pwsh -NoProfile -File tools/test/build_android_gpu_bridge_gate.ps1 -ProjectPath unity/HumanVisionDemo`: **PASS**, Development IL2CPP ARM64 APK; SHA-256 `965e95d5d7b1b480b25684191b73255c9deea9a57833d9effa428c5b71aba735`.
+- `pwsh -NoProfile -File tools/test/collect_android_gpu_bridge_gate.ps1 -DurationMinutes 10 -OutputPath out/device-gates/milestone-b -DryRun`: **PASS**, same APK/hash, no ADB executed.
+- `.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py` and `.venv-reference/Scripts/python.exe tools/maintenance/generate_component_catalog.py --check`: **PASS**.
+- Collector PowerShell parser: **PASS**. Native code was unchanged in this review round; the previous **193/193** native suite and gate-OFF export audit remain the baseline.
+
+---
+
 # Android Vulkan/ncnn — B7 review fixes verified; device acceptance open (2026-09-25)
 
 B7 independent review found three host blockers after `c2181bf186da11d5ed74b452ff4925fdba4dc5ab`:

@@ -101,6 +101,8 @@ namespace HumanVision.Demo
                 var status = new Status { size = 128, version = 1 };
                 var error = new StringBuilder(2048);
                 HV_AndroidGpuGateStatus(ref status, out ulong converted, error, 2048);
+                string statusError = error.Length == 0 ? "<none>" :
+                    error.ToString().Replace("\\", "\\\\").Replace("\r", "\\r").Replace("\n", "\\n");
                 unsafe
                 {
                     byte* ud = status.unityDevice;
@@ -117,7 +119,7 @@ namespace HumanVision.Demo
                     " generationDrops=" + status.generationDrops +
                     " unityDeviceUUID=" + Hex(ud) + " ncnnDeviceUUID=" + Hex(nd) +
                     " unityDriverUUID=" + Hex(ur) + " ncnnDriverUUID=" + Hex(nr) +
-                    " error=" + error;
+                    " error=" + statusError;
                 }
                 Debug.Log(_lastStatus);
             }

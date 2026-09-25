@@ -31,13 +31,13 @@ $build = (& $Adb @target shell getprop ro.build.fingerprint).Trim()
 $driver = (& $Adb @target shell getprop ro.hardware.vulkan).Trim()
 & $Adb @target install -r $apkPath | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'ADB APK install failed' }
-& $Adb @target logcat -c
+& $Adb @target logcat -c -b all
 if ($LASTEXITCODE -ne 0) { throw 'ADB logcat clear failed' }
+$started = [DateTime]::UtcNow
 & $Adb @target shell am start -n 'com.DefaultCompany.UnityProject/com.unity3d.player.UnityPlayerActivity' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Gate activity launch failed' }
 $log = Join-Path $output 'logcat.txt'
-$capture = Start-Process -FilePath $Adb -ArgumentList (@($target) + @('logcat','-v','epoch','Unity:I','AndroidRuntime:E','*:S')) -WindowStyle Hidden -RedirectStandardOutput $log -PassThru
-$started = [DateTime]::UtcNow
+$capture = Start-Process -FilePath $Adb -ArgumentList (@($target) + @('logcat','-b','main','-b','system','-b','crash','-v','epoch')) -WindowStyle Hidden -RedirectStandardOutput $log -PassThru
 Write-Output "Capturing $DurationMinutes minutes from $device ($Serial). Rotate portrait / landscape-left / landscape-right, pause and resume, background and foreground, then tap Restart camera in the gate UI."
 try { Start-Sleep -Seconds ($DurationMinutes * 60) }
 finally {
@@ -47,7 +47,7 @@ $ended = [DateTime]::UtcNow
 $raw = Get-Content -LiteralPath $log -Raw
 $gateSource = Get-Content -LiteralPath (Join-Path $root 'unity/HumanVisionDemo/Assets/HumanVision/Demo/Live/HumanVisionAndroidGpuGate.cs') -Raw
 . (Join-Path $PSScriptRoot 'android_gpu_bridge_gate_analysis.ps1')
-$analysis = Get-AndroidGpuBridgeGateAnalysis -RawLog $raw -DurationMinutes ($ended - $started).TotalMinutes -GateSource $gateSource
+$analysis = Get-AndroidGpuBridgeGateAnalysis -RawLog $raw -DurationMinutes ($ended - $started).TotalMinutes -GateSource $gateSource -CaptureStartEpoch (([DateTimeOffset]$started).ToUnixTimeMilliseconds() / 1000.0) -CaptureEndEpoch (([DateTimeOffset]$ended).ToUnixTimeMilliseconds() / 1000.0)
 $probe = @($raw -split "`r?`n" | Where-Object { $_ -match 'candidate=|producer vk_format=|consumer vk_format=|externalMemoryFeatures=|failed:' } | Select-Object -Unique)
 $report = [ordered]@{
     result = $analysis.result
@@ -57,6 +57,8 @@ $report = [ordered]@{
     selected_paths = $analysis.selected_paths; orientations = $analysis.orientations
     first_imported = $analysis.first_imported; last_imported = $analysis.last_imported
     first_converted = $analysis.first_converted; last_converted = $analysis.last_converted
+    first_status_epoch = $analysis.first_status_epoch; last_status_epoch = $analysis.last_status_epoch
+    largest_status_gap_seconds = $analysis.largest_status_gap_seconds
     checks = $analysis.checks
     ahb_probe_evidence = $probe
     last_gate_status = $analysis.last_gate_status
