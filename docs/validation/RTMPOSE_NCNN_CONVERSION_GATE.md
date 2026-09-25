@@ -13,11 +13,13 @@ pack4 input/storage with `use_fp16_arithmetic=false`. All 191 output blobs
 from 169 layers matched by name and logical shape after extraction to FP32
 pack1 and serialization in channel/row/column order.
 
-The first material divergence is layer 129 `Reduction`
+The first catastrophic relative and semantic divergence is layer 129 `Reduction`
 `/gau/ln/ReduceSum_output_0`. CPU/Vulkan P95 absolute error is `0.796001`,
 correlation `-0.240461`; FP16-rounding the CPU reference leaves P95
 `0.795868`. Its immediately preceding `Pow` output has P95 error
-`0.00007758` and correlation `0.999813`. For all 26 rows, the Vulkan output
+`0.00007758` and correlation `0.999813`. Earlier layer 116 has a larger
+absolute P95 error but only about 1.02% of its CPU P95 magnitude; layer 129's
+error is about 84.3% of its CPU P95 magnitude. For all 26 rows, the Vulkan output
 equals the sum of the first 64 of 256 Vulkan input elements to P95
 `0.00011611`, versus P95 `0.79374740` when compared with the full 256-element
 sum. The measured behavior is loss of the other three 64-element subgroup
@@ -48,7 +50,13 @@ $adb = 'D:/Developer/2021.3.45f1/Editor/Data/PlaybackEngines/AndroidPlayer/SDK/p
 & $adb push out/c3-local-runtime/pose-golden-quarter/full-body/input.fp32 /data/local/tmp/hv-c3-layer/input.fp32
 & $adb shell chmod 755 /data/local/tmp/hv-c3-layer/runner
 & $adb shell /data/local/tmp/hv-c3-layer/runner /data/local/tmp/hv-c3-layer/model.param /data/local/tmp/hv-c3-layer/model.bin /data/local/tmp/hv-c3-layer/input.fp32 /data/local/tmp/hv-c3-layer/dump /data/local/tmp/hv-c3-layer/unused.fp32 diagnostic-vulkan-fp32-arith-layer-dump 2>&1 | Tee-Object "$root/device.log"
-& $adb pull /data/local/tmp/hv-c3-layer/dump "$root/device"
+$stage = Join-Path $root ('pull-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force $stage, "$root/device" | Out-Null
+& $adb pull /data/local/tmp/hv-c3-layer/dump $stage
+if ($LASTEXITCODE -ne 0) { throw 'ADB layer dump pull failed' }
+$pulled = @(Get-ChildItem -LiteralPath "$stage/dump" -Filter '*.fp32' -File)
+if ($pulled.Count -ne 191) { throw "Expected 191 layer dumps, got $($pulled.Count)" }
+Copy-Item -Path "$stage/dump/*.fp32" -Destination "$root/device" -Force
 & .venv-reference/Scripts/python.exe "$root/compare_layers.py"
 Remove-Item tools/models/ncnn/pose_golden_runner.cpp
 ```

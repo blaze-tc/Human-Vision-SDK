@@ -3,7 +3,7 @@
 The approved follow-up's pinned padded graph and crop received one diagnostic
 CPU/Adreno 660 intermediate sweep, with FP16 pack4 Vulkan input/storage and
 FP32 arithmetic. All 191 blobs matched by logical shape after FP32 pack1
-extraction. The first material mismatch is layer 129
+extraction. The first catastrophic relative and semantic mismatch is layer 129
 `/gau/ln/ReduceSum_output_0`: CPU/Vulkan P95 absolute error `0.796001`,
 correlation `-0.240461`; layer 128's P95 was `0.00007758`. On all 26 rows,
 the GPU output matches the first 64 of 256 input elements, indicating lost
