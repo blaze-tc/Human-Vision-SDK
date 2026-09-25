@@ -1,3 +1,17 @@
+# Android Vulkan/ncnn — Revision 3 Task 2 blocked pose conversion (2026-09-25)
+
+Task 2 remains **BLOCKED**. The official RTMPose-t Body26 static ncnn graph
+failed the Snapdragon 888 pose golden in three bounded conversion/precision
+attempts. Its ExpandDims/Squeeze layers also violate the no-CPU-fallback gate.
+The experimental sources and raw outputs remain ignored under
+`out/c3-local-runtime/`; no eligible ModelPack or Task 2 completion commit
+exists. This status records failure evidence only. Commands, model/tool hashes,
+device results and the narrower next gate are in
+[`RTMPOSE_NCNN_CONVERSION_GATE.md`](validation/RTMPOSE_NCNN_CONVERSION_GATE.md).
+Task 3 remains closed.
+
+---
+
 # Android Vulkan/ncnn — Revision 3 Task 1 local RTMDet eligibility (2026-09-25)
 
 Revision 3 Task 1 reproduces the RTMDet Nano detector as a strict **local
