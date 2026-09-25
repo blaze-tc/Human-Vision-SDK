@@ -246,7 +246,8 @@ one person. Its binary SHA-256 is
 | `out/c2-nanodet/bench/person-run3.log` | 39.8066 | 9.2951 | 0.2558 | 42.0444 / **49.0909** | `f67dcca913b7750d09872a8aa0f4f291f45e27205c5e52e8c5c5fb5265283673` |
 
 The only approved substitute also fails 33.33 ms. No further detector
-optimization or third model has been attempted. NanoDet was **not** granted
+optimization or third model had been attempted **at that original impasse,
+before the later user-approved candidate screening**. NanoDet was **not** granted
 golden parity or human-recall acceptance: a single decoded person in this
 latency fixture is diagnostic, not the four-image gate.
 The three crop runs used
@@ -278,3 +279,90 @@ as an accepted production asset on that basis.
 The two permitted detector paths are exhausted under the current performance
 contract. Keep C2 blocked pending an explicit design ruling; do not infer
 production acceptance from either model's successful Vulkan execution.
+
+## Approved bounded candidate 1: PP-PicoDet-XS 320 COCO (2026-09-25)
+
+The subsequent user-approved C2 extension permits at most two further candidates.
+Its 24 engineering hour / three working day limit counts from initial research;
+**2026-09-25 18:42:42 +08:00** is the formal recorded upper bound for that
+start, not a model acceptance timestamp. This section records the first candidate
+and its early performance exit. No production detector was selected.
+
+PaddleDetection's [release/2.9 model source](https://github.com/PaddlePaddle/PaddleDetection/tree/b25522a0f4bde8c80603f3ba5e3472059972e3b5/configs/picodet)
+and [official ncnn deployment README](https://github.com/PaddlePaddle/PaddleDetection/blob/b25522a0f4bde8c80603f3ba5e3472059972e3b5/deploy/third_engine/demo_ncnn/README.md)
+describe the model family and eight no-postprocess heads. The ignored local
+[`picodet_xs_320_coco_lcnet.pdparams`](https://paddledet.bj.bcebos.com/models/picodet_xs_320_coco_lcnet.pdparams)
+is 2,921,876 bytes, SHA-256
+`0e18cb1a00b45283d4760f2302479ccddc89152ad2f7fa8678a8677be06944b8`.
+The ignored official [no-postprocess ONNX](https://paddledet.bj.bcebos.com/deploy/third_engine/picodet_xs_320_coco_lcnet.onnx)
+is 2,859,300 bytes, SHA-256
+`e83deca19863b127e702ae340ed7f7455334471886f0251413be459142a08aec`.
+Its opset is 11; runtime input `image` is `[1,3,320,320]` (legacy ONNX also
+lists initializers as graph inputs). Its score outputs are `[1,1600/400/100/25,80]`
+and corresponding box-distribution outputs are `[1,1600/400/100/25,32]`.
+The official [ncnn demo preprocessing](https://github.com/PaddlePaddle/PaddleDetection/blob/b25522a0f4bde8c80603f3ba5e3472059972e3b5/deploy/third_engine/demo_ncnn/picodet.cpp)
+uses BGR resize to 320², BGR mean `[103.53,116.28,123.675]`, and normalization
+`[0.017429,0.017507,0.017125]`. The real C1 official-person fixture was
+preprocessed that way into ignored `out/c2-picodet/input.fp32`, SHA-256
+`e5746224aad2abd278223e9c00609c7edd831a9bca48652cdb373c986065b9ac`.
+
+The pinned `onnx2ncnn.exe` SHA-256
+`b61a55f852c603b84aa417e91f6e6c5c7e119e673dc06536930d1d5cd7f4fefb`
+converted this ONNX with exit 0; `ncnnoptimize.exe` SHA-256
+`40ffdd4f11d0823ccb665d6dc2e421b3a64e1e1945677e95172e3875a0601ac7`
+optimized it with exit 0 and FP16 weight storage flag `65536`. The unmodified
+optimized `model.param` SHA-256 is
+`91a5410c3da2ed8dc9215c41cb20ea4e9b4dccf9dfb8f46e620d3b2b88e67af7`;
+`model.bin` is `04f5e5f675a5e28ae29d321fb3164f363e7e87e1827325ab3529db262093fe35`.
+The original param has an input with no static shape. A bounded diagnostic copy,
+`person.param` SHA-256
+`fcc80710a5754ed5e41641a4800c05b3aa139141ab571539602dc5b870ad8846`,
+adds four `Crop` layers to keep only COCO person class-0 scores while retaining
+all four 32-channel DFL outputs. No weights, core library, or production pack
+were changed. This is **not** a C1 graph-contract pass: C1 currently requires
+the RTMDet `in0` and `cls`/`bbox` contract, which PicoDet does not have.
+
+The ignored Android runner `out/c2-picodet/build/c2_picodet` SHA-256
+`68cc9fbb56d3fc4147066b2f96861d831abd77392eb10fc60f35bb8a4c173727`
+used ncnn 20260526 `VkMat` input with FP16 pack1 on OnePlus 9 Pro / Adreno 660,
+requested eight `VkMat` outputs, and downloaded FP32 tensors. It returned exit
+0 with the expected eight output dimensions. This establishes executable GPU
+input/output, but does not certify the strict no-CPU-fallback requirement. Each
+run had 20 warm-up and 100 measured frames from the same real-image tensor.
+
+The tracked runner source (the ignored original with only its extra terminal
+blank line removed) is
+`tools/models/ncnn/picodet_c2_benchmark.cpp`, SHA-256
+`0b30ace0365b8f68a329961a776757fbb5c7f27da3372e9e4857f33e70b4168f`.
+The ignored original source SHA-256 is
+`2caa76454dbbf73420017153bf5a889f0803a15102d571990a4a720663e0de5c`.
+The tracked runner's CMake recipe is
+`tools/models/ncnn/picodet_c2_benchmark/CMakeLists.txt`.
+With the C1 ncnn 20260526 Android arm64 installation and Unity Android NDK
+present, it was rebuilt from the tracked files by:
+
+```powershell
+& 'D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' -S tools/models/ncnn/picodet_c2_benchmark -B out/c2-picodet/rebuild -G Ninja -DCMAKE_MAKE_PROGRAM='D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe' -DCMAKE_TOOLCHAIN_FILE='D:/Developer/2021.3.45f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK/build/cmake/android.toolchain.cmake' -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 -Dncnn_DIR="$(Resolve-Path out/ncnn-20260526/android-arm64-api26/install/lib/cmake/ncnn)"
+& 'D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build out/c2-picodet/rebuild -j 4
+```
+
+Both commands exited 0 after the tracked source edit. The independent rebuilt
+binary SHA-256 is
+`dcb66d3acfea6e15671bc73b0925ff976429f6bfe6dc1eccb7402693edf158c`;
+the original benchmark binary hash above remains the identity of the logged
+device runs; it was compiled from the ignored original source. The two binary
+hashes differ with their build directories.
+
+| Output path | Graph P95 | Download P95 | Paired graph + download P50/P95 (ms) | Raw log SHA-256 |
+| --- | ---: | ---: | ---: | --- |
+| Full eight heads, `out/c2-picodet/run1.log` | 29.4750 | 23.1972 | 45.8271 / **52.1816** | `6e10a67bf89fb2e95385f2315f7d38c31b7cb5b973f37318a4c5b9a8d5efd4a3` |
+| Person scores + four DFL heads, `person-run1.log` | 32.4209 | 9.8632 | 36.2186 / **42.0377** | `b3d17d7fa078c4bd0186cf129f33abbf256f139d66cc5237a55d381a4f54a24b` |
+| Same path, `person-run2.log` | 33.9311 | 10.1223 | 36.3395 / **42.8649** | `98c4a283bafcdbdc5a0f72c1895292f61166888ca199924f7415ffecee35ae13` |
+| Same path, `person-run3.log` | 33.0467 | 10.5643 | 36.0608 / **43.2690** | `89e276ecd5c1ff17e3ae1b88ddf38cc9af562ebe99dbb58744e6ba89c3c8ad9f` |
+
+The paired measurement excludes the required DFL decode and person NMS. All
+three cropped-output P95 values already exceed the 33.33 ms **entire TopDown
+period**, so this candidate cannot leave any time for pose inference. The early
+performance exit stops PicoDet here; four-image golden parity and person recall
+were not attempted and must not be claimed. Weight redistribution rights remain
+unverified; its binaries stay under ignored `out/c2-picodet/`.
