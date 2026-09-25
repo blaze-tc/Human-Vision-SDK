@@ -1,5 +1,62 @@
 # C2 RTMDet Nano to ncnn conversion gate
 
+## Revision 3 Task 1: provisional local detector eligibility (2026-09-25)
+
+Revision 3 authorizes a **local evaluation detector** ahead of the detached
+keyframe scheduler. This is a correctness and Vulkan eligibility result, not a
+production performance pass. The older Revision 2 every-frame full-detector
+P95 values (38.7561, 39.6981, 39.3521 ms) remain failed and unchanged.
+There is no public weight redistribution or Release approval.
+
+The pinned checkpoint was re-exported using
+`.venv-reference/Scripts/python.exe -m tools.models.ncnn.export_rtmdet_nano
+--checkpoint out/c1-source-cache/rtmdet_nano_8xb32-100e_coco-obj365-person-05d8511e.pth
+--vendor-root out/c2-vendor --output out/c2-local-detector/rebuild/rtmdet-nano.onnx
+--expected-checkpoint-sha256 05d8511e7b3fabc62e27d2f624179e004ad14ee63a86ca9d9d22c88f3db0eee1
+--expected-onnx-sha256 3c4a7a1a2fb500678d7b01ebef87c119ce85626667aaf562109d3622b8abeed5`.
+The exporter verified the clean pinned OpenMMLab source checkouts and produced
+the same ONNX bytes. Pinned `onnx2ncnn` and `ncnnoptimize` regenerated the
+316-layer optimized raw graph and FP16 weights:
+
+```powershell
+& out/c2-onnx2ncnn-build/onnx/Release/onnx2ncnn.exe out/c2-detector/rtmdet-nano.onnx out/c2-local-detector/rebuild/raw.param out/c2-local-detector/rebuild/raw.bin
+& out/c2-ncnn-host/ncnn-20260526-windows-vs2022/x64/bin/ncnnoptimize.exe out/c2-local-detector/rebuild/raw.param out/c2-local-detector/rebuild/raw.bin out/c2-local-detector/rebuild/optimized.param out/c2-local-detector/rebuild/optimized.bin 65536
+.venv-reference/Scripts/python.exe -m tools.models.ncnn.finalize_rtmdet_eval
+```
+
+The finalizer checks the source/tool hashes, exact optimized graph bytes,
+all seven original shape lines, the corrected output hash, RGB 320x320 FP16
+pack1 input, `cls`/`bbox` outputs, and full C1 graph/provenance. It writes
+only ignored `out/c2-local-detector/{model.param,model.bin,model.json}` with
+`local_evaluation_only=true`. The local profile retains the fixed 0.35 person
+score threshold. SHA-256: optimized raw param
+`8fd7ccb55c9e28161686e748fb0dd6bd042716d45f614f837586c9a126e35346`,
+final param `9a4a89da2de4298427255950e58943f670a9e18a6d69b720270070741978b2b3`,
+weights `4329c052c86a53fd2f213b874f199a87755df6601e40bb7a45011b280dba42da`,
+ONNX `3c4a7a1a2fb500678d7b01ebef87c119ce85626667aaf562109d3622b8abeed5`,
+checkpoint `05d8511e7b3fabc62e27d2f624179e004ad14ee63a86ca9d9d22c88f3db0eee1`.
+
+The full C1 audit passed against the local manifest with checkpoint, ONNX,
+param, bin, official image, and both hashed converter paths. The fixed
+four-image C1 comparator and independent raw-to-JSON check passed 1/1/2/0
+persons. On the OnePlus 9 Pro / Adreno 660, the local model was rerun with
+explicit FP16 pack1 `VkMat` (`c=3`, `elempack=1`, `elembits=16`). An audited
+diagnostic runner checked all **316/316** loaded ncnn layers had
+`support_vulkan=true`, then produced `cls` and `bbox` FP32 pack1 tensors
+byte-identical to the previously hashed C2 golden on all four images. The
+runner source is ignored `out/c2-ncnn-runner/runner_exact.cpp`; rebuilt binary
+SHA-256 `f4ad10280b92451c8e25e056e4c33e500f31e1c45153d48ee629127c565104e8`.
+The GPU input and output audit is a model eligibility check; integrated B5
+camera preprocessing and scheduling remain later tasks.
+
+Host verification: focused reference 5/5, full reference 46/46, full native
+197/197, `tools.models.ncnn.diagnose_c2_failure` 4/4, Android ARM64/API26
+native build, architecture guard and `git diff --check` passed. The device
+runner's raw output comparisons passed all eight tensors. No Task 2 ModelPack
+or production profile was created.
+
+---
+
 Status: **C2 FAILURE / BOUNDED SEARCH EXHAUSTED (2026-09-25)**. RTMDet graph and
 four-image golden parity passed, but its full warmed detector P95 exceeded the
 33.33 ms TopDown period. The sole approved NanoDet-Plus-m 320 substitution

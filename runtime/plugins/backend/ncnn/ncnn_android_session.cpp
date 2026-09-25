@@ -150,6 +150,14 @@ bool AndroidSession::ParseModel(const HV_GpuBackendConfigV1& config, std::string
         auto input = chosen->at("input_contract");
         input["output_blobs"] = output.at("output_blobs");
         if (!ParseInputContract(input, contract_, error)) return false;
+        if (chosen->at("role").get<std::string>() == "detector" &&
+            (contract_.width != 320 || contract_.height != 320 ||
+             contract_.output_type != HV_GPU_TENSOR_FP16 ||
+             contract_.output_elempack != 1 || contract_.cast_type_to != 2 ||
+             contract_.input_blob != "in0" ||
+             contract_.output_blobs != std::vector<std::string>{"cls", "bbox"})) {
+            throw std::runtime_error("RTMDet detector requires RGB 320x320 FP16 pack1 with cls/bbox");
+        }
         const auto& limits = output.at("max_output_bytes");
         if (!limits.is_object()) throw std::runtime_error("Missing max_output_bytes object");
         output_byte_limits_.clear();
@@ -596,6 +604,14 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
         return HV_OK;
     }
 #endif
+    // The detector has three channels. Check the tensor actually handed to
+    // ncnn, including the repeated-role path, rather than just the JSON.
+    if (contract_.output_blobs == std::vector<std::string>{"cls", "bbox"} &&
+        (slot.prepared_input.c != 3 || slot.prepared_input.elempack != 1 ||
+         slot.prepared_input.elembits() != 16)) {
+        error = "RTMDet ncnn extractor input is not 3-channel FP16 pack1";
+        return HV_ERR_INTERNAL;
+    }
     slot.extractor->clear();
     if (slot.extractor->input(contract_.input_blob.c_str(), slot.prepared_input) != 0) {
         error = "ncnn model rejected explicit input tensor"; return HV_ERR_MODEL_LOAD;

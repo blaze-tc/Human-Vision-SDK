@@ -1,3 +1,37 @@
+# Android Vulkan/ncnn — Revision 3 Task 1 local RTMDet eligibility (2026-09-25)
+
+Revision 3 Task 1 reproduces the RTMDet Nano detector as a strict **local
+evaluation** candidate under `out/c2-local-detector/`; no production detector
+or integrated performance pass is claimed. The approved Revision 3 cadence
+design permits this eligibility gate before RTMPose packaging. The prior
+every-frame complete-detector P95 values remain failures. Task 2 and later
+work wait for Task 1 review and commit; no main merge or Release is authorized.
+
+Tests started RED: the new reference test failed with
+`ModuleNotFoundError: tools.models.ncnn.finalize_rtmdet_eval` before the
+finalizer existed. The requested native filter initially passed because
+the generic `InputContract` already admitted FP16 pack1; the added Android
+session guard now checks detector role and the actual extractor tensor.
+
+Fresh commands/results:
+
+- `.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -p test_rtmdet_eval.py -v`: **5/5 PASS**.
+- `.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -v`: **46/46 PASS**.
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter NcnnDetectorPack1Input`: **1/1 PASS**.
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1`: **197/197 PASS**.
+- `.venv-reference/Scripts/python.exe -m tools.models.ncnn.diagnose_c2_failure -v`: **4/4 PASS**, including four-image real golden.
+- `.venv-reference/Scripts/python.exe -m tools.models.ncnn.audit_ncnn_graph --manifest out/c2-local-detector/model.json --param out/c2-local-detector/model.param --onnx out/c2-detector/rtmdet-nano.onnx --checkpoint out/c1-source-cache/rtmdet_nano_8xb32-100e_coco-obj365-person-05d8511e.pth --bin out/c2-local-detector/model.bin --fixture out/c2-detector/golden/official/image.png --onnx2ncnn out/c2-onnx2ncnn-build/onnx/Release/onnx2ncnn.exe --ncnnoptimize out/c2-ncnn-host/ncnn-20260526-windows-vs2022/x64/bin/ncnnoptimize.exe`: **PASS**, 316-layer static graph.
+- `pwsh -NoProfile -File tools/package/build_live_native.ps1 -Platform Android -AndroidApiLevel 26`: **PASS**.
+- `.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py`: **PASS**.
+- Snapdragon 888 four-image rerun: **316/316 Vulkan-supported layers**, FP16 pack1 input, all eight `cls`/`bbox` tensors byte-identical to C2 golden; `out/` only.
+
+Exact reproduction commands and asset hashes are in
+`docs/validation/RTMDET_NCNN_CONVERSION_GATE.md`. Task 1 implementation is
+complete for local eligibility; independent task review controls the next
+task transition.
+
+---
+
 # Android Vulkan/ncnn — Milestone C Task C2 bounded detector search exhausted (2026-09-25)
 
 The user approved Revision 3 on 2026-09-25. It proposes bounded detector

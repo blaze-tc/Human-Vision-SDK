@@ -1,4 +1,5 @@
 #include "plugins/backend/ncnn/ncnn_vulkan_backend.h"
+#include "plugins/backend/ncnn/ncnn_preprocess.h"
 #include <gtest/gtest.h>
 
 using humanvision::runtime::ncnn_backend::InputContract;
@@ -41,4 +42,19 @@ TEST(NcnnInputContract, RejectsEveryUnspecifiedField) {
     std::string error;
     EXPECT_FALSE(ParseInputContract(json, contract, error)) << key;
   }
+}
+
+TEST(NcnnDetectorPack1Input, ThreeChannelFp16Contract) {
+  auto json = nlohmann::json::parse(good);
+  json["tensor_dtype"] = "fp16";
+  json["elempack"] = 1;
+  InputContract contract;
+  std::string error;
+  ASSERT_TRUE(ParseInputContract(json, contract, error)) << error;
+  EXPECT_EQ(humanvision::runtime::ncnn_backend::NormalizedChannelCount(contract.output_elempack), 3);
+  EXPECT_EQ(contract.output_elempack, 1);
+  EXPECT_EQ(contract.output_type, HV_GPU_TENSOR_FP16);
+  EXPECT_EQ(contract.cast_type_to, 2);
+  EXPECT_EQ(contract.input_blob, "in0");
+  EXPECT_EQ(contract.output_blobs, (std::vector<std::string>{"cls", "bbox"}));
 }
