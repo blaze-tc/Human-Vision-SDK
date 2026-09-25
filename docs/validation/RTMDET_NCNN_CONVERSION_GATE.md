@@ -50,10 +50,18 @@ The GPU input and output audit is a model eligibility check; integrated B5
 camera preprocessing and scheduling remain later tasks.
 
 Host verification: focused reference 5/5, full reference 46/46, full native
-197/197, `tools.models.ncnn.diagnose_c2_failure` 4/4, Android ARM64/API26
+198/198, `tools.models.ncnn.diagnose_c2_failure` 4/4, Android ARM64/API26
 native build, architecture guard and `git diff --check` passed. The device
 runner's raw output comparisons passed all eight tensors. No Task 2 ModelPack
 or production profile was created.
+
+Independent review required an extractor-delivery regression beyond the
+generic JSON parser test. `NcnnDetectorPack1Input.ExtractorReceivesOnlyThreeChannelFp16Pack1`
+failed with the initial forwarding handoff: a fake extractor received pack4
+and FP32 input. The production AndroidSession now calls the same small
+`DeliverInput` helper as the test; it refuses those tensors before calling
+`Extractor::input`, while Body26 pack4 remains accepted. Focused RED/GREEN
+output is preserved in the Task 1 report.
 
 ---
 

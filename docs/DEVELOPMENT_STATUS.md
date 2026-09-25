@@ -9,16 +9,19 @@ work wait for Task 1 review and commit; no main merge or Release is authorized.
 
 Tests started RED: the new reference test failed with
 `ModuleNotFoundError: tools.models.ncnn.finalize_rtmdet_eval` before the
-finalizer existed. The requested native filter initially passed because
-the generic `InputContract` already admitted FP16 pack1; the added Android
-session guard now checks detector role and the actual extractor tensor.
+finalizer existed. The first native contract-only filter passed because
+generic `InputContract` already admitted FP16 pack1. Review then required an
+extractor-delivery regression: with a forwarding-only handoff, the focused
+test failed because pack4 and FP32 tensors reached the fake extractor; after
+the shared handoff checked `c=3`, `elempack=1`, `elembits=16`, it passed. The
+Android session calls that same handoff for both first and repeated roles.
 
 Fresh commands/results:
 
 - `.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -p test_rtmdet_eval.py -v`: **5/5 PASS**.
 - `.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -v`: **46/46 PASS**.
-- `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter NcnnDetectorPack1Input`: **1/1 PASS**.
-- `pwsh -NoProfile -File tools/test/run_native_tests.ps1`: **197/197 PASS**.
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter NcnnDetectorPack1Input.ExtractorReceivesOnlyThreeChannelFp16Pack1`: **RED 1/1 failed** before validation, **GREEN 1/1 passed** after validation.
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1`: **198/198 PASS** after review fix.
 - `.venv-reference/Scripts/python.exe -m tools.models.ncnn.diagnose_c2_failure -v`: **4/4 PASS**, including four-image real golden.
 - `.venv-reference/Scripts/python.exe -m tools.models.ncnn.audit_ncnn_graph --manifest out/c2-local-detector/model.json --param out/c2-local-detector/model.param --onnx out/c2-detector/rtmdet-nano.onnx --checkpoint out/c1-source-cache/rtmdet_nano_8xb32-100e_coco-obj365-person-05d8511e.pth --bin out/c2-local-detector/model.bin --fixture out/c2-detector/golden/official/image.png --onnx2ncnn out/c2-onnx2ncnn-build/onnx/Release/onnx2ncnn.exe --ncnnoptimize out/c2-ncnn-host/ncnn-20260526-windows-vs2022/x64/bin/ncnnoptimize.exe`: **PASS**, 316-layer static graph.
 - `pwsh -NoProfile -File tools/package/build_live_native.ps1 -Platform Android -AndroidApiLevel 26`: **PASS**.
@@ -38,9 +41,9 @@ The user approved Revision 3 on 2026-09-25. It proposes bounded detector
 keyframes with current-frame pose inference while retaining the 30 fresh
 complete observation frames/s hard target. The revised Milestone C plan is
 `docs/superpowers/plans/2026-09-25-android-ncnn-topdown-cadence-revision-3.md`.
-That plan is **awaiting user review**; no runtime code changes or C3 work are
-authorized until its ordered execution is confirmed. The failed every-frame
-C2 result below remains historical evidence rather than a passed detector.
+The revised plan was subsequently approved for ordered Task 1 execution.
+The failed every-frame C2 result below remains historical evidence rather
+than a passed detector. Task 2 awaits independent Task 1 review.
 
 The user-approved C2 extension has evaluated its maximum of two additional
 detector candidates after RTMDet Nano and NanoDet-Plus-m 320 failed. PP-PicoDet-XS

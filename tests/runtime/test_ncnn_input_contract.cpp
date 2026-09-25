@@ -1,5 +1,6 @@
 #include "plugins/backend/ncnn/ncnn_vulkan_backend.h"
 #include "plugins/backend/ncnn/ncnn_preprocess.h"
+#include "plugins/backend/ncnn/ncnn_input_delivery.h"
 #include <gtest/gtest.h>
 
 using humanvision::runtime::ncnn_backend::InputContract;
@@ -57,4 +58,52 @@ TEST(NcnnDetectorPack1Input, ThreeChannelFp16Contract) {
   EXPECT_EQ(contract.cast_type_to, 2);
   EXPECT_EQ(contract.input_blob, "in0");
   EXPECT_EQ(contract.output_blobs, (std::vector<std::string>{"cls", "bbox"}));
+}
+
+namespace {
+struct FakeTensor {
+  int c;
+  int elempack;
+  int bits;
+  int elembits() const { return bits; }
+};
+struct RecordingExtractor {
+  int clear_calls = 0;
+  int input_calls = 0;
+  FakeTensor received{};
+  void clear() { ++clear_calls; }
+  int input(const char* blob, const FakeTensor& tensor) {
+    ++input_calls;
+    received = tensor;
+    return std::string(blob) == "in0" ? 0 : -1;
+  }
+};
+}
+
+TEST(NcnnDetectorPack1Input, ExtractorReceivesOnlyThreeChannelFp16Pack1) {
+  using humanvision::runtime::ncnn_backend::DeliverInput;
+  using humanvision::runtime::ncnn_backend::InputDeliveryResult;
+  RecordingExtractor extractor;
+  EXPECT_EQ(DeliverInput(extractor, "in0", FakeTensor{1, 4, 16}, true),
+            InputDeliveryResult::InvalidTensor);
+  EXPECT_EQ(extractor.input_calls, 0);
+  EXPECT_EQ(DeliverInput(extractor, "in0", FakeTensor{3, 1, 32}, true),
+            InputDeliveryResult::InvalidTensor);
+  EXPECT_EQ(extractor.input_calls, 0);
+  EXPECT_EQ(DeliverInput(extractor, "in0", FakeTensor{4, 1, 16}, true),
+            InputDeliveryResult::InvalidTensor);
+  EXPECT_EQ(extractor.input_calls, 0);
+  EXPECT_EQ(DeliverInput(extractor, "in0", FakeTensor{3, 1, 16}, true),
+            InputDeliveryResult::Ok);
+  ASSERT_EQ(extractor.input_calls, 1);
+  EXPECT_EQ(extractor.received.c, 3);
+  EXPECT_EQ(extractor.received.elempack, 1);
+  EXPECT_EQ(extractor.received.elembits(), 16);
+  EXPECT_EQ(extractor.clear_calls, 1);
+  EXPECT_EQ(DeliverInput(extractor, "wrong", FakeTensor{3, 1, 16}, true),
+            InputDeliveryResult::Rejected);
+  EXPECT_EQ(extractor.input_calls, 2);
+  EXPECT_EQ(DeliverInput(extractor, "in0", FakeTensor{1, 4, 16}, false),
+            InputDeliveryResult::Ok);
+  EXPECT_EQ(extractor.received.elempack, 4);
 }

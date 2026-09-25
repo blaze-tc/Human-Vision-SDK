@@ -1,4 +1,5 @@
 #include "plugins/backend/ncnn/ncnn_android_session.h"
+#include "plugins/backend/ncnn/ncnn_input_delivery.h"
 
 #if defined(__ANDROID__)
 #include "common/config_io.h"
@@ -604,16 +605,13 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
         return HV_OK;
     }
 #endif
-    // The detector has three channels. Check the tensor actually handed to
-    // ncnn, including the repeated-role path, rather than just the JSON.
-    if (contract_.output_blobs == std::vector<std::string>{"cls", "bbox"} &&
-        (slot.prepared_input.c != 3 || slot.prepared_input.elempack != 1 ||
-         slot.prepared_input.elembits() != 16)) {
+    const auto delivery = DeliverInput(*slot.extractor, contract_.input_blob.c_str(),
+        slot.prepared_input, contract_.output_blobs == std::vector<std::string>{"cls", "bbox"});
+    if (delivery == InputDeliveryResult::InvalidTensor) {
         error = "RTMDet ncnn extractor input is not 3-channel FP16 pack1";
         return HV_ERR_INTERNAL;
     }
-    slot.extractor->clear();
-    if (slot.extractor->input(contract_.input_blob.c_str(), slot.prepared_input) != 0) {
+    if (delivery == InputDeliveryResult::Rejected) {
         error = "ncnn model rejected explicit input tensor"; return HV_ERR_MODEL_LOAD;
     }
     for (size_t i = 0; i < contract_.output_blobs.size(); ++i) {
