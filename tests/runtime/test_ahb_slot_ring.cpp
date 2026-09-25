@@ -218,6 +218,21 @@ TEST(AhbSlotRing, SignaledPayloadMovesPublishesRetriesAndTakesExactlyOnce){
   taken.Reset();EXPECT_EQ(taken.State(),SyncPayloadState::Empty);taken.Reset();Complete(r,t);EXPECT_TRUE(r.Shutdown());EXPECT_EQ(o.closed,value>=0?1:0);
  }
 }
+TEST(AhbSlotRing, SubmittedPublicationRejectsInvalidStateOrTokenWithoutTakingFd){
+ Owners o;AhbSlotRing r(o.Hooks());ASSERT_TRUE(r.Reconfigure(Contract()));
+ SlotToken token;ASSERT_EQ(r.Reserve(1,1,token),SlotResult::Ok);
+ auto fd=o.Fd(41);SlotToken wrong=token;++wrong.frame_id;
+ EXPECT_EQ(r.PublishSubmitted(wrong,fd),SlotResult::Invalid);
+ EXPECT_TRUE(fd.HasPayload());EXPECT_EQ(o.closed,0);
+ ASSERT_EQ(r.Transition(token,AhbSlotState::EventReserved,AhbSlotState::UnityCopySubmitted),SlotResult::Ok);
+ EXPECT_EQ(r.PublishSubmitted(token,fd),SlotResult::Invalid);
+ EXPECT_TRUE(fd.HasPayload());EXPECT_EQ(o.closed,0);
+ ASSERT_EQ(r.Transition(token,AhbSlotState::UnityCopySubmitted,AhbSlotState::ProducerSignalPending),SlotResult::Ok);
+ EXPECT_EQ(r.PublishSubmitted(token,fd),SlotResult::Invalid);
+ EXPECT_TRUE(fd.HasPayload());EXPECT_EQ(o.closed,0);
+ fd.Reset();EXPECT_EQ(o.closed,1);
+ ASSERT_TRUE(r.Shutdown());EXPECT_EQ(o.closed,1);
+}
 TEST(AhbSlotRing, SignaledPayloadDropAndTeardownNeverCloseMinusOne){
  for(bool drop:{false,true}){
   Owners o;AhbSlotRing r(o.Hooks());ASSERT_TRUE(r.Reconfigure(Contract()));SlotToken t;ASSERT_EQ(r.Reserve(1,1,t),SlotResult::Ok);

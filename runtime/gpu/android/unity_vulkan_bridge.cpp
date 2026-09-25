@@ -191,12 +191,16 @@ void UnityVulkanBridge::Recover() noexcept {
             const SlotToken token = r.token;
             SyncFd fd = std::move(r.fd);
             r.kind.store(0, std::memory_order_release);
-            const SlotResult published = ring_.PublishReady(token, fd);
+            const SlotResult published = ring_.PublishSubmitted(token, fd);
             if (published == SlotResult::Ok) {
                 imported_frames_.fetch_add(1);
-            } else {
+            } else if (published == SlotResult::Busy) {
                 r.fd = std::move(fd);
                 r.kind.store(3, std::memory_order_release);
+            } else {
+                if (published != SlotResult::Closed) last_error_.store(7);
+                r.fd = std::move(fd);
+                r.kind.store(2, std::memory_order_release);
             }
             continue;
         }
@@ -496,11 +500,6 @@ BridgeResult UnityVulkanBridge::ExecuteQueue(EventRecord* record) noexcept {
         return BridgeResult::GpuError;
     }
     auto& recovery = recovery_[record->token.index]; recovery.token = record->token;
-    if (ring_.Transition(record->token, AhbSlotState::EventReserved, AhbSlotState::UnityCopySubmitted) != SlotResult::Ok ||
-        ring_.Transition(record->token, AhbSlotState::UnityCopySubmitted, AhbSlotState::ProducerSignalPending) != SlotResult::Ok) {
-        last_error_.store(7);
-        release(); recovery.kind.store(2); return BridgeResult::GpuError;
-    }
     SyncFd fd;
     if (!dispatch_.export_sync_fd(dispatch_.context, device_, slot, fd)) {
         last_error_.store(8);
@@ -509,10 +508,16 @@ BridgeResult UnityVulkanBridge::ExecuteQueue(EventRecord* record) noexcept {
     // No callback reads mutable event/source data after publication.
     release();
     const SlotToken token = record->token;
-    const SlotResult published = ring_.PublishReady(token, fd);
+    const SlotResult published = ring_.PublishSubmitted(token, fd);
     if (published == SlotResult::Ok) { last_error_.store(0); imported_frames_.fetch_add(1); return BridgeResult::Ok; }
-    last_error_.store(7);
-    recovery.fd = std::move(fd); recovery.kind.store(3); return BridgeResult::GpuError;
+    recovery.fd = std::move(fd);
+    if (published == SlotResult::Busy) {
+        recovery.kind.store(3, std::memory_order_release);
+        return BridgeResult::Busy;
+    }
+    if (published != SlotResult::Closed) last_error_.store(7);
+    recovery.kind.store(2, std::memory_order_release);
+    return published == SlotResult::Closed ? BridgeResult::Closed : BridgeResult::GpuError;
 }
 
 void UnityVulkanBridge::GetStatus(HV_AndroidGpuBridgeStatusV1& status) const noexcept {
@@ -538,7 +543,7 @@ const char* UnityVulkanBridge::Diagnostic() const noexcept {
     case 4:return "Unity Vulkan queue admission is closed";
     case 5:return "Unity Vulkan copy command recording failed; reservation retained for recovery";
     case 6:return "Unity Vulkan queue submission failed; reservation retained for recovery";
-    case 7:return "Unity Vulkan slot transition/publication is pending recovery";
+    case 7:return "Unity Vulkan slot publication rejected an invalid state; GPU completion recovery pending";
     case 8:return "Unity Vulkan sync-fd export failed; slot and semaphore retained until safe recovery";
     default:return "";
     }

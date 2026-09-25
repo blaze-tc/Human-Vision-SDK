@@ -6,6 +6,7 @@
 #include <array>
 #include <chrono>
 #include <condition_variable>
+#include <functional>
 #include <future>
 #include <mutex>
 #include <string>
@@ -21,6 +22,45 @@ template<class Tag, typename Tag::type Member> struct MemberAccess {
 };
 struct RingMember { using type = AhbSlotRing UnityVulkanBridge::*; friend type GetMember(RingMember); };
 template struct MemberAccess<RingMember, &UnityVulkanBridge::ring_>;
+struct RingMutexMember { using type = std::mutex AhbSlotRing::*; friend type GetMember(RingMutexMember); };
+template struct MemberAccess<RingMutexMember, &AhbSlotRing::mutex_>;
+
+struct RingHold {
+  explicit RingHold(std::mutex& ring) : ring_(ring), holder_([this] {
+    std::unique_lock<std::mutex> lock(mutex_);
+    cv_.wait(lock, [&] { return requested_ || release_; });
+    if (release_) return;
+    lock.unlock();
+    ring_.lock();
+    lock.lock();
+    acquired_ = true;
+    cv_.notify_all();
+    cv_.wait(lock, [&] { return release_; });
+    lock.unlock();
+    ring_.unlock();
+  }) {}
+  ~RingHold() { Release(); }
+  void Acquire() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    requested_ = true;
+    cv_.notify_all();
+    cv_.wait(lock, [&] { return acquired_; });
+  }
+  void Release() {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      release_ = true;
+    }
+    cv_.notify_all();
+    if (holder_.joinable()) holder_.join();
+  }
+private:
+  std::mutex& ring_;
+  std::mutex mutex_;
+  std::condition_variable cv_;
+  bool requested_ = false, acquired_ = false, release_ = false;
+  std::thread holder_;
+};
 
 struct FakeVulkan {
   std::vector<std::string> calls;
@@ -37,6 +77,8 @@ struct FakeVulkan {
   uint32_t source_usage = 0x5;
   SourcePreparation source_preparation = SourcePreparation::Ready;
   int next_fd = -1;
+  uint32_t closed_fds = 0;
+  int last_closed_fd = -1;
   uint32_t created = 0;
   uint32_t drained = 0;
   uint32_t released = 0;
@@ -48,6 +90,8 @@ struct FakeVulkan {
   std::condition_variable access_cv;
   bool block_access = false;
   bool access_entered = false;
+  std::function<void()> stall_ring_at_submit;
+  std::function<void()> stall_ring_at_export;
 
   UnityVulkanBridgeDispatch Dispatch() {
     return {this, Create, Drain, Access, PrepareSource, Release, Queue, Blit,
@@ -165,6 +209,7 @@ struct FakeVulkan {
                      const UnityVulkanSlotCache &) noexcept {
     auto &f = *static_cast<FakeVulkan *>(p);
     f.calls.push_back("signal");
+    if (f.stall_ring_at_submit) f.stall_ring_at_submit();
     return f.submit_ok;
   }
   static bool Export(void *p, const UnityVulkanDeviceContext &,
@@ -173,8 +218,14 @@ struct FakeVulkan {
     f.calls.push_back("export");
     if (!f.export_ok)
       return false;
-    fd = SyncFd(f.next_fd);
+    fd = SyncFd(f.next_fd, CloseFd, &f);
+    if (f.stall_ring_at_export) f.stall_ring_at_export();
     return true;
+  }
+  static void CloseFd(void* p, int fd) noexcept {
+    auto& f = *static_cast<FakeVulkan*>(p);
+    ++f.closed_fds;
+    f.last_closed_fd = fd;
   }
   static bool Complete(void *p, const UnityVulkanDeviceContext &,
                        const UnityVulkanSlotCache &) noexcept {
@@ -751,6 +802,50 @@ TEST(UnityVulkanBridgeContract, RecoveryResumesAfterDropDrainTransitionWasAlread
   void* recovered=nullptr;
   EXPECT_EQ(bridge.Prepare(Submission(4),&recovered),BridgeResult::Ok);
   EXPECT_NE(recovered,nullptr);
+}
+
+TEST(UnityVulkanBridgeContract, OrdinaryRingContentionAfterSubmitOrExportPublishesOnce) {
+  for (const bool contend_after_submit : {true, false}) {
+    FakeVulkan fake;
+    fake.next_fd = 42;
+    UnityVulkanBridge bridge(fake.Dispatch());
+    ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+    auto& ring = bridge.*GetMember(RingMember{});
+    auto& mutex = ring.*GetMember(RingMutexMember{});
+    RingHold hold(mutex);
+    if (contend_after_submit) fake.stall_ring_at_submit = [&] { hold.Acquire(); };
+    else fake.stall_ring_at_export = [&] { hold.Acquire(); };
+    void* event = nullptr;
+    ASSERT_EQ(bridge.Prepare(Submission(1), &event), BridgeResult::Ok);
+    ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+    HV_AndroidGpuBridgeStatusV1 status{sizeof(status), HV_ANDROID_GPU_API_V1};
+    bridge.GetStatus(status);
+    EXPECT_EQ(status.copy_path, HV_ANDROID_GPU_COPY_BLIT);
+    EXPECT_STREQ(bridge.Diagnostic(), "");
+    EXPECT_EQ(status.imported_frames, 0u);
+    ConsumerFrame still_contended;
+    EXPECT_EQ(bridge.ClaimConsumer(still_contended), SlotResult::Busy);
+    EXPECT_STREQ(bridge.Diagnostic(), "");
+    hold.Release();
+    fake.stall_ring_at_submit = fake.stall_ring_at_export = {};
+    ConsumerFrame frame;
+    ASSERT_EQ(bridge.ClaimConsumer(frame), SlotResult::Ok);
+    EXPECT_EQ(frame.metadata.frame_id, 1u);
+    EXPECT_TRUE(frame.producer_fd.HasPayload());
+    bridge.GetStatus(status);
+    EXPECT_EQ(status.copy_path, HV_ANDROID_GPU_COPY_BLIT);
+    EXPECT_EQ(status.imported_frames, 1u);
+    EXPECT_EQ(std::count(fake.calls.begin(), fake.calls.end(), "signal"), 1);
+    EXPECT_EQ(std::count(fake.calls.begin(), fake.calls.end(), "export"), 1);
+    EXPECT_EQ(fake.released, 1u);
+    EXPECT_EQ(fake.closed_fds, 0u);
+    ASSERT_EQ(bridge.RetireConsumer(frame, CompletionProof::GpuQuiescent), SlotResult::Ok);
+    EXPECT_EQ(fake.closed_fds, 1u);
+    EXPECT_EQ(fake.last_closed_fd, 42);
+    EXPECT_EQ(bridge.ClaimConsumer(frame), SlotResult::NoReady);
+    bridge.GetStatus(status);
+    EXPECT_EQ(status.imported_frames, 1u);
+  }
 }
 
 TEST(UnityVulkanBridgeContract,

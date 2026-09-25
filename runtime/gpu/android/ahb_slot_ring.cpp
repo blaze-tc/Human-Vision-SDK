@@ -171,6 +171,27 @@ SlotResult AhbSlotRing::Transition(const SlotToken& token,AhbSlotState from,AhbS
         generation_drops_.fetch_add(1,std::memory_order_relaxed);
     return SlotResult::Ok;
 }
+SlotResult AhbSlotRing::PublishSubmitted(const SlotToken& token,SyncFd& fd) {
+    if(!accepting_.load(std::memory_order_acquire))return SlotResult::Closed;
+    std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);if(!lock.owns_lock())return SlotResult::Busy;
+    if(!accepting_.load(std::memory_order_acquire))return SlotResult::Closed;
+    if(!Matches(token)||!fd.HasPayload())return SlotResult::Invalid;
+    auto& slot=slots_[token.index];
+    if(slot.state.load(std::memory_order_acquire)!=AhbSlotState::EventReserved)return SlotResult::Invalid;
+    // All three transitions and the fd transfer share one lock. Contention
+    // cannot strand a submitted copy in a partially advanced state.
+    auto expected=AhbSlotState::EventReserved;
+    if(!slot.state.compare_exchange_strong(expected,AhbSlotState::UnityCopySubmitted,
+                                           std::memory_order_acq_rel))return SlotResult::Invalid;
+    expected=AhbSlotState::UnityCopySubmitted;
+    if(!slot.state.compare_exchange_strong(expected,AhbSlotState::ProducerSignalPending,
+                                           std::memory_order_acq_rel))return SlotResult::Invalid;
+    slot.producer_fd=std::move(fd);
+    expected=AhbSlotState::ProducerSignalPending;
+    if(!slot.state.compare_exchange_strong(expected,AhbSlotState::ReadyForNcnn,
+                                           std::memory_order_acq_rel))return SlotResult::Invalid;
+    return SlotResult::Ok;
+}
 SlotResult AhbSlotRing::PublishReady(const SlotToken& token,SyncFd& fd) {
     if(!accepting_.load(std::memory_order_acquire))return SlotResult::Closed;
     std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);if(!lock.owns_lock())return SlotResult::Busy;

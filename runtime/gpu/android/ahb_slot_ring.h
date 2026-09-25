@@ -115,6 +115,9 @@ public:
     SlotResult Reserve(uint64_t frame_id, int64_t timestamp_us, SlotToken& token);
     SlotResult Transition(const SlotToken&, AhbSlotState from, AhbSlotState to,
                           CompletionProof = CompletionProof::None);
+    // A submitted Unity copy retains its exported fd until this nonblocking
+    // publication succeeds. Busy leaves token and fd unchanged for worker retry.
+    SlotResult PublishSubmitted(const SlotToken&, SyncFd& fd);
     // Failed publication leaves fd owned by the caller for retry/error cleanup.
     SlotResult PublishReady(const SlotToken&, SyncFd& fd);
     SlotResult ClaimNewest(SlotToken& token, SlotMetadata& metadata);
