@@ -1,10 +1,12 @@
 # C2 RTMDet Nano to ncnn conversion gate
 
-Status: **C2 FAILURE / PLAN IMPASSE (2026-09-25)**. RTMDet graph and
+Status: **C2 FAILURE / BOUNDED SEARCH EXHAUSTED (2026-09-25)**. RTMDet graph and
 four-image golden parity passed, but its full warmed detector P95 exceeded the
 33.33 ms TopDown period. The sole approved NanoDet-Plus-m 320 substitution
 also exceeded the period after one fixed person/DFL output crop. No production
-detector is selected. C3 is not authorized pending an explicit design ruling.
+detector is selected. A subsequent user-approved two-candidate search also
+failed its early performance gate; C3 remains unauthorized pending a new
+design ruling. The candidate sections below preserve the sequence and evidence.
 
 ## Authority and timebox
 
@@ -277,8 +279,9 @@ unresolved release gate**; no detector binary should be published or committed
 as an accepted production asset on that basis.
 
 The two permitted detector paths are exhausted under the current performance
-contract. Keep C2 blocked pending an explicit design ruling; do not infer
-production acceptance from either model's successful Vulkan execution.
+contract. At this point C2 was blocked pending a design ruling; the user later
+approved one bounded two-candidate search, which also failed. Do not infer
+production acceptance from any model's successful Vulkan execution.
 
 ## Approved bounded candidate 1: PP-PicoDet-XS 320 COCO (2026-09-25)
 
@@ -366,3 +369,99 @@ period**, so this candidate cannot leave any time for pose inference. The early
 performance exit stops PicoDet here; four-image golden parity and person recall
 were not attempted and must not be claimed. Weight redistribution rights remain
 unverified; its binaries stay under ignored `out/c2-picodet/`.
+
+## Approved bounded candidate 2: original MobileNet-SSD VOC 300 (2026-09-25)
+
+**Early performance exit; C2 remains failed.** The second and final candidate
+was the original [chuanqi305/MobileNet-SSD](https://github.com/chuanqi305/MobileNet-SSD)
+at commit `bb17b6c3eef36d80be441ae8e5339be66e8e3b7a`, not a separately
+published ncnn `.bin`. The repository commits both `deploy.prototxt` and
+`mobilenet_iter_73000.caffemodel`, with a repo-level
+[MIT LICENSE](https://github.com/chuanqi305/MobileNet-SSD/blob/bb17b6c3eef36d80be441ae8e5339be66e8e3b7a/LICENSE).
+The license hash is
+`7bc9bdb72a3f18e5c9151498cd90ae7d4de472f632d76b13606cda39934aaccc`;
+the prototxt (47,769 bytes) hash is
+`f32074dda8295f8722b08c184c31bcea3792c7d697812616587290387adb198b`;
+the original Caffe model (23,306,119 bytes) hash is
+`52eed8be80522c152a17fb56740de705b79881bde1a167e0e747310523685fc7`.
+The original `demo.py` specifies BGR bilinear resize to 300², subtract 127.5,
+multiply 0.007843, then CHW; its `CLASSES` puts VOC person at index 15.
+The repository says the training used MS-COCO and VOC0712. Its MIT source
+license does not by itself establish rights to redistribute the trained model
+or underlying training data; this remains a release gate if the model is ever
+reconsidered.
+
+The pinned ncnn 20260526 host `caffe2ncnn.exe` SHA-256 is
+`948fb99b64adb17b5b1ab4fd863ee0c070a3b766201ce06d05bbd521de46c70d`.
+It converted the **original** Caffe files with exit 0 to `raw.param` SHA-256
+`652f339dca4fd7afe43532d565f78e44a7d7ec63dd9ce4375d60d5c264cce30d`
+and `raw.bin` SHA-256
+`8d530aa80bcfd95e590fbcc24ede7c62994efa90aafba041004a2f2edbd7b0d2`.
+The converter's raw param omitted the explicit top-level Caffe `data` input and
+its seven-way split while counting the implicit input in the header. The tracked
+`mobilenetssd_c2_prepare.py` makes those explicit with static `[3,300,300]`
+input and removes the terminal `DetectionOutput`, which has no Vulkan
+implementation in the pinned ncnn source. It does not alter any model weights.
+Its `gpu.param` SHA-256 is
+`dbe6bfba0b6285fa561c5a42ce1a72d20e1dd6252897e829e8d6100cf2fcb50f`.
+The pinned `ncnnoptimize.exe` SHA-256
+`40ffdd4f11d0823ccb665d6dc2e421b3a64e1e1945677e95172e3875a0601ac7`
+ran with flag `65536` (FP16 weight storage) and exit 0. The resulting
+`optimized.param`/`optimized.bin` SHA-256 values are
+`78140f4ac169ff434e33415c8092f853a5f771b764eb7cd209e55a4ccd38f633`
+and `8f8cbe4ad32c97f0ede51608f5b5a16b7fa7e2b3481ae348e13c9205ff6ba0f0`.
+The final GPU graph exposes `mbox_loc` (7,668 floats),
+`mbox_conf_flatten` (40,257 floats), and `mbox_priorbox` (7,668×2 floats)
+for host SSD decode/NMS. All remaining compute layer types have Vulkan
+implementations in the pinned ncnn source; the `Input` pseudo-layer is the
+only type without a `*_vulkan.cpp`. **A runtime per-layer CPU-fallback trace
+was not completed**, so strict wholly Vulkan execution is not certified.
+
+Reproduction from the worktree root (all large assets and logs are ignored):
+
+```powershell
+git clone https://github.com/chuanqi305/MobileNet-SSD.git out/c2-mobilenetssd-source
+git -C out/c2-mobilenetssd-source checkout bb17b6c3eef36d80be441ae8e5339be66e8e3b7a
+New-Item -ItemType Directory -Force out/c2-mobilenetssd | Out-Null
+& out/c2-ncnn-host/ncnn-20260526-windows-vs2022/x64/bin/caffe2ncnn.exe out/c2-mobilenetssd-source/deploy.prototxt out/c2-mobilenetssd-source/mobilenet_iter_73000.caffemodel out/c2-mobilenetssd/raw.param out/c2-mobilenetssd/raw.bin
+& .venv-reference/Scripts/python.exe tools/models/ncnn/mobilenetssd_c2_prepare.py out/c2-mobilenetssd/raw.param out/c2-mobilenetssd/gpu.param
+& out/c2-ncnn-host/ncnn-20260526-windows-vs2022/x64/bin/ncnnoptimize.exe out/c2-mobilenetssd/gpu.param out/c2-mobilenetssd/raw.bin out/c2-mobilenetssd/optimized.param out/c2-mobilenetssd/optimized.bin 65536
+& .venv-reference/Scripts/python.exe tools/models/ncnn/mobilenetssd_c2_input.py out/c2-detector/golden/official/image.png out/c2-mobilenetssd/input.fp32
+& 'D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' -S tools/models/ncnn/mobilenetssd_c2_benchmark -B out/c2-mobilenetssd/build -G Ninja -DCMAKE_MAKE_PROGRAM='D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe' -DCMAKE_TOOLCHAIN_FILE='D:/Developer/2021.3.45f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK/build/cmake/android.toolchain.cmake' -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 -Dncnn_DIR="$(Resolve-Path out/ncnn-20260526/android-arm64-api26/install/lib/cmake/ncnn)"
+& 'D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build out/c2-mobilenetssd/build -j 4
+```
+
+The input image SHA-256 is
+`7a090e3befceef2fe0db7e8b8a2a2ec03782e8e133a4738c027e3f6f23afac31`;
+the preprocessed 1,080,000-byte tensor SHA-256 is
+`1da217aea45cb2bc91fae9b1bbe303be3bb67e97622de2a4c37ee79cc418e1d5`.
+The tracked runner source is `tools/models/ncnn/mobilenetssd_c2_benchmark.cpp`
+(SHA-256 `ee3c4b77c8e158ffad98e22c213d8f4a618a4ba10292b0f99405774c087fe9b2`);
+its CMake recipe SHA-256 is
+`0261aa0333163b1f511b5fb6695640a12d2f0f915022d6fc83ea246d6b010ede`.
+The Android arm64 binary SHA-256 is
+`1a2dfe38e496eb4a5cf507b3b277f0e8517e849375355d6edd5f4b20460c6279`.
+On the authorized OnePlus 9 Pro / Adreno 660 it printed `input,c=3,pack=1,bits=16`
+and the expected three FP32 output sizes. The real image was uploaded once to
+`VkMat` before timing. Each run performed 20 warm-up iterations followed by
+100 measured iterations, each timing graph submission/wait plus all three
+required output downloads. Input upload, SSD decode, person NMS, pose, and
+AHB bridge were **excluded**. The device invocation after pushing the four
+files to `/data/local/tmp/c2-mobilenetssd/` was:
+
+```text
+c2_mobilenetssd optimized.param optimized.bin input.fp32
+```
+
+| Optimized run | Paired P50 / P95 / maximum (ms) | Raw log SHA-256 |
+| --- | ---: | --- |
+| `out/c2-mobilenetssd/optimized-run1.log` | 46.0773 / **51.8276** / 52.5539 | `dbea63cc604430ba189731e8d323c11c61353312e762893ac830c5f5ccca4ca5` |
+| `optimized-run2.log` | 34.8373 / **36.1623** / 36.9476 | `ec0c1c464f144210409f86662354b371b46f13ddfeaeece0b52543f35fcbc057` |
+| `optimized-run3.log` | 39.9384 / **46.6351** / 48.0527 | `e3aa138958ed3bd723b479542b70d90d6910c22e6dd4ada9c0e34e9ff6da6be7` |
+
+All three **lower-bound** P95 values exceed the entire 33.33 ms TopDown
+period. Even the fastest leaves no time for SSD host decode, NMS, pose, bridge,
+or tracking. The candidate was stopped under the early exit. Four-image
+1/1/2/0 person count, C1 reference parity, runtime CPU-fallback audit, and
+weight redistribution were **not passed**. No production ModelPack asset was
+selected, and C3 remains unauthorized after both bounded candidates failed.

@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.24)
+project(c2_mobilenetssd LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+find_package(ncnn REQUIRED)
+add_executable(c2_mobilenetssd ../mobilenetssd_c2_benchmark.cpp)
+target_link_libraries(c2_mobilenetssd PRIVATE ncnn)

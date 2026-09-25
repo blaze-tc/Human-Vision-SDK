@@ -1,12 +1,22 @@
-# Android Vulkan/ncnn — Milestone C Task C2 bounded detector search authorized (2026-09-25)
+# Android Vulkan/ncnn — Milestone C Task C2 bounded detector search exhausted (2026-09-25)
 
-The user approved a C2 plan amendment after both prescribed detector paths
-failed the Snapdragon 888 performance gate. At most two additional mature
-ncnn Android person detectors may be evaluated under Revision 2 §9.1, with
-source/weights/license provenance, real-image golden parity, all-Vulkan FP16
-execution, and three warmed complete-detector P95 runs per candidate. The
-combined attempt is time-boxed in the implementation plan. No third detector
-has been selected or accepted. **C3 remains unauthorized.**
+The user-approved C2 extension has evaluated its maximum of two additional
+detector candidates after RTMDet Nano and NanoDet-Plus-m 320 failed. PP-PicoDet-XS
+320 COCO's person-score and DFL graph plus necessary output downloads measured
+**42.0377/42.8649/43.2690 ms P95** across three warmed 100-frame runs.
+Original MobileNet-SSD VOC 300's optimized graph plus necessary output downloads
+measured **51.8276/36.1623/46.6351 ms P95** across three warmed 100-frame runs.
+These are **lower bounds** on complete detector latency: they exclude host
+decode and NMS. Every run exceeds the **33.33 ms** TopDown frame period before
+pose, bridge, and tracking. Both candidates stopped at the early performance
+exit; neither passed four-image golden parity or the strict runtime no-CPU-
+fallback gate. Source, hashes, build recipes, raw logs, and limitations are in
+`docs/validation/RTMDET_NCNN_CONVERSION_GATE.md`.
+
+The finite C2 search is exhausted. No production detector ModelPack asset was
+selected. **C3 remains unauthorized**; further work requires a new user design
+decision. The earlier C2 authorization and prescribed-path results remain below
+as historical evidence.
 
 ---
 
