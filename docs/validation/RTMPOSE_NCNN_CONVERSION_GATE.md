@@ -1,5 +1,88 @@
 # RTMPose-t Body26 ncnn conversion gate — blocked (2026-09-25)
 
+## Bounded padded-first-Conv plus FP32-arithmetic device gate (2026-09-25)
+
+The single approved combined configuration was run on the attached OnePlus 9
+Pro LE2120 / Snapdragon 888 / Adreno 660. It used the hash-pinned four-channel
+zero-padded first Conv below, FP16 pack4 input, FP16 packed/storage and
+`use_fp16_arithmetic=false`. The runner's fail-fast runtime audit reported
+**169 layers, zero without Vulkan support**; requested option telemetry was
+`vulkan=1 fp16-packed=1 fp16-storage=1 fp16-arithmetic=0 input-pack=4
+input-bits=16`. The first full-body crop's X/Y SimCC were finite
+(`9984/9984`, `13312/13312`) but failed parity against PyTorch: P95 absolute
+error `33.36741867/44.84347057`, and joint argmax agreement `1/26`, `0/26`.
+The exact input crop SHA-256 was
+`b4fce3c8d5583546062aa2a7eecb5aec103460e1c15feac21c3ebb7ce565891e`.
+After the same 192×256 affine crop and inverse transform, reference/device
+valid counts were `25/9`; the production comparator rejected the valid-joint
+mask mismatch. For diagnosis only, across the reference-valid joints,
+normalized distance P95/max were `0.72732885/0.87285188` of bbox diagonal
+and confidence error P95 was `83.69882374`. These exceed the required
+`0.01/0.03/0.02` limits. Since case 1 failed, the four-case golden is **FAIL**;
+clipped, mirrored and rotated cases were not executed. No model-pack builder,
+runtime implementation or Task 3 work followed.
+
+The existing formal `run_pose_golden.py` harness was also invoked against the
+padded ONNX; it stopped before device inference because ONNX Runtime cannot
+load MMDeploy's custom `mmdeploy::AdaptiveAvgPool2d` operator. The direct
+device run above did execute, and the retained comparison script uses the
+already pinned PyTorch SimCC for the byte-identical crop and calls the project's
+`compare_pose` with the exact inverse affine. This harness limit does not
+weaken the observed first-case failure.
+
+The formal harness command exited 1 with
+`mmdeploy:AdaptiveAvgPool2d(-1) is not a registered function/op`:
+
+```powershell
+.venv-reference/Scripts/python.exe -m tools.models.ncnn.run_pose_golden --checkpoint out/c1-source-cache/rtmpose-t_body26.pth --vendor-root out/c2-vendor --image out/c2-detector/golden/official/image.png --onnx out/c3-local-runtime/padded-first-conv/model.onnx --param out/c3-local-runtime/padded-first-conv/vulkan.param --weights out/c3-local-runtime/padded-first-conv/model.bin --runner out/c2-ncnn-runner-android/c3_pose_golden --output out/c3-local-runtime/padded-first-conv/fp32arith-golden --adb D:/Developer/2021.3.45f1/Editor/Data/PlaybackEngines/AndroidPlayer/SDK/platform-tools/adb.exe --runner-mode diagnostic-vulkan-fp32-arith *> out/c3-local-runtime/padded-first-conv/fp32arith-golden.log
+```
+
+Restore the five byte-identical diagnostic sources from ignored `out/` in an
+isolated checkout with this exact mapping (source SHA-256 values are in the
+padding section below):
+
+```powershell
+$saved = 'out/c3-local-runtime/blocked-first-conv-task2'
+Copy-Item "$saved/test_rtmpose_first_conv_pad.py" tests/reference/test_rtmpose_first_conv_pad.py
+Copy-Item "$saved/test_rtmpose_shape_finalizer.py" tests/reference/test_rtmpose_shape_finalizer.py
+Copy-Item "$saved/pad_rtmpose_first_conv.py" tools/models/ncnn/pad_rtmpose_first_conv.py
+Copy-Item "$saved/finalize_rtmpose_vulkan_shapes.py" tools/models/ncnn/finalize_rtmpose_vulkan_shapes.py
+Copy-Item "$saved/pose_golden_runner.cpp" tools/models/ncnn/pose_golden_runner.cpp
+Copy-Item out/c3-local-runtime/failed-task2-source/tools/models/ncnn/run_pose_golden.py tools/models/ncnn/run_pose_golden.py
+.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -p test_rtmpose_first_conv_pad.py -v
+.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -p test_rtmpose_shape_finalizer.py -v
+& 'D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build out/c2-ncnn-runner-android --config Release --target c3_pose_golden
+```
+
+The combined configuration and direct first-case metric can be replayed from
+the worktree root using the retained `vulkan.param`, bin, input and ignored
+comparison script. The first command deliberately exits zero when ncnn ran;
+the comparator then reports the numerical gate failure:
+
+```powershell
+$adb = 'D:/Developer/2021.3.45f1/Editor/Data/PlaybackEngines/AndroidPlayer/SDK/platform-tools/adb.exe'
+& $adb shell mkdir -p /data/local/tmp/hv-c3-fp32arith
+& $adb push out/c2-ncnn-runner-android/c3_pose_golden /data/local/tmp/hv-c3-fp32arith/runner
+& $adb push out/c3-local-runtime/padded-first-conv/vulkan.param /data/local/tmp/hv-c3-fp32arith/model.param
+& $adb push out/c3-local-runtime/padded-first-conv/model.bin /data/local/tmp/hv-c3-fp32arith/model.bin
+& $adb push out/c3-local-runtime/pose-golden-quarter/full-body/input.fp32 /data/local/tmp/hv-c3-fp32arith/input.fp32
+& $adb shell chmod 755 /data/local/tmp/hv-c3-fp32arith/runner
+& $adb shell /data/local/tmp/hv-c3-fp32arith/runner /data/local/tmp/hv-c3-fp32arith/model.param /data/local/tmp/hv-c3-fp32arith/model.bin /data/local/tmp/hv-c3-fp32arith/input.fp32 /data/local/tmp/hv-c3-fp32arith/x.fp32 /data/local/tmp/hv-c3-fp32arith/y.fp32 diagnostic-vulkan-fp32-arith 2>&1 | Tee-Object out/c3-local-runtime/padded-first-conv/device-fp32arith-first.log
+& $adb pull /data/local/tmp/hv-c3-fp32arith/x.fp32 out/c3-local-runtime/padded-first-conv/device-fp32arith-x.fp32
+& $adb pull /data/local/tmp/hv-c3-fp32arith/y.fp32 out/c3-local-runtime/padded-first-conv/device-fp32arith-y.fp32
+.venv-reference/Scripts/python.exe out/c3-local-runtime/padded-first-conv/compare_fp32arith_firstcase.py
+```
+
+| Ignored retained evidence | SHA-256 |
+| --- | --- |
+| `out/c2-ncnn-runner-android/c3_pose_golden` | `f0b6ae15a5c4ba378311facc35e33f80dd0a145829d2a2f6b02d9272aa5d6ab5` |
+| `padded-first-conv/device-fp32arith-first.log` | `b710153ea4ecb5812a66894f63b1d5a3441c57b13181b103ec4eb68b478ec590` |
+| `padded-first-conv/device-fp32arith-x.fp32` | `eb2d2670e881170152f52cb9b43d69323d0fca7478bd623d93b3897ca9696e8a` |
+| `padded-first-conv/device-fp32arith-y.fp32` | `e0cbe338af6e58f00061883df7e8d3bd268f5b2b9247a651c0664838bbb3b6b6` |
+| `padded-first-conv/compare_fp32arith_firstcase.py` | `ef79c3be788fc3e09980277cbfb6905d4e2c5d418a8e25aeaab4bf4c1b54378a` |
+| `padded-first-conv/fp32arith-firstcase-metrics.json` | `f7a9b8771d0d22a17cdcd34be3d313a24d11c8463a77a8f1de7e15f9c26e13e3` |
+| `padded-first-conv/fp32arith-golden.log` | `83af7d37680c005e21dedc961fcc4051887e316e77bdce6d6178983dd7ae2dd` |
+
 ## Bounded first-Conv 3→4 padding attempt (2026-09-25)
 
 The source is the official MMDeploy ONNX SHA-256

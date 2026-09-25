@@ -1,3 +1,23 @@
+# Android Vulkan/ncnn — Revision 3 Task 2 combined precision gate blocked (2026-09-25)
+
+The one approved follow-up used the pinned 4-channel zero-padded Body26 first
+Conv with FP16 pack4 input and packed/storage, while setting
+`use_fp16_arithmetic=false`. On the OnePlus 9 Pro / Snapdragon 888, the runner
+audited **169/169 Vulkan-supported layers** and logged the requested option
+tuple `1/1/1/0` plus 16-bit pack4 input. The full-body crop's SimCC X/Y are
+finite, but versus PyTorch their P95 absolute errors are `33.3674/44.8435`;
+argmax agreement is `1/26` and `0/26`. Exact inverse-affine Body26 comparison
+has a valid-mask mismatch (`25` reference joints versus `9` candidate), so
+the first of the required four cases fails. The remaining cases were not run.
+The formal ONNX-based harness additionally cannot load MMDeploy's custom
+`AdaptiveAvgPool2d`; a direct device run and same-crop PyTorch comparison
+established the failure. Commands, raw hashes and exact ignored-source restore
+mapping are in [`RTMPOSE_NCNN_CONVERSION_GATE.md`](validation/RTMPOSE_NCNN_CONVERSION_GATE.md).
+Task 2 remains **BLOCKED**; no ModelPack promotion or Task 2 implementation
+was made. Task 3 remains closed.
+
+---
+
 # Android Vulkan/ncnn — Revision 3 Task 2 first-Conv padding gate blocked (2026-09-25)
 
 One hash-pinned official ONNX transform padded the first Body26 convolution
