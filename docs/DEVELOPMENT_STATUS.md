@@ -1,3 +1,19 @@
+# Android Vulkan/ncnn — Revision 3 Task 2 layer localization (2026-09-25)
+
+The approved follow-up's pinned padded graph and crop received one diagnostic
+CPU/Adreno 660 intermediate sweep, with FP16 pack4 Vulkan input/storage and
+FP32 arithmetic. All 191 blobs matched by logical shape after FP32 pack1
+extraction. The first material mismatch is layer 129
+`/gau/ln/ReduceSum_output_0`: CPU/Vulkan P95 absolute error `0.796001`,
+correlation `-0.240461`; layer 128's P95 was `0.00007758`. On all 26 rows,
+the GPU output matches the first 64 of 256 input elements, indicating lost
+subgroup contributions in ncnn's Vulkan Reduction shader path. The exact
+driver/compiler cause and a fix remain unverified. Task 2 stays **BLOCKED**;
+no ModelPack promotion or Task 3 work occurred. Exact SHA-256 and replay
+steps are in `docs/validation/RTMPOSE_NCNN_CONVERSION_GATE.md`.
+
+---
+
 # Android Vulkan/ncnn — Revision 3 Task 2 combined precision gate blocked (2026-09-25)
 
 The one approved follow-up used the pinned 4-channel zero-padded Body26 first

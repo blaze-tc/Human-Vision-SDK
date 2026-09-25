@@ -1,5 +1,73 @@
 # RTMPose-t Body26 ncnn conversion gate — blocked (2026-09-25)
 
+## Padded graph CPU/Vulkan layer localization (2026-09-25)
+
+One diagnostic sweep used the existing padded graph and same full-body crop.
+SHA-256 of `vulkan.param`, `model.bin`, and input crop were respectively
+`aaada52ba44e57d67e440bd7873b9381207f5bddbecc85c823f63ffeb99040c5`,
+`0f8a0a864be7af7990366bfb8ce89d4fca911a08b967c00e3b8180725d5054a4`,
+and `b4fce3c8d5583546062aa2a7eecb5aec103460e1c15feac21c3ebb7ce565891e`.
+The temporary runner added a diagnostic dump mode; it did not modify the graph
+or inference settings. CPU used explicit four-channel input; Vulkan used FP16
+pack4 input/storage with `use_fp16_arithmetic=false`. All 191 output blobs
+from 169 layers matched by name and logical shape after extraction to FP32
+pack1 and serialization in channel/row/column order.
+
+The first material divergence is layer 129 `Reduction`
+`/gau/ln/ReduceSum_output_0`. CPU/Vulkan P95 absolute error is `0.796001`,
+correlation `-0.240461`; FP16-rounding the CPU reference leaves P95
+`0.795868`. Its immediately preceding `Pow` output has P95 error
+`0.00007758` and correlation `0.999813`. For all 26 rows, the Vulkan output
+equals the sum of the first 64 of 256 Vulkan input elements to P95
+`0.00011611`, versus P95 `0.79374740` when compared with the full 256-element
+sum. The measured behavior is loss of the other three 64-element subgroup
+contributions, not a pack/layout mismatch. Pinned ncnn
+`out/ncnn-20260526/source/src/layer/vulkan/reduction_vulkan.cpp` sets local
+size 256 and dispatches one workgroup per output; its `shader/reduction.comp`
+uses subgroup partial sums and `gl_NumSubgroups` for the final combination.
+The exact driver/compiler cause remains unproven. A candidate follow-up is to
+fix the shader's cross-subgroup combine path and test a standalone 256-element
+sum on Adreno 660 before any pose replay. This is shared ncnn behavior, so
+other devices/models require regression testing. Task 2 remains **BLOCKED**.
+
+Replay from the worktree root, with the already pinned graph/bin/crop and
+the ignored `out/c2-ncnn-runner/` build directories present:
+
+```powershell
+$root = 'out/c3-local-runtime/padded-first-conv/layer-localization'
+Copy-Item "$root/pose_golden_runner_layer_dump.cpp" tools/models/ncnn/pose_golden_runner.cpp
+& out/c3-local-runtime/shape-proof/build-host-pose.cmd
+& 'D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build out/c2-ncnn-runner-android --config Release --target c3_pose_golden
+New-Item -ItemType Directory -Force "$root/cpu" | Out-Null
+& out/c3-local-runtime/shape-proof-host-build/Release/c3_pose_golden.exe out/c3-local-runtime/padded-first-conv/vulkan.param out/c3-local-runtime/padded-first-conv/model.bin out/c3-local-runtime/pose-golden-quarter/full-body/input.fp32 "$root/cpu" "$root/cpu/unused.fp32" diagnostic-cpu-pack4-layer-dump 2>&1 | Tee-Object "$root/cpu.log"
+$adb = 'D:/Developer/2021.3.45f1/Editor/Data/PlaybackEngines/AndroidPlayer/SDK/platform-tools/adb.exe'
+& $adb shell mkdir -p /data/local/tmp/hv-c3-layer/dump
+& $adb push out/c2-ncnn-runner-android/c3_pose_golden /data/local/tmp/hv-c3-layer/runner
+& $adb push out/c3-local-runtime/padded-first-conv/vulkan.param /data/local/tmp/hv-c3-layer/model.param
+& $adb push out/c3-local-runtime/padded-first-conv/model.bin /data/local/tmp/hv-c3-layer/model.bin
+& $adb push out/c3-local-runtime/pose-golden-quarter/full-body/input.fp32 /data/local/tmp/hv-c3-layer/input.fp32
+& $adb shell chmod 755 /data/local/tmp/hv-c3-layer/runner
+& $adb shell /data/local/tmp/hv-c3-layer/runner /data/local/tmp/hv-c3-layer/model.param /data/local/tmp/hv-c3-layer/model.bin /data/local/tmp/hv-c3-layer/input.fp32 /data/local/tmp/hv-c3-layer/dump /data/local/tmp/hv-c3-layer/unused.fp32 diagnostic-vulkan-fp32-arith-layer-dump 2>&1 | Tee-Object "$root/device.log"
+& $adb pull /data/local/tmp/hv-c3-layer/dump "$root/device"
+& .venv-reference/Scripts/python.exe "$root/compare_layers.py"
+Remove-Item tools/models/ncnn/pose_golden_runner.cpp
+```
+
+| Ignored diagnostic artifact | SHA-256 |
+| --- | --- |
+| `layer-localization/pose_golden_runner_layer_dump.cpp` | `9862a9e8690cb7ac1ae04625401fff0624a14ab7cf9e2bac3020d185f6dc4175` |
+| `out/c2-ncnn-runner-android/c3_pose_golden` | `797be11f7ccc0ab4bbe68e806cbe360552dc2adc201b122aff10b24f7f1b4a5d` |
+| `layer-localization/cpu.log` | `ab4b937563896a4cefe3b28747ce072996982b395d9fbee21b1c4d67e5edf93a` |
+| `layer-localization/device.log` | `94cc290ab58ddde78da242083dad9ba9181e594e8ff0e5fdc2b729b8f8f1cff7` |
+| `layer-localization/tensor-hashes.json` (191 CPU, 191 device files) | `15a030bf51f7f6d6b2d932f6ddf61101a8d7f68bbab58fc17268cb86a30f3a82` |
+| `layer-localization/compare_layers.py` | `67bcde34f4dd1e4ccfe88deffe0ea7ed8dc113025b164f8655d8faee484c048e` |
+| `layer-localization/comparison.json` | `79dc7922f11fc410710297bb6d047975ea766b198e3e327079ff2eecf2760f14` |
+
+Pinned ncnn shader/source SHA-256: `reduction.comp`
+`d09e6d5aef9439035453ce0dbb6fff05ed6ba59e8c250c5f5e2409191eadea20`,
+`reduction_vulkan.cpp`
+`1bfd9f6b83382e71bf1afa7546ecbde886a461dc54a96732dea9a28b761feb94`.
+
 ## Bounded padded-first-Conv plus FP32-arithmetic device gate (2026-09-25)
 
 The single approved combined configuration was run on the attached OnePlus 9
@@ -37,9 +105,12 @@ The formal harness command exited 1 with
 .venv-reference/Scripts/python.exe -m tools.models.ncnn.run_pose_golden --checkpoint out/c1-source-cache/rtmpose-t_body26.pth --vendor-root out/c2-vendor --image out/c2-detector/golden/official/image.png --onnx out/c3-local-runtime/padded-first-conv/model.onnx --param out/c3-local-runtime/padded-first-conv/vulkan.param --weights out/c3-local-runtime/padded-first-conv/model.bin --runner out/c2-ncnn-runner-android/c3_pose_golden --output out/c3-local-runtime/padded-first-conv/fp32arith-golden --adb D:/Developer/2021.3.45f1/Editor/Data/PlaybackEngines/AndroidPlayer/SDK/platform-tools/adb.exe --runner-mode diagnostic-vulkan-fp32-arith *> out/c3-local-runtime/padded-first-conv/fp32arith-golden.log
 ```
 
-Restore the five byte-identical diagnostic sources from ignored `out/` in an
-isolated checkout with this exact mapping (source SHA-256 values are in the
-padding section below):
+Restore six diagnostic sources from ignored `out/` in an isolated checkout
+with this exact mapping: five first-Conv/shape sources from
+`blocked-first-conv-task2/` (SHA-256 values are in the padding section below)
+plus the earlier `run_pose_golden.py` from `failed-task2-source/`. The combined
+runner copied here is distinct from the earlier official input-route runner
+retained under `blocked-official-task2/`:
 
 ```powershell
 $saved = 'out/c3-local-runtime/blocked-first-conv-task2'
