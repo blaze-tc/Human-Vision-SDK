@@ -1,3 +1,37 @@
+# Android Vulkan/ncnn — B7 probe evidence bound to each source generation (2026-09-25)
+
+B7 review found a second false pass: after camera restart, Unity reset its
+last-probe cache while the native producer retained the previous generation's
+diagnostic. A pending status could therefore log stale probe lines, and the
+collector accepted one global candidate block for the entire ten-minute run.
+The old analyzer passed a full-duration fixture with no probe after restart
+(expected RED).
+
+Gate probe publication is now tied to the current native source lease token.
+Begin/End revoke the old token; only successful measurement/configuration
+publishes the new token. Unity labels each rebuild, probe line and status with
+the same source generation. The collector requires a complete candidate,
+producer, consumer and external-memory probe for every configured generation,
+with the matching generation label and timestamps between its rebuild marker
+and first configured status. It rejects a missing, stale, early or duplicate
+selected-candidate probe. Rejected blit evidence may precede a successful
+color-attachment candidate in the same generation.
+
+Fresh host verification:
+
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter 'GateProbeBelongsOnlyToCurrentSourceLease'`: **1/1 PASS**; an old callback token remained invisible after End/Begin, and the new token became visible.
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1`: **194/194 PASS**.
+- `$env:__COMPAT_LAYER='RunAsInvoker'; pwsh -NoProfile -File tools/test/run_unity040_tests.ps1 -Unity 'D:/Developer/2021.3.45f1/Editor/Unity.exe'`: **75/75 PASS**.
+- `pwsh -NoProfile -File tools/test/test_android_gpu_bridge_gate_analysis.ps1`: **35/35 PASS**.
+- `.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py`: **PASS**.
+- `$env:__COMPAT_LAYER='RunAsInvoker'; pwsh -NoProfile -File tools/test/build_android_gpu_bridge_gate.ps1 -ProjectPath unity/HumanVisionDemo`: **PASS**; Android ARM64 API 26 native, Unity Development IL2CPP/Vulkan APK, and seven-library dependency closure. APK SHA-256: `3727263c1e5e87e76a015d95607420b282081ce126e8942fa0ec2e5cd377e70f`.
+- `pwsh -NoProfile -File tools/test/collect_android_gpu_bridge_gate.ps1 -DurationMinutes 10 -OutputPath out/device-gates/milestone-b -DryRun`: **PASS**; same APK/hash, no ADB executed.
+
+B7 and Milestone B remain open for the complete physical-device gate and user
+acceptance. C/D remain unopened.
+
+---
+
 # Android Vulkan/ncnn — B7 device smoke reached GPU path; status contract repaired (2026-09-25)
 
 The first Snapdragon 888 smoke after APK dependency repair reached the bridge:

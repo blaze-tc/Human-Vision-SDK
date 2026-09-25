@@ -1,6 +1,7 @@
 #define __ANDROID__ 1
 #define VK_USE_PLATFORM_ANDROID_KHR 1
 #define HV_ANDROID_ADAPTER_TEST 1
+#define HV_ANDROID_GPU_GATE 1
 #define HUMANVISION_BUILDING_DLL 1
 #include "gpu/android/unity_vulkan_plugin.cpp"
 #include "composition/android_gpu_c.cpp"
@@ -387,6 +388,28 @@ TEST(UnityVulkanAndroidAdapter, PreloadCapturesEnabledInstanceFactsAndConfigures
   EXPECT_EQ(g.event_config.renderPassPrecondition,kUnityVulkanRenderPass_EnsureOutside);
   EXPECT_EQ(g.event_config.graphicsQueueAccess,kUnityVulkanGraphicsQueueAccess_DontCare);
   EXPECT_EQ(std::string(AndroidProducer::TestDiagnostic()),"");
+  humanvision::gpu::ShutdownUnityVulkanProducer();
+  UnityPluginUnload();
+}
+TEST(UnityVulkanAndroidAdapter, GateProbeBelongsOnlyToCurrentSourceLease) {
+  g=AdapterFacts{};
+  InstallAndCreateUnityDevice();
+  void* texture=Handle<void*>(1234);
+  ASSERT_TRUE(humanvision::gpu::BeginUnityVulkanSourceLease(texture));
+  const auto old_token=AndroidProducer::TestSourceLeaseToken();
+  AndroidProducer::TestGateProbePublication(old_token,"candidate=blit old lease");
+  EXPECT_EQ(std::string(humanvision::gpu::UnityVulkanProducerGateProbe()),"candidate=blit old lease");
+  humanvision::gpu::EndUnityVulkanSourceLease();
+  EXPECT_EQ(std::string(humanvision::gpu::UnityVulkanProducerGateProbe()),"");
+  ASSERT_TRUE(humanvision::gpu::BeginUnityVulkanSourceLease(texture));
+  const auto new_token=AndroidProducer::TestSourceLeaseToken();
+  ASSERT_NE(new_token,old_token);
+  EXPECT_EQ(std::string(humanvision::gpu::UnityVulkanProducerGateProbe()),"");
+  AndroidProducer::TestGateProbePublication(old_token,"candidate=blit delayed old callback");
+  EXPECT_EQ(std::string(humanvision::gpu::UnityVulkanProducerGateProbe()),"");
+  AndroidProducer::TestGateProbePublication(new_token,"candidate=blit new lease");
+  EXPECT_EQ(std::string(humanvision::gpu::UnityVulkanProducerGateProbe()),"candidate=blit new lease");
+  humanvision::gpu::EndUnityVulkanSourceLease();
   humanvision::gpu::ShutdownUnityVulkanProducer();
   UnityPluginUnload();
 }

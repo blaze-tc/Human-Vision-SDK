@@ -67,7 +67,11 @@ seconds between first and last status, and no status gap over 60 seconds.
 Imported and converted counters must increase again in the last 90 seconds
 and within 30 seconds after each pause or camera-restart recovery marker.
 The gate emits the complete B2 measurement once per source generation as
-separate `HV_GPU_GATE probe` lines. A rejected blit candidate remains visible
+separate `HV_GPU_GATE probe generation=N` lines. A source lease token prevents
+an old measurement from being logged while the next source is pending, even
+when the two measured descriptions are identical. The collector requires one
+complete probe block after each `source rebuilding generation=N` marker and
+before that generation's first configured status. A rejected blit candidate remains visible
 when the color-attachment fallback succeeds. Routine status lines carry
 `error=<none>` while the selected bridge and consumer run; producer, bridge,
 configuration and consumer failures remain in the error field or raise a gate

@@ -56,8 +56,6 @@ function Get-AndroidGpuBridgeGateAnalysis {
             $pendingValid = $false
         }
     }
-    $candidateName = if ($selected -eq 1) { 'blit' } elseif ($selected -eq 2) { 'color_attachment' } else { '' }
-    $candidate = @($RawLog -split 'candidate=' | Where-Object { $_ -match "^$candidateName width=" } | Select-Object -Last 1)
     $expectedAhbUsage = if ($selected -eq 1) { 256 } elseif ($selected -eq 2) { 768 } else { 0 }
     $expectedProducerUsage = if ($selected -eq 1) { 6 } elseif ($selected -eq 2) { 20 } else { 0 }
     $usageMatches = $selected -ne 0 -and $activeStatuses.Count -gt 0 -and @($activeStatuses | Where-Object {
@@ -65,10 +63,37 @@ function Get-AndroidGpuBridgeGateAnalysis {
         [int]$Matches[1] -ne 1 -or [Convert]::ToUInt64($Matches[2], 16) -ne $expectedAhbUsage -or
             [Convert]::ToUInt64($Matches[3], 16) -eq 0
     }).Count -eq 0
-    $probeMatches = $candidate.Count -gt 0 -and $candidate[-1] -match "^$candidateName width=\d+ height=\d+ layers=1 format=1 usage=$expectedAhbUsage stride=\d+" -and
-        $candidate[-1] -match "producer vk_format=37 [^\r\n]*image_usage=$expectedProducerUsage(?:\s|$)" -and
-        $candidate[-1] -match 'consumer vk_format=37 [^\r\n]*image_usage=4(?:\s|$)' -and
-        $candidate[-1] -notmatch 'failed:'
+    $generationMarkers = @($lines | Where-Object { $_ -match 'HV_GPU_GATE source rebuilding generation=(\d+) ' })
+    $activeGenerations = @($activeStatuses | ForEach-Object {
+        if ($_ -match ' generation=(\d+) ') { [ulong]$Matches[1] }
+    } | Select-Object -Unique)
+    $statusGenerations = @($statuses | ForEach-Object {
+        if ($_ -match ' generation=(\d+) ') { [ulong]$Matches[1] }
+    } | Select-Object -Unique)
+    $probeMatches = $activeGenerations.Count -gt 0 -and
+        $activeGenerations.Count -eq $generationMarkers.Count -and
+        $statusGenerations.Count -eq $activeGenerations.Count -and
+        @($statuses | Where-Object { $_ -notmatch ' generation=\d+ ' }).Count -eq 0
+    foreach ($generation in $activeGenerations) {
+        $marker = @($generationMarkers | Where-Object { $_ -match "HV_GPU_GATE source rebuilding generation=$generation " })
+        $probeLines = @($lines | Where-Object { $_ -match "HV_GPU_GATE probe generation=$generation " })
+        $generationStatuses = @($activeStatuses | Where-Object { $_ -match " generation=$generation " })
+        $probeText = ($probeLines | ForEach-Object { ($_ -split "HV_GPU_GATE probe generation=$generation ", 2)[-1] }) -join "`n"
+        $candidateName = if ($selected -eq 1) { 'blit' } elseif ($selected -eq 2) { 'color_attachment' } else { '' }
+        $candidate = @($probeText -split 'candidate=' | Where-Object { $_ -match "^$candidateName width=" } | Select-Object -Last 1)
+        $markerEpoch = if ($marker.Count -eq 1 -and $marker[0] -match '^\s*(\d{10}(?:\.\d+)?)\s+') { [double]$Matches[1] } else { 0 }
+        $firstActiveEpoch = if ($generationStatuses.Count -and $generationStatuses[0] -match '^\s*(\d{10}(?:\.\d+)?)\s+') { [double]$Matches[1] } else { 0 }
+        $probeEpochs = @($probeLines | ForEach-Object { if ($_ -match '^\s*(\d{10}(?:\.\d+)?)\s+') { [double]$Matches[1] } })
+        if ($marker.Count -ne 1 -or $candidate.Count -ne 1 -or
+            @($probeLines | Where-Object { $_ -match "candidate=$candidateName width=" }).Count -ne 1 -or
+            $probeEpochs.Count -ne $probeLines.Count -or
+            @($probeEpochs | Where-Object { $_ -lt $markerEpoch -or $_ -gt $firstActiveEpoch }).Count -gt 0 -or
+            $candidate[-1] -notmatch "^$candidateName width=\d+ height=\d+ layers=1 format=1 usage=$expectedAhbUsage stride=\d+" -or
+            $candidate[-1] -notmatch "producer vk_format=37 [^\r\n]*image_usage=$expectedProducerUsage(?:\s|$)" -or
+            $candidate[-1] -notmatch 'consumer vk_format=37 [^\r\n]*image_usage=4(?:\s|$)' -or
+            $candidate[-1] -notmatch 'externalMemoryFeatures=\d+ compatibleHandleTypes=\d+ maxExtent=' -or
+            $candidate[-1] -match 'failed:') { $probeMatches = $false }
+    }
     $pauseStart = $RawLog.IndexOf('HV_GPU_GATE pause=True')
     $pauseEnd = if ($pauseStart -ge 0) { $RawLog.IndexOf('HV_GPU_GATE pause=False', $pauseStart + 1) } else { -1 }
     $pauseRecovery = if ($pauseEnd -ge 0) { $RawLog.IndexOf('HV_GPU_GATE source resumed after=pause', $pauseEnd + 1) } else { -1 }
@@ -100,6 +125,7 @@ function Get-AndroidGpuBridgeGateAnalysis {
         gpu_import_observed = $imported.Count -gt 1 -and $imported[-1] -gt $imported[0]
         selected_copy_path = $selected -in @(1,2) -and @($paths | Where-Object { $_ -notin @(0,$selected) }).Count -eq 0
         pending_source_measurements_recover = $pendingValid
+        probe_for_each_configured_generation = $probeMatches
         selected_path_matches_actual_contract = $usageMatches -and $probeMatches
         exact_nonzero_device_and_driver_uuids = $activeStatuses.Count -gt 0 -and $uuidRows.Count -eq $activeStatuses.Count
         portrait_and_both_landscapes = @(@('Portrait','LandscapeLeft','LandscapeRight') | Where-Object { $orientations -notcontains $_ }).Count -eq 0

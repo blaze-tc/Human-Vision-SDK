@@ -39,6 +39,7 @@ namespace HumanVision.Demo
         private CommandBuffer _commands;
         private IntPtr _renderEvent;
         private long _frameId;
+        private ulong _sourceGeneration;
         private float _nextLog;
         private bool _begun;
         private int _rotation = -1;
@@ -68,7 +69,9 @@ namespace HumanVision.Demo
             if (_source == null || _source.width != width || _source.height != height ||
                 _rotation != rotation || _mirror != mirror)
             {
-                Debug.Log("HV_GPU_GATE source rebuilding width=" + width + " height=" + height +
+                ++_sourceGeneration;
+                Debug.Log("HV_GPU_GATE source rebuilding generation=" + _sourceGeneration +
+                    " width=" + width + " height=" + height +
                     " rotation=" + rotation + " mirror=" + mirror);
                 EndSource();
                 _rotation = rotation;
@@ -114,7 +117,7 @@ namespace HumanVision.Demo
                     byte* nd = status.ncnnDevice;
                     byte* ur = status.unityDriver;
                     byte* nr = status.ncnnDriver;
-                        _lastStatus = "HV_GPU_GATE frame=" + _frameId + " result=" + result +
+                        _lastStatus = "HV_GPU_GATE frame=" + _frameId + " generation=" + _sourceGeneration + " result=" + result +
                     " orientation=" + Screen.orientation + " rotation=" + rotation + " mirror=" + mirror +
                     " path=" + status.path + " ahbFormat=" + status.format +
                     " ahbUsage=0x" + status.usage.ToString("X") +
@@ -147,7 +150,7 @@ namespace HumanVision.Demo
             foreach (string line in measured.Split('\n'))
             {
                 string entry = line.TrimEnd('\r');
-                if (entry.Length != 0) Debug.Log("HV_GPU_GATE probe " + entry);
+                if (entry.Length != 0) Debug.Log("HV_GPU_GATE probe generation=" + _sourceGeneration + " " + entry);
             }
         }
         private void FailGate(string operation, int result)

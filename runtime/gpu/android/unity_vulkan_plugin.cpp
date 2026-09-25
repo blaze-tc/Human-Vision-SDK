@@ -170,6 +170,9 @@ public:
     source_image_.store(0, std::memory_order_release);
     source_lease_generation_.store(bridge_.Generation(), std::memory_order_release);
     source_lease_token_.fetch_add(1, std::memory_order_acq_rel);
+#if defined(HV_ANDROID_GPU_GATE)
+    gate_probe_token_ = 0;
+#endif
     source_lease_texture_.store(texture, std::memory_order_release);
     return true;
   }
@@ -316,7 +319,10 @@ public:
   const char *GateProbe() const noexcept {
     thread_local std::string snapshot;
     std::lock_guard<std::mutex> lock(control_);
-    snapshot = diagnostic_;
+    snapshot = gate_probe_token_ != 0 &&
+        gate_probe_token_ == source_lease_token_.load(std::memory_order_acquire) &&
+        source_lease_texture_.load(std::memory_order_acquire) &&
+        !configuration_failed_.load(std::memory_order_acquire) ? diagnostic_ : "";
     return snapshot.c_str();
   }
 #endif
@@ -473,6 +479,17 @@ public:
     return result;
   }
   static const char *TestDiagnostic() noexcept { return Get().Diagnostic(); }
+#if defined(HV_ANDROID_GPU_GATE)
+  static void TestGateProbePublication(uint64_t token, const char* diagnostic) noexcept {
+    auto& self = Get();
+    std::lock_guard<std::mutex> lock(self.control_);
+    self.diagnostic_ = diagnostic;
+    self.gate_probe_token_ = token;
+  }
+  static uint64_t TestSourceLeaseToken() noexcept {
+    return Get().source_lease_token_.load(std::memory_order_acquire);
+  }
+#endif
   static bool TestBlit(const UnityVulkanSlotCache &cache,
                        const UnityTextureAccess &access,
                        const BridgeBarrier *barriers) noexcept {
@@ -569,6 +586,9 @@ private:
     uint64_t lease_token = 0;
   };
   void InvalidateSourceLease() noexcept {
+#if defined(HV_ANDROID_GPU_GATE)
+    gate_probe_token_ = 0;
+#endif
     configuration_event_token_.store(0, std::memory_order_release);
     configuration_requested_.store(false, std::memory_order_release);
     configuration_event_inflight_.store(false, std::memory_order_release);
@@ -627,6 +647,9 @@ private:
     source_lease_generation_.store(bridge_.Generation(), std::memory_order_release);
     { std::lock_guard<std::mutex> queue(queue_mutex_); queue_closed_ = false; }
     diagnostic_ = selection.diagnostic;
+#if defined(HV_ANDROID_GPU_GATE)
+    gate_probe_token_ = measured_lease_token_;
+#endif
 #endif
   }
   void SourceWorker() noexcept {
@@ -1515,6 +1538,9 @@ private:
   std::atomic<uint64_t> configuration_event_token_{0};
   HV_AndroidGpuSubmissionV1 measured_submission_{};
   uint64_t measured_lease_token_ = 0;
+#if defined(HV_ANDROID_GPU_GATE)
+  uint64_t gate_probe_token_ = 0;
+#endif
   VulkanSourceImage measured_source_{};
   VulkanDeviceContext producer_context_{};
   bool measured_ncnn_lease_ = false;
