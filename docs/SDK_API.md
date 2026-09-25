@@ -253,3 +253,40 @@ Unity exposes `HumanVisionBody.HandJoints[6]` and `HumanVisionJoint.IsDerived`;
 its reader verifies the body/hand metadata sequence before publishing either.
 `HumanVisionCameraManager.GetJointCount()` returns23; first17 enum values stay stable.
 This is not the full Kinect32 schema and does not change the old HV_Body layout.
+
+## Android GPU prepared-input plugin ABI V3
+
+`runtime/include/humanvision_plugin_v3.h` adds `HV_QueryPluginV3` as a separate
+query. A caller passes a caller-owned `HV_PluginApiV3` with
+`v1.struct_size=sizeof(HV_PluginApiV3)` and `v1.api_version=3`; it must never
+reinterpret a V1 or V2 query result as V3. The V1 public C and Unity skeleton
+APIs and the V2 GPU table layouts remain unchanged. The V3 plugin can expose a
+GPU backend, pipeline, or both; its primary `type` selects the required table.
+
+`HV_GpuBackendApiV2` embeds the V1 GPU backend table and adds a prepared-input
+table. `prepare_image` borrows the current AHB-backed frame until its small GPU
+input copy is complete and returns a nonzero, generation-bound, one-shot token.
+The embedded V1 table header advertises the complete V3 backend table extent
+(`sizeof(HV_GpuBackendApiV2)`), so the host checks 48 bytes before reading the
+prepared pointer; the standalone V1/V2 GPU backend table remains 40 bytes.
+The observation owner retains the AHB lease for any remaining pose roles.
+`run_prepared` consumes that detached GPU input after the AHB can be retired;
+`discard_prepared` explicitly releases an unrun input. A stale, duplicate,
+zero, foreign-generation, flagged or otherwise malformed token is rejected.
+Tokens increase strictly within a generation; generations also increase.
+If an error prevents token discard, the host retains its lease until a later
+explicit discard or backend destruction instead of recycling an unknown input.
+Even a failed `prepare_image` consumes any valid token it issued. A malformed
+or unrecoverable prepare poisons that instance until destruction. The host
+serializes `run_image`, `session_info`, `prepare_image`, `run_prepared` and
+`discard_prepared` on one backend instance; separate instances may run at once.
+Output tensor views remain backend-owned until the next run, discard or destroy.
+The host validates the V3 table, explicit requested provider and token envelope,
+and does not substitute an ORT backend if the selected V3 GPU provider fails.
+
+`HV_GpuPipelineApiV2::create` alone receives `HV_HostServicesV3`, including
+`create_gpu_backend_v3` and `release_gpu_backend_v3`. Its `process_gpu` returns
+one complete `HV_ObservationFrameV1` for the current source frame. V1/V2
+pipeline callbacks continue to receive their original host service types.
+The implementation of the detached detector tensor is scheduled for Revision 3
+Task 4; this section defines the additive ABI contract, not device acceptance.

@@ -1,3 +1,60 @@
+# Android Vulkan/ncnn — Revision 3 Task 3 V3 prepared-input ABI complete (2026-09-26)
+
+Independent Task 3 SPEC/QUALITY review requested four fixes. A V3 prepared
+output with only a 16-byte declared extent or wrong version is now rejected
+before any write/callback; `HV_GpuBackendApiV2` declares 48 bytes and
+registration checks that extent before reading `prepared`; a failed prepare
+advances the token watermark even when discard succeeds; and all V3 callbacks
+on one lease are serialized. The four new regression scenarios and the host
+table assertion were observed RED as **5/12 failed** with temporary old
+behavior. The source was restored byte-identically after this reproducible
+RED replay (SHA-256 `396eab8b828c6ce713f50936a1b1fd228dc309f7650a6fc46baf46a63a912ca0`).
+The revised focused command passed **12/12**; full native passed **215/215**;
+V1/V2 `PluginAbi` passed **10/10**. The ARM64/API26 `humanvision` build,
+`.venv-reference/Scripts/python.exe tools/test/verify_android_native.py`
+(1810 resolved imports; SHA-256
+`f53be3799bb16f522f7493eb7c63bbc29ee6355421587146325e804097dbef24`),
+architecture guard and `git diff --check` passed. Ignored evidence is under
+`out/rev3-task3-evidence/`: `review-red-native-tests.log`,
+`review-green-focused-native-tests.log`, `review-green-full-native-tests.log`,
+`replay_review_red.py` and matching before/after source SHA files. Independent
+Independent SPEC and QUALITY re-review passed after the fixes. This dedicated
+Task 3 commit records the additive ABI; Task 4 has not started.
+
+Task 3 adds a separate V3 query, immutable V1/V2 prefix tables, explicit V3
+backend registration/selection, V3-only host services, and a generation-bound,
+one-shot prepared-token wrapper with strictly increasing token/generation
+ordering. It does not yet create a detached ncnn tensor;
+that is Task 4. Existing V1/V2 callbacks and layouts were not edited.
+
+The test-first RED command `pwsh -NoProfile -File
+tools/test/run_native_tests.ps1 -Filter GpuAbiV3` failed at C1083 because the
+new `humanvision_plugin_v3.h` interface did not exist. This was a compile RED,
+not a failing runtime assertion. After implementation, the same focused command
+passed **5/5**. Review then found that an A→B→A token sequence could reuse
+an old token and a failed discard could lose its recovery handle. Two new
+runtime tests failed first (**2 failed of 7**) and passed after the fixes
+(**7/7**). A further test caught failed prepare followed by failed discard:
+one of two new cases was RED before a poisoned lease retained the token for
+destruction and rejected any new prepare. The final focused suite is **9/9**.
+The initial full native suite passed **208/208**; after the four additional
+boundary tests, `pwsh -NoProfile -File tools/test/run_native_tests.ps1`
+passed **212/212**; `pwsh -NoProfile -File tools/test/run_native_tests.ps1
+-Filter PluginAbi` independently passed **10/10** existing V1/V2 ABI
+regressions. The command
+`& 'D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
+--build build/android-live --target humanvision --parallel 8` passed for
+ARM64/API26. `.venv-reference/Scripts/python.exe
+tools/test/verify_android_native.py` passed ELF64 AArch64/API26, ncnn/AHB/Vulkan
+symbols and 1810 strong dynamic imports; `libhumanvision.so` SHA-256 is
+`042fc1346103a1419700fe5ddc79ecc671f625502cd029fc3463fd67f9beabd6`.
+`.venv-reference/Scripts/python.exe
+tools/maintenance/check_architecture_boundaries.py` and `git diff --check`
+passed. Device performance and the 30 fresh observation FPS gate remain
+unmeasured. The 208/208 and 212/212 runs above preceded the review repair;
+the final 215/215 and independent review results are recorded at the top of
+this section. Task 4 begins only after this separate Task 3 commit.
+
 # Android Vulkan/ncnn — Revision 3 Task 2 model eligibility complete (2026-09-26)
 
 The first ScaleNorm `ReduceL2` conversion now passes all four strict Body26
