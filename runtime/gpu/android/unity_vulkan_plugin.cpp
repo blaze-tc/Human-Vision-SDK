@@ -145,6 +145,7 @@ public:
     }
     runtime_error_.store(0, std::memory_order_release);
     bool configured = bridge_.Initialize(device_context_, selection, contract);
+    if (!preserve_source_lease) ReleaseMeasuredNcnnLease();
     if (!device_live_.load(std::memory_order_acquire)) {
       bridge_.Shutdown();
       configured=false;
@@ -160,6 +161,7 @@ public:
     std::lock_guard<std::mutex> lock(control_);
     InvalidateSourceLease();
     bridge_.Shutdown();
+    ReleaseMeasuredNcnnLease();
   }
   bool BeginSourceLease(void *texture) noexcept {
     std::lock_guard<std::mutex> lock(control_);
@@ -172,16 +174,23 @@ public:
     return true;
   }
   void ConfigurationEvent(void *data) noexcept {
-    if (data != &configuration_event_ ||
+    const auto event_token = reinterpret_cast<uintptr_t>(data);
+    if (!event_token ||
+        event_token != configuration_event_token_.load(std::memory_order_acquire) ||
         !configuration_requested_.load(std::memory_order_acquire) ||
-        configuration_event_.lease_token != source_lease_token_.load(std::memory_order_acquire) ||
-        source_lease_texture_.load(std::memory_order_acquire) != configuration_event_.submission.unity_texture ||
+        event_token != source_lease_token_.load(std::memory_order_acquire) ||
         !vulkan_ || !device_live_.load(std::memory_order_acquire)) {
-      configuration_event_inflight_.store(false, std::memory_order_release);
       return;
     }
+    HV_AndroidGpuSubmissionV1 submission{};
+    {
+      std::lock_guard<std::mutex> lock(source_requests_mutex_);
+      if (event_token != configuration_event_token_.load(std::memory_order_acquire)) return;
+      submission = configuration_event_submission_;
+    }
+    if (source_lease_texture_.load(std::memory_order_acquire) != submission.unity_texture) return;
     UnityVulkanImage observed{};
-    const bool ok = vulkan_->AccessTexture(configuration_event_.submission.unity_texture,
+    const bool ok = vulkan_->AccessTexture(submission.unity_texture,
         UnityVulkanWholeImage, VK_IMAGE_LAYOUT_GENERAL,
         VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
         kUnityVulkanResourceAccess_ObserveOnly, &observed);
@@ -197,17 +206,22 @@ public:
       source.image_type = observed.type;
       {
         std::lock_guard<std::mutex> lock(source_requests_mutex_);
+        if (event_token != configuration_event_token_.load(std::memory_order_acquire)) return;
         measured_source_ = source;
-        measured_submission_ = configuration_event_.submission;
-        measured_lease_token_ = configuration_event_.lease_token;
+        measured_submission_ = submission;
+        measured_lease_token_ = event_token;
         configuration_ready_.store(true, std::memory_order_release);
       }
       source_requests_cv_.notify_one();
     } else {
+      std::lock_guard<std::mutex> lock(source_requests_mutex_);
+      if (event_token != configuration_event_token_.load(std::memory_order_acquire)) return;
       runtime_error_.store(4, std::memory_order_release);
       configuration_failed_.store(true, std::memory_order_release);
     }
-    configuration_event_inflight_.store(false, std::memory_order_release);
+    std::lock_guard<std::mutex> lock(source_requests_mutex_);
+    if (event_token == configuration_event_token_.load(std::memory_order_acquire))
+      configuration_event_inflight_.store(false, std::memory_order_release);
   }
 public:
   static void UNITY_INTERFACE_API RenderEvent(int event_id, void *data) noexcept {
@@ -218,6 +232,7 @@ public:
     std::lock_guard<std::mutex> lock(control_);
     InvalidateSourceLease();
     bridge_.Shutdown();
+    ReleaseMeasuredNcnnLease();
     std::lock_guard<std::mutex> queue(queue_mutex_);
     queue_closed_ = true;
   }
@@ -229,10 +244,17 @@ public:
       if (!configuration_failed_.load(std::memory_order_acquire) &&
           !configuration_event_inflight_.load(std::memory_order_acquire) &&
           !configuration_requested_.exchange(true, std::memory_order_acq_rel)) {
-        configuration_event_.submission = s;
-        configuration_event_.lease_token = source_lease_token_.load(std::memory_order_acquire);
+        const auto token = source_lease_token_.load(std::memory_order_acquire);
+        {
+          std::lock_guard<std::mutex> lock(source_requests_mutex_);
+          configuration_event_submission_ = s;
+          configuration_event_token_.store(token, std::memory_order_release);
+        }
         configuration_event_inflight_.store(true, std::memory_order_release);
-        if (out) *out = &configuration_event_;
+        // Unity treats event data as opaque. The never-reused lease sequence is
+        // encoded in the pointer value, so a delayed callback has no record to
+        // dereference and cannot alias a later request at the same texture.
+        if (out) *out = reinterpret_cast<void*>(static_cast<uintptr_t>(token));
       }
       configuration_pending_drops_.fetch_add(1, std::memory_order_relaxed);
       return BridgeResult::Busy;
@@ -322,6 +344,7 @@ public:
         bridge_.CloseAdmission();
         runtime_error_.store(3,std::memory_order_release);
       }
+      if (bridge_.IsClosed()) ReleaseMeasuredNcnnLease();
       device_live_.store(false,std::memory_order_release);
       have_device_ = false;
       device_context_ = {};
@@ -516,6 +539,14 @@ public:
 #endif
 
 private:
+  void ReleaseMeasuredNcnnLease() noexcept {
+#if !defined(HV_ANDROID_ADAPTER_TEST)
+    if (measured_ncnn_lease_) {
+      ReleaseNcnnGpuInstance();
+      measured_ncnn_lease_ = false;
+    }
+#endif
+  }
   struct SourceRequest {
     AndroidSlot* slot = nullptr;
     VkImage image = VK_NULL_HANDLE;
@@ -524,7 +555,9 @@ private:
     uint64_t lease_token = 0;
   };
   void InvalidateSourceLease() noexcept {
+    configuration_event_token_.store(0, std::memory_order_release);
     configuration_requested_.store(false, std::memory_order_release);
+    configuration_event_inflight_.store(false, std::memory_order_release);
     configuration_ready_.store(false, std::memory_order_release);
     configuration_failed_.store(false, std::memory_order_release);
     source_lease_texture_.store(nullptr, std::memory_order_release);
@@ -555,6 +588,7 @@ private:
       configuration_failed_.store(true, std::memory_order_release);
       return;
     }
+    measured_ncnn_lease_ = true;
     const AhbSelection selection = ProbeAndroidAhbCapabilities(
         producer, consumer, source, source.width, source.height);
     if (selection.path == HV_ANDROID_GPU_COPY_UNAVAILABLE) {
@@ -1462,14 +1496,14 @@ private:
   std::atomic<uint64_t> source_lease_generation_{0};
   std::atomic<uint64_t> source_lease_token_{0};
   std::atomic<uintptr_t> source_image_{0};
-  struct ConfigurationEventData {
-    HV_AndroidGpuSubmissionV1 submission{};
-    uint64_t lease_token = 0;
-  } configuration_event_{};
+  static_assert(sizeof(void*) >= sizeof(uint64_t), "Android GPU event tokens require a 64-bit player");
+  HV_AndroidGpuSubmissionV1 configuration_event_submission_{};
+  std::atomic<uint64_t> configuration_event_token_{0};
   HV_AndroidGpuSubmissionV1 measured_submission_{};
   uint64_t measured_lease_token_ = 0;
   VulkanSourceImage measured_source_{};
   VulkanDeviceContext producer_context_{};
+  bool measured_ncnn_lease_ = false;
   std::atomic<bool> configuration_requested_{false};
   std::atomic<bool> configuration_event_inflight_{false};
   std::atomic<bool> configuration_ready_{false};

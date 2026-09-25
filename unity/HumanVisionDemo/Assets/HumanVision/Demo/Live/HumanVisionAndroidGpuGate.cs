@@ -42,6 +42,7 @@ namespace HumanVision.Demo
         private bool _begun;
         private int _rotation = -1;
         private bool _mirror;
+        private string _pendingRecovery;
         private string _lastStatus = "Starting camera";
         private void Start()
         {
@@ -73,6 +74,11 @@ namespace HumanVision.Demo
                 if (HV_AndroidGpuGateBegin(_source.GetNativeTexturePtr(), inputContract.text) != 0)
                     throw new InvalidOperationException("Gate source lease failed");
                 _begun = true;
+                if (_pendingRecovery != null)
+                {
+                    Debug.Log("HV_GPU_GATE source resumed after=" + _pendingRecovery);
+                    _pendingRecovery = null;
+                }
             }
             Graphics.Blit(_camera, _source);
             var submission = new Submission {
@@ -129,6 +135,7 @@ namespace HumanVision.Demo
             {
                 EndSource();
                 if (_camera != null) { _camera.Stop(); _camera.Play(); }
+                _pendingRecovery = "restart";
                 Debug.Log("HV_GPU_GATE camera restart requested");
             }
         }
@@ -136,7 +143,15 @@ namespace HumanVision.Demo
         {
             Debug.Log("HV_GPU_GATE pause=" + pause);
             if (pause) EndSource();
-            else if (_camera != null && !_camera.isPlaying) _camera.Play();
+            else
+            {
+                _pendingRecovery = "pause";
+                if (_camera != null && !_camera.isPlaying) _camera.Play();
+            }
+        }
+        private void OnApplicationFocus(bool focus)
+        {
+            Debug.Log("HV_GPU_GATE focus=" + focus);
         }
         private void EndSource()
         {

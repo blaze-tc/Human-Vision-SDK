@@ -1,3 +1,39 @@
+# Android Vulkan/ncnn — B7 review fixes verified; device acceptance open (2026-09-25)
+
+B7 independent review found three host blockers after `c2181bf186da11d5ed74b452ff4925fdba4dc5ab`:
+the configuration render event reused one mutable payload address across source
+leases; the B2 ncnn probe created a GPU instance outside the backend's owner
+count; and the device collector could report a pass candidate despite later
+errors, stalled imports or incomplete lifecycle evidence. The added
+`QueuedOldConfigurationCannotAliasNewLeaseRequest` test first failed when an
+old queued event arrived after End/Begin/new Prepare on the same texture.
+Configuration events now carry the 64-bit lease token as opaque callback data,
+with no payload pointer to reuse or free. B2 probe and backend sessions share
+one counted ncnn instance lease; the producer releases its lease after bridge
+teardown. The collector requires every status to have an empty error, rising
+imported and converted counters, selected-path/actual-usage agreement, no
+native fatal, all orientations, ordered pause/focus/restart and recovery logs.
+The gate component emits explicit focus and post-recovery markers.
+
+Review-fix verification on this worktree:
+
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter 'QueuedOldConfigurationCannotAliasNewLeaseRequest'`: expected RED, 1/1 failed before the event fix.
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1`: **193/193 PASS**, CTest 14.48 s after the final native change.
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter 'QueuedOldConfigurationCannotAliasNewLeaseRequest|StaleConfigurationEventCannotMeasureReusedTexture'`: **2/2 PASS** after the final native change.
+- `pwsh -NoProfile -File tools/test/test_android_gpu_bridge_gate_analysis.ps1`: **12/12 PASS** including error, stall, fatal, path and missing lifecycle rejection fixtures.
+- `pwsh -NoProfile -File tools/package/build_live_native.ps1 -Platform Android -AndroidApiLevel 26`: **PASS**; the gate build repeats the Android API 26 native compile.
+- The same gate-OFF Android build was repeated after the final source change; NDK `llvm-nm --defined-only build/android-live/bin/Release/libhumanvision.so` found **zero** `HV_AndroidGpuGate*` definitions.
+- `$env:__COMPAT_LAYER='RunAsInvoker'; pwsh -NoProfile -File tools/test/run_unity040_tests.ps1 -Unity 'D:/Developer/2021.3.45f1/Editor/Unity.exe'`: **75/75 EditMode PASS**.
+- `.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py`: **PASS**.
+- `.venv-reference/Scripts/python.exe tools/maintenance/generate_component_catalog.py --check`: **PASS**.
+- `pwsh -NoProfile -File tools/test/build_android_gpu_bridge_gate.ps1 -ProjectPath unity/HumanVisionDemo`: **PASS**, Development IL2CPP ARM64 APK; SHA-256 `a269174f9e95d6262772c1ab6891fd560b1a44d10cccf169e4f7828f6a1185eb`.
+- `pwsh -NoProfile -File tools/test/collect_android_gpu_bridge_gate.ps1 -DurationMinutes 10 -OutputPath out/device-gates/milestone-b -DryRun`: **PASS**, verified the same APK/hash; no ADB command executed.
+
+This is host verification only. B7 and Milestone B remain open until the user
+returns a physical-device report and accepts it; C/D remain unopened.
+
+---
+
 # Android Vulkan/ncnn — B7 host gate built; device acceptance open (2026-09-25)
 
 Authority: Revision 2 design and the B7 plan. B6 at

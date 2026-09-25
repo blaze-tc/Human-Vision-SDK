@@ -1,6 +1,7 @@
 #include "vulkan_device_identity.h"
 #include <algorithm>
 #include <iomanip>
+#include <mutex>
 #include <sstream>
 #if defined(__ANDROID__)
 #include <gpu.h>
@@ -63,6 +64,28 @@ DeviceMatch MatchDevice(const DeviceIdentity& unity, const std::vector<IndexedDe
 }
 
 #if defined(__ANDROID__)
+namespace {
+std::mutex gpu_instance_mutex;
+uint32_t gpu_instance_users = 0;
+bool gpu_instance_owned = false;
+}
+bool AcquireNcnnGpuInstance() noexcept {
+    std::lock_guard<std::mutex> lock(gpu_instance_mutex);
+    if (!gpu_instance_users && !ncnn::get_gpu_instance()) {
+        if (ncnn::create_gpu_instance() != 0) return false;
+        gpu_instance_owned = true;
+    }
+    ++gpu_instance_users;
+    return true;
+}
+void ReleaseNcnnGpuInstance() noexcept {
+    std::lock_guard<std::mutex> lock(gpu_instance_mutex);
+    if (!gpu_instance_users) return;
+    if (--gpu_instance_users == 0 && gpu_instance_owned) {
+        ncnn::destroy_gpu_instance();
+        gpu_instance_owned = false;
+    }
+}
 DeviceIdentity QueryDeviceIdentity(const VulkanDeviceContext& context) {
     DeviceIdentity result;
     if (!context.instance || !context.physical_device || !ncnn::vkGetInstanceProcAddr) return result;
@@ -120,17 +143,17 @@ bool FindMatchedNcnnContext(const VulkanDeviceContext& unity,
                             VulkanDeviceContext& consumer,
                             std::string& diagnostic) {
     consumer = {};
-    if (!ncnn::get_gpu_instance() && ncnn::create_gpu_instance() != 0) {
+    if (!AcquireNcnnGpuInstance()) {
         diagnostic = "ncnn Vulkan GPU instance creation failed";
         return false;
     }
     const DeviceMatch match = MatchNcnnDevice(unity);
     diagnostic = match.diagnostic;
-    if (match.status != DeviceMatchStatus::Matched) return false;
+    if (match.status != DeviceMatchStatus::Matched) { ReleaseNcnnGpuInstance(); return false; }
     const ncnn::VulkanDevice* device = ncnn::get_gpu_device(match.index);
     if (!device || !device->is_valid()) {
         diagnostic = "Matched ncnn VulkanDevice is invalid: " + diagnostic;
-        return false;
+        ReleaseNcnnGpuInstance(); return false;
     }
     consumer.instance = ncnn::get_gpu_instance();
     consumer.physical_device = ncnn::get_gpu_info(match.index).physicalDevice();
@@ -141,7 +164,7 @@ bool FindMatchedNcnnContext(const VulkanDeviceContext& unity,
         ncnn::vkGetInstanceProcAddr(nullptr, "vkEnumerateInstanceVersion"));
     if (enumerate_version && enumerate_version(&api) != VK_SUCCESS) {
         diagnostic = "ncnn Vulkan instance-version query failed";
-        return false;
+        ReleaseNcnnGpuInstance(); return false;
     }
     consumer.instance_api_version = api;
     consumer.properties2_extension = ncnn::support_VK_KHR_get_physical_device_properties2 != 0;

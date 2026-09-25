@@ -41,12 +41,14 @@ struct VulkanDeviceContext {
     bool ahb_extension = false;
 };
 DeviceIdentity QueryDeviceIdentity(const VulkanDeviceContext& device);
-// The application owns ncnn's global GPU instance lifetime. Initialize it before
-// these calls and keep it alive until all nets/imports are destroyed.
+// Probe and backend sessions share one process-wide lease. Release only after
+// all borrowed VulkanDevice handles, imports and nets have been destroyed.
+bool AcquireNcnnGpuInstance() noexcept;
+void ReleaseNcnnGpuInstance() noexcept;
 DeviceMatch MatchNcnnDevice(const VulkanDeviceContext& unity);
 DeviceMatch ConfigureNcnnNet(const VulkanDeviceContext& unity, ncnn::Net& net);
-// This implementation lives in a ncnn-only translation unit so the pinned
-// SimpleVK declarations never collide with Unity's Vulkan headers.
+// On success the caller owns one GPU-instance lease and must release it.
+// Failure releases the lease internally.
 bool FindMatchedNcnnContext(const VulkanDeviceContext& unity,
                             VulkanDeviceContext& consumer,
                             std::string& diagnostic);

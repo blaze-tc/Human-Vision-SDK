@@ -44,41 +44,22 @@ finally {
     if (!$capture.HasExited) { Stop-Process -Id $capture.Id -Force }
 }
 $ended = [DateTime]::UtcNow
-$lines = @(Get-Content -LiteralPath $log | Where-Object { $_ -match 'HV_GPU_GATE' })
 $raw = Get-Content -LiteralPath $log -Raw
-$statuses = @($lines | Where-Object { $_ -match ' converted=\d+ ' })
-$converted = @($statuses | ForEach-Object { if ($_ -match ' converted=(\d+)') { [long]$Matches[1] } })
-$paths = @($statuses | ForEach-Object { if ($_ -match ' path=(\d+)') { [int]$Matches[1] } } | Select-Object -Unique)
-$uuidRows = @($statuses | Where-Object { $_ -match 'unityDeviceUUID=([0-9a-f]{32}) ncnnDeviceUUID=\1 unityDriverUUID=([0-9a-f]{32}) ncnnDriverUUID=\2' })
-$orientations = @($statuses | ForEach-Object { if ($_ -match ' orientation=([^ ]+)') { $Matches[1] } } | Select-Object -Unique)
-$checks = [ordered]@{
-    duration_at_least_10_minutes = ($ended - $started).TotalMinutes -ge 9.9
-    gpu_conversion_observed = $converted.Count -gt 1 -and ($converted[-1] -gt $converted[0])
-    selected_copy_path = $paths.Count -eq 1 -and $paths[0] -in @(1,2)
-    exact_nonzero_device_and_driver_uuids = $uuidRows.Count -gt 0 -and ($uuidRows[-1] -notmatch 'UUID=0{32}')
-    portrait_and_both_landscapes = @(@('Portrait','LandscapeLeft','LandscapeRight') | Where-Object { $orientations -notcontains $_ }).Count -eq 0
-    pause_resume = @($lines | Where-Object { $_ -match 'pause=True' }).Count -gt 0 -and @($lines | Where-Object { $_ -match 'pause=False' }).Count -gt 0
-    camera_restart = @($lines | Where-Object { $_ -match 'camera restart requested' }).Count -gt 0
-    measured_ahb_description = $raw -match 'candidate=\w+ width=\d+ height=\d+ layers=\d+ format=\d+ usage=\d+ stride=\d+'
-    external_format_and_features = $raw -match 'producer vk_format=\d+ external_format=\d+ external_features=\d+' -and
-        $raw -match 'consumer vk_format=\d+ external_format=\d+ external_features=\d+'
-    external_image_query = $raw -match 'externalMemoryFeatures=\d+ compatibleHandleTypes=\d+ maxExtent='
-    consumer_sampled_read_only_import = $raw -match 'consumer\.image_usage' -or $raw -match 'consumer vk_format=[^\r\n]+image_usage=4'
-    no_unity_exception = $raw -notmatch 'AndroidRuntime.*FATAL EXCEPTION|Unity.*(NullReferenceException|DllNotFoundException|EntryPointNotFoundException)'
-}
 $gateSource = Get-Content -LiteralPath (Join-Path $root 'unity/HumanVisionDemo/Assets/HumanVision/Demo/Live/HumanVisionAndroidGpuGate.cs') -Raw
-$checks['gate_component_has_no_cpu_readback_api'] = $gateSource -notmatch 'AsyncGPUReadback|GetPixels\s*\(|ReadPixels\s*\('
+. (Join-Path $PSScriptRoot 'android_gpu_bridge_gate_analysis.ps1')
+$analysis = Get-AndroidGpuBridgeGateAnalysis -RawLog $raw -DurationMinutes ($ended - $started).TotalMinutes -GateSource $gateSource
 $probe = @($raw -split "`r?`n" | Where-Object { $_ -match 'candidate=|producer vk_format=|consumer vk_format=|externalMemoryFeatures=|failed:' } | Select-Object -Unique)
 $report = [ordered]@{
-    result = if (@($checks.Values | Where-Object { $_ -eq $false }).Count -eq 0) { 'PASS_CANDIDATE_REQUIRES_USER_REVIEW' } else { 'FAIL' }
+    result = $analysis.result
     commit = $commit; apk_sha256 = $apkHash; apk = $apkPath
     serial = $Serial; device = $device; android = $android; build_fingerprint = $build
     vulkan_driver_property = $driver; started_utc = $started.ToString('o'); ended_utc = $ended.ToString('o')
-    selected_paths = $paths; orientations = $orientations; first_converted = if ($converted.Count) { $converted[0] } else { $null }
-    last_converted = if ($converted.Count) { $converted[-1] } else { $null }
-    checks = $checks
+    selected_paths = $analysis.selected_paths; orientations = $analysis.orientations
+    first_imported = $analysis.first_imported; last_imported = $analysis.last_imported
+    first_converted = $analysis.first_converted; last_converted = $analysis.last_converted
+    checks = $analysis.checks
     ahb_probe_evidence = $probe
-    last_gate_status = if ($statuses.Count) { $statuses[-1] } else { $null }
+    last_gate_status = $analysis.last_gate_status
 }
 $report | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $output 'report.json') -Encoding utf8
 Write-Output "Gate report: $(Join-Path $output 'report.json') ($($report.result))"

@@ -805,3 +805,31 @@ TEST(UnityVulkanAndroidAdapter, StaleConfigurationEventCannotMeasureReusedTextur
   EXPECT_EQ(HV_RuntimeEndAndroidGpuSourceLease(&runtime), HV_OK);
   UnityPluginUnload();
 }
+
+TEST(UnityVulkanAndroidAdapter, QueuedOldConfigurationCannotAliasNewLeaseRequest) {
+  using namespace humanvision::gpu;
+  g = AdapterFacts{};
+  InstallAndCreateUnityDevice();
+  vulkan_api.AccessTexture = UnityAccessTexture;
+  humanvision::runtime::RuntimeSession runtime;
+  auto* texture = reinterpret_cast<void*>(1);
+  HV_AndroidGpuSubmissionV1 frame{sizeof(frame), HV_ANDROID_GPU_API_V1,
+      texture, 320, 240, 1, 1000, 0, 0};
+  ASSERT_EQ(HV_RuntimeBeginAndroidGpuSourceLease(&runtime, texture), HV_OK);
+  void* old_event = nullptr;
+  ASSERT_EQ(HV_RuntimePrepareAndroidGpuFrame(&runtime, &frame, &old_event), HV_NO_NEW_RESULT);
+  ASSERT_NE(old_event, nullptr);
+  ASSERT_EQ(HV_RuntimeEndAndroidGpuSourceLease(&runtime), HV_OK);
+  ASSERT_EQ(HV_RuntimeBeginAndroidGpuSourceLease(&runtime, texture), HV_OK);
+  frame.frame_id = 2;
+  void* new_event = nullptr;
+  ASSERT_EQ(HV_RuntimePrepareAndroidGpuFrame(&runtime, &frame, &new_event), HV_NO_NEW_RESULT);
+  ASSERT_NE(new_event, nullptr);
+  const int before = g.unity_access_calls;
+  AndroidProducer::RenderEvent(1, old_event);
+  EXPECT_EQ(g.unity_access_calls, before);
+  AndroidProducer::RenderEvent(1, new_event);
+  EXPECT_EQ(g.unity_access_calls, before + 1);
+  EXPECT_EQ(HV_RuntimeEndAndroidGpuSourceLease(&runtime), HV_OK);
+  UnityPluginUnload();
+}

@@ -74,25 +74,6 @@ struct ImportSemaphoreFdInfo {
     int fd = -1;
 };
 using ImportSemaphoreFd = VkResult (VKAPI_PTR*)(VkDevice, const ImportSemaphoreFdInfo*);
-std::mutex gpu_instance_mutex;
-uint32_t gpu_instance_users = 0;
-bool gpu_instance_owned = false;
-bool AcquireGpuInstance() {
-    std::lock_guard<std::mutex> lock(gpu_instance_mutex);
-    if (!gpu_instance_users && !ncnn::get_gpu_instance()) {
-        if (ncnn::create_gpu_instance() != 0) return false;
-        gpu_instance_owned = true;
-    }
-    ++gpu_instance_users;
-    return true;
-}
-void ReleaseGpuInstance() {
-    std::lock_guard<std::mutex> lock(gpu_instance_mutex);
-    if (--gpu_instance_users == 0 && gpu_instance_owned) {
-        ncnn::destroy_gpu_instance();
-        gpu_instance_owned = false;
-    }
-}
 bool WaitProducerFd(gpu::SyncFd& fd) noexcept {
     if (!fd.HasPayload()) return true;
     if (fd.Get() == -1) return true;
@@ -145,7 +126,7 @@ AndroidSession::~AndroidSession() {
         if (blob_allocator_) device_->reclaim_blob_allocator(blob_allocator_);
         if (staging_allocator_) device_->reclaim_staging_allocator(staging_allocator_);
     }
-    if (gpu_instance_lease_) ReleaseGpuInstance();
+    if (gpu_instance_lease_) gpu::ReleaseNcnnGpuInstance();
 }
 
 bool AndroidSession::ParseModel(const HV_GpuBackendConfigV1& config, std::string& error) {
@@ -257,7 +238,7 @@ bool AndroidSession::Initialize(const HV_GpuBackendConfigV1& config,
     }
     bridge_ = host.bridge;
     if (!ParseModel(config, error)) return false;
-    if (!AcquireGpuInstance()) { error = "ncnn Vulkan GPU instance creation failed"; return false; }
+    if (!gpu::AcquireNcnnGpuInstance()) { error = "ncnn Vulkan GPU instance creation failed"; return false; }
     gpu_instance_lease_ = true;
     const auto match = gpu::MatchNcnnDevice(host.unity_device);
     if (match.status != gpu::DeviceMatchStatus::Matched ||
@@ -321,7 +302,7 @@ bool AndroidSession::InitializeGate(const std::string& input_contract_json,
     try {
         if (!ParseInputContract(nlohmann::json::parse(input_contract_json), contract_, error)) return false;
     } catch (const std::exception& ex) { error = ex.what(); return false; }
-    if (!AcquireGpuInstance()) { error = "Gate ncnn Vulkan GPU instance creation failed"; return false; }
+    if (!gpu::AcquireNcnnGpuInstance()) { error = "Gate ncnn Vulkan GPU instance creation failed"; return false; }
     gpu_instance_lease_ = true;
     const auto match = gpu::MatchNcnnDevice(host.unity_device);
     if (match.status != gpu::DeviceMatchStatus::Matched) {
