@@ -51,6 +51,10 @@ function Assert-Fail([string]$name, [string]$raw, [string]$check = '') {
 }
 $baseline = Analyze $valid
 if ($baseline.result -ne 'PASS_CANDIDATE_REQUIRES_USER_REVIEW') { throw "Valid fixture failed: $($baseline.checks | ConvertTo-Json -Compress)" }
+$unityLandscapeAlias = $valid.Replace('orientation=LandscapeLeft', 'orientation=Landscape')
+if ((Analyze $unityLandscapeAlias).result -ne 'PASS_CANDIDATE_REQUIRES_USER_REVIEW') {
+    throw 'Unity Landscape alias for LandscapeLeft incorrectly failed'
+}
 $staleProbe = ($valid -split "`r?`n" | Where-Object { $_ -notmatch 'HV_GPU_GATE probe generation=3 ' }) -join "`n"
 Assert-Fail 'single stale probe reused after restart' $staleProbe 'probe_for_each_configured_generation'
 $missingConsumer = ($valid -split "`r?`n" | Where-Object { $_ -notmatch 'HV_GPU_GATE probe generation=3 consumer vk_format=' }) -join "`n"
@@ -90,6 +94,7 @@ Assert-Fail 'gate startup error' ($valid + "`n1790000590.000 E Unity: Gate requi
 Assert-Fail 'gate exception on info tag' ($valid + "`n1790000590.000 I Unity: InvalidOperationException: Gate render event unavailable") 'no_native_or_unity_fatal'
 Assert-Fail 'wrong actual AHB usage' ($valid.Replace('ahbUsage=0x100', 'ahbUsage=0x300')) 'selected_path_matches_actual_contract'
 Assert-Fail 'wrong producer image usage' ($valid.Replace('image_usage=6 ', 'image_usage=20 ')) 'selected_path_matches_actual_contract'
+Assert-Fail 'no left landscape evidence' ($valid.Replace('orientation=LandscapeLeft', 'orientation=Portrait')) 'portrait_and_both_landscapes'
 Assert-Fail 'no orientation evidence' ($valid.Replace('orientation=LandscapeRight', 'orientation=Portrait')) 'portrait_and_both_landscapes'
 Assert-Fail 'no pause evidence' ($valid.Replace('HV_GPU_GATE pause=True', 'HV_GPU_GATE no pause')) 'pause_resume'
 Assert-Fail 'no restart evidence' ($valid.Replace('HV_GPU_GATE camera restart requested', 'HV_GPU_GATE no restart')) 'camera_restart'
@@ -117,4 +122,4 @@ if ($collectorSource -match "'Unity:I','AndroidRuntime:E','\*:S'" -or $collector
 }
 $warning = Analyze ($valid + "`n1790000590.000 W Unity: harmless texture warning")
 if ($warning.result -ne 'PASS_CANDIDATE_REQUIRES_USER_REVIEW') { throw 'Harmless Unity warning incorrectly failed' }
-Write-Output 'Android GPU bridge gate analyzer: 35/35 PASS'
+Write-Output 'Android GPU bridge gate analyzer: 37/37 PASS'

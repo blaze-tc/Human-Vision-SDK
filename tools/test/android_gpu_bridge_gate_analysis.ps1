@@ -128,7 +128,9 @@ function Get-AndroidGpuBridgeGateAnalysis {
         probe_for_each_configured_generation = $probeMatches
         selected_path_matches_actual_contract = $usageMatches -and $probeMatches
         exact_nonzero_device_and_driver_uuids = $activeStatuses.Count -gt 0 -and $uuidRows.Count -eq $activeStatuses.Count
-        portrait_and_both_landscapes = @(@('Portrait','LandscapeLeft','LandscapeRight') | Where-Object { $orientations -notcontains $_ }).Count -eq 0
+        portrait_and_both_landscapes = $orientations -contains 'Portrait' -and
+            ($orientations -contains 'LandscapeLeft' -or $orientations -contains 'Landscape') -and
+            $orientations -contains 'LandscapeRight'
         pause_resume = $pauseStart -ge 0 -and $pauseEnd -gt $pauseStart
         background_foreground = $focusLost -ge 0 -and $focusGained -gt $focusLost
         camera_restart = @($lines | Where-Object { $_ -match 'camera restart requested' }).Count -gt 0
