@@ -1,5 +1,219 @@
 # RTMPose-t Body26 ncnn conversion gate — blocked (2026-09-25)
 
+## Bounded non-subgroup option gate: operators PASS, golden 3/4, Task 2 BLOCKED (2026-09-25)
+
+The one approved option-gating candidate **fails model eligibility**. The
+mirrored case's confidence P95 error is **0.041543197632**, exceeding the
+unchanged **0.02** gate. Full-body, clipped-person and rotated cases pass;
+all four valid-joint masks and normalized coordinate-distance gates pass.
+Task 2 remains **BLOCKED**. No local schema-2 ModelPack was promoted, no
+Task 3 work started, and no push/main merge/Release occurred. The retained
+candidate is experimental failure evidence, not an accepted runtime fix.
+The underlying driver/compiler cause remains unproven; the remaining
+confidence discrepancy has not been localized.
+
+### Single candidate and actual RED/GREEN
+
+Starting code was `be40af41cbb666025f36b5965d9befe1fee0660f`. The pinned
+ncnn source already honors `Option::use_subgroup_ops` when choosing Gemm,
+but `gpu.cpp` independently generated eleven `ncnn_subgroup_*` feature
+macros from device capability bits. The only patch adds an option-aware
+feature mask in that macro-generation block: true retains the original
+capabilities; false emits zero for all eleven subgroup feature macros.
+No mathematical shader, model graph/weights, CPU fallback, ORT route,
+threshold, public ABI or AHB logic was modified. The diagnostic pose Net
+sets `use_subgroup_ops=false` **before** `load_param`/`load_model`, retaining
+FP16 pack4 input/packed/storage and FP32 arithmetic. No production profile
+change was promoted because the full golden failed.
+
+The new ignored `option_probe.cpp` audits Vulkan layer support and exercises
+two exactly representable arithmetic fixtures on the attached OnePlus 9 Pro
+LE2120 / Snapdragon 888 / Adreno 660 (subgroup size 64, feature mask 191):
+
+- Reduction: 26 rows of width 256, four 64-element groups with values
+  `1,2,4,8`, each plus `r/64`. Expected SUM is `960+4r`.
+- Gemm: M=N=26, K=128, `A[r,k]=(r+1)/32`, `B[k,c]=(c+1)/32`;
+  expected `C[r,c]=(r+1)(c+1)/8`. Actual inputs are GPU FP16 A pack1 and
+  B pack4, independently logged and checked.
+
+The original static library with subgroup enabled returned `64+r` for
+every Reduction row: **26/26 failures**. Gemm selected `gemm_sg` with
+64x1x1 local size and failed **627/676** elements, max absolute error
+16.875 (device exit 20). An additional original-library option-off check
+failed shader compilation (`subgroup op requires SPIR-V 1.3`) and exited
+139 after invalid-pipeline diagnostics; this is an observed baseline
+failure, not a valid inference result. Its retained binary and log are
+hash-bound below. The main RED arithmetic evidence is the subgroup-on run.
+
+The candidate went through the existing audited provenance pipeline as
+`0002-honor-subgroup-option.patch` after the unchanged `0001` AHB patch.
+Only `src/gpu.cpp` changes from
+`74c5ef164c5bc9d89d7b218b48ac8bf0f7e4a0b3bb7abf67141b28a3fd7d25f1`
+to `ccb37d82002bc6efb3be481c0c41eed47bf3d0189adff9ed2a43dfa9ae8246cb`.
+`prepare_ncnn_android.ps1` verified the archive/source/patch hashes and
+rebuilt the Android static libraries. With the option off, Reduction
+**26/26** and Gemm **676/676** passed with **zero absolute error**
+(device exit 0). Gemm runtime introspection reports subgroup=false,
+cooperative=false, local size 4x4x4, selecting ordinary `gemm`.
+Saved actual layer148 A/layer153 B from the preceding Reduction-corrected
+sweep also replayed **676/676** within
+`abs(error) <= abs(FP32 sum of FP16-rounded products)*0.001 + 0.00001`;
+max error was 0.000448465347. This storage tolerance does not replace the
+strict end-to-end Body26 confidence/distance limits.
+
+Supplemental SPIR-V was compiled directly by the same ncnn library and
+saved for `reduction` and ordinary `gemm`. `audit_spirv.py` parses its
+instructions/capabilities: baseline Reduction contains subgroup operations;
+candidate Reduction and ordinary Gemm have none. These are compiler-probe
+outputs, not intercepted live pipeline modules. The default unused
+cooperative option in that standalone compilation requests SPIR-V 1.3;
+actual Gemm selection is separately verified by runtime layer introspection.
+
+### Full model, mirrored read-only diagnosis and detector regression
+
+The unchanged padded param/bin SHA-256 are
+`aaada52ba44e57d67e440bd7873b9381207f5bddbecc85c823f63ffeb99040c5` /
+`0f8a0a864be7af7990366bfb8ce89d4fca911a08b967c00e3b8180725d5054a4`.
+The retained four-case harness computes fresh pinned-checkpoint PyTorch
+SimCC, uses the exact 192x256 RGB-normalized affine crop, inverse transform
+and unchanged production comparator. The unavailable ONNX Runtime custom
+operator is not used. Each image ran twice: all eight device runs audited
+**169/169 Vulkan-supported layers** and logged FP16 pack4 input plus FP32
+arithmetic and subgroup=false. Outputs are finite; repeated SimCC tensors
+are byte-identical. The harness exits 11 after recording the failed case.
+
+| Case | Reference/device valid | Distance P95/max | Confidence P95 | Strict result |
+| --- | --- | --- | --- | --- |
+| full-body | 25/25 | 0.002086071/0.002950105 | 0.007275248 | PASS |
+| clipped-person | 20/20 | 0.002202880/0.002202920 | 0.008036593 | PASS |
+| mirrored | 25/25 | 0.002086036/0.002086079 | 0.041543198 | FAIL |
+| rotated | 25/25 | 0.002781413/0.002781413 | 0.005286372 | PASS |
+
+Distances are normalized by bbox diagonal on reference-valid joints;
+limits remain P95 <=0.01, max <=0.03, confidence P95 <=0.02. The paired
+pose extraction timings were full-body 106.246/108.022 ms, clipped-person
+89.819/93.792 ms, mirrored 109.038/107.089 ms and rotated 102.127/101.142 ms.
+They include lazy first extraction and are diagnostic measurements, not
+warmed P95 or integrated 30-FPS acceptance.
+
+Read-only `mirrored-diagnostic.json` records all 26 signed/absolute
+confidence differences and the raw PyTorch/ncnn top-five SimCC peaks on
+each axis. The gate's 25 valid joints have P95/max errors
+0.041543197632/0.045189917088; all 26 have P95 0.040830835700.
+Largest errors are joint 1: 0.989966333 -> 1.035156250 (0.045189917),
+joint 15: 0.714884698 -> 0.759277344 (0.044392645), and joint 12:
+0.711065531 -> 0.741210938 (0.030145407). These are raw decoded scores;
+no clamping/calibration or threshold relaxation was attempted.
+
+The mirrored image equals `cv2.flip(source, 1)` exactly. Recomputing its
+crop/normalization from saved `warp` reproduces input bytes exactly;
+`cv2.invertAffineTransform(warp)` equals the saved inverse (max error zero).
+Input SHA-256 `84f993d3ed1d8f7180319176d6beb08db1a995dea98e58e984ab1a7f54a1749a`
+also equals the preceding attempt's mirrored input. The same tensor is
+forwarded to PyTorch and serialized for device upload. Thus the retained
+evidence shows crop consistency; it does not identify the remaining
+confidence error's cause. No further shader/model candidate was attempted.
+
+The detector runner was rebuilt against the candidate library with its
+unchanged subgroup=true/FP16-arithmetic=true policy and explicit three-channel
+FP16 pack1 input. All four images audited **316/316 Vulkan-supported layers**;
+all **eight** cls/bbox tensors match the pinned Task 1 golden byte-for-byte.
+Graph plus required FP32 output downloads measured 52.559740, 66.727292,
+62.954375 and 54.804895 ms for official, one-person, two-people-2 and
+negative-street. These single first-extraction timings exclude host decode/NMS,
+are not warmed throughput, and cannot establish the integrated performance gate.
+
+### Hash-bound evidence and replay
+
+All candidate sources, patch/provenance, source before/after snapshots,
+static libraries, executables, tensors, diagnostics and build configuration
+are ignored under `out/c3-local-runtime/non-subgroup/` (`$evidence`).
+`artifact-hashes.json` binds 139 artifacts; `external-inputs.json` binds 12
+unchanged source/model/replay inputs. The supplemental shader audit and
+mirrored diagnosis can be regenerated without a device.
+
+| Ignored artifact | SHA-256 |
+| --- | --- |
+| `option_probe.cpp` | `cd7a8d7aba76c5f91cc504f9ee32e443dcc957eb7896c45b3ab965e8a8c463d1` |
+| `red-probe` | `9306c9f6276683b39a25df78a3c8b503aca0328d414d79e6b9d995b981539e1e` |
+| `red-device.log` | `01d2eb2a7b9a4fe2d80fb80d1688597c7d5b40492d61da2f99f5dbaea5afa97e` |
+| `red-option-off-device.log` | `6dd24c0bc39409f9b35250da491d7d9792f58cabef515ee0ffc977734de9d4ef` |
+| `green-probe` | `302b660dd472c1f433f33843c2a6e4c8740d11b87b03d0046eff65774f53ddcc` |
+| `green-device.log` | `38b04b9e5347a6b334aa9a0e2ac68aebc270a47795c674013b1b9e72a6884db5` |
+| `real-gemm-replay.log` | `d22cf85b4af2f6849d5c23a6957f2bf2969b3ebd60965404d38e9e960e6beb71` |
+| `spirv-audit.json` | `0c03e822008e3ea6c134c8ecae3e759c424a634f35e0735635139938bb5070eb` |
+| `0002-honor-subgroup-option.patch` | `5bccb88a80393e59366267c54db559e6eeb55fb3a18bc6ad6c7be93b6cda174f` |
+| `gpu-original.cpp` | `74c5ef164c5bc9d89d7b218b48ac8bf0f7e4a0b3bb7abf67141b28a3fd7d25f1` |
+| `gpu-patched.cpp` | `ccb37d82002bc6efb3be481c0c41eed47bf3d0189adff9ed2a43dfa9ae8246cb` |
+| `patched-provenance.json` | `ca5f37477118c59ab448d8e5ffdb13f3f0583ad758d2bec46d6ab27d5215daa5` |
+| `patched-build-receipt.json` | `5116cc171cd0fddf480620cd7759458cc4011f364fd9faad98905185df7842a8` |
+| `pose_golden_runner.cpp` | `c892c3ba01bc038442ac003f351308a5067db15cd93e90dc6fd374b1c72edef9` |
+| `pose-runner` | `5cd41de1e8e47f59e7d97b27b7151acb8edac2b33a148d4fabdad4b926fc4904` |
+| `four_case_golden.py` | `8169112a54afcebac396a1adc887c2b81dfd22436a9caf306a66fd72feb1bb2c` |
+| `four-case.log` | `d116e42aefce794d348e5063f5494372ea018e451f586dff86064a77857878df` |
+| `golden/index.json` | `82daee14dcd04c64d4450db77a67124b53c4c5fedeff46a1099a6d39717deccc` |
+| `mirrored-diagnostic.json` | `765f192326c81203eb009852e572a06788f3d2fc6a4818aedccb8cc4816f1105` |
+| `detector-runner` | `7ccb0fc96eb7af1504574145f5ab29eeaebe95932ed9cb090f9869db608b34c1` |
+| `detector/index.json` | `5ce63a5222ca9debbafb4bdfe70de997117b516fe0b00f96d4521a6e039df3ae` |
+| `external-inputs.json` | `9acf447d1007dbf337211270f1f14f76a57ed2de309be95829a9f19463c8b553` |
+| `artifact-hashes.json` | `2855c302fcebd9389bcda2f19bbef25cd519eedccf47de8ecada1d6af72bc9cf` |
+
+From the worktree root, replay the saved statically linked probes without
+changing the installed SDK or ncnn source:
+
+```powershell
+$evidence = 'out/c3-local-runtime/non-subgroup'
+$adb = 'D:/Developer/2021.3.45f1/Editor/Data/PlaybackEngines/AndroidPlayer/SDK/platform-tools/adb.exe'
+& $adb shell mkdir -p /data/local/tmp/hv-nosg-replay
+foreach ($name in @('red-probe','green-probe')) {
+    & $adb push "$evidence/$name" "/data/local/tmp/hv-nosg-replay/$name"
+    & $adb shell chmod 755 "/data/local/tmp/hv-nosg-replay/$name"
+}
+& $adb shell /data/local/tmp/hv-nosg-replay/red-probe 1 /data/local/tmp/hv-nosg-replay/red
+# Expected exit 20; Reduction26 and Gemm627 failures.
+& $adb shell /data/local/tmp/hv-nosg-replay/green-probe 0 /data/local/tmp/hv-nosg-replay/green
+# Expected exit 0; exact Reduction26/Gemm676.
+& $adb push out/c3-local-runtime/reduction-workaround/layer-localization/device/148_0.fp32 /data/local/tmp/hv-nosg-replay/A.fp32
+& $adb push out/c3-local-runtime/reduction-workaround/layer-localization/device/153_0.fp32 /data/local/tmp/hv-nosg-replay/B.fp32
+& $adb shell /data/local/tmp/hv-nosg-replay/green-probe 0 /data/local/tmp/hv-nosg-replay/real /data/local/tmp/hv-nosg-replay/A.fp32 /data/local/tmp/hv-nosg-replay/B.fp32
+$env:PYTHONPATH=(Get-Location).Path
+.venv-reference/Scripts/python.exe "$evidence/four_case_golden.py" --checkpoint out/c1-source-cache/rtmpose-t_body26.pth --vendor-root out/c2-vendor --image out/c2-detector/golden/official/image.png --onnx out/c3-local-runtime/padded-first-conv/model.onnx --param out/c3-local-runtime/padded-first-conv/vulkan.param --weights out/c3-local-runtime/padded-first-conv/model.bin --runner "$evidence/pose-runner" --output "$evidence/replay-golden" --adb $adb --runner-mode diagnostic-vulkan-fp32-arith
+# Expected exit 11, mirrored confidence gate failure; use a new output path.
+.venv-reference/Scripts/python.exe "$evidence/audit_spirv.py"
+.venv-reference/Scripts/python.exe "$evidence/mirrored_diagnostic.py"
+.venv-reference/Scripts/python.exe "$evidence/verify_evidence.py"
+```
+
+Candidate rebuild commands (isolated checkout with the same ignored cache):
+
+```powershell
+# Start from baseline source with only audited AHB0001 applied.
+Copy-Item "$evidence/patched-provenance.json" third_party/ncnn/provenance.json
+Copy-Item "$evidence/0002-honor-subgroup-option.patch" third_party/ncnn/patches/0002-honor-subgroup-option.patch
+pwsh -NoProfile -File tools/setup/prepare_ncnn_android.ps1
+$cmake = 'D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
+& $cmake -S $evidence -B "$evidence/build" -G Ninja '-DCMAKE_MAKE_PROGRAM=D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe' '-DCMAKE_TOOLCHAIN_FILE=D:/Developer/2022.3.61t4/Editor/Data/PlaybackEngines/AndroidPlayer/NDK/build/cmake/android.toolchain.cmake' -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release "-Dncnn_DIR=$((Get-Location).Path)/out/ncnn-20260526/android-arm64-api26/install/lib/cmake/ncnn"
+& $cmake --build "$evidence/build"
+# Candidate build is experimental: the existing prepare script is not
+# idempotent across overlapping gpu.cpp patch records. Restore baseline
+# source before another candidate prepare; no setup-script fix was made.
+Copy-Item "$evidence/original-provenance.json" third_party/ncnn/provenance.json
+Copy-Item "$evidence/gpu-original.cpp" out/ncnn-20260526/source/src/gpu.cpp
+Remove-Item -LiteralPath third_party/ncnn/patches/0002-honor-subgroup-option.patch
+pwsh -NoProfile -File tools/setup/prepare_ncnn_android.ps1
+```
+
+Baseline restoration and rebuild **passed**. All six `0001` AHB source
+hashes, the original Reduction shader, restored provenance receipt and
+installed library hashes were freshly verified. Experimental source/patch
+and runner changes are absent from tracked implementation; only this
+document and development status changed. Final checks:
+
+- `.venv-reference/Scripts/python.exe out/c3-local-runtime/non-subgroup/verify_evidence.py`: PASS, 139 retained plus 12 external hashes and expected failures.
+- `.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -v`: **46/46 PASS**.
+- `.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py`: **PASS**.
+- `git diff --check`: **PASS**.
+
 ## Bounded Reduction shared-tree workaround: operator PASS, model FAIL (2026-09-25)
 
 The single approved source-level attempt is **FAIL for model eligibility**.

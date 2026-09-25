@@ -1,3 +1,33 @@
+# Android Vulkan/ncnn — Revision 3 Task 2 non-subgroup gate still blocked (2026-09-25)
+
+The single audited option-aware subgroup-macro candidate fixes the isolated
+Reduction (26/26 exact) and Gemm (676/676 exact) tests; real Gemm replay also
+passes FP16 tolerance. Full Body26 golden passes 3/4 cases. All four valid
+masks and coordinate-distance gates pass, but mirrored confidence P95 error
+**0.041543197632 exceeds 0.02**. Eight runs audited 169/169 Vulkan layers;
+repeat tensors match byte-for-byte. Four-image detector regression passes
+all eight pinned output hashes with 316/316 Vulkan layers. These are
+correctness diagnostics, not integrated 30-FPS or hardware acceptance.
+
+Task 2 remains **BLOCKED**; no ModelPack promotion or Task 3. The bounded
+attempt stopped without changing shaders, weights or thresholds. Per-joint
+mirrored confidence/top-peak evidence confirms identical crop bytes and
+inverse-affine transforms but does not identify the remaining cause.
+Candidate sources, binaries, libraries and raw results are preserved under
+ignored `out/c3-local-runtime/non-subgroup/`; experimental tracked changes
+were removed. Baseline ncnn source/provenance and audited AHB0001 were restored,
+and `pwsh -NoProfile -File tools/setup/prepare_ncnn_android.ps1` passed.
+
+Fresh `.venv-reference/Scripts/python.exe out/c3-local-runtime/non-subgroup/verify_evidence.py`
+verified 139 retained artifacts plus 12 external hashes and expected gate
+outcomes. `.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -v`
+passed **46/46**; architecture boundaries and `git diff --check` passed.
+Exact RED/GREEN, all-four-case results, timing limits, hashes and replay/build
+commands are in [`RTMPOSE_NCNN_CONVERSION_GATE.md`](validation/RTMPOSE_NCNN_CONVERSION_GATE.md).
+This is documentation-only failure evidence, not Task 2 completion.
+
+---
+
 # Android Vulkan/ncnn - Revision 3 Task 2 Reduction workaround fails full golden (2026-09-25)
 
 One bounded audited shader workaround selected ncnn Reduction's existing
