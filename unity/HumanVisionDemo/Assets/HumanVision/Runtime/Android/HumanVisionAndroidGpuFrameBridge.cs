@@ -92,6 +92,7 @@ namespace HumanVision
         private readonly IntPtr _renderEvent;
         private readonly CommandBuffer _commands;
         private IntPtr _leasedTexture;
+        private RenderTexture _leasedSource;
         internal HumanVisionAndroidGpuFrameBridge(IntPtr runtime)
         {
             _runtime = runtime;
@@ -110,10 +111,11 @@ namespace HumanVision
             if (texture == null || !texture.IsCreated()) throw new ArgumentException("GPU source texture must be created.");
             IntPtr pointer = texture.GetNativeTexturePtr();
             if (pointer == IntPtr.Zero) throw new InvalidOperationException("Unity returned a null Vulkan texture pointer.");
-            if (_leasedTexture == pointer) return;
+            if (_leasedTexture == pointer && ReferenceEquals(_leasedSource, texture)) return;
             End();
             Check(RuntimeBindings.HV_RuntimeBeginAndroidGpuSourceLease(_runtime, pointer), "begin GPU source lease");
             _leasedTexture = pointer;
+            _leasedSource = texture;
         }
 
         internal void End()
@@ -121,11 +123,20 @@ namespace HumanVision
             if (_leasedTexture == IntPtr.Zero) return;
             Check(RuntimeBindings.HV_RuntimeEndAndroidGpuSourceLease(_runtime), "end GPU source lease and drain");
             _leasedTexture = IntPtr.Zero;
+            _leasedSource = null;
+        }
+
+        internal static void ValidateSource(RenderTexture leased, RenderTexture submitted)
+        {
+            if (!ReferenceEquals(leased, submitted) || submitted == null)
+                throw new InvalidOperationException("GPU frame texture differs from the active source lease.");
         }
 
         internal bool Submit(RenderTexture texture, int rotationDegrees, bool mirrored, long frameId, long timestampUs)
         {
             if (texture == null || _leasedTexture == IntPtr.Zero) throw new InvalidOperationException("GPU source lease is not active.");
+            ValidateSource(_leasedSource, texture);
+            if (!texture.IsCreated()) throw new InvalidOperationException("GPU source texture is no longer created.");
             var submission = new AndroidGpuSubmissionNative {
                 Size = 48, Version = Version, Texture = _leasedTexture,
                 Width = texture.width, Height = texture.height,
@@ -147,15 +158,29 @@ namespace HumanVision
             get
             {
                 var status = new AndroidGpuBridgeStatusNative { Size = 128, Version = Version };
-                Check(RuntimeBindings.HV_RuntimeGetAndroidGpuBridgeStatus(_runtime, ref status), "GPU bridge status");
-                string path = status.CopyPath == 1 ? "blit" : status.CopyPath == 2 ? "color attachment" : "unavailable";
-                return "Android mode: android-ncnn-vulkan; GPU copy path: " + path +
-                    "; AHB format: " + status.AhbFormat + "; usage: 0x" + status.AhbUsage.ToString("X") +
-                    "; features: 0x" + status.AhbFormatFeatures.ToString("X") +
-                    "; bridge submitted/imported: " + status.SubmittedFrames + "/" + status.ImportedFrames +
-                    "; no-slot/generation drops: " + status.DroppedNoSlot + "/" + status.DroppedGeneration +
-                    "; device/driver UUID match: " + status.DeviceMatches + "/" + status.DriverMatches;
+                int result = RuntimeBindings.HV_RuntimeGetAndroidGpuBridgeStatus(_runtime, ref status);
+                string error = string.Empty;
+                if (result != 0) {
+                    var nativeError = new System.Text.StringBuilder(1024);
+                    RuntimeBindings.HV_RuntimeGetError(_runtime, nativeError, 1024);
+                    error = nativeError.ToString();
+                }
+                return FormatDiagnostics(result, status, error);
             }
+        }
+
+        internal static string FormatDiagnostics(int result, AndroidGpuBridgeStatusNative status, string error)
+        {
+            if (result != 0)
+                return "Android mode: android-ncnn-vulkan; GPU bridge status " + result + ": " +
+                    (string.IsNullOrEmpty(error) ? "unavailable" : error);
+            string path = status.CopyPath == 1 ? "blit" : status.CopyPath == 2 ? "color attachment" : "unavailable";
+            return "Android mode: android-ncnn-vulkan; GPU copy path: " + path +
+                "; AHB format: " + status.AhbFormat + "; usage: 0x" + status.AhbUsage.ToString("X") +
+                "; features: 0x" + status.AhbFormatFeatures.ToString("X") +
+                "; bridge submitted/imported: " + status.SubmittedFrames + "/" + status.ImportedFrames +
+                "; no-slot/generation drops: " + status.DroppedNoSlot + "/" + status.DroppedGeneration +
+                "; device/driver UUID match: " + status.DeviceMatches + "/" + status.DriverMatches;
         }
 
         private void Check(int result, string operation)

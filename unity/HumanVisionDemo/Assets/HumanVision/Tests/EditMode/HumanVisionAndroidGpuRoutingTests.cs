@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using NUnit.Framework;
+using UnityEngine;
+using HumanVision.Demo;
 
 namespace HumanVision.Tests
 {
@@ -48,6 +50,38 @@ namespace HumanVision.Tests
         {
             Assert.AreEqual(48, Marshal.SizeOf<AndroidGpuSubmissionNative>());
             Assert.AreEqual(128, Marshal.SizeOf<AndroidGpuBridgeStatusNative>());
+        }
+
+        [Test]
+        public void GpuCameraAlwaysUsesLivePreviewEvenWhenLegacySmoothPreviewIsOff()
+        {
+            Assert.True(VideoPlayerFrameSource.UseLivePreview(false, true));
+            Assert.False(VideoPlayerFrameSource.UseLivePreview(false, false));
+        }
+
+        [Test]
+        public void GpuSubmissionRejectsTextureDifferentFromTheLeasedSource()
+        {
+            var leased = new RenderTexture(8, 8, 0);
+            var other = new RenderTexture(8, 8, 0);
+            try {
+                Assert.DoesNotThrow(() => HumanVisionAndroidGpuFrameBridge.ValidateSource(leased, leased));
+                Assert.Throws<InvalidOperationException>(() => HumanVisionAndroidGpuFrameBridge.ValidateSource(leased, other));
+            } finally { UnityEngine.Object.DestroyImmediate(leased); UnityEngine.Object.DestroyImmediate(other); }
+        }
+
+        [Test]
+        public void UnconfiguredBridgeAndOtherNativeErrorsRemainVisibleInDiagnostics()
+        {
+            var unavailable = new AndroidGpuBridgeStatusNative { CopyPath = 0 };
+            string pending = HumanVisionAndroidGpuFrameBridge.FormatDiagnostics(-6, unavailable,
+                "Android Vulkan producer bridge is not configured");
+            StringAssert.Contains("not configured", pending);
+            StringAssert.Contains("-6", pending);
+            string failure = HumanVisionAndroidGpuFrameBridge.FormatDiagnostics(-6, unavailable,
+                "AHB import failed");
+            StringAssert.Contains("AHB import failed", failure);
+            StringAssert.Contains("-6", failure);
         }
 
         [Test]

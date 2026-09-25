@@ -195,10 +195,12 @@ namespace HumanVision.Demo
         public double ResultAgeMilliseconds => manager == null || manager.SourceTimestampUs <= 0 ? 0 :
             Math.Max(0, Time.realtimeSinceStartupAsDouble * 1000 - manager.SourceTimestampUs / 1000d);
 
+        internal static bool UseLivePreview(bool smoothPreview, bool gpuFrames) => smoothPreview || gpuFrames;
+
         public void ConfigureLiveInput(bool smoothPreview, int analysisWidth = 1280, int analysisHeight = 720)
         {
             StopCurrentVideo();
-            _livePreview = smoothPreview;
+            _livePreview = UseLivePreview(smoothPreview, manager != null && manager.UsesAndroidGpuFrames);
             _externalInput = true;
             LastError = string.Empty;
             if (manager != null && !manager.UsesAndroidGpuFrames && !_rowOrderReady && !_rowProbePending && SystemInfo.supportsAsyncGPUReadback) BeginRowOrderProbe();
@@ -317,7 +319,8 @@ namespace HumanVision.Demo
         private bool SubmitExternalGpuTexture(RenderTexture texture, long timestampUs, int rotationDegrees, bool mirrored)
         {
             if (texture == null) { SetError("NCNN Vulkan input requires the oriented RenderTexture."); return false; }
-            if (_livePreview) PresentLiveTexture(texture);
+            _livePreview = true;
+            PresentLiveTexture(texture);
             double now = Time.realtimeSinceStartupAsDouble;
             if (now < _nextLiveSubmitTime) return false;
             if (SourceWidth != texture.width || SourceHeight != texture.height) {
