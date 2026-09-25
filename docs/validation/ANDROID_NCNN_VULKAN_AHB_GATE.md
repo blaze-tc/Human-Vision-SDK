@@ -22,8 +22,12 @@ pwsh -File tools/test/build_android_gpu_bridge_gate.ps1 -ProjectPath unity/Human
 The script builds Android ARM64 API 26 native code with the gate flag, copies
 it into an ignored Unity verification project, builds a Development/IL2CPP
 player with Vulkan first and `android-ncnn-vulkan` metadata, then checks the
-APK for ARM64 native libraries. It prints the APK SHA-256. It never creates or
-commits a fake production NCNN model pack.
+APK against the recursive ELF `DT_NEEDED` closure of `libhumanvision.so`.
+The check resolves Android system libraries against the API 26 NDK sysroot,
+copies required third-party libraries from `out/live-deps`, fails on missing
+dependencies, and verifies the APK library bytes against their source hashes.
+It prints the APK SHA-256. It never creates or commits a fake production NCNN
+model pack.
 
 Current host build: Unity 2021.3.45f1, Android API 26 minimum, ARM64,
 IL2CPP, Vulkan, Development. APK:

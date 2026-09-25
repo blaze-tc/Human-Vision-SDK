@@ -31,9 +31,8 @@ foreach ($folder in @('Assets/HumanVision','Assets/Scenes','Assets/StreamingAsse
     if (Test-Path -LiteralPath $origin) { Copy-Item -Path (Join-Path $origin '*') -Destination $destination -Recurse -Force }
 }
 $plugins = Join-Path $project 'Assets/Plugins/Android/arm64-v8a'
-New-Item -ItemType Directory -Path $plugins -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $root 'build/android-live/bin/Release/libhumanvision.so') -Destination (Join-Path $plugins 'libhumanvision.so') -Force
-Copy-Item -LiteralPath (Join-Path $root 'out/live-deps/ort-android/lib/libonnxruntime.so') -Destination (Join-Path $plugins 'libonnxruntime.so') -Force
+& pwsh -NoProfile -File (Join-Path $root 'tools/test/verify_android_gpu_bridge_gate_libs.ps1') -Mode Stage -PluginDirectory $plugins
+if ($LASTEXITCODE -ne 0) { throw 'Failed to stage Android ARM64 dependency closure' }
 $log = Join-Path $out 'unity-build.log'
 $arguments = "-batchmode -nographics -humanvisionGpuGate -projectPath `"$project`" -executeMethod HumanVision.Editor.HumanVisionAndroidGpuGateBuild.Build -logFile `"$log`" -quit"
 $started = [DateTime]::UtcNow
@@ -42,15 +41,9 @@ $process.WaitForExit()
 if ($process.ExitCode -ne 0) { throw "Unity gate build failed ($($process.ExitCode)); see $log" }
 $apk = Join-Path $out 'humanvision-gpu-bridge-gate.apk'
 if (!(Test-Path -LiteralPath $apk) -or (Get-Item -LiteralPath $apk).LastWriteTimeUtc -lt $started) { throw 'Gate APK missing or stale' }
+& pwsh -NoProfile -File (Join-Path $root 'tools/test/verify_android_gpu_bridge_gate_libs.ps1') -Mode Verify -ApkPath $apk
+if ($LASTEXITCODE -ne 0) { throw 'Gate APK Android ARM64 dependency audit failed' }
 $sha = (Get-FileHash -LiteralPath $apk -Algorithm SHA256).Hash.ToLowerInvariant()
-Add-Type -AssemblyName System.IO.Compression
-$archive = [System.IO.Compression.ZipFile]::OpenRead($apk)
-try {
-    $names = @($archive.Entries | ForEach-Object FullName)
-    if ($names -notcontains 'lib/arm64-v8a/libhumanvision.so' -or $names -notcontains 'lib/arm64-v8a/libonnxruntime.so') {
-        throw 'Gate APK lacks required ARM64 native libraries'
-    }
-} finally { $archive.Dispose() }
 Write-Output "GPU gate APK: $apk"
 Write-Output "SHA-256: $sha"
 Write-Output "Input contract: $fixture"

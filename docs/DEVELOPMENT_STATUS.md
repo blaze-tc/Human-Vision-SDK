@@ -1,3 +1,25 @@
+# Android Vulkan/ncnn — B7 APK dependency repair; device acceptance open (2026-09-25)
+
+The first Snapdragon 888 launch reached Android's dynamic loader but failed
+before the GPU gate started: `libhumanvision.so` needed `libavformat.so`, which
+was absent from the gate APK. A recursive `DT_NEEDED` audit of the Android
+ARM64 libraries found seven packaged libraries in the complete closure:
+`libhumanvision.so`, `libonnxruntime.so`, `libavformat.so`, `libavcodec.so`,
+`libavutil.so`, `libswscale.so`, and `libswresample.so`. All other dependencies
+resolve in the Android API 26 NDK sysroot. The old APK failed the new audit
+with `Gate APK missing required ARM64 library: libavcodec.so` (expected RED).
+
+The gate build now stages only the closure from the native build and pinned
+`out/live-deps` inputs, then verifies each APK entry against its source SHA-256.
+Fresh verification: `pwsh -NoProfile -File tools/test/build_android_gpu_bridge_gate.ps1
+-ProjectPath unity/HumanVisionDemo` **PASS**; the seven-library APK audit **PASS**.
+Rebuilt APK SHA-256:
+`5efead83bc8a136e912f73e5d68f29f3a2223e198631d709b5a69346f73691f1`.
+This repairs packaging only; B7 and Milestone B remain open pending renewed
+physical-device collection and user acceptance. C/D remain unopened.
+
+---
+
 # Android Vulkan/ncnn — B7 collector review round 3; device acceptance open (2026-09-25)
 
 Independent rereview found a collector false pass: an otherwise valid log
