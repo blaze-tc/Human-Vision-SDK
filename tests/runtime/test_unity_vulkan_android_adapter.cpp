@@ -755,3 +755,53 @@ TEST(UnityVulkanAndroidAdapter, ColorFrameAdmissionRequiresMatchingSourceLease) 
   EXPECT_EQ(event,nullptr);
   UnityPluginUnload();
 }
+
+TEST(UnityVulkanAndroidAdapter, UnconfiguredSourceRequestsMeasuredRenderEvent) {
+  using namespace humanvision::gpu;
+  g = AdapterFacts{};
+  InstallAndCreateUnityDevice();
+  vulkan_api.AccessTexture = UnityAccessTexture;
+  humanvision::runtime::RuntimeSession runtime;
+  auto* texture = reinterpret_cast<void*>(1);
+  ASSERT_EQ(HV_RuntimeBeginAndroidGpuSourceLease(&runtime, texture), HV_OK);
+  HV_AndroidGpuSubmissionV1 frame{sizeof(frame), HV_ANDROID_GPU_API_V1,
+      texture, 320, 240, 1, 1000, 0, 0};
+  void* event = nullptr;
+  EXPECT_EQ(HV_RuntimePrepareAndroidGpuFrame(&runtime, &frame, &event), HV_NO_NEW_RESULT);
+  ASSERT_NE(event, nullptr);
+  void* duplicate = nullptr;
+  EXPECT_EQ(HV_RuntimePrepareAndroidGpuFrame(&runtime, &frame, &duplicate), HV_NO_NEW_RESULT);
+  EXPECT_EQ(duplicate, nullptr);
+  const int before = g.unity_access_calls;
+  AndroidProducer::RenderEvent(1, event);
+  EXPECT_EQ(g.unity_access_calls, before + 1);
+  EXPECT_EQ(HV_RuntimeEndAndroidGpuSourceLease(&runtime), HV_OK);
+  UnityPluginUnload();
+}
+
+TEST(UnityVulkanAndroidAdapter, StaleConfigurationEventCannotMeasureReusedTexture) {
+  using namespace humanvision::gpu;
+  g = AdapterFacts{};
+  InstallAndCreateUnityDevice();
+  vulkan_api.AccessTexture = UnityAccessTexture;
+  humanvision::runtime::RuntimeSession runtime;
+  auto* texture = reinterpret_cast<void*>(1);
+  ASSERT_EQ(HV_RuntimeBeginAndroidGpuSourceLease(&runtime, texture), HV_OK);
+  HV_AndroidGpuSubmissionV1 frame{sizeof(frame), HV_ANDROID_GPU_API_V1,
+      texture, 320, 240, 1, 1000, 0, 0};
+  void* old_event = nullptr;
+  ASSERT_EQ(HV_RuntimePrepareAndroidGpuFrame(&runtime, &frame, &old_event), HV_NO_NEW_RESULT);
+  ASSERT_NE(old_event, nullptr);
+  ASSERT_EQ(HV_RuntimeEndAndroidGpuSourceLease(&runtime), HV_OK);
+  ASSERT_EQ(HV_RuntimeBeginAndroidGpuSourceLease(&runtime, texture), HV_OK);
+  const int before = g.unity_access_calls;
+  AndroidProducer::RenderEvent(1, old_event);
+  EXPECT_EQ(g.unity_access_calls, before);
+  void* new_event = nullptr;
+  ASSERT_EQ(HV_RuntimePrepareAndroidGpuFrame(&runtime, &frame, &new_event), HV_NO_NEW_RESULT);
+  ASSERT_NE(new_event, nullptr);
+  AndroidProducer::RenderEvent(1, new_event);
+  EXPECT_EQ(g.unity_access_calls, before + 1);
+  EXPECT_EQ(HV_RuntimeEndAndroidGpuSourceLease(&runtime), HV_OK);
+  UnityPluginUnload();
+}

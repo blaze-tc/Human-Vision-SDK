@@ -14,6 +14,10 @@ namespace HumanVision.Editor
         public static void CreateScene() { CreatePair(false); }
         [MenuItem("HumanVision/Create Camera Settings Scene")]
         public static void CreateSettingsScene() { CreatePair(true); }
+        internal static void CreateGateScene(string path)
+        {
+            Build(path, "Assets/Scenes/HumanVisionCameraSettings.unity", false);
+        }
         private static void CreatePair(bool openSettings)
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;

@@ -7,6 +7,7 @@
 #include "IUnityInterface.h"
 #include "gpu/android/shaders/embedded_shaders.h"
 #include "gpu/vulkan/vulkan_device_identity.h"
+#include "gpu/android/ahb_capabilities.h"
 
 #include <android/hardware_buffer.h>
 #include <unistd.h>
@@ -132,7 +133,12 @@ public:
   bool Configure(const AhbSelection &selection,
                  const SlotContract &contract) noexcept {
     std::lock_guard<std::mutex> lock(control_);
-    InvalidateSourceLease();
+    return ConfigureLocked(selection, contract, false);
+  }
+  bool ConfigureLocked(const AhbSelection &selection,
+                       const SlotContract &contract,
+                       bool preserve_source_lease) noexcept {
+    if (!preserve_source_lease) InvalidateSourceLease();
     if (!vulkan_ || !have_device_ || !device_live_.load(std::memory_order_acquire)) {
       diagnostic_ = "Unity Vulkan device is not initialized";
       return false;
@@ -157,14 +163,56 @@ public:
   }
   bool BeginSourceLease(void *texture) noexcept {
     std::lock_guard<std::mutex> lock(control_);
-    if (!texture || bridge_.IsClosed() ||
-        !device_live_.load(std::memory_order_acquire) ||
+    if (!texture || !device_live_.load(std::memory_order_acquire) ||
         source_lease_texture_.load(std::memory_order_acquire)) return false;
     source_image_.store(0, std::memory_order_release);
     source_lease_generation_.store(bridge_.Generation(), std::memory_order_release);
     source_lease_token_.fetch_add(1, std::memory_order_acq_rel);
     source_lease_texture_.store(texture, std::memory_order_release);
     return true;
+  }
+  void ConfigurationEvent(void *data) noexcept {
+    if (data != &configuration_event_ ||
+        !configuration_requested_.load(std::memory_order_acquire) ||
+        configuration_event_.lease_token != source_lease_token_.load(std::memory_order_acquire) ||
+        source_lease_texture_.load(std::memory_order_acquire) != configuration_event_.submission.unity_texture ||
+        !vulkan_ || !device_live_.load(std::memory_order_acquire)) {
+      configuration_event_inflight_.store(false, std::memory_order_release);
+      return;
+    }
+    UnityVulkanImage observed{};
+    const bool ok = vulkan_->AccessTexture(configuration_event_.submission.unity_texture,
+        UnityVulkanWholeImage, VK_IMAGE_LAYOUT_GENERAL,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+        kUnityVulkanResourceAccess_ObserveOnly, &observed);
+    if (ok) {
+      VulkanSourceImage source{};
+      source.width = observed.extent.width;
+      source.height = observed.extent.height;
+      source.format = observed.format;
+      source.usage = observed.usage;
+      source.tiling = observed.tiling;
+      source.samples = observed.samples;
+      source.layers = static_cast<uint32_t>(observed.layers);
+      source.image_type = observed.type;
+      {
+        std::lock_guard<std::mutex> lock(source_requests_mutex_);
+        measured_source_ = source;
+        measured_submission_ = configuration_event_.submission;
+        measured_lease_token_ = configuration_event_.lease_token;
+        configuration_ready_.store(true, std::memory_order_release);
+      }
+      source_requests_cv_.notify_one();
+    } else {
+      runtime_error_.store(4, std::memory_order_release);
+      configuration_failed_.store(true, std::memory_order_release);
+    }
+    configuration_event_inflight_.store(false, std::memory_order_release);
+  }
+public:
+  static void UNITY_INTERFACE_API RenderEvent(int event_id, void *data) noexcept {
+    if (event_id == 1) Get().ConfigurationEvent(data);
+    else UnityVulkanBridge::RenderEvent(event_id, data);
   }
   void EndSourceLease() noexcept {
     std::lock_guard<std::mutex> lock(control_);
@@ -176,6 +224,19 @@ public:
   BridgeResult Prepare(const HV_AndroidGpuSubmissionV1 &s,
                        void **out) noexcept {
     if (!device_live_.load(std::memory_order_acquire)) { if(out)*out=nullptr; return BridgeResult::Closed; }
+    if (bridge_.IsClosed() && source_lease_texture_.load(std::memory_order_acquire) == s.unity_texture) {
+      if (out) *out = nullptr;
+      if (!configuration_failed_.load(std::memory_order_acquire) &&
+          !configuration_event_inflight_.load(std::memory_order_acquire) &&
+          !configuration_requested_.exchange(true, std::memory_order_acq_rel)) {
+        configuration_event_.submission = s;
+        configuration_event_.lease_token = source_lease_token_.load(std::memory_order_acquire);
+        configuration_event_inflight_.store(true, std::memory_order_release);
+        if (out) *out = &configuration_event_;
+      }
+      configuration_pending_drops_.fetch_add(1, std::memory_order_relaxed);
+      return BridgeResult::Busy;
+    }
     if (source_lease_texture_.load(std::memory_order_acquire) != s.unity_texture ||
         source_lease_generation_.load(std::memory_order_acquire) != bridge_.Generation()) {
       if (out) *out = nullptr;
@@ -183,7 +244,20 @@ public:
     }
     return bridge_.Prepare(s, out);
   }
-  void Status(HV_AndroidGpuBridgeStatusV1 &s) noexcept { bridge_.GetStatus(s); }
+  void Status(HV_AndroidGpuBridgeStatusV1 &s) noexcept {
+    bridge_.GetStatus(s);
+    // Configuration pending frames are superseded by the measured generation.
+    s.dropped_generation += configuration_pending_drops_.load(std::memory_order_relaxed);
+  }
+#if defined(HV_ANDROID_GPU_GATE)
+  UnityVulkanBridge* GateBridge() noexcept { return &bridge_; }
+  bool GateContext(VulkanDeviceContext& out) noexcept {
+    std::lock_guard<std::mutex> lock(control_);
+    if (!have_device_ || !device_live_.load(std::memory_order_acquire)) return false;
+    out = producer_context_;
+    return true;
+  }
+#endif
   const char *Diagnostic() const noexcept {
     switch (runtime_error_.load(std::memory_order_acquire)) {
     case 1:
@@ -192,8 +266,16 @@ public:
       return "Android Vulkan source image identity changed during its lease; end the source lease and rebuild the bridge generation before replacing the RenderTexture";
     case 3:
       return "Unity Vulkan device shutdown occurred before required control teardown; generation quarantined, call ShutdownUnityVulkanProducer before device destruction";
+    case 4:
+      return "Unity Vulkan AccessTexture failed while measuring the active camera source";
     default:
       break;
+    }
+    if (configuration_failed_.load(std::memory_order_acquire)) {
+      thread_local std::string failure;
+      std::lock_guard<std::mutex> lock(control_);
+      failure = diagnostic_;
+      return failure.c_str();
     }
     const char* bridge_error=bridge_.Diagnostic();
     if(*bridge_error)return bridge_error;
@@ -243,6 +325,7 @@ public:
       device_live_.store(false,std::memory_order_release);
       have_device_ = false;
       device_context_ = {};
+      producer_context_ = {};
       return;
     }
     if (event != kUnityGfxDeviceEventInitialize &&
@@ -250,6 +333,7 @@ public:
       return;
     have_device_ = false;
     device_context_ = {};
+    producer_context_ = {};
     if (!graphics_ || graphics_->GetRenderer() != kUnityGfxRendererVulkan ||
         !vulkan_) {
       diagnostic_ =
@@ -305,6 +389,7 @@ public:
     }
     device_context_.device_uuid = id.device_uuid;
     device_context_.driver_uuid = id.driver_uuid;
+    producer_context_ = query;
     have_device_ = true;
     device_live_.store(true,std::memory_order_release);
     runtime_error_.store(0,std::memory_order_release);
@@ -318,6 +403,7 @@ public:
       return;
     }
     vulkan_->ConfigureEvent(0, &config);
+    vulkan_->ConfigureEvent(1, &config);
     diagnostic_.clear();
   }
 
@@ -438,6 +524,9 @@ private:
     uint64_t lease_token = 0;
   };
   void InvalidateSourceLease() noexcept {
+    configuration_requested_.store(false, std::memory_order_release);
+    configuration_ready_.store(false, std::memory_order_release);
+    configuration_failed_.store(false, std::memory_order_release);
     source_lease_texture_.store(nullptr, std::memory_order_release);
     source_lease_generation_.store(0, std::memory_order_release);
     source_image_.store(0, std::memory_order_release);
@@ -445,15 +534,67 @@ private:
     std::lock_guard<std::mutex> pending(source_requests_mutex_);
     for (auto& request : source_requests_) request = {};
   }
+  void ConfigureMeasuredSource() noexcept {
+    // This worker is a control thread. The render event only observed Unity's
+    // image and returned; neither ncnn initialization nor AHB allocation runs
+    // on Unity's render thread.
+    std::lock_guard<std::mutex> control(control_);
+    const auto source = measured_source_;
+    const auto submission = measured_submission_;
+    if (!device_live_.load(std::memory_order_acquire) ||
+        source_lease_texture_.load(std::memory_order_acquire) != submission.unity_texture ||
+        measured_lease_token_ != source_lease_token_.load(std::memory_order_acquire) ||
+        !bridge_.IsClosed()) return;
+#if defined(HV_ANDROID_ADAPTER_TEST)
+    diagnostic_ = "Android adapter test has no physical ncnn device";
+    configuration_failed_.store(true, std::memory_order_release);
+#else
+    const VulkanDeviceContext producer = producer_context_;
+    VulkanDeviceContext consumer{};
+    if (!FindMatchedNcnnContext(producer, consumer, diagnostic_)) {
+      configuration_failed_.store(true, std::memory_order_release);
+      return;
+    }
+    const AhbSelection selection = ProbeAndroidAhbCapabilities(
+        producer, consumer, source, source.width, source.height);
+    if (selection.path == HV_ANDROID_GPU_COPY_UNAVAILABLE) {
+      diagnostic_ = selection.diagnostic;
+      configuration_failed_.store(true, std::memory_order_release);
+      return;
+    }
+    SlotContract contract{};
+    contract.width = selection.contract.width;
+    contract.height = selection.contract.height;
+    contract.actual_format = selection.contract.format;
+    contract.actual_usage = selection.contract.usage;
+    contract.rotation = submission.rotation_degrees;
+    contract.mirror = submission.mirrored != 0;
+    // The same audited producer configuration path is used by the production
+    // control worker and by deterministic host adapter tests.
+    if (!ConfigureLocked(selection, contract, true)) {
+      diagnostic_ = "Measured Android Vulkan AHB contract failed persistent slot creation: " + selection.diagnostic;
+      configuration_failed_.store(true, std::memory_order_release);
+      return;
+    }
+    source_lease_generation_.store(bridge_.Generation(), std::memory_order_release);
+    { std::lock_guard<std::mutex> queue(queue_mutex_); queue_closed_ = false; }
+    diagnostic_ = selection.diagnostic;
+#endif
+  }
   void SourceWorker() noexcept {
     for (;;) {
       {
         std::unique_lock<std::mutex> pending(source_requests_mutex_);
         source_requests_cv_.wait(pending, [&] {
-          return stop_source_worker_ || std::any_of(source_requests_.begin(), source_requests_.end(),
+          return stop_source_worker_ || configuration_ready_.load(std::memory_order_acquire) ||
+              std::any_of(source_requests_.begin(), source_requests_.end(),
               [](const auto& r) { return r.slot != nullptr; });
         });
         if (stop_source_worker_) return;
+      }
+      if (configuration_ready_.exchange(false, std::memory_order_acq_rel)) {
+        ConfigureMeasuredSource();
+        continue;
       }
 #if defined(HV_ANDROID_ADAPTER_TEST)
       { std::unique_lock<std::mutex> gate(test_worker_mutex_);
@@ -1321,6 +1462,19 @@ private:
   std::atomic<uint64_t> source_lease_generation_{0};
   std::atomic<uint64_t> source_lease_token_{0};
   std::atomic<uintptr_t> source_image_{0};
+  struct ConfigurationEventData {
+    HV_AndroidGpuSubmissionV1 submission{};
+    uint64_t lease_token = 0;
+  } configuration_event_{};
+  HV_AndroidGpuSubmissionV1 measured_submission_{};
+  uint64_t measured_lease_token_ = 0;
+  VulkanSourceImage measured_source_{};
+  VulkanDeviceContext producer_context_{};
+  std::atomic<bool> configuration_requested_{false};
+  std::atomic<bool> configuration_event_inflight_{false};
+  std::atomic<bool> configuration_ready_{false};
+  std::atomic<bool> configuration_failed_{false};
+  std::atomic<uint64_t> configuration_pending_drops_{0};
 #if defined(HV_ANDROID_ADAPTER_TEST)
   std::mutex test_worker_mutex_;
   std::condition_variable test_worker_cv_;
@@ -1350,11 +1504,19 @@ void GetUnityVulkanProducerStatus(HV_AndroidGpuBridgeStatusV1 &s) noexcept {
   AndroidProducer::Get().Status(s);
 }
 void *UnityVulkanRenderEventFunction() noexcept {
-  return reinterpret_cast<void *>(&UnityVulkanBridge::RenderEvent);
+  return reinterpret_cast<void *>(&AndroidProducer::RenderEvent);
 }
 const char *UnityVulkanProducerDiagnostic() noexcept {
   return AndroidProducer::Get().Diagnostic();
 }
+#if defined(HV_ANDROID_GPU_GATE)
+UnityVulkanBridge* UnityVulkanProducerBridge() noexcept {
+  return AndroidProducer::Get().GateBridge();
+}
+bool UnityVulkanProducerContext(VulkanDeviceContext& out) noexcept {
+  return AndroidProducer::Get().GateContext(out);
+}
+#endif
 } // namespace humanvision::gpu
 
 extern "C" UNITY_INTERFACE_EXPORT void UNITY_INTERFACE_API

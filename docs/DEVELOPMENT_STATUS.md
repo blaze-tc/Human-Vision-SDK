@@ -1,3 +1,48 @@
+# Android Vulkan/ncnn — B7 host gate built; device acceptance open (2026-09-25)
+
+Authority: Revision 2 design and the B7 plan. B6 at
+`cdf5651285f1755ede75596c29c9947e645eb472` is the approved base. B7
+adds a render-event measurement of the actual active Unity Vulkan camera
+image, exact ncnn device/driver UUID selection, B2 AHB capability probing,
+and control-worker configuration of the production three-slot producer.
+The render callback only copies source facts; allocation/import work is on
+the control worker. First frames pending configuration count as generation
+drops. A development-only gate consumer reuses the B5 ncnn cached import,
+GPU preprocessing and explicit FP16 pack4 conversion with a generated input
+contract, with no model inference or skeleton. Production NCNN model assets
+remain absent until Milestone C and the ordinary validator remains strict.
+
+Fresh host verification on this worktree:
+
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1`: **192/192 PASS**,
+  CTest 15.20 s. Includes the render-event and stale lease/configuration
+  regressions.
+- `$env:__COMPAT_LAYER='RunAsInvoker'; pwsh -NoProfile -File tools/test/run_unity040_tests.ps1 -Unity 'D:/Developer/2021.3.45f1/Editor/Unity.exe'`:
+  **75/75 EditMode PASS**.
+- `pwsh -NoProfile -File tools/package/build_live_native.ps1 -Platform Android -AndroidApiLevel 26`:
+  **PASS**. `llvm-nm --defined-only` confirms the default native build has no
+  `HV_AndroidGpuGate*` exports.
+- `.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py`:
+  **PASS**. `.venv-reference/Scripts/python.exe tools/maintenance/generate_component_catalog.py --check`:
+  **PASS**.
+- `pwsh -NoProfile -File tools/test/build_android_gpu_bridge_gate.ps1 -ProjectPath unity/HumanVisionDemo`:
+  **PASS**, Unity 2021.3.45f1 Development IL2CPP ARM64 APK, API 26 minimum,
+  Vulkan first, `android-ncnn-vulkan` manifest mode/profile, CAMERA permission,
+  `libhumanvision.so` and `libonnxruntime.so` packaged. APK SHA-256:
+  `95854922748cccdc533bee98266ac4cd99acc079627bc1baf0d445becbfbb986`.
+- `pwsh -NoProfile -File tools/test/collect_android_gpu_bridge_gate.ps1 -DurationMinutes 10 -OutputPath out/device-gates/milestone-b -DryRun`:
+  **PASS**; checked the exact APK/hash/output path without issuing ADB commands.
+
+The APK is a **host-built gate artifact, not a device pass**. On the user’s
+Snapdragon 888, `tools/test/collect_android_gpu_bridge_gate.ps1` must record
+the ten-minute camera, AHB format/usage/features, actual copy path, exact
+UUID pair, cached import/conversion progress, drops, orientation and lifecycle
+evidence. See [B7 device gate](validation/ANDROID_NCNN_VULKAN_AHB_GATE.md).
+Until the user returns and accepts that report, B7 and Milestone B remain
+open; Milestones C/D must not start.
+
+---
+
 # Android Vulkan/ncnn — Milestone A closed; hardware gates pending (2026-09-14)
 
 Authority: Revision 2 of

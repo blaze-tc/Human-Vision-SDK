@@ -4,6 +4,16 @@ set(HV_ANDROID_GPU_PROBE_SOURCES
     gpu/android/ahb_capabilities.cpp
     gpu/android/unity_vulkan_bridge.cpp
     gpu/android/unity_vulkan_plugin.cpp)
+option(HV_ANDROID_GPU_GATE "Build development-only Android GPU bridge gate" OFF)
+if(HV_ANDROID_GPU_GATE AND NOT ANDROID)
+    message(FATAL_ERROR "HV_ANDROID_GPU_GATE requires Android")
+endif()
+if(HV_ANDROID_GPU_GATE)
+    target_compile_definitions(humanvision_internal PRIVATE HV_ANDROID_GPU_GATE=1)
+    target_compile_definitions(humanvision PRIVATE HV_ANDROID_GPU_GATE=1)
+    target_sources(humanvision PRIVATE gpu/android/ncnn_gate.cpp)
+    target_include_directories(humanvision PRIVATE ${PROJECT_SOURCE_DIR}/third_party)
+endif()
 
 target_sources(humanvision_internal PRIVATE
     composition/session.cpp

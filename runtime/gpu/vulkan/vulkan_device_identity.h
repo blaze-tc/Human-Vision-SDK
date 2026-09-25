@@ -45,5 +45,10 @@ DeviceIdentity QueryDeviceIdentity(const VulkanDeviceContext& device);
 // these calls and keep it alive until all nets/imports are destroyed.
 DeviceMatch MatchNcnnDevice(const VulkanDeviceContext& unity);
 DeviceMatch ConfigureNcnnNet(const VulkanDeviceContext& unity, ncnn::Net& net);
+// This implementation lives in a ncnn-only translation unit so the pinned
+// SimpleVK declarations never collide with Unity's Vulkan headers.
+bool FindMatchedNcnnContext(const VulkanDeviceContext& unity,
+                            VulkanDeviceContext& consumer,
+                            std::string& diagnostic);
 #endif
 }

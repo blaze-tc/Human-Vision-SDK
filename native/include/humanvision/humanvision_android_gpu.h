@@ -17,7 +17,10 @@ extern "C" {
  * native-owned event slot. Prepare never waits for GPU work or inference.
  * Event data remains valid until consumed/invalidated; stale generations are
  * safe no-ops. The host owns the slot and synchronization, not the caller.
- * On any failed prepare, out_render_event_data is set to NULL.
+ * While the first source generation is being measured, prepare returns
+ * HV_NO_NEW_RESULT. A non-NULL event data pointer in that case must be sent
+ * once with event ID 1 to the same render callback; ordinary accepted frame
+ * events use ID 0. Other failures set out_render_event_data to NULL.
  * The callback function is NULL when the bridge is unsupported; never issue an
  * event then. Unsupported status is initialized with COPY_UNAVAILABLE and zero
  * metrics/UUIDs. Too-small or wrong-version output storage remains untouched.
@@ -70,8 +73,9 @@ HV_API HV_Result HV_CALL HV_RuntimePrepareAndroidGpuFrame(
  * must keep its texture and VkImage alive from Begin through End. Call End
  * synchronously before Release/Destroy or source replacement; it closes GPU
  * admission and drains pending native events/views for this generation.
- * Reconfigure and device teardown invalidate the lease. Begin again after a
- * new measured source/generation is configured. */
+ * Reconfigure and device teardown invalidate the lease. The first source
+ * lease may precede the measured generation; its first frame triggers the
+ * render-thread measurement event and is counted as a generation drop. */
 HV_API HV_Result HV_CALL HV_RuntimeBeginAndroidGpuSourceLease(
     HV_RuntimeHandle runtime, void* unity_texture);
 HV_API HV_Result HV_CALL HV_RuntimeEndAndroidGpuSourceLease(

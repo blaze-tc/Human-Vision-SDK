@@ -17,6 +17,7 @@ namespace HumanVision.Editor
         public void OnPreprocessBuild(BuildReport report)
         {
             if (report.summary.platform != BuildTarget.Android) return;
+            if (HumanVisionAndroidGpuGateBuild.IsAuthorizedGateBuild(report)) return;
             var descriptor = HumanVisionAndroidRuntimeModeRegistry.Resolve(HumanVisionAndroidRuntimeSettings.instance.RuntimeModeId);
             var issues = HumanVisionAndroidRuntimeBuildValidator.Validate(descriptor, CaptureEnvironment(descriptor));
             foreach (var issue in issues.Where(issue => !issue.IsError))

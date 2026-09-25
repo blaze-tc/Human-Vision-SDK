@@ -19,6 +19,12 @@ public:
     AndroidSession(const AndroidSession&) = delete;
     AndroidSession& operator=(const AndroidSession&) = delete;
     bool Initialize(const HV_GpuBackendConfigV1&, const HV_GpuDeviceContextV1&, std::string& error);
+#if defined(HV_ANDROID_GPU_GATE)
+    bool InitializeGate(const std::string& input_contract_json,
+                        const HostContext& host, std::string& error);
+    const InputContract& GateContract() const noexcept { return contract_; }
+    const gpu::SlotContract& GateGenerationContract() const noexcept { return generation_.contract; }
+#endif
     HV_Result Run(const HV_GpuFrameRefV1&, const HV_GpuImageTransformV1&,
                   HV_TensorViewV1*, uint32_t capacity, uint32_t& count, std::string& error);
     HV_Result Info(HV_BackendSessionInfoV1& info) const;
@@ -44,6 +50,7 @@ private:
     gpu::UnityVulkanBridge* bridge_ = nullptr;
     bool gpu_instance_lease_ = false;
     bool terminal_gpu_fault_ = false;
+    bool gate_mode_ = false;
     gpu::ConsumerFrame* active_consumer_ = nullptr;
     gpu::SlotToken active_token_{};
     ncnn::Option option_;

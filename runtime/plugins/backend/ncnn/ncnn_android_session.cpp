@@ -231,10 +231,12 @@ bool AndroidSession::InitializeSlots(gpu::UnityVulkanBridge& bridge, std::string
         if (slot->imported_rgb.empty() || slot->normalized.empty() || slot->prepared_input.empty()) {
             error = "ncnn cached preprocessing tensor allocation failed"; return false;
         }
-        slot->extractor = std::make_unique<ncnn::Extractor>(net_->create_extractor());
-        slot->extractor->set_blob_vkallocator(blob_allocator_);
-        slot->extractor->set_workspace_vkallocator(blob_allocator_);
-        slot->extractor->set_staging_vkallocator(staging_allocator_);
+        if (!gate_mode_) {
+            slot->extractor = std::make_unique<ncnn::Extractor>(net_->create_extractor());
+            slot->extractor->set_blob_vkallocator(blob_allocator_);
+            slot->extractor->set_workspace_vkallocator(blob_allocator_);
+            slot->extractor->set_staging_vkallocator(staging_allocator_);
+        }
         slot->gpu_outputs.resize(contract_.output_blobs.size());
         slot->fp32_outputs.resize(contract_.output_blobs.size());
         slot->cpu_outputs.resize(contract_.output_blobs.size());
@@ -307,6 +309,53 @@ bool AndroidSession::Initialize(const HV_GpuBackendConfigV1& config,
     if (!preprocess_->Initialize(device_, option_, error)) return false;
     return InitializeSlots(*host.bridge, error);
 }
+
+#if defined(HV_ANDROID_GPU_GATE)
+bool AndroidSession::InitializeGate(const std::string& input_contract_json,
+                                    const HostContext& host, std::string& error) {
+    gate_mode_ = true;
+    bridge_ = host.bridge;
+    if (!bridge_ || !host.unity_device.instance || !host.unity_device.physical_device) {
+        error = "Gate requires configured production Unity Vulkan bridge"; return false;
+    }
+    try {
+        if (!ParseInputContract(nlohmann::json::parse(input_contract_json), contract_, error)) return false;
+    } catch (const std::exception& ex) { error = ex.what(); return false; }
+    if (!AcquireGpuInstance()) { error = "Gate ncnn Vulkan GPU instance creation failed"; return false; }
+    gpu_instance_lease_ = true;
+    const auto match = gpu::MatchNcnnDevice(host.unity_device);
+    if (match.status != gpu::DeviceMatchStatus::Matched) {
+        error = "Gate ncnn UUID pair mismatch: " + match.diagnostic; return false;
+    }
+    device_ = ncnn::get_gpu_device(match.index);
+    if (!device_ || !device_->is_valid()) { error = "Gate matched ncnn device invalid"; return false; }
+    const auto& info = device_->info;
+    if (!info.support_VK_ANDROID_external_memory_android_hardware_buffer() ||
+        !info.support_VK_KHR_external_semaphore_fd() ||
+        !ncnn::vkGetDeviceProcAddr(device_->vkdevice(), "vkImportSemaphoreFdKHR")) {
+        error = "Gate ncnn device lacks AHB or external sync-fd import"; return false;
+    }
+    if (contract_.output_type == HV_GPU_TENSOR_FP16 &&
+        (!info.support_fp16_packed() || !info.support_fp16_storage() ||
+         !info.query16BitStorageFeatures().storageBuffer16BitAccess ||
+         !info.support_fp16_arithmetic() || !info.queryFloat16Int8Features().shaderFloat16)) {
+        error = "Gate ncnn device lacks required FP16 storage or arithmetic"; return false;
+    }
+    option_.use_vulkan_compute = true;
+    option_.vulkan_device_index = match.index;
+    option_.use_fp16_packed = option_.use_fp16_storage = option_.use_fp16_arithmetic =
+        contract_.output_type == HV_GPU_TENSOR_FP16;
+    option_.use_packing_layout = contract_.output_elempack != 1;
+    blob_allocator_ = device_->acquire_blob_allocator();
+    staging_allocator_ = device_->acquire_staging_allocator();
+    if (!blob_allocator_ || !staging_allocator_) { error = "Gate ncnn allocator unavailable"; return false; }
+    option_.blob_vkallocator = option_.workspace_vkallocator = blob_allocator_;
+    option_.staging_vkallocator = staging_allocator_;
+    preprocess_ = std::make_unique<GpuPreprocess>();
+    if (!preprocess_->Initialize(device_, option_, error)) return false;
+    return InitializeSlots(*bridge_, error);
+}
+#endif
 
 bool AndroidSession::ValidateTransform(const HV_GpuFrameRefV1& frame,
                                        const HV_GpuImageTransformV1& transform,
@@ -477,7 +526,7 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
         active_consumer_ = nullptr;
     };
     std::unique_ptr<gpu::ConsumerFrame, decltype(retire)> lease_guard(&consumer, retire);
-    if (capacity < contract_.output_blobs.size() || !outputs) {
+    if (!gate_mode_ && (capacity < contract_.output_blobs.size() || !outputs)) {
         error = "ncnn output capacity is insufficient"; return HV_ERR_INVALID_ARGUMENT;
     }
     if (!ValidateTransform(frame, transform, consumer, error)) return HV_ERR_INVALID_ARGUMENT;
@@ -553,6 +602,19 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
         }
     }
     pending = true;
+#if defined(HV_ANDROID_GPU_GATE)
+    if (gate_mode_) {
+        if (!ReleaseActiveRole(consumer, error)) return HV_ERR_INTERNAL;
+        released = true;
+        pending = false;
+        const auto retired = bridge_->RetireConsumer(consumer, gpu::CompletionProof::GpuQuiescent);
+        if (retired != gpu::SlotResult::Ok) {
+            error = "Gate ncnn AHB retirement failed"; return HV_ERR_INTERNAL;
+        }
+        lease_guard.release();
+        return HV_OK;
+    }
+#endif
     slot.extractor->clear();
     if (slot.extractor->input(contract_.input_blob.c_str(), slot.prepared_input) != 0) {
         error = "ncnn model rejected explicit input tensor"; return HV_ERR_MODEL_LOAD;

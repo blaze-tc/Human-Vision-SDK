@@ -18,6 +18,10 @@ BridgeResult PrepareUnityVulkanFrame(const HV_AndroidGpuSubmissionV1 &,
 void GetUnityVulkanProducerStatus(HV_AndroidGpuBridgeStatusV1 &) noexcept;
 void *UnityVulkanRenderEventFunction() noexcept;
 const char *UnityVulkanProducerDiagnostic() noexcept;
+#if defined(HV_ANDROID_GPU_GATE)
+UnityVulkanBridge* UnityVulkanProducerBridge() noexcept;
+bool UnityVulkanProducerContext(VulkanDeviceContext&) noexcept;
+#endif
 
 inline HV_Result AndroidBridgeResultCode(BridgeResult result) noexcept {
   switch (result) {

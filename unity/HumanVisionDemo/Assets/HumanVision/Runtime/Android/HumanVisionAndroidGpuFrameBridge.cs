@@ -144,7 +144,19 @@ namespace HumanVision
                 RotationDegrees = (uint)rotationDegrees, Mirrored = mirrored ? 1u : 0u
             };
             int result = RuntimeBindings.HV_RuntimePrepareAndroidGpuFrame(_runtime, ref submission, out IntPtr eventData);
-            if (HumanVisionAndroidGpuResult.IsPressureDrop(result)) return false; // Bounded bridge pressure, counted natively.
+            if (HumanVisionAndroidGpuResult.IsPressureDrop(result))
+            {
+                // A first-frame control event samples the actual Vulkan image on
+                // Unity's render thread. The native control worker then probes
+                // AHB candidates before ordinary frame events are admitted.
+                if (eventData != IntPtr.Zero)
+                {
+                    _commands.Clear();
+                    _commands.IssuePluginEventAndData(_renderEvent, 1, eventData);
+                    Graphics.ExecuteCommandBuffer(_commands);
+                }
+                return false;
+            }
             Check(result, "prepare GPU camera frame");
             if (eventData == IntPtr.Zero) throw new InvalidOperationException("GPU frame prepare returned no render event data.");
             _commands.Clear();

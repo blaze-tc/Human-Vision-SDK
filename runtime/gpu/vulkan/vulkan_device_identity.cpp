@@ -116,5 +116,38 @@ DeviceMatch ConfigureNcnnNet(const VulkanDeviceContext& unity, ncnn::Net& net) {
     if (result.status == DeviceMatchStatus::Matched) net.set_vulkan_device(result.index);
     return result;
 }
+bool FindMatchedNcnnContext(const VulkanDeviceContext& unity,
+                            VulkanDeviceContext& consumer,
+                            std::string& diagnostic) {
+    consumer = {};
+    if (!ncnn::get_gpu_instance() && ncnn::create_gpu_instance() != 0) {
+        diagnostic = "ncnn Vulkan GPU instance creation failed";
+        return false;
+    }
+    const DeviceMatch match = MatchNcnnDevice(unity);
+    diagnostic = match.diagnostic;
+    if (match.status != DeviceMatchStatus::Matched) return false;
+    const ncnn::VulkanDevice* device = ncnn::get_gpu_device(match.index);
+    if (!device || !device->is_valid()) {
+        diagnostic = "Matched ncnn VulkanDevice is invalid: " + diagnostic;
+        return false;
+    }
+    consumer.instance = ncnn::get_gpu_instance();
+    consumer.physical_device = ncnn::get_gpu_info(match.index).physicalDevice();
+    consumer.device = device->vkdevice();
+    uint32_t api = VK_MAKE_VERSION(1, 0, 0);
+    using EnumerateVersion = VkResult(VKAPI_PTR*)(uint32_t*);
+    const auto enumerate_version = reinterpret_cast<EnumerateVersion>(
+        ncnn::vkGetInstanceProcAddr(nullptr, "vkEnumerateInstanceVersion"));
+    if (enumerate_version && enumerate_version(&api) != VK_SUCCESS) {
+        diagnostic = "ncnn Vulkan instance-version query failed";
+        return false;
+    }
+    consumer.instance_api_version = api;
+    consumer.properties2_extension = ncnn::support_VK_KHR_get_physical_device_properties2 != 0;
+    consumer.external_memory_capabilities_extension = ncnn::support_VK_KHR_external_memory_capabilities != 0;
+    consumer.ahb_extension = true;
+    return true;
+}
 #endif
 }

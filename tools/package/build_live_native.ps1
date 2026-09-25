@@ -3,6 +3,7 @@ param(
     [string]$AndroidNdk = 'D:/Developer/2022.3.61t4/Editor/Data/PlaybackEngines/AndroidPlayer/NDK',
     [ValidateSet('All','Windows','Android')][string]$Platform = 'All',
     [ValidateSet(26)][int]$AndroidApiLevel = 26,
+    [switch]$GpuGate,
     [switch]$Fresh
 )
 $ErrorActionPreference = 'Stop'
@@ -32,7 +33,7 @@ if ($Platform -in @('All','Android')) {
 # The NDK caches CMAKE_SYSTEM_VERSION independently of ANDROID_PLATFORM. Always
 # reconfigure from fresh cache so an existing API-24 build cannot survive this pin.
 $androidConfigure = @('--fresh', '-S', $root, '-B', "$root/build/android-live", '-G', 'Ninja')
-& $cmake @androidConfigure "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_TOOLCHAIN_FILE=$AndroidNdk/build/cmake/android.toolchain.cmake" -DANDROID_ABI=arm64-v8a "-DANDROID_PLATFORM=android-$AndroidApiLevel" -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DHV_ENABLE_RTSP=ON "-DHV_ONNXRUNTIME_ROOT=$root/out/live-deps/ort-android" "-DHV_FFMPEG_INCLUDE=$root/out/live-deps/ffmpeg-headers" "-DHV_FFMPEG_LIB_DIR=$root/out/live-deps/ffmpeg-android" > "$root/out/configure-android-live.log" 2>&1
+& $cmake @androidConfigure "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_TOOLCHAIN_FILE=$AndroidNdk/build/cmake/android.toolchain.cmake" -DANDROID_ABI=arm64-v8a "-DANDROID_PLATFORM=android-$AndroidApiLevel" -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DHV_ENABLE_RTSP=ON "-DHV_ANDROID_GPU_GATE=$($GpuGate.IsPresent)" "-DHV_ONNXRUNTIME_ROOT=$root/out/live-deps/ort-android" "-DHV_FFMPEG_INCLUDE=$root/out/live-deps/ffmpeg-headers" "-DHV_FFMPEG_LIB_DIR=$root/out/live-deps/ffmpeg-android" > "$root/out/configure-android-live.log" 2>&1
 if ($LASTEXITCODE -ne 0) { throw 'Android configuration failed' }
 & $cmake --build "$root/build/android-live" --target humanvision > "$root/out/build-android-live.log" 2>&1
 if ($LASTEXITCODE -ne 0) { throw 'Android native build failed' }
