@@ -1,3 +1,60 @@
+# Android Vulkan/ncnn — B7 Snapdragon 888 gate accepted; Milestone B complete (2026-09-25)
+
+Authority: Revision 2 design and the ordered implementation plan. The user
+enabled USB debugging and authorized direct device collection. B7 ran the
+existing `HumanVisionCameraDemo` GPU gate on a OnePlus 9 Pro `LE2120`
+(Android 14, SM8350 Snapdragon 888, Adreno 660 Vulkan 1.1.0
+`[512.530.0]`). Tested code commit:
+`147ed1d5d0f1c9eab3e18145a0b8077e80e405f6`. The Development/IL2CPP
+ARM64 API 26/Vulkan gate APK is
+`out/android-gpu-gate-runtime/humanvision-gpu-bridge-gate.apk`, SHA-256
+`42de1691606e76e99aec8db75ece8ca7ec20c3ead1c54cea6ac068610fef88ce`.
+
+The accepted collection command was:
+
+```powershell
+pwsh -NoProfile -File tools/test/collect_android_gpu_bridge_gate.ps1 -DurationMinutes 10 -OutputPath out/device-gates/milestone-b -Serial e7c07019
+```
+
+`out/device-gates/milestone-b/report.json` reports
+`PASS_CANDIDATE_REQUIRES_USER_REVIEW`: 23/23 checks passed over 10.003 minutes.
+Raw `logcat.txt` inspection confirmed 2,136 gate statuses, zero nonempty
+status errors or native/Unity fatals, six complete source-generation probe
+blocks, maximum status gap 7.678 s, and final
+submitted/imported/converted `11992/11991/11991`. Final `noSlot=6` and
+`generationDrops=14` are recorded, not hidden. Portrait, left landscape
+(Unity `Landscape` alias), right landscape, pause/resume, focus loss/return,
+and camera restart all appeared with recovery and renewed GPU progress.
+Actual AHB format `1`, usage `0x100`, features `0xFFD83` supported selected
+blit path `1`; ncnn imported a sampled/read-only image (usage `4`). Unity and
+ncnn device/driver UUIDs matched exactly. The color-attachment candidate was
+not allocated after blit passed, per the approved probe strategy.
+
+The first ten-minute run is retained at `out/device-gates/failed-slot-busy/`.
+It failed two analyzer checks after transient ring slot-publication contention
+caused a path-zero status with `Unity Vulkan slot transition/publication is
+pending recovery`. Commit `147ed1d` repaired the race; the rerun passed.
+
+Fresh Milestone B host verification commands and results:
+
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1`: **196/196 PASS**.
+- `$env:__COMPAT_LAYER='RunAsInvoker'; pwsh -NoProfile -File tools/test/run_unity040_tests.ps1 -Unity 'D:/Developer/2021.3.45f1/Editor/Unity.exe'`: **75/75 EditMode PASS**.
+- `pwsh -NoProfile -File tools/test/test_android_gpu_bridge_gate_analysis.ps1`: **37/37 PASS**.
+- `.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py`: **PASS**.
+- `$env:__COMPAT_LAYER='RunAsInvoker'; pwsh -NoProfile -File tools/test/build_android_gpu_bridge_gate.ps1 -ProjectPath unity/HumanVisionDemo`: **PASS**; APK and recursive seven-library closure verified, with the SHA-256 above.
+- `pwsh -NoProfile -File tools/test/collect_android_gpu_bridge_gate.ps1 -DurationMinutes 10 -OutputPath out/device-gates/milestone-b -DryRun`: **PASS** before physical collection.
+
+The B7/Milestone B GPU Bridge engineering gate is accepted; evidence and
+limitations are recorded in
+[ANDROID_NCNN_VULKAN_AHB_GATE.md](validation/ANDROID_NCNN_VULKAN_AHB_GATE.md).
+This test-only gate has no detector, pose model, skeleton output, or production
+ModelPack. Milestone C (RTMDet Nano then RTMPose TopDown) is next and has not
+started. RTMO remains Milestone D. The production 30 fresh complete
+observation frames/s and final user physical acceptance remain open. Do not
+merge main or publish a Release before that final acceptance.
+
+---
+
 # Android Vulkan/ncnn — B7 probe evidence bound to each source generation (2026-09-25)
 
 B7 review found a second false pass: after camera restart, Unity reset its
