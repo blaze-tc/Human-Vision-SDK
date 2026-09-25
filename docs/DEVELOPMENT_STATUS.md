@@ -1,11 +1,14 @@
 # Android Vulkan/ncnn — B7 collector review round 3; device acceptance open (2026-09-25)
 
-Independent rereview found one collector false pass: an otherwise valid log
-with `E Unity: InvalidOperationException: Gate submit failed` still returned
-`PASS_CANDIDATE_REQUIRES_USER_REVIEW`. A new fixture first reproduced that
-failure. The analyzer now rejects error-severity Unity lines and explicit gate
-exception lines even if tagged as informational; ordinary Unity warning lines
-remain acceptable. It covers gate source-lease, submit and startup errors.
+Independent rereview found a collector false pass: an otherwise valid log
+with `E Unity: InvalidOperationException: Gate source lease failed` still
+returned `PASS_CANDIDATE_REQUIRES_USER_REVIEW` under the prior analyzer. The
+submit-exception fixture already returned overall `FAIL` because its `failed:`
+text tripped the separate path-contract check, but the fatal-error check
+incorrectly passed. New fixtures exposed both gaps. The analyzer now rejects
+error-severity Unity lines and explicit gate exception lines even if tagged as
+informational; ordinary Unity warning lines remain acceptable. It covers gate
+source-lease, submit and startup errors.
 
 - `pwsh -NoProfile -File tools/test/test_android_gpu_bridge_gate_analysis.ps1`: **24/24 PASS** after the fix, including the expected Unity exception/error rejections and harmless-warning pass.
 - `pwsh -NoProfile -File tools/test/collect_android_gpu_bridge_gate.ps1 -DurationMinutes 10 -OutputPath out/device-gates/milestone-b -DryRun`: **PASS**, verifies APK SHA-256 `965e95d5d7b1b480b25684191b73255c9deea9a57833d9effa428c5b71aba735`; no ADB command executed.
