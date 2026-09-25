@@ -147,6 +147,7 @@ bool AndroidSession::ParseModel(const HV_GpuBackendConfigV1& config, std::string
         if (!chosen) throw std::runtime_error("ncnn active_role is absent from ModelPack");
         if (chosen->at("format").get<std::string>() != "ncnn")
             throw std::runtime_error("Selected model is not ncnn format");
+        if (!ParseBackendOptions(*chosen, backend_options_, error)) return false;
         const auto& output = chosen->at("output_contract");
         auto input = chosen->at("input_contract");
         input["output_blobs"] = output.at("output_blobs");
@@ -158,6 +159,14 @@ bool AndroidSession::ParseModel(const HV_GpuBackendConfigV1& config, std::string
              contract_.input_blob != "in0" ||
              contract_.output_blobs != std::vector<std::string>{"cls", "bbox"})) {
             throw std::runtime_error("RTMDet detector requires RGB 320x320 FP16 pack1 with cls/bbox");
+        }
+        if (chosen->at("role").get<std::string>() == "body" &&
+            (contract_.width != 192 || contract_.height != 256 ||
+             contract_.output_type != HV_GPU_TENSOR_FP16 ||
+             contract_.output_elempack != 4 || contract_.cast_type_to != 2 ||
+             contract_.input_blob != "in0" ||
+             contract_.output_blobs != std::vector<std::string>{"simcc_x", "simcc_y"})) {
+            throw std::runtime_error("RTMPose body requires RGB 192x256 FP16 pack4 with simcc_x/simcc_y");
         }
         const auto& limits = output.at("max_output_bytes");
         if (!limits.is_object()) throw std::runtime_error("Missing max_output_bytes object");
@@ -281,7 +290,7 @@ bool AndroidSession::Initialize(const HV_GpuBackendConfigV1& config,
     option_.vulkan_device_index = match.index;
     option_.use_fp16_packed = contract_.output_type == HV_GPU_TENSOR_FP16;
     option_.use_fp16_storage = contract_.output_type == HV_GPU_TENSOR_FP16;
-    option_.use_fp16_arithmetic = contract_.output_type == HV_GPU_TENSOR_FP16;
+    ApplyBackendOptions(option_, backend_options_);
     option_.use_packing_layout = contract_.output_elempack != 1;
     net_ = std::make_unique<ncnn::Net>();
     net_->opt = option_;

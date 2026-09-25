@@ -13,6 +13,10 @@ CMakeLists.txt text eol=lf
 *.json text eol=lf
 *.md text eol=lf whitespace=-blank-at-eol
 
+# Preserve byte-pinned ncnn patch context and device-probe evidence exactly.
+third_party/ncnn/patches/0002-honor-subgroup-option.patch text eol=lf whitespace=-blank-at-eol
+tools/models/ncnn/first_norm_probe.cpp whitespace=-blank-at-eof
+
 *.docx binary
 *.zip binary
 

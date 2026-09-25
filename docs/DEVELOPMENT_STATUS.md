@@ -1,3 +1,58 @@
+# Android Vulkan/ncnn — Revision 3 Task 2 model eligibility complete (2026-09-26)
+
+The first ScaleNorm `ReduceL2` conversion now passes all four strict Body26
+Snapdragon 888 golden cases: full body, clipped person, mirrored and rotated.
+Each case ran twice with an explicit GPU `VkMat` FP16 pack4 input, FP32
+arithmetic and subgroup disabled; this result is byte-identical to the
+earlier host `Mat` golden. The formal ModelPack gate rejects Mat-only evidence
+and verifies all eight Vulkan audit logs, input hashes and small FP32 output
+hashes. Both the Mat-only and rehashed audit/coverage/output tamper tests were
+observed RED then GREEN after the gate change. The strict route record SHA-256
+is `5bed3e57394d9848e8e4479eeca6c7eb8e7e8967f1bff5247a8e04dd6eed73c7`;
+the local-only ModelPack manifest SHA-256 is
+`0d0d096f9f6ac98eecf41a034795051a0916688cbf96a1a520f20ce28f6c44aa`.
+All valid-joint masks match; normalized distance P95 is at most 0.002781413
+(required ≤0.01), distance max at most 0.003933497 (required ≤0.03), and
+confidence P95 at most 0.006584597 (required ≤0.02). All eight pose runs use
+166/166 Vulkan-supported layers with FP16 pack4 input/storage and FP32
+arithmetic; repeated SimCC output is byte-identical. The detector's four-image,
+eight-output Vulkan regression remains byte-identical. The official export,
+conversion and formal Android runner reproduced the accepted pose golden index
+SHA-256 `71738a5d47b7a8a30e371dcd941a7ce8eedd86f1036be377a6a86926230b4312`.
+
+The ignored local schema-2 `precision-t-26-ncnn-fp16` ModelPack resolves with
+both roles and rejects altered hashes, paths and backend options. The
+`android-ncnn-vulkan` Profile bytes are unchanged. The production Android
+backend applies role-specific ncnn options before loading each model. The
+audited 0002 subgroup-option patch was prepared twice from the pinned archive;
+both ARM64/API26 runs succeeded. An Android `humanvision` build and ELF audit
+passed; built `libhumanvision.so` SHA-256 is
+`405555238bc27e931900611aed86b11d49f5dcf55adbbcd3d4e81203da1953b0`.
+
+Verification commands/results: `.venv-reference/Scripts/python.exe -m unittest
+discover -s tests/reference -v` **54/54 PASS**;
+`pwsh -NoProfile -File tools/test/run_native_tests.ps1` **203/203 PASS**;
+`.venv-reference/Scripts/python.exe -m unittest discover -s tests/architecture -v`
+**17/17 PASS**;
+`.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py`
+**PASS**; `pwsh -NoProfile -File tools/setup/prepare_ncnn_android.ps1 -Abi
+arm64-v8a -ApiLevel 26 -Jobs 8` **PASS twice**;
+`& 'D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
+--build build/android-live --target humanvision --parallel 8` **PASS**;
+`.venv-reference/Scripts/python.exe tools/test/verify_android_native.py`
+**PASS** (ELF64 AArch64 API26, ncnn/AHB/Vulkan symbols and 1810 imports resolved);
+`git diff --check` **PASS**. Exact model inputs/outputs, RED/GREEN evidence,
+hashes and reproduction commands are in
+`docs/validation/RTMPOSE_NCNN_CONVERSION_GATE.md` and ignored
+`out/c3-local-runtime/first-norm-reducel2/` (conversion and RED/GREEN) plus
+`out/c3-local-runtime/strict-vkmat/` (accepted GPU-input replay and pack).
+
+Independent Task 2 SPEC and QUALITY reviews passed after the strict VkMat
+four-case replay and pack-evidence repair. This dedicated Task 2 commit records
+model eligibility; Task 3 has not started. Model eligibility is not integrated 30 fresh
+observation FPS or physical user acceptance. The pack is local-evaluation-only;
+trained-weight redistribution is not approved. No Release, main merge or push.
+
 # Android Vulkan/ncnn — Revision 3 Task 2 non-subgroup gate still blocked (2026-09-25)
 
 The single audited option-aware subgroup-macro candidate fixes the isolated

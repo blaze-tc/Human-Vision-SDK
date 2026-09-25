@@ -3,6 +3,7 @@ param(
     [ValidateSet(26)][int]$ApiLevel = 26,
     [string]$ArchivePath,
     [switch]$VerifyArchiveOnly,
+    [switch]$VerifySourceOnly,
     [string]$AndroidNdk = 'D:/Developer/2022.3.61t4/Editor/Data/PlaybackEngines/AndroidPlayer/NDK',
     [string]$VisualStudio = 'D:/Microsoft Visual Studio',
     [ValidateRange(1,64)][int]$Jobs = 8
@@ -65,8 +66,17 @@ New-Item -ItemType Directory -Force $source | Out-Null
 # Verify every cached source against the verified archive. Only audited patched
 # files may differ; a partial previous extraction is repaired, never trusted.
 $patchedFiles = @{}
-foreach ($patch in $pin.patches) {
-    foreach ($file in $patch.files) { $patchedFiles[$file.path] = $file }
+for ($patchIndex = 0; $patchIndex -lt $pin.patches.Count; $patchIndex++) {
+    foreach ($file in $pin.patches[$patchIndex].files) {
+        if (-not $patchedFiles.ContainsKey($file.path)) {
+            $patchedFiles[$file.path] = [Collections.Generic.List[object]]::new()
+        }
+        $chain = $patchedFiles[$file.path]
+        if ($chain.Count -gt 0 -and $file.before_sha256 -ne $chain[$chain.Count - 1].file.after_sha256) {
+            throw "Discontinuous audited patch chain: $($file.path)"
+        }
+        [void]$chain.Add(@{ patch_index = $patchIndex; file = $file })
+    }
 }
 $archive = [IO.Compression.ZipFile]::OpenRead($ArchivePath)
 $archiveFiles = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -78,18 +88,23 @@ try {
         }
         if ($entry.FullName.EndsWith('/')) { continue }
         [void]$archiveFiles.Add($target)
-        $expected = $null
-        if ($patchedFiles.ContainsKey($entry.FullName) -and (Test-Path -LiteralPath $target)) {
-            $actual = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
-            $record = $patchedFiles[$entry.FullName]
-            if ($actual -eq $record.after_sha256 -or $actual -eq $record.before_sha256) { continue }
+        $stream = $entry.Open()
+        $hasher = [Security.Cryptography.SHA256]::Create()
+        try { $expected = [Convert]::ToHexString($hasher.ComputeHash($stream)).ToLowerInvariant() }
+        finally { $hasher.Dispose(); $stream.Dispose() }
+        $allowedHashes = @($expected)
+        if ($patchedFiles.ContainsKey($entry.FullName)) {
+            $chain = $patchedFiles[$entry.FullName]
+            if ($chain[0].file.before_sha256 -ne $expected) {
+                throw "Audited patch does not start from archive: $($entry.FullName)"
+            }
+            $allowedHashes += @($chain | ForEach-Object { $_.file.after_sha256 })
         }
         if (Test-Path -LiteralPath $target) {
-            $stream = $entry.Open()
-            $hasher = [Security.Cryptography.SHA256]::Create()
-            try { $expected = [Convert]::ToHexString($hasher.ComputeHash($stream)).ToLowerInvariant() }
-            finally { $hasher.Dispose(); $stream.Dispose() }
-            Assert-Hash $target $expected
+            $actual = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -notin $allowedHashes) {
+                throw "Source/patch SHA-256 mismatch: $target (expected an audited chain hash)"
+            }
         } else {
             New-Item -ItemType Directory -Force ([IO.Path]::GetDirectoryName($target)) | Out-Null
             [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $target, $false)
@@ -101,10 +116,13 @@ foreach ($cachedFile in Get-ChildItem -LiteralPath $source -File -Recurse -Force
         throw "Unexpected file in audited source tree: $($cachedFile.FullName)"
     }
 }
-foreach ($patch in $pin.patches) {
+for ($patchIndex = 0; $patchIndex -lt $pin.patches.Count; $patchIndex++) {
+    $patch = $pin.patches[$patchIndex]
     $alreadyApplied = $true
     foreach ($file in $patch.files) {
-        if ((Get-FileHash -LiteralPath "$source/$($file.path)").Hash.ToLowerInvariant() -ne $file.after_sha256) { $alreadyApplied = $false }
+        $actual = (Get-FileHash -LiteralPath "$source/$($file.path)").Hash.ToLowerInvariant()
+        $laterStates = @($patchedFiles[$file.path] | Where-Object { $_.patch_index -ge $patchIndex } | ForEach-Object { $_.file.after_sha256 })
+        if ($actual -notin $laterStates) { $alreadyApplied = $false }
     }
     if (-not $alreadyApplied) {
         foreach ($file in $patch.files) { Assert-Hash "$source/$($file.path)" $file.before_sha256 }
@@ -118,9 +136,18 @@ foreach ($patch in $pin.patches) {
             if ($LASTEXITCODE -ne 0) { throw "Audited patch application failed: $($patch.path)" }
         } finally { Pop-Location }
     }
-    foreach ($file in $patch.files) { Assert-Hash "$source/$($file.path)" $file.after_sha256 }
+    foreach ($file in $patch.files) {
+        $actual = (Get-FileHash -LiteralPath "$source/$($file.path)").Hash.ToLowerInvariant()
+        $laterStates = @($patchedFiles[$file.path] | Where-Object { $_.patch_index -ge $patchIndex } | ForEach-Object { $_.file.after_sha256 })
+        if ($actual -notin $laterStates) { throw "Source/patch SHA-256 mismatch: $source/$($file.path)" }
+    }
 }
-Write-Output 'Verified cached upstream source and audited external-acquire patch.'
+foreach ($path in $patchedFiles.Keys) {
+    $chain = $patchedFiles[$path]
+    Assert-Hash "$source/$path" $chain[$chain.Count - 1].file.after_sha256
+}
+Write-Output 'Verified cached upstream source and audited patch chain.'
+if ($VerifySourceOnly) { return }
 $configure = @('--fresh', '-S', $source, '-B', $build, '-G', 'Ninja',
     "-DCMAKE_MAKE_PROGRAM=$ninja", "-DCMAKE_TOOLCHAIN_FILE=$AndroidNdk/build/cmake/android.toolchain.cmake",
     "-DANDROID_ABI=$Abi", "-DANDROID_PLATFORM=android-$ApiLevel", "-DCMAKE_INSTALL_PREFIX=$install")

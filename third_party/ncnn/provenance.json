@@ -51,6 +51,19 @@
         }
       ],
       "audit": "Only command.h/cpp, gpu.h/cpp, allocator.cpp and pipeline.cpp: preserve legacy APIs; external acquire uses producer layout and queue ownership, optional GPU semaphore wait and release. Android Vulkan device enables VK_KHR_external_semaphore_fd and its dependencies only when available; GpuInfo exposes support_VK_KHR_external_semaphore_fd. Concrete-format AHB images and views use queried VkFormat without external-format or YCbCr chains; nonzero external formats retain existing conversion. AHB import image remains sampled-only. Push-descriptor barriers use stack storage; delayed-record mode retains allocated barriers until submission. Conversion dispatch is unchanged."
+    },
+    {
+      "path": "third_party/ncnn/patches/0002-honor-subgroup-option.patch",
+      "sha256": "5bccb88a80393e59366267c54db559e6eeb55fb3a18bc6ad6c7be93b6cda174f",
+      "base_commit": "e54f7b1f88434e1d844ea0551b880a1cfb079ce1",
+      "files": [
+        {
+          "path": "src/gpu.cpp",
+          "before_sha256": "74c5ef164c5bc9d89d7b218b48ac8bf0f7e4a0b3bb7abf67141b28a3fd7d25f1",
+          "after_sha256": "ccb37d82002bc6efb3be481c0c41eed47bf3d0189adff9ed2a43dfa9ae8246cb"
+        }
+      ],
+      "audit": "Only shader feature macro generation in gpu.cpp: the existing use_subgroup_ops option gates all 11 subgroup feature bits. True preserves device capabilities; false defines each ncnn_subgroup_* feature macro as zero. No math shader, model, dispatch, ABI, or AHB changes."
     }
   ],
   "android_abi": "arm64-v8a",

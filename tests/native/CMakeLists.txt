@@ -181,6 +181,7 @@ if(WIN32)
 endif()
 
 target_sources(humanvision_plugin_tests PRIVATE ../runtime/test_model_profiles.cpp)
+target_sources(humanvision_plugin_tests PRIVATE ../runtime/test_ncnn_modelpack.cpp)
 target_sources(humanvision_plugin_tests PRIVATE ../runtime/test_common_services.cpp)
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_legacy_plugin.cpp)
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_backend_plugin.cpp)

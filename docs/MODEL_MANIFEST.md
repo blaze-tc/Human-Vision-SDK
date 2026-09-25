@@ -2,6 +2,48 @@
 
 # D0 Model Baseline
 
+## Revision3 Task2 local Body26 eligibility (2026-09-26)
+
+The bounded first-ScaleNorm `ReduceL2` candidate passes the original four-image
+Body26 gates on Snapdragon 888 using explicit GPU conversion to FP16 pack4
+`VkMat` at `Extractor::input`. All four cases passed twice with byte-identical
+repeats; all 166 layers support Vulkan. Only SimCC outputs are converted on GPU
+to FP32 pack1 for download. This fixed-fixture model test does not implement
+AHB import or the Task4 camera path. Mat-only evidence cannot promote a pack.
+The pack includes all eight route logs and binds runner, source, model,
+input/output hashes and exact geometry/options to the pinned golden index.
+Reproduction starts at
+[`tools/models/ncnn/README.md`](../tools/models/ncnn/README.md); exact hashes,
+RED/GREEN and numerical results are in
+[`RTMPOSE_NCNN_CONVERSION_GATE.md`](validation/RTMPOSE_NCNN_CONVERSION_GATE.md).
+The local schema-2 pack has `local_evaluation_only=true`; source licenses and
+conversion provenance are included, while trained-weight and dataset public
+redistribution rights remain unverified.
+
+Only the first norm's Abs/Pow2/ReduceSum/Pow0.5 becomes ReduceL2, preserving its
+input/output names, axes, keepdims and all downstream consumers. The second norm
+is unchanged. Its output is stored in FP16 only after the FP32 square-root;
+intermediate squared sums no longer saturate at 65504. First-Conv zero padding
+and the twelve previously proven shape rewrites remain identical. The weight
+file is unchanged from that padded baseline. Fusion reduces 169 layers to 166;
+all 166 were Vulkan-supported in every golden execution.
+
+**Task2 contract ruling:** keep the existing profile bytes/ID and V1/V2 ABI.
+The selected ModelPack's `models[i].backend_options` binds detector
+`use_subgroup_ops=true,use_fp16_arithmetic=true` and body
+`use_subgroup_ops=false,use_fp16_arithmetic=false`; both retain FP16 storage.
+The runtime validates these role options before loading the Net. The profile
+still selects this pack and requires Vulkan/FP16 capabilities with fallback
+false. Task5 owns later profile-to-Host scheduling/composition validation.
+
+The official ONNX has symbolic output declarations and MMDeploy custom pooling;
+it does **not** pass the unchanged generic C1 ONNX audit. This single pinned
+candidate uses its own fixed-graph proof: batch1 input, 26 preserved rows,
+384/512 classifier lengths, exact graph hashes, and actual GPU output shape,
+packing and byte-count checks. The pack declares `[1,26,384]`/`[1,26,512]`
+FP32 downloads bounded at 39936/53248 bytes. No ONNX output metadata, generic
+operator allowlist or golden threshold was changed to obtain eligibility.
+
 ## Android ncnn C1 conversion contract (2026-09-25)
 
 The Android production candidate uses a **separate** `precision-t-26-ncnn-fp16`

@@ -1,4 +1,207 @@
-# RTMPose-t Body26 ncnn conversion gate — blocked (2026-09-25)
+# RTMPose-t Body26 ncnn conversion gate (2026-09-26)
+
+## SPEC correction: strict VkMat input eligibility PASS (2026-09-26)
+
+The earlier first-norm four-case runs used an FP16 pack4 `Mat` extractor input.
+They proved model numerics but did not satisfy Design section 8.3 GPU-input eligibility.
+A new test first rejected their promotion only after the builder fix (the RED
+log records the prior builder accepting Mat-only evidence). The formal route is
+now `strict-vkmat`: fixture RGB plus a zero fourth lane is uploaded once, then
+`VulkanDevice::convert_packing(..., 4, 2, ...)` explicitly produces the input
+`VkMat`. Before extractor input the runner checks dims3, w192/h256/c1,
+elempack4 and 16-bit scalar storage. The runner uses FP16 packed/storage,
+FP32 arithmetic, subgroup=false, and audits 166/166 Vulkan-supported layers.
+Only the two SimCC outputs are converted on GPU with `convert_packing(..., 1,
+1, ...)` to FP32 pack1, downloaded, and checked against 39936/53248 bytes.
+There is no input readback in this strict route. This fixed-fixture upload is
+model eligibility evidence; it implements neither AHB import nor Task4.
+
+All four images passed twice on the OnePlus 9 Pro / Adreno 660. Valid masks,
+distances and confidence errors are exactly the table below; every output and
+the complete index are byte-identical to the prior numerical result. No model,
+threshold or options changed. Fresh reference tests pass **54/54**, native
+**203/203**, and architecture boundaries pass. The eight route logs include
+runtime checks and are copied into the local ModelPack. Both source evidence
+and installed-pack validation require the pinned runner/source/model/index,
+eight unique case/prefix pairs, exact typed audit fields, log hashes and
+input/SimCC hashes against the pinned golden. A second RED test demonstrated
+that rehashing the outer manifest could conceal changed audit/coverage/output
+records; shared full validation now rejects all three (GREEN).
+
+Current ignored evidence: `out/c3-local-runtime/strict-vkmat/`, with
+`mat-only-red.log`, `route-binding-red.log`, `route-binding-green.log`,
+`four-case.log`, `golden/vkmat-route.json`, eight `golden/route-logs/` files,
+raw crops/reference/candidate/repeat tensors, and validation logs.
+`artifact-hashes.json` binds 97 files (SHA-256
+`bba41f28ab53726ce1d38c95cac353d30ea35d6a71191f12f7f4c3323552ab21`);
+`verify_evidence.py` passes all hashes, routes, goldens and the local pack.
+Architecture unit tests also pass **17/17**.
+
+| Current artifact | SHA-256 |
+| --- | --- |
+| strict VkMat runner source | `659de78ad25cac3bdf8f0919b035687619df52647dfeb746cc041a4c0b8af6f6` |
+| strict VkMat runner | `7077b4941cafdeaa998ef55d3c6468c1818d7b7778a4c56811a81dbf0ff6a8b1` |
+| VkMat route manifest | `5bed3e57394d9848e8e4479eeca6c7eb8e7e8967f1bff5247a8e04dd6eed73c7` |
+| unchanged golden index | `71738a5d47b7a8a30e371dcd941a7ce8eedd86f1036be377a6a86926230b4312` |
+| current local ModelPack manifest | `0d0d096f9f6ac98eecf41a034795051a0916688cbf96a1a520f20ce28f6c44aa` |
+
+Reproduction uses the tracked README command with `--runner-mode strict-vkmat`,
+a fresh output directory, and the exact runner above (retained as
+`out/c3-local-runtime/strict-vkmat/pose-runner`). The checked replay command is
+also saved as `out/c3-local-runtime/strict-vkmat/replay.ps1`. Prior Mat runs,
+including their runner binary archived as `mat-only-pose-runner`, remain under
+`first-norm-reducel2/` for numerical history and cannot satisfy the builder.
+
+## First ScaleNorm ReduceL2: model eligibility PASS (2026-09-26)
+
+The one user-approved first-norm candidate passes **all four strict Body26
+cases**. The saved non-subgroup candidate's remaining mirrored error was traced
+to FP16 storage of squared sums greater than 65504. Only the first
+`/mlp/mlp.0/Abs -> Pow(2) -> ReduceSum -> Pow(0.5)` chain was fused to ONNX
+`ReduceL2`. Input `/Reshape_output_0` remains the same 26 rows of 48 values;
+output `/mlp/mlp.0/Pow_1_output_0`, axes `[2]`, keepdims `1`, all consumers,
+all weights, and the second ScaleNorm remain unchanged. The transformation
+checks the source SHA, exact node inputs/outputs/constants/axes/consumers and
+fixed preceding Conv geometry before writing. CPU isolated ONNX equivalence
+passed on zeros, 48 copies of 50 and seeded positive/negative values, and every
+other ONNX node was compared byte-for-byte.
+
+The pinned MMDeploy converter produces ncnn Reduction op8, whose FP32 square
+root precedes FP16 storage. Fusion removes three arithmetic layers, yielding
+**166/166 Vulkan-supported layers** rather than 169. The existing twelve
+shape-only substitutions were applied with their same parameters. Final bin
+SHA is identical to the padded baseline. The runtime uses the audited
+option-aware `gpu.cpp` patch with subgroup=false and FP32 arithmetic for body;
+FP16 pack4 input/packed/storage remain mandatory. No mathematical shader,
+threshold, weight, public ABI, profile bytes or second norm was changed.
+
+### RED/GREEN and full model evidence
+
+The new standalone device norm probe first ran the original graph on 26 rows
+of 48 copies of 50: all 26 sums stored exactly **65504**, giving norm **255.875**
+instead of 346.41016 (exit20). Saved mirrored first-norm input failed only on
+rows **1, 11, 12, 13, 15, 24**, whose sums also stored exactly 65504. Under op8,
+all 52 rows pass `abs(error) <= expected*0.001 + 0.00001` (exit0); the synthetic
+norm is 346.25. That isolated storage tolerance does not replace the full-model
+confidence/distance thresholds. Exact vectors are in `overflow-proof.json`.
+The isolated width48 tensor is FP16 pack1 because 26 rows do not pack4; full
+image inference separately audits FP16 pack4 input at the extractor.
+
+`test_rtmpose_first_norm_fusion` first failed on the absent transform module,
+then passed. ModelPack Python tests likewise started with the absent builder;
+the first native `NcnnModelPack` run failed because the eligible pack did not
+exist. The completed tests load the real pack, re-run strict comparisons and
+reject changed checkpoint/param/bin hashes, options and outside-root paths.
+Cache-dependent tests skip only on machines without the local evaluation
+artifacts; none of these tests was skipped in the recorded run.
+
+| Case | Reference/device valid | Distance P95/max | Confidence P95 | Result |
+| --- | --- | --- | --- | --- |
+| full-body | 25/25 | 0.002086079/0.002950105 | 0.006584597 | PASS |
+| clipped-person | 20/20 | 0.002202858/0.002202878 | 0.003529656 | PASS |
+| mirrored | 25/25 | 0.002086071/0.002086079 | 0.005844772 | PASS |
+| rotated | 25/25 | 0.002781413/0.003933497 | 0.005286372 | PASS |
+
+The historical Mat-input evidence below preceded the strict VkMat correction
+above. Every valid mask matches; all eight first-candidate runs audit 166/166 Vulkan
+and repeated SimCC is byte-identical. Fresh official checkpoint export and the
+tracked conversion entry subsequently reproduced the exact ONNX/param/bin.
+The tracked runner rebuilt against the formally prepared ncnn install has the
+same executable SHA as the retained candidate; a second four-case replay
+(`final-golden`, `final-four-case.log`) reproduced the complete golden index
+byte-for-byte. This is the same candidate and same thresholds.
+
+The unchanged detector runner freshly audited 316/316 Vulkan for each of four
+images; all eight cls/bbox tensors match the Task1 pinned golden byte-for-byte.
+`detector/index.json` and the eight files bind the regression. Pose timings are
+first-extraction diagnostic times (including lazy work), not warmed throughput,
+integrated 30-FPS proof or physical acceptance.
+
+The pre-correction `.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -v`
+passed **51/51**; `pwsh -NoProfile -File tools/test/run_native_tests.ps1` passed
+**203/203**, including both real ModelPack tests. Architecture boundaries pass.
+Task2 integration/Android build and independent review are recorded separately
+in `DEVELOPMENT_STATUS.md`; Task3 remains closed pending that task acceptance.
+
+### Local package and contract ruling
+
+`build_local_eval_pack.py` emits ignored
+`out/c3-local-runtime/modelpacks/precision-t-26-ncnn-fp16/modelpack.json`.
+It requires exact accepted model hashes, all four golden hashes and recomputed
+metrics, eight strict runtime audit lines, eight detector tensors, conversion
+provenance, both audited ncnn patches and a hash-pinned source license.
+Model param/bin paths are confined to the pack root. Each model records its
+checkpoint/ONNX/converter/optimizer/source revision and source/license; evidence
+files have per-file SHA256. The pack is explicitly `local_evaluation_only=true`;
+trained-weight/dataset public redistribution remains unverified.
+
+Ruling: profile `android-ncnn-vulkan` stays byte-identical and continues to
+select this pack. `models[i].backend_options` binds detector `(true,true)` and
+body `(false,false)` for subgroup/FP16-arithmetic. Missing, mistyped or different
+options fail before Net loading. This uses the existing schema2 manifest;
+Task5 owns profile-to-Host composition. FP16 storage/capability requirements,
+fail-fast provider selection and public V1/V2 layouts remain unchanged.
+
+The official ONNX retains custom pooling and symbolic output declarations, so
+no generic C1 ONNX audit pass is claimed. `prepare_rtmpose_eval.py` uses an
+exact-hash fixed-graph contract (26 preserved rows, terminal classifier weights
+384x256/512x256), with actual runner output shape/FP32-packing checks. The generic
+C1 audits were not relaxed. Existing ncnn Input and inferred Reshape parameters
+are unchanged outside the already proven twelve shape substitutions.
+
+### Hashes and reproduction
+
+All raw inputs, output tensors, logs and binary snapshots are retained under
+ignored `out/c3-local-runtime/first-norm-reducel2/`. `artifact-hashes.json`
+binds 204 retained artifacts (SHA256
+`301695c4e88020e84335cbf47df3a072e0486c3bf99f52361c4044417e56362b`).
+Fresh `.venv-reference/Scripts/python.exe out/c3-local-runtime/first-norm-reducel2/verify_evidence.py`
+passed all 204 hashes, exact RED saturation, GREEN52 rows and both four-case
+goldens. The historical Mat-only `modelpack.json` SHA256 was
+`72042764af329406c14dca38ec26335901dac291c24cc2e101ce51ab786d7e2b`. The original ncnn padded
+Vulkan param/bin pins remain `aaada52ba44e57d67e440bd7873b9381207f5bddbecc85c823f63ffeb99040c5`
+and `0f8a0a864be7af7990366bfb8ce89d4fca911a08b967c00e3b8180725d5054a4`.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| padded source ONNX | `bd27e32830dd11e378576b0d389999f9ba06f5d83640d29dd04f947cafa29315` |
+| fused ONNX | `cb53464f622e08682a346661a9529d67cd505c58e36f06c967f5ab1ffe550201` |
+| optimized param | `170dc71af088157b013338a3a437039882bf431ad0e9d00baea1763130ff2c5e` |
+| Vulkan param | `2ece391bc5947ddf30e38498977afd9457a61a99eb63393ebd5d38e3708644ec` |
+| FP16 bin | `0f8a0a864be7af7990366bfb8ce89d4fca911a08b967c00e3b8180725d5054a4` |
+| golden index | `71738a5d47b7a8a30e371dcd941a7ce8eedd86f1036be377a6a86926230b4312` |
+| fresh replay golden index | `71738a5d47b7a8a30e371dcd941a7ce8eedd86f1036be377a6a86926230b4312` |
+| pose runner | `5cd41de1e8e47f59e7d97b27b7151acb8edac2b33a148d4fabdad4b926fc4904` |
+| saved mirrored norm input | `4dc13191c004fb200dd1667ce0f273e8c1dea9660c4ca19f15eac5f016bb62bb` |
+| overflow proof | `b5d1a30b96a4dbea96dbed51a1b5eeb30de36775853312ca64186d1fe587472b` |
+| final device log | `a91a7289ea90129a018c5ff4cfa5397267f959a34fb99d89ff059df4a4916b6b` |
+
+The tracked [`ncnn model README`](../../tools/models/ncnn/README.md) lists exact
+checkpoint/export/conversion/golden/pack commands. For the final recorded replay,
+`--source-onnx` was `out/c3-local-runtime/first-norm-reducel2/export-replay/model.onnx`,
+`--output` conversion was `.../export-replay-converted`, and golden output was
+`.../final-golden`. Both copied and fully re-exported routes produced identical
+accepted artifacts. The source/checkpoint/tool pins are enforced before use.
+
+Build the two standalone probes after `prepare_ncnn_android.ps1`:
+
+```powershell
+$cmake = 'D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
+& $cmake -S tools/models/ncnn/pose_golden -B out/c3-local-runtime/first-norm-reducel2/production-runner-build -G Ninja '-DCMAKE_MAKE_PROGRAM=D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe' '-DCMAKE_TOOLCHAIN_FILE=D:/Developer/2022.3.61t4/Editor/Data/PlaybackEngines/AndroidPlayer/NDK/build/cmake/android.toolchain.cmake' -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release "-Dncnn_DIR=$((Get-Location).Path)/out/ncnn-20260526/android-arm64-api26/install/lib/cmake/ncnn"
+& $cmake --build out/c3-local-runtime/first-norm-reducel2/production-runner-build
+.venv-reference/Scripts/python.exe out/c3-local-runtime/first-norm-reducel2/detector_regression.py
+```
+
+For isolated RED/GREEN replay, push `original.param`, `fused.param`,
+`synthetic.fp32`, `mirrored-rows.fp32` and `first_norm_probe` from the retained
+folder to `/data/local/tmp/hv-first-norm/`, then chmod the runner755. Invoke
+`first_norm_probe PARAM INPUT OUTPUT original` (expected exit20 and output sums)
+or `first_norm_probe PARAM INPUT OUTPUT fused` (expected exit0), selecting the
+corresponding graph. No model weights are needed for this mathematical probe.
+The preserved initial probe's source/binary and all inputs remain in that folder.
+
+---
+
 
 ## Bounded non-subgroup option gate: operators PASS, golden 3/4, Task 2 BLOCKED (2026-09-25)
 

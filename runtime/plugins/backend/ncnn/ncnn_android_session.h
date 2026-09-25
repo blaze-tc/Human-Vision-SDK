@@ -3,6 +3,7 @@
 #if defined(__ANDROID__)
 #include "plugins/backend/ncnn/ncnn_vulkan_backend.h"
 #include "plugins/backend/ncnn/ncnn_preprocess.h"
+#include "plugins/backend/ncnn/ncnn_model_options.h"
 #include "gpu/android/unity_vulkan_bridge.h"
 #include <allocator.h>
 #include <android/hardware_buffer.h>
@@ -54,6 +55,7 @@ private:
     gpu::ConsumerFrame* active_consumer_ = nullptr;
     gpu::SlotToken active_token_{};
     ncnn::Option option_;
+    BackendOptions backend_options_{};
     InputContract contract_;
     gpu::ConsumerGeneration generation_{};
     std::array<std::unique_ptr<Slot, SlotDeleter>, gpu::AhbSlotRing::kSlotCount> slots_{};

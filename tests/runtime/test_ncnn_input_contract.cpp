@@ -1,6 +1,7 @@
 #include "plugins/backend/ncnn/ncnn_vulkan_backend.h"
 #include "plugins/backend/ncnn/ncnn_preprocess.h"
 #include "plugins/backend/ncnn/ncnn_input_delivery.h"
+#include "plugins/backend/ncnn/ncnn_model_options.h"
 #include <gtest/gtest.h>
 
 using humanvision::runtime::ncnn_backend::InputContract;
@@ -106,4 +107,70 @@ TEST(NcnnDetectorPack1Input, ExtractorReceivesOnlyThreeChannelFp16Pack1) {
   EXPECT_EQ(DeliverInput(extractor, "in0", FakeTensor{1, 4, 16}, false),
             InputDeliveryResult::Ok);
   EXPECT_EQ(extractor.received.elempack, 4);
+}
+
+TEST(NcnnBackendOptions, BodyRequiresExplicitNonSubgroupFp32Arithmetic) {
+  using humanvision::runtime::ncnn_backend::BackendOptions;
+  using humanvision::runtime::ncnn_backend::ParseBackendOptions;
+  nlohmann::json model = {
+    {"role", "body"},
+    {"backend_options", {{"use_subgroup_ops", false}, {"use_fp16_arithmetic", false}}}
+  };
+  BackendOptions options{};
+  std::string error;
+  ASSERT_TRUE(ParseBackendOptions(model, options, error)) << error;
+  EXPECT_FALSE(options.use_subgroup_ops);
+  EXPECT_FALSE(options.use_fp16_arithmetic);
+
+  for (const auto* missing : {"use_subgroup_ops", "use_fp16_arithmetic"}) {
+    auto changed = model;
+    changed["backend_options"].erase(missing);
+    EXPECT_FALSE(ParseBackendOptions(changed, options, error)) << missing;
+  }
+  for (const auto* wrong : {"use_subgroup_ops", "use_fp16_arithmetic"}) {
+    auto changed = model;
+    changed["backend_options"][wrong] = true;
+    EXPECT_FALSE(ParseBackendOptions(changed, options, error)) << wrong;
+    changed["backend_options"][wrong] = "false";
+    EXPECT_FALSE(ParseBackendOptions(changed, options, error)) << wrong;
+  }
+}
+
+TEST(NcnnBackendOptions, DetectorRequiresExplicitSubgroupFp16Arithmetic) {
+  using humanvision::runtime::ncnn_backend::BackendOptions;
+  using humanvision::runtime::ncnn_backend::ParseBackendOptions;
+  nlohmann::json model = {
+    {"role", "detector"},
+    {"backend_options", {{"use_subgroup_ops", true}, {"use_fp16_arithmetic", true}}}
+  };
+  BackendOptions options{};
+  std::string error;
+  ASSERT_TRUE(ParseBackendOptions(model, options, error)) << error;
+  EXPECT_TRUE(options.use_subgroup_ops);
+  EXPECT_TRUE(options.use_fp16_arithmetic);
+
+  auto missing = model;
+  missing.erase("backend_options");
+  EXPECT_FALSE(ParseBackendOptions(missing, options, error));
+  auto extra = model;
+  extra["backend_options"]["surprise"] = false;
+  EXPECT_FALSE(ParseBackendOptions(extra, options, error));
+  auto unknown = model;
+  unknown["role"] = "other";
+  EXPECT_FALSE(ParseBackendOptions(unknown, options, error));
+}
+
+TEST(NcnnBackendOptions, AppliesSelectedRoleFlagsBeforeModelLoad) {
+  using humanvision::runtime::ncnn_backend::ApplyBackendOptions;
+  using humanvision::runtime::ncnn_backend::BackendOptions;
+  struct RecordingOption {
+    bool use_subgroup_ops = true;
+    bool use_fp16_arithmetic = true;
+  } option;
+  ApplyBackendOptions(option, BackendOptions{false, false});
+  EXPECT_FALSE(option.use_subgroup_ops);
+  EXPECT_FALSE(option.use_fp16_arithmetic);
+  ApplyBackendOptions(option, BackendOptions{true, true});
+  EXPECT_TRUE(option.use_subgroup_ops);
+  EXPECT_TRUE(option.use_fp16_arithmetic);
 }

@@ -33,7 +33,15 @@ class ThirdPartyProvenanceTests(unittest.TestCase):
         self.assertEqual("third_party/ncnn/glslang-LICENSE.txt", p["bundled_licenses"][0]["path"])
         for license_record in p["bundled_licenses"]:
             self.assert_file_hash(license_record)
-        self.assertEqual(1, len(p["patches"]))
+        self.assertEqual(2, len(p["patches"]))
+        self.assertEqual(
+            ["third_party/ncnn/patches/0001-ahb-external-acquire.patch",
+             "third_party/ncnn/patches/0002-honor-subgroup-option.patch"],
+            [patch["path"] for patch in p["patches"]],
+        )
+        first_gpu = next(file for file in p["patches"][0]["files"] if file["path"] == "src/gpu.cpp")
+        second_gpu = next(file for file in p["patches"][1]["files"] if file["path"] == "src/gpu.cpp")
+        self.assertEqual(first_gpu["after_sha256"], second_gpu["before_sha256"])
         for patch in p["patches"]:
             self.assert_file_hash(patch)
             self.assertEqual(p["source_commit"], patch["base_commit"])
