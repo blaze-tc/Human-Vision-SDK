@@ -1,3 +1,31 @@
+# Android Vulkan/ncnn - Revision 3 Task 2 Reduction workaround fails full golden (2026-09-25)
+
+One bounded audited shader workaround selected ncnn Reduction's existing
+shared-memory tree. Actual Snapdragon 888 width256 SUM was RED on all 26 rows
+(`64+r` instead of `960+4r`), then GREEN with exact results; real layer128
+replay also passed FP16 tolerance. The unchanged padded Body26 graph audited
+169/169 Vulkan-supported layers, but all four strict pose cases failed valid
+masks (reference/device 25/19, 20/16, 25/18, 25/11). Full-body normalized joint
+distance P95 is 0.413909 against 0.01. Detector regression passed: all eight
+four-image outputs match the pinned golden byte-for-byte. A reused 191-blob
+sweep localizes the next catastrophic relative discrepancy to layer154
+`Gemm /gau/MatMul_output_0` (P95 absolute 0.228347, correlation 0.435991);
+its cause remains unproven. No second patch was attempted.
+
+Task 2 remains **BLOCKED**; no ModelPack promotion or Task 3 work. Experimental
+patch/provenance/runner sources and raw outputs remain ignored under
+`out/c3-local-runtime/reduction-workaround/`, after restoration of the tracked
+implementation. Original ncnn source/provenance were restored and baseline
+`pwsh -NoProfile -File tools/setup/prepare_ncnn_android.ps1` passed. This is
+failure evidence only. Fresh evidence verification passed 484 artifact hashes;
+`.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -v`
+passed 46/46; architecture boundaries and `git diff --check` passed.
+Exact commands, all four numerical/timing results,
+source/build hashes and replay mapping are in
+[`RTMPOSE_NCNN_CONVERSION_GATE.md`](validation/RTMPOSE_NCNN_CONVERSION_GATE.md).
+
+---
+
 # Android Vulkan/ncnn — Revision 3 Task 2 layer localization (2026-09-25)
 
 The approved follow-up's pinned padded graph and crop received one diagnostic

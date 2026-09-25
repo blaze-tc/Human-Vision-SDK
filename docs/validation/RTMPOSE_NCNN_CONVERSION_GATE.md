@@ -1,5 +1,200 @@
 # RTMPose-t Body26 ncnn conversion gate — blocked (2026-09-25)
 
+## Bounded Reduction shared-tree workaround: operator PASS, model FAIL (2026-09-25)
+
+The single approved source-level attempt is **FAIL for model eligibility**.
+Task 2 remains **BLOCKED**; no ModelPack was promoted and Task 3 remains closed.
+No graph, weights, precision policy or acceptance threshold changed in this
+attempt. All experimental source/patch/build assets were preserved under ignored
+`out/c3-local-runtime/reduction-workaround/` (`$evidence` below), then reverted
+from the tracked implementation. The committed result is documentation only.
+The exact Qualcomm driver/compiler mechanism remains unproven.
+
+Before the patch, a standalone Input/Reduction network ran on the OnePlus 9 Pro
+LE2120 / Snapdragon 888 / Adreno 660. Its 256x26 input has each row r populated
+with 64 values each of 1, 2, 4, 8, plus r/64 per element. Width SUM must yield
+960+4r; unpatched ncnn returned exactly 64+r for all 26 rows (**RED, exit 11**).
+The probe uses Vulkan, FP16 packed/storage and FP32 arithmetic and audits both
+layers as Vulkan-supported. This exactly representable synthetic arithmetic
+fixture tests Reduction, not fabricated model/skeleton acceptance.
+
+The sole patch adds a shader-local constant and disables the three subgroup
+conditional blocks in `src/layer/vulkan/shader/reduction.comp`, selecting its
+existing 256-thread shared-memory tree. Accumulation/finalization, dispatch,
+model data and every other shader remain unchanged. The source audit pins
+original SHA-256 `d09e6d5aef9439035453ce0dbb6fff05ed6ba59e8c250c5f5e2409191eadea20`
+and patched working-file SHA-256
+`80d408658899cd26077a75291af4ec4011dd3abf5d6f52fcec28b41d2cfef2ae`.
+The latter is CRLF from this checkout's `core.autocrlf=true` for `.comp`;
+LF-normalized SHA-256 is
+`92158aca32ce2eacf01a04819270387fce218226e918e2b4367bcc65cfdc41a6`.
+An initial post-apply check failed because the draft expected LF; only that
+recorded hash was corrected, with no logic change. The pinned archive, patches
+and source were then verified by `prepare_ncnn_android.ps1`, which rebuilt and
+installed ncnn/shaders. The workaround would affect Reduction on every device;
+this one-device experiment cannot establish portability or performance.
+
+Patched standalone output passed 26/26 with absolute error zero (**GREEN,
+exit 0**). Replaying the saved real layer128 input passed 26/26 with
+`abs(error) <= abs(sum)*0.001 + 0.000001`; the reference sums FP16-rounded
+inputs in FP32. This storage tolerance is separate from Body26 acceptance.
+In the full graph, patched layer129 matches its full256 input sum to P95
+absolute error 0.000450373, max 0.000750303; the first64-only behavior is gone.
+
+Pinned padded param/bin remain
+`aaada52ba44e57d67e440bd7873b9381207f5bddbecc85c823f63ffeb99040c5` /
+`0f8a0a864be7af7990366bfb8ce89d4fca911a08b967c00e3b8180725d5054a4`.
+Full-body crop remains
+`b4fce3c8d5583546062aa2a7eecb5aec103460e1c15feac21c3ebb7ce565891e`.
+All four cases ran twice against fresh pinned-checkpoint PyTorch outputs,
+using exact RGB-normalized 192x256 affine crops and inverse transforms.
+The retained harness omits the unavailable ONNX Runtime custom-op run; it
+computes the official PyTorch reference directly. It saves input/reference/
+candidate/repeat tensors, decoded joints, image, bbox and both affine matrices.
+It calls the existing `compare_pose` unchanged, records each failure, and
+continues only to collect the other cases. All eight device runs audited
+169/169 Vulkan-supported layers with FP16 pack4 input/storage and FP32
+arithmetic. Outputs are finite and repeat tensors byte-identical, but **all
+four strict valid-joint masks fail**:
+
+| Case | Reference/device valid | Distance P95/max | Confidence P95 | SimCC X/Y P95 absolute | X/Y argmax agreement |
+| --- | --- | --- | --- | --- | --- |
+| full-body | 25/19 | 0.413909/0.453898 | 0.379633 | 0.700014/1.074230 | 1/26, 2/26 |
+| clipped-person | 20/16 | 0.532652/0.566013 | 0.580439 | 0.916321/1.204957 | 0/26, 0/26 |
+| mirrored | 25/18 | 0.421262/0.513020 | 0.573882 | 0.887579/1.206737 | 1/26, 1/26 |
+| rotated | 25/11 | 0.725030/0.769291 | 0.366130 | 0.882178/1.349924 | 0/26, 0/26 |
+
+Distance/confidence diagnostics use reference-valid joints; distance is
+normalized by bbox diagonal. They cannot bypass the failed mask comparison.
+Limits remain distance P95 <=0.01, max <=0.03, confidence P95 <=0.02.
+The two extraction timings per case were respectively 104.701/90.902,
+91.093/91.425, 108.201/108.339, 104.380/98.991 ms. These include lazy first
+extraction and are diagnostic timings, not warmed or integrated 30-FPS results.
+
+Detector regression rebuilt against patched ncnn, audited 316/316 Vulkan
+layers and used explicit 3-channel FP16 pack1 input. All eight cls/bbox tensors
+across official, one-person, two-people-2 and negative-street match the pinned
+golden byte-for-byte. This is numerical regression evidence, not performance.
+
+The existing dump runner was reused with no further implementation change.
+All 191 blobs match the retained prior CPU sweep by logical shape. The first
+layer with P95 error >10% of CPU P95 magnitude is now layer154
+`Gemm /gau/MatMul_output_0`: P95 absolute 0.228347, ratio 0.461750, correlation
+0.435991. Every preceding layer ratio is <=0.031652. Its inputs from
+layers148/153 have P95 errors 0.000976193/0.001252965, correlations
+0.99999609/0.99999368. Layer129 CPU/Vulkan P95 is now 0.004270867, ratio
+0.004523, including earlier propagated FP16 error. This localizes the later
+discrepancy; it does not prove a Gemm shader/driver cause. No second fix was tried.
+
+### Preserved hashes and replay
+
+Paths below are relative to `$evidence`. `artifact-hashes.json` binds all raw
+tensors, logs, source snapshots, static libraries and runner build configuration.
+The CPU dump is explicitly reused from the preceding sweep; the GPU dump is fresh.
+
+| Ignored artifact | SHA-256 |
+| --- | --- |
+| `reduction_probe.cpp` | `6acf1e2cc2b89650c35c6ba83aa4b51aab6d0bc9df4b568b16e8744f29221802` |
+| `red-probe` | `af6bfd468140cf202e70602697734d85265a31f719abd9c66a24dc4c0a93cf4c` |
+| `red-device.log` | `2975efe4441b63a3633b8a9c4f7a91018bb87db62fce8ef3b5bdd1f373c3256e` |
+| `green-probe` | `4ca43d5fea4b0714393cb49c897059a05c8c29bac9571b10937208a2e0e9041e` |
+| `green-device.log` | `2a3c538b86145f6edf8b76b127832ffc6bc17aeb771a2e976b94083b57dc79e0` |
+| `layer128-replay.log` | `47b34840f8c3aa95d85e38384d17d0adb57573d84e019603973f6bf4f67eed2c` |
+| `0002-reduction-shared-memory-tree.patch` | `fc2e79ef666c316b77fcf8998a506898232e52324a75b617ca79372dd95d748d` |
+| `patched-provenance.json` | `11a11c9ea56d4446726d2cb8b221f0494cf8081dba992dfce85fa7a8a539a758` |
+| `patched-build-receipt.json` | `bdd9ee33a788a05ebb0fd3c7ebfb8404b79e746a22dbeb2251f2072d1b9e00a2` |
+| `pose_golden_runner.cpp` | `9862a9e8690cb7ac1ae04625401fff0624a14ab7cf9e2bac3020d185f6dc4175` |
+| `patched-pose-runner` | `5223c8020c290a2852a0b39370f4c459d893552e9d4b81b8e6bafe61f6225ce4` |
+| `four_case_golden.py` | `8169112a54afcebac396a1adc887c2b81dfd22436a9caf306a66fd72feb1bb2c` |
+| `four-case.log` | `68544b5ba45c24b97e621fc10218dcd49505b8091eac509735773bfb60ffd6e6` |
+| `golden/index.json` | `48a9df7afda4c982736e1a1015bcd4db52400bc96d50a176ebc7387befbf28a3` |
+| `detector_regression.py` | `48bd62a4d89f7311235a40d9beb34212499873f353ba8609eab0180a9dd46692` |
+| `detector/index.json` | `5ce63a5222ca9debbafb4bdfe70de997117b516fe0b00f96d4521a6e039df3ae` |
+| `layer-localization/compare_layers.py` | `56d09129c428eb703d95eac07ed65e6290f11a33a81f20c1021c5b83d22cb9b5` |
+| `layer-localization/comparison.json` | `bc01e01be8332063ddfee361dadeb6224cacf948da14a6ff1f681ef168fce3a8` |
+| `layer-localization/tensor-hashes.json` | `2e9cc1ae6f50ccad12567749cafcf6ba3af9505e9cff3eef9e073631667607de` |
+| `artifact-hashes.json` | `2926c40df2bba437661867c838c40bf7c85db86153c6d48be25fa9cd01390c29` |
+
+From the worktree root, preserved binaries replay RED/GREEN and the full gate
+without changing implementation files:
+
+```powershell
+$evidence = 'out/c3-local-runtime/reduction-workaround'
+$adb = 'D:/Developer/2021.3.45f1/Editor/Data/PlaybackEngines/AndroidPlayer/SDK/platform-tools/adb.exe'
+& $adb shell mkdir -p /data/local/tmp/hv-reduction-replay
+foreach ($name in @('red-probe','green-probe')) {
+    & $adb push "$evidence/$name" "/data/local/tmp/hv-reduction-replay/$name"
+    & $adb shell chmod 755 "/data/local/tmp/hv-reduction-replay/$name"
+    & $adb shell "/data/local/tmp/hv-reduction-replay/$name"
+    # Expected device exit: red-probe 11; green-probe 0.
+}
+& $adb push out/c3-local-runtime/padded-first-conv/layer-localization/device/128_0.fp32 /data/local/tmp/hv-reduction-replay/layer128.fp32
+& $adb shell /data/local/tmp/hv-reduction-replay/green-probe /data/local/tmp/hv-reduction-replay/layer128.fp32
+$env:PYTHONPATH=(Get-Location).Path
+.venv-reference/Scripts/python.exe "$evidence/four_case_golden.py" --checkpoint out/c1-source-cache/rtmpose-t_body26.pth --vendor-root out/c2-vendor --image out/c2-detector/golden/official/image.png --onnx out/c3-local-runtime/padded-first-conv/model.onnx --param out/c3-local-runtime/padded-first-conv/vulkan.param --weights out/c3-local-runtime/padded-first-conv/model.bin --runner "$evidence/patched-pose-runner" --output "$evidence/replay-golden" --adb $adb --runner-mode diagnostic-vulkan-fp32-arith
+# Expected nonzero exit after all four failures are recorded.
+```
+
+Rebuild in an isolated checkout with the documented ignored cache and
+`core.autocrlf=true`. The retained runner CMakeLists/Cache record exact targets,
+NDK/compiler and installed ncnn location. The existing ignored CMake project
+already includes `c3_reduction_probe`, referencing the retained probe source:
+
+```powershell
+Copy-Item "$evidence/patched-provenance.json" third_party/ncnn/provenance.json
+Copy-Item "$evidence/0002-reduction-shared-memory-tree.patch" third_party/ncnn/patches/0002-reduction-shared-memory-tree.patch
+Copy-Item "$evidence/pose_golden_runner.cpp" tools/models/ncnn/pose_golden_runner.cpp
+pwsh -NoProfile -File tools/setup/prepare_ncnn_android.ps1
+$cmake = 'D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
+& $cmake --build out/c2-ncnn-runner-android --target c3_reduction_probe c3_pose_golden c2_ncnn_runner_exact --config Release
+.venv-reference/Scripts/python.exe "$evidence/detector_regression.py"
+```
+
+The layer dump is reproduced using the same patched runner:
+
+```powershell
+& $adb shell mkdir -p /data/local/tmp/hv-reduction-replay/dump
+& $adb push "$evidence/patched-pose-runner" /data/local/tmp/hv-reduction-replay/runner
+& $adb push out/c3-local-runtime/padded-first-conv/vulkan.param /data/local/tmp/hv-reduction-replay/model.param
+& $adb push out/c3-local-runtime/padded-first-conv/model.bin /data/local/tmp/hv-reduction-replay/model.bin
+& $adb push out/c3-local-runtime/pose-golden-quarter/full-body/input.fp32 /data/local/tmp/hv-reduction-replay/input.fp32
+& $adb shell chmod 755 /data/local/tmp/hv-reduction-replay/runner
+& $adb shell /data/local/tmp/hv-reduction-replay/runner /data/local/tmp/hv-reduction-replay/model.param /data/local/tmp/hv-reduction-replay/model.bin /data/local/tmp/hv-reduction-replay/input.fp32 /data/local/tmp/hv-reduction-replay/dump /data/local/tmp/hv-reduction-replay/unused.fp32 diagnostic-vulkan-fp32-arith-layer-dump
+$stage = Join-Path $evidence ('replay-pull-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force $stage | Out-Null
+& $adb pull /data/local/tmp/hv-reduction-replay/dump $stage
+if ($LASTEXITCODE -ne 0) { throw 'Layer dump pull failed' }
+if (@(Get-ChildItem "$stage/dump" -Filter '*.fp32' -File).Count -ne 191) { throw 'Expected 191 blobs' }
+# Recompute the preserved original dump comparison; leave the new pull separate.
+.venv-reference/Scripts/python.exe "$evidence/layer-localization/compare_layers.py"
+```
+
+After preservation, tracked provenance and unpatched Reduction source were
+restored. `pwsh -NoProfile -File tools/setup/prepare_ncnn_android.ps1` then
+rebuilt baseline ncnn successfully (`restore-baseline.log`). The experiment's
+patch and runner source were removed from implementation paths. No Task2
+builder/runtime code, ModelPack, Task3, main merge, push or Release followed.
+
+
+Final evidence checks from the restored checkout:
+
+```powershell
+.venv-reference/Scripts/python.exe out/c3-local-runtime/reduction-workaround/verify_evidence.py
+# PASS: 484 retained artifact hashes; RED/GREEN/replay counts; four strict failures;
+# eight detector outputs unchanged; original Reduction and audited 0001 preserved;
+# restored baseline receipt matches provenance; no eligible ModelPack.
+.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -v
+# PASS 46/46 (5.180 seconds)
+.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py
+# Public surface contract PASS; Architecture/documentation boundaries PASS.
+git diff --check
+# PASS; exactly two documentation files changed.
+```
+
+Supplemental verification-script SHA-256: `9acae9c74403e4199cc79ca0864af250633257c3d3643f732f1430e1b85f652f`;
+reference-regression log SHA-256: `f458870e3545bfd7adc89ecf1de4d2165646f06ce06dba9244e4f1bd8a8638d3`. No native/runtime source changed,
+so this failure-evidence commit does not claim full runtime or hardware acceptance.
+
 ## Padded graph CPU/Vulkan layer localization (2026-09-25)
 
 One diagnostic sweep used the existing padded graph and same full-body crop.
