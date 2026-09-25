@@ -87,7 +87,7 @@ function Get-AndroidGpuBridgeGateAnalysis {
         external_image_query = $RawLog -match 'externalMemoryFeatures=\d+ compatibleHandleTypes=\d+ maxExtent='
         consumer_sampled_read_only_import = $RawLog -match 'consumer vk_format=[^\r\n]+image_usage=4(?:\s|$)'
         no_status_error = @($statuses | Where-Object { $_ -notmatch ' error=<none>\s*$' }).Count -eq 0 -and $statuses.Count -gt 0
-        no_native_or_unity_fatal = $RawLog -notmatch 'FATAL EXCEPTION|Fatal signal|SIGSEGV|SIGABRT|AndroidRuntime.*FATAL|crash_dump|tombstoned|Abort message|Unity.*(NullReferenceException|DllNotFoundException|EntryPointNotFoundException)'
+        no_native_or_unity_fatal = $RawLog -notmatch 'FATAL EXCEPTION|Fatal signal|SIGSEGV|SIGABRT|AndroidRuntime.*FATAL|crash_dump|tombstoned|Abort message|(?m:^\s*\d{10}(?:\.\d+)?\s+[^\r\n]*\bE\s+Unity\s*:)|Unity[^\r\n]*\b(?:InvalidOperationException|NullReferenceException|DllNotFoundException|EntryPointNotFoundException)\s*:'
         gate_component_has_no_cpu_readback_api = $GateSource -notmatch 'AsyncGPUReadback|GetPixels\s*\(|ReadPixels\s*\('
     }
     [pscustomobject]@{

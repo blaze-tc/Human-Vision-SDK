@@ -45,6 +45,10 @@ Assert-Fail 'stalled import' ($valid -replace ' imported=\d+ ', ' imported=1 ') 
 Assert-Fail 'stalled conversion' ($valid -replace ' converted=\d+ ', ' converted=1 ') 'gpu_conversion_observed'
 Assert-Fail 'native fatal' ($valid + "`n1790000590.000 E libc: Fatal signal 11 (SIGSEGV)") 'no_native_or_unity_fatal'
 Assert-Fail 'crash dump fatal' ($valid + "`n1790000590.000 E crash_dump64: Abort message") 'no_native_or_unity_fatal'
+Assert-Fail 'gate submit exception' ($valid + "`n1790000590.000 E Unity: InvalidOperationException: Gate submit failed: 4") 'no_native_or_unity_fatal'
+Assert-Fail 'gate lease exception' ($valid + "`n1790000590.000 E Unity: InvalidOperationException: Gate source lease failed") 'no_native_or_unity_fatal'
+Assert-Fail 'gate startup error' ($valid + "`n1790000590.000 E Unity: Gate requires Vulkan") 'no_native_or_unity_fatal'
+Assert-Fail 'gate exception on info tag' ($valid + "`n1790000590.000 I Unity: InvalidOperationException: Gate render event unavailable") 'no_native_or_unity_fatal'
 Assert-Fail 'wrong actual AHB usage' ($valid.Replace('ahbUsage=0x100', 'ahbUsage=0x300')) 'selected_path_matches_actual_contract'
 Assert-Fail 'wrong producer image usage' ($valid.Replace('image_usage=6 ', 'image_usage=20 ')) 'selected_path_matches_actual_contract'
 Assert-Fail 'no orientation evidence' ($valid.Replace('orientation=LandscapeRight', 'orientation=Portrait')) 'portrait_and_both_landscapes'
@@ -72,4 +76,6 @@ $collectorSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'collect_an
 if ($collectorSource -match "'Unity:I','AndroidRuntime:E','\*:S'" -or $collectorSource -notmatch "'crash'") {
     throw 'Collector filters out native crash records'
 }
-Write-Output 'Android GPU bridge gate analyzer: 19/19 PASS'
+$warning = Analyze ($valid + "`n1790000590.000 W Unity: harmless texture warning")
+if ($warning.result -ne 'PASS_CANDIDATE_REQUIRES_USER_REVIEW') { throw 'Harmless Unity warning incorrectly failed' }
+Write-Output 'Android GPU bridge gate analyzer: 24/24 PASS'

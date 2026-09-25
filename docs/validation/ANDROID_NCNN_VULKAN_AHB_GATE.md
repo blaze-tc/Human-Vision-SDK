@@ -65,6 +65,9 @@ and within 30 seconds after each pause or camera-restart recovery marker.
 The gate escapes nonempty errors onto one line; a missing clean sentinel or
 any nonempty error fails the screen. These checks expose stalled or truncated
 collections, while the user still inspects raw device behavior.
+An error-severity Unity log or a gate `InvalidOperationException` also fails
+the screen, including source-lease, submit and startup exceptions. Ordinary
+Unity warning lines do not fail on their own.
 
 Review the raw log for:
 
