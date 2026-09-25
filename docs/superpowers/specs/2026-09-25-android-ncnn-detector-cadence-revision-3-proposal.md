@@ -1,6 +1,6 @@
 # Android ncnn TopDown detector cadence — Revision 3 proposal
 
-Status: **proposed for user design review; no implementation authorized**  
+Status: **approved by user on 2026-09-25 for implementation planning; production code awaits plan review**  
 Date: 2026-09-25  
 Base: approved [Revision 2](2026-09-13-android-vulkan-ncnn-production-runtime-design.md), implementation branch `codex/android-ncnn-vulkan-implementation` at `c6425acdaca72cce8cd75f513233ffd44bae3b7e`  
 Scope: Milestone C TopDown detection scheduling and its acceptance sequence only
@@ -86,4 +86,4 @@ The physical feasibility gate is the **integrated `HumanVisionCameraDemo`**, not
 
 ## 8. Review boundary
 
-Approval of this document would authorize **writing a revised implementation plan**, not immediately changing production code. Until then Revision 2 and the current plan remain controlling: C2 is blocked and C3 is unauthorized. No main merge or Release occurs before the user's final Snapdragon 888 physical acceptance.
+The user's 2026-09-25 approval authorizes **writing a revised implementation plan**, not immediately changing production code. The revised plan is `../plans/2026-09-25-android-ncnn-topdown-cadence-revision-3.md` and awaits user review before Task 1 starts. C2's failed every-frame gate remains historical evidence; C3 has not started. No main merge or Release occurs before the user's final Snapdragon 888 physical acceptance.
