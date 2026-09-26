@@ -1,5 +1,6 @@
 #include "host/model_pack_manager.h"
 #include "host/profile_manager.h"
+#include "plugins/backend/ncnn/ncnn_vulkan_backend.h"
 #include <gtest/gtest.h>
 #include <fstream>
 #include <atomic>
@@ -27,6 +28,15 @@ HV_Result HV_CALL BackendInfo(void*,HV_BackendSessionInfoV1*) { return HV_ERR_IN
 const HV_BackendApiV1 backend{sizeof(backend),HV_PLUGIN_API_V1,CreateBackend,DestroyFixture,RunBackend,BackendInfo};
 HV_Result HV_CALL QueryBackend(uint32_t,HV_PluginApiV1* out) {
  *out={sizeof(*out),HV_PLUGIN_API_V1,"fixture.cpu","1.0.0",HV_PLUGIN_BACKEND,HV_CAP_TENSOR_INFERENCE | HV_CAP_GPU_INPUT | kVulkan | kFp16Storage | kFp16Arithmetic | kAndroidHardwareBuffer,0,nullptr,&backend,10};return HV_OK;
+}
+HV_Result HV_CALL CreateGpuPose(const HV_PipelineConfigV1*,const HV_HostServicesV3*,void**,HV_ErrorBufferV1*) { return HV_ERR_INVALID_ARGUMENT; }
+HV_Result HV_CALL ProcessGpuPose(void*,const HV_GpuFrameRefV1*,HV_ObservationFrameV1*,HV_ErrorBufferV1*) { return HV_ERR_INVALID_ARGUMENT; }
+const HV_GpuPipelineApiV2 gpu_pose{sizeof(gpu_pose),HV_GPU_PIPELINE_API_V2,CreateGpuPose,DestroyFixture,ProcessGpuPose};
+HV_Result HV_CALL QueryGpuPose(uint32_t version,HV_PluginApiV3* out) {
+ if(version!=HV_PLUGIN_API_V3||!out||out->v1.struct_size<sizeof(*out))return HV_ERR_INVALID_ARGUMENT;
+ *out={};out->v1={sizeof(*out),HV_PLUGIN_API_V3,"fixture.pose","1",HV_PLUGIN_PIPELINE,
+     HV_CAP_BODY_POSE|HV_CAP_MULTI_PERSON|HV_CAP_GPU_INPUT,8,nullptr,nullptr,0};
+ out->gpu_pipeline=&gpu_pose;return HV_OK;
 }
 class ProfileManagerTest : public testing::Test {
 protected:
@@ -163,6 +173,33 @@ TEST_F(ProfileManagerTest, StrictProfileNamesAnUnsatisfiedCapability) {
  ModelPackManager packs(root/"packs");PluginRegistry registry;ProfileManager profiles(root/"profiles");std::string error;
  ASSERT_TRUE(registry.Register(QueryPose,error));ASSERT_TRUE(registry.Register(QueryBackend,error));
  EXPECT_FALSE(profiles.Resolve("strict",2,registry,packs,error));EXPECT_NE(error.find("external-sync-fd"),std::string::npos)<<error;
+}
+
+TEST_F(ProfileManagerTest, AndroidNcnnSelectsOnlyV3Schema2AndNeverFallsBack) {
+ std::ofstream(root/"packs"/"fixture"/"detector.param",std::ios::binary)<<"abc";
+ std::ofstream(root/"packs"/"fixture"/"detector.bin",std::ios::binary)<<"def";
+ Save(Schema2Manifest());
+ const auto profile_path=root/"profiles"/"android-ncnn-vulkan.json";
+ nlohmann::json json={{"schema_version",1},{"profile","android-ncnn-vulkan"},
+  {"body",{{"pipeline","fixture.pose"},{"modelPack","fixture"}}},
+  {"hands",{{"enabled",false}}},
+  {"required_capabilities",{"body_pose","multi_person","gpu_input","vulkan","fp16-storage",
+      "fp16-arithmetic","android-hardware-buffer","external-sync-fd"}},
+  {"backend",{{"preference",{"backend.ncnn.vulkan"}},{"allow_fallback",false}}}};
+ std::ofstream(profile_path)<<json.dump();
+ ModelPackManager packs(root/"packs");PluginRegistry registry;ProfileManager profiles(root/"profiles");
+ BackendFactory factory({},false);std::string error;
+ ASSERT_TRUE(factory.RegisterV3(HV_QueryNcnnVulkanPluginV3,error))<<error;
+ auto missing=profiles.Resolve("android-ncnn-vulkan",2,registry,packs,error,&factory);
+ EXPECT_FALSE(missing);EXPECT_NE(error.find("V3 GPU pipeline unavailable"),std::string::npos)<<error;
+ ASSERT_TRUE(factory.RegisterV3(QueryGpuPose,error))<<error;
+ auto selected=profiles.Resolve("android-ncnn-vulkan",2,registry,packs,error,&factory);
+ ASSERT_TRUE(selected)<<error;EXPECT_TRUE(selected->gpu_route);EXPECT_FALSE(selected->body.plugin);
+ EXPECT_FALSE(selected->allow_backend_fallback);ASSERT_TRUE(selected->gpu_body);
+ EXPECT_STREQ(selected->gpu_body->api.v1.plugin_id,"fixture.pose");
+ json["backend"]["allow_fallback"]=true;std::ofstream(profile_path)<<json.dump();
+ EXPECT_FALSE(profiles.Resolve("android-ncnn-vulkan",2,registry,packs,error,&factory));
+ EXPECT_NE(error.find("allow_fallback false"),std::string::npos)<<error;
 }
 
 TEST(ProfileManagerProductionProfiles, AreStrictSingleCompositionContracts) {

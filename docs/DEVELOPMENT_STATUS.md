@@ -1,4 +1,41 @@
-# Android Vulkan/ncnn — Revision 3 Task 4 prepared detector input DEVICE GATE PASSED (2026-09-26)
+# Android Vulkan/ncnn — Revision 3 Task 5 GPU runtime composition complete (2026-09-26)
+
+Task 5 adds a V3 GPU runtime worker that claims the existing AHB bridge's
+generation-bound slots only during an owned source lease, invokes one V3 pipeline per current source frame, drains
+or quarantines failed leases, and atomically publishes the full observation with
+its original frame ID/time. The `android-ncnn-vulkan` profile now selects only
+a schema-2 ModelPack and a strict, single V3 ncnn backend/pipeline route. ORT
+profiles still use their V1 CPU route. The production V3 TopDown pipeline is
+scheduled for Task 7; until it exists, NCNN runtime creation reports
+`V3 GPU pipeline unavailable` and does not fall back to ORT. No integrated
+skeleton/FPS or device acceptance is claimed here.
+
+RED: `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter
+RuntimeGpuComposition` first failed compilation for the missing
+`host/gpu_runtime_host.h`. After adding only its declaration, the same command
+reached the link step and reported four missing `GpuRuntimeHost` symbols
+(`LNK2019`/`LNK1120`) in `out/native-tests.log`. That wrapper continued into
+CTest and returned exit 0 despite the failed build, so the logged linker
+failure, rather than the wrapper exit code, is the RED evidence.
+
+GREEN after implementation and lifecycle tests:
+
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter RuntimeGpuComposition`: **4/4 PASS**. The fixture exercises real `AhbSlotRing` reservation, ready publication, claim, producer-fence transfer, retirement, stop/restart, and stale-generation drain with a fake V3 pipeline.
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter 'RuntimeGpuComposition|AndroidNcnnSelectsOnlyV3'`: **3/3 PASS** when first run; the strict profile test also passed in the final full suite.
+- Independent quality review found global source-lease ownership and partial-create exception gaps. The added RED coordinator test linked with four missing methods (`LNK2019`/`LNK1120`); partial-create cleanup is covered by a new regression case. A first full run after the ownership fix was **232/233** because an existing adapter fixture began the producer directly but ended it through a runtime handle. The fixture now begins through that handle. A later SPEC review found a blocking ownership check after successful frame preparation; the RED signature change failed compilation until dimension recording was moved inside the coordinator's nonblocking Prepare path. The focused `RuntimeGpuComposition` suite is now **8/8 PASS**, including a concurrent End/Prepare test that confirms Prepare returns Busy promptly while source teardown holds the lease lock. `ForeignRuntimeCannotEndOrPrepareOwnedSourceLease` and the adapted teardown case also pass. Runtime destruction stops its GPU worker before ending only its own source lease; foreign End/Prepare are rejected. Stale-token tests quarantine instead of retiring through a substituted valid token.
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1`: **235/235 PASS**, including V1/ORT and V2/V3 ABI regressions.
+- `pwsh -NoProfile -File tools/package/build_live_native.ps1 -Platform Windows`: **PASS**.
+- `pwsh -NoProfile -File tools/package/build_live_native.ps1 -Platform Android -AndroidApiLevel 26`: **PASS** with `HV_ANDROID_GPU_GATE=OFF`.
+- `.venv-reference/Scripts/python.exe tools/test/verify_android_native.py`: **PASS**, ELF64 AArch64/API26, 1813 resolved strong imports; `libhumanvision.so` SHA-256 `ce02484d9f81c26bf3d6ab007dacffc8224d3d650247df9984de6637728378b7`. NDK `llvm-nm --defined-only` found zero `HV_AndroidGpuGate*` definitions in the final gate-OFF artifact.
+- `.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py`, `git diff --check`, and source search for `AsyncGPUReadback`, `AHardwareBuffer_lock`, or CPU `HV_RuntimeSubmit` in the Task 5 GPU host/Android entry point: **PASS**.
+- Unity 2021.3.45f1 focused `HumanVision.Tests.HumanVisionAndroidGpuRoutingTests`: **12/12 PASS** (exit 0, `out/unity040-route-tests.xml`). Two full `run_unity040_tests.ps1` attempts completed **80 passed, 1 failed, 2 skipped**. The sole failure was existing `SerializedAndroidSettingsSnapshotDetectsPackageIdentityChange`: the test runner's generated `ProjectSettings.asset` had no nested Android `scriptingDefineSymbols` entry (and initially no `applicationId`), while the unchanged fixture requires both. The checked-in Unity project has no `ProjectSettings.asset`; the runner copies only `ProjectVersion.txt` and `EditorBuildSettings.asset`, then Unity generates defaults. All 12 GPU route tests passed inside the full run as well.
+
+Independent full Task 5 SPEC and QUALITY reviews passed after both repair
+rounds. The final nonblocking frame-submission fix was re-reviewed separately;
+its concurrent End/Prepare case passed. Task 5 is ready for its separate
+verified commit before Task 6 begins.
+
+## Prior Task 4 device gate
 
 Task 4's detached detector input gate passed in two independent cold starts on
 OnePlus 9 Pro LE2120 (Snapdragon 888, Adreno 660, Android API 34; ADB serial

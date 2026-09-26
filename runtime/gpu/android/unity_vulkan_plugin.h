@@ -3,6 +3,7 @@
 #include "gpu/android/unity_vulkan_bridge.h"
 
 namespace humanvision::gpu {
+struct VulkanDeviceContext;
 
 // Called by the Android backend control path after B2 has measured the exact
 // source/AHB/device contract. This never probes or silently chooses a path.
@@ -24,9 +25,12 @@ BridgeResult PrepareUnityVulkanFrame(const HV_AndroidGpuSubmissionV1 &,
 void GetUnityVulkanProducerStatus(HV_AndroidGpuBridgeStatusV1 &) noexcept;
 void *UnityVulkanRenderEventFunction() noexcept;
 const char *UnityVulkanProducerDiagnostic() noexcept;
-#if defined(HV_ANDROID_GPU_GATE)
+// Borrowed only while the Unity source lease and its bridge generation live.
+// The runtime GPU worker uses the bridge's claim/retire protocol; the gate
+// helpers below remain development-only diagnostics.
 UnityVulkanBridge* UnityVulkanProducerBridge() noexcept;
 bool UnityVulkanProducerContext(VulkanDeviceContext&) noexcept;
+#if defined(HV_ANDROID_GPU_GATE)
 const char* UnityVulkanProducerGateError() noexcept;
 const char* UnityVulkanProducerGateProbe() noexcept;
 #endif

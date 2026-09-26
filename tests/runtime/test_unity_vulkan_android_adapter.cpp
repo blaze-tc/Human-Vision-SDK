@@ -786,7 +786,7 @@ TEST(UnityVulkanAndroidAdapter, EndingSourceLeaseCancelsPendingViewBeforeImageDe
   auto selection=Selection(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT);
   ASSERT_TRUE(ConfigureUnityVulkanProducer(selection,Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT)));
   humanvision::runtime::RuntimeSession runtime;
-  ASSERT_TRUE(BeginUnityVulkanSourceLease(reinterpret_cast<void*>(1)));
+  ASSERT_EQ(HV_RuntimeBeginAndroidGpuSourceLease(&runtime,reinterpret_cast<void*>(1)),HV_OK);
   UnityVulkanSlotCache cache{};
   ASSERT_TRUE(AndroidProducer::TestCreate(0,Device(),Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT),selection,cache));
   UnityTextureAccess source{}; source.texture=reinterpret_cast<void*>(1);
@@ -800,6 +800,29 @@ TEST(UnityVulkanAndroidAdapter, EndingSourceLeaseCancelsPendingViewBeforeImageDe
   EXPECT_EQ(g.invalid_source_view_creates,0);
   EXPECT_EQ(AndroidProducer::TestPrepareSource(cache,source),SourcePreparation::Unsupported);
   AndroidProducer::TestDrain(0,cache);
+  UnityPluginUnload();
+}
+
+TEST(UnityVulkanAndroidAdapter, ForeignRuntimeCannotEndOrPrepareOwnedSourceLease) {
+  using namespace humanvision::gpu;
+  g=AdapterFacts{};
+  InstallAndCreateUnityDevice();
+  auto selection=Selection(HV_ANDROID_GPU_COPY_BLIT);
+  ASSERT_TRUE(ConfigureUnityVulkanProducer(selection,Contract(HV_ANDROID_GPU_COPY_BLIT)));
+  humanvision::runtime::RuntimeSession owner,foreign;
+  auto* texture=reinterpret_cast<void*>(1);
+  ASSERT_EQ(HV_RuntimeBeginAndroidGpuSourceLease(&owner,texture),HV_OK);
+  EXPECT_EQ(HV_RuntimeEndAndroidGpuSourceLease(&foreign),HV_ERR_INVALID_ARGUMENT);
+  EXPECT_FALSE(UnityVulkanProducerBridge()->IsClosed());
+  HV_AndroidGpuSubmissionV1 submission{};
+  submission.struct_size=sizeof(submission);submission.api_version=HV_ANDROID_GPU_API_V1;
+  submission.unity_texture=texture;submission.width=320;submission.height=240;
+  submission.frame_id=88;submission.timestamp_us=1000;
+  void* event=nullptr;
+  EXPECT_EQ(HV_RuntimePrepareAndroidGpuFrame(&foreign,&submission,&event),
+            HV_ANDROID_GPU_ERR_UNSUPPORTED_PLATFORM);
+  EXPECT_EQ(event,nullptr);
+  EXPECT_EQ(HV_RuntimeEndAndroidGpuSourceLease(&owner),HV_OK);
   UnityPluginUnload();
 }
 

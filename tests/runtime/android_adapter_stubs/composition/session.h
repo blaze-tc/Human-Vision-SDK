@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <cstdint>
 
 namespace humanvision::runtime {
 // Only the error-reporting boundary is substituted. Android ABI validation,
@@ -7,6 +8,9 @@ namespace humanvision::runtime {
 class RuntimeSession {
 public:
   void ReportError(const char* message) { error=message; }
+  void RecordGpuDimensions(uint32_t, uint32_t) noexcept {}
+  void SetGpuSourceLeaseActive(bool) noexcept {}
+  bool UsesGpuRoute() const noexcept { return true; }
   std::string error;
 };
 }

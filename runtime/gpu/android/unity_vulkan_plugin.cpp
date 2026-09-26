@@ -277,15 +277,14 @@ public:
     // Configuration pending frames are superseded by the measured generation.
     s.dropped_generation += configuration_pending_drops_.load(std::memory_order_relaxed);
   }
-#if defined(HV_ANDROID_GPU_GATE)
   UnityVulkanBridge* GateBridge() noexcept { return &bridge_; }
   bool GateContext(VulkanDeviceContext& out) noexcept {
     std::lock_guard<std::mutex> lock(control_);
-    if (!have_device_ || !device_live_.load(std::memory_order_acquire)) return false;
+    if (!have_device_ || !device_live_.load(std::memory_order_acquire) ||
+        !source_lease_texture_.load(std::memory_order_acquire)) return false;
     out = producer_context_;
     return true;
   }
-#endif
   const char *Diagnostic() const noexcept {
     switch (runtime_error_.load(std::memory_order_acquire)) {
     case 1:
@@ -1592,13 +1591,13 @@ void *UnityVulkanRenderEventFunction() noexcept {
 const char *UnityVulkanProducerDiagnostic() noexcept {
   return AndroidProducer::Get().Diagnostic();
 }
-#if defined(HV_ANDROID_GPU_GATE)
 UnityVulkanBridge* UnityVulkanProducerBridge() noexcept {
   return AndroidProducer::Get().GateBridge();
 }
 bool UnityVulkanProducerContext(VulkanDeviceContext& out) noexcept {
   return AndroidProducer::Get().GateContext(out);
 }
+#if defined(HV_ANDROID_GPU_GATE)
 const char* UnityVulkanProducerGateError() noexcept {
   return AndroidProducer::Get().GateError();
 }
@@ -1644,5 +1643,7 @@ void *UnityVulkanRenderEventFunction() noexcept { return nullptr; }
 const char *UnityVulkanProducerDiagnostic() noexcept {
   return "Android Vulkan producer bridge is unavailable in this build";
 }
+UnityVulkanBridge* UnityVulkanProducerBridge() noexcept { return nullptr; }
+bool UnityVulkanProducerContext(VulkanDeviceContext&) noexcept { return false; }
 } // namespace humanvision::gpu
 #endif

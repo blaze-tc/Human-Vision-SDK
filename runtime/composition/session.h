@@ -2,6 +2,7 @@
 #include "host/runtime_host.h"
 #include "host/profile_manager.h"
 #include "host/backend_factory.h"
+#include "host/gpu_runtime_host.h"
 #include "services/body_services.h"
 
 namespace humanvision::runtime {
@@ -9,7 +10,8 @@ namespace humanvision::runtime {
 class RuntimeSession {
 public:
  ~RuntimeSession();
- bool Start(const std::filesystem::path& root,const std::string& profile,int capacity,std::string& error);
+ bool Start(const std::filesystem::path& root,const std::string& profile,int capacity,std::string& error,
+            HV_QueryPluginV3Fn gpu_pipeline_query=nullptr,GpuConsumerSource* gpu_test_source=nullptr);
  bool Submit(const HV_VideoFrame&,std::string& error);
  bool SetRegions(const HV_Rect*,uint32_t count,int64_t revision,std::string& error);
  BodySnapshot Copy(int64_t sample_time,HV_RuntimeStatsV1& stats);
@@ -17,12 +19,17 @@ public:
  // Additive platform APIs report through the same runtime error channel.
  void ReportError(const char* error) {std::lock_guard<std::mutex> lock(mutex_);error_=error;}
  std::string Diagnostics() const;
+ void RecordGpuDimensions(uint32_t width,uint32_t height) noexcept;
+ void SetGpuSourceLeaseActive(bool active) noexcept;
+ bool UsesGpuRoute() const noexcept {return profile_&&profile_->gpu_route;}
 private:
  void Run();
  void Poll(); // mutex_ held
  PluginRegistry registry_;
  std::shared_ptr<const RuntimeProfile> profile_;
  std::unique_ptr<BackendFactory> factory_;
+ std::unique_ptr<BridgeGpuConsumerSource> bridge_source_;
+ std::unique_ptr<GpuRuntimeHost> gpu_;
  RuntimeHost body_,hand_;
  LatestFrameSlot input_;
  std::thread worker_;

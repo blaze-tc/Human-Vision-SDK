@@ -1,8 +1,12 @@
 #include "humanvision/humanvision_android_gpu.h"
 #include "composition/session.h"
+#include "host/gpu_runtime_host.h"
 #include "gpu/android/unity_vulkan_plugin.h"
 
 namespace {
+void SetLeaseActive(void* runtime,bool active) noexcept {
+    static_cast<humanvision::runtime::RuntimeSession*>(runtime)->SetGpuSourceLeaseActive(active);
+}
 HV_Result Unsupported(HV_RuntimeHandle runtime) noexcept {
     try {
         static_cast<humanvision::runtime::RuntimeSession*>(runtime)->ReportError(
@@ -29,8 +33,16 @@ HV_Result HV_CALL HV_RuntimeBeginAndroidGpuSourceLease(
     HV_RuntimeHandle runtime, void* unity_texture) {
     if (!runtime || !unity_texture) return HV_ERR_INVALID_ARGUMENT;
 #if defined(__ANDROID__)
-    return humanvision::gpu::BeginUnityVulkanSourceLease(unity_texture)
-        ? HV_OK : BridgeFailure(runtime, "Android Vulkan source lease unavailable");
+    auto* session=static_cast<humanvision::runtime::RuntimeSession*>(runtime);
+    if(!session->UsesGpuRoute()){session->ReportError("Android GPU source lease requires the GPU runtime profile");return HV_ERR_INVALID_ARGUMENT;}
+    std::string error;
+    if(!humanvision::runtime::GpuSourceLeaseCoordinator::Instance().Begin(runtime,unity_texture,
+          humanvision::gpu::BeginUnityVulkanSourceLease,
+          humanvision::gpu::EndUnityVulkanSourceLease,SetLeaseActive,error)){
+        session->ReportError(error.c_str());
+        return HV_ANDROID_GPU_ERR_UNSUPPORTED_PLATFORM;
+    }
+    return HV_OK;
 #else
     return Unsupported(runtime);
 #endif
@@ -39,7 +51,11 @@ HV_Result HV_CALL HV_RuntimeBeginAndroidGpuSourceLease(
 HV_Result HV_CALL HV_RuntimeEndAndroidGpuSourceLease(HV_RuntimeHandle runtime) {
     if (!runtime) return HV_ERR_INVALID_ARGUMENT;
 #if defined(__ANDROID__)
-    humanvision::gpu::EndUnityVulkanSourceLease();
+    std::string error;
+    if(!humanvision::runtime::GpuSourceLeaseCoordinator::Instance().End(runtime,error)){
+        static_cast<humanvision::runtime::RuntimeSession*>(runtime)->ReportError(error.c_str());
+        return HV_ERR_INVALID_ARGUMENT;
+    }
     return HV_OK;
 #else
     return Unsupported(runtime);
@@ -58,8 +74,11 @@ HV_Result HV_CALL HV_RuntimePrepareAndroidGpuFrame(HV_RuntimeHandle runtime,
         return HV_ERR_INVALID_ARGUMENT;
 #if defined(__ANDROID__)
     const HV_Result result = humanvision::gpu::AndroidBridgeResultCode(
-        humanvision::gpu::PrepareUnityVulkanFrame(*submission,
-                                                  out_render_event_data));
+        humanvision::runtime::GpuSourceLeaseCoordinator::Instance().Prepare(runtime,*submission,
+          out_render_event_data,humanvision::gpu::PrepareUnityVulkanFrame,
+          [](void* owner,uint32_t width,uint32_t height) noexcept {
+              static_cast<humanvision::runtime::RuntimeSession*>(owner)->RecordGpuDimensions(width,height);
+          }));
     return result == HV_ANDROID_GPU_ERR_UNSUPPORTED_PLATFORM
                ? BridgeFailure(runtime,
                                "Android Vulkan producer bridge is not configured")

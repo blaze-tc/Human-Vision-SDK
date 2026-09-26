@@ -4,7 +4,8 @@
 
 namespace humanvision::runtime {
 std::shared_ptr<const RuntimeProfile> ProfileManager::Resolve(const std::string& id, int max_people,
-        const PluginRegistry& plugins, const ModelPackManager& packs, std::string& error) const {
+        const PluginRegistry& plugins, const ModelPackManager& packs, std::string& error,
+        const BackendFactory* gpu_plugins) const {
     try {
         if (!ValidComponentId(id) || max_people < 1 || max_people > HV_MAX_PEOPLE) throw std::runtime_error("Invalid profile id or MaxBodies (1-8)");
         const auto json = ReadConfig(ConfinedPath(root_, id + ".json"));
@@ -12,6 +13,47 @@ std::shared_ptr<const RuntimeProfile> ProfileManager::Resolve(const std::string&
             throw std::runtime_error("Unsupported profile schema or identity");
         auto result = std::make_shared<RuntimeProfile>();
         result->id = id; result->json = json.dump(); result->max_people = max_people;
+        if (id == "android-ncnn-vulkan") {
+            // The GPU route is a separate V3 contract. Never resolve this profile
+            // through a V1 CPU pipeline or a fallback backend.
+            if (!gpu_plugins || json.at("hands").value("enabled", false) ||
+                json.at("backend").value("allow_fallback", true))
+                throw std::runtime_error("Android NCNN GPU route requires V3 registration, hands disabled and allow_fallback false");
+            const auto backend_ids = json.at("backend").at("preference").get<std::vector<std::string>>();
+            if (backend_ids.size() != 1 || backend_ids[0] != "backend.ncnn.vulkan")
+                throw std::runtime_error("Android NCNN GPU route requires exactly backend.ncnn.vulkan");
+            const auto pipeline_id = json.at("body").at("pipeline").get<std::string>();
+            result->gpu_pack = packs.Resolve(json.at("body").at("modelPack").get<std::string>(), error);
+            if (!result->gpu_pack) throw std::runtime_error(error);
+            if (nlohmann::json::parse(result->gpu_pack->manifest_json).at("schema_version").get<int>() != 2 ||
+                result->gpu_pack->pipeline_id != pipeline_id || result->gpu_pack->max_people < max_people)
+                throw std::runtime_error("Android GPU route requires a matching schema-2 ModelPack and capacity");
+            result->gpu_body = gpu_plugins->FindV3(pipeline_id, HV_CAP_BODY_POSE | HV_CAP_GPU_INPUT, error);
+            if (!result->gpu_body || !result->gpu_body->api.gpu_pipeline)
+                throw std::runtime_error("V3 GPU pipeline unavailable: " + pipeline_id + (error.empty() ? "" : ": " + error));
+            auto backend = gpu_plugins->FindV3(backend_ids[0], HV_CAP_TENSOR_INFERENCE | HV_CAP_GPU_INPUT, error);
+            if (!backend || !backend->api.gpu_backend) throw std::runtime_error("V3 GPU backend unavailable: " + error);
+            if (result->gpu_body->api.v1.max_people < static_cast<uint32_t>(max_people))
+                throw std::runtime_error("V3 GPU pipeline capacity is insufficient");
+            const auto& requirements = json.at("required_capabilities");
+            if (!requirements.is_array() || requirements.empty())
+                throw std::runtime_error("Android GPU profile must declare required capabilities");
+            for (const auto& value : requirements) {
+                const auto name = value.get<std::string>();
+                const auto bit = CapabilityBit(name);
+                const auto pipeline_has = (result->gpu_body->api.v1.capabilities & bit) == bit;
+                const auto pack_has = (result->gpu_pack->capabilities & bit) == bit;
+                const auto backend_has = (backend->api.v1.capabilities & bit) == bit;
+                const bool available = bit == HV_CAP_BODY_POSE || bit == HV_CAP_MULTI_PERSON
+                    ? pipeline_has && pack_has : bit == HV_CAP_GPU_INPUT
+                    ? pipeline_has && pack_has && backend_has : backend_has;
+                if (!available) throw std::runtime_error("Missing required GPU capability: " + name);
+            }
+            result->gpu_route = true; result->allow_backend_fallback = false;
+            result->body_fps = json.value("body_fps",30);
+            result->output_hz = json.value("output",nlohmann::json::object()).value("hz",60);
+            error.clear(); return result;
+        }
         if (json.contains("required_capabilities")) {
             const auto& requirements = json.at("required_capabilities");
             if (!requirements.is_array() || requirements.empty())

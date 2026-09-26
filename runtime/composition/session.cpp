@@ -4,14 +4,40 @@
 #include "plugins/pipeline/simcc/simcc_pipeline.h"
 #include "plugins/legacy/legacy_pipeline.h"
 #include "plugins/backend/ort/ort_plugin.h"
+#include "plugins/backend/ncnn/ncnn_vulkan_backend.h"
+#include "gpu/android/unity_vulkan_plugin.h"
 #include <cmath>
 #include <chrono>
 #include <iomanip>
 #include <sstream>
 
 namespace humanvision::runtime {
-RuntimeSession::~RuntimeSession(){input_.Stop();if(worker_.joinable())worker_.join();hand_.Stop();body_.Stop();}
-bool RuntimeSession::Start(const std::filesystem::path& root,const std::string& profile,int capacity,std::string& error){
+RuntimeSession::~RuntimeSession(){
+ input_.Stop();if(worker_.joinable())worker_.join();if(gpu_)gpu_->Stop();
+ std::string ignored;
+ if(GpuSourceLeaseCoordinator::Instance().Owns(this))GpuSourceLeaseCoordinator::Instance().End(this,ignored);
+ hand_.Stop();body_.Stop();
+}
+bool RuntimeSession::Start(const std::filesystem::path& root,const std::string& profile,int capacity,std::string& error,
+                           HV_QueryPluginV3Fn gpu_pipeline_query,GpuConsumerSource* gpu_test_source){
+ if(profile=="android-ncnn-vulkan"){
+  factory_=std::make_unique<BackendFactory>(std::vector<std::shared_ptr<const PluginModule>>{},false);
+  if(!factory_->RegisterV3(HV_QueryNcnnVulkanPluginV3,error))return false;
+  if(gpu_pipeline_query&&!factory_->RegisterV3(gpu_pipeline_query,error))return false;
+  profile_=ProfileManager(root/"profiles").Resolve(profile,capacity,registry_,ModelPackManager(root/"modelpacks"),error,factory_.get());
+  if(!profile_)return false;
+  GpuConsumerSource* source=gpu_test_source;
+  if(!source){bridge_source_=std::make_unique<BridgeGpuConsumerSource>(gpu::UnityVulkanProducerBridge());source=bridge_source_.get();}
+  if(!source||(!gpu_test_source&&!gpu::UnityVulkanProducerBridge())){error="Android Vulkan producer bridge unavailable";return false;}
+  const auto asset_root=profile_->gpu_pack->root.u8string();
+  HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,capacity,0,
+      profile_->gpu_pack->manifest_json.c_str(),asset_root.c_str(),profile_->json.c_str()};
+  gpu_=std::make_unique<GpuRuntimeHost>(*source);
+  if(!gpu_->Start(profile_->gpu_body,factory_->ServicesV3(),config,error))return false;
+  services_.Configure(capacity,nullptr,0,0);
+  stats_.struct_size=sizeof(stats_);stats_.api_version=HV_API_VERSION_040;
+  return true;
+ }
  for(auto query:{HV_QueryOrtCpuPlugin,HV_QueryRtmoPipeline,HV_QueryTopDownPipeline,HV_QueryHandPipeline})
   if(!registry_.Register(query,error))return false;
  // Optional compiled providers may be absent; profile resolution records fallback.
@@ -30,19 +56,29 @@ bool RuntimeSession::Start(const std::filesystem::path& root,const std::string& 
  stats_.struct_size=sizeof(stats_);stats_.api_version=HV_API_VERSION_040;
  worker_=std::thread(&RuntimeSession::Run,this);return true;
 }
-bool RuntimeSession::Submit(const HV_VideoFrame& frame,std::string& error){FrameSubmitStatus status;return input_.Submit(frame,status,error);}
+bool RuntimeSession::Submit(const HV_VideoFrame& frame,std::string& error){
+ if(profile_&&profile_->gpu_route){error="GPU profile accepts only Android Vulkan render events";return false;}
+ FrameSubmitStatus status;return input_.Submit(frame,status,error);
+}
+void RuntimeSession::RecordGpuDimensions(uint32_t width,uint32_t height) noexcept {
+ if(bridge_source_)bridge_source_->SetDimensions(width,height);
+}
+void RuntimeSession::SetGpuSourceLeaseActive(bool active) noexcept {
+ if(bridge_source_)bridge_source_->SetLeaseActive(active);
+}
 bool RuntimeSession::SetRegions(const HV_Rect* regions,uint32_t count,int64_t revision,std::string& error){
  if(count>uint32_t(profile_->max_people)||(count&&!regions)){error="Region count must not exceed MaxPeople";return false;}
  for(uint32_t i=0;i<count;++i){auto r=regions[i];if(!std::isfinite(r.x)||!std::isfinite(r.y)||!std::isfinite(r.width)||!std::isfinite(r.height)||r.x<0||r.y<0||r.width<=0||r.height<=0||r.x+r.width>1.00001F||r.y+r.height>1.00001F){error="Regions must be positive normalized rectangles within the image";return false;}}
  std::lock_guard<std::mutex> lock(mutex_);
  if(revision<=revision_){error="Region revision must increase";return false;}
  region_count_=count;for(uint32_t i=0;i<count;++i)regions_[i]=regions[i];revision_=revision;
+ if(gpu_)gpu_->SetRevision(revision);
  services_.Configure(profile_->max_people,regions,count,revision);stats_.region_revision=revision;
  stats_.source_frame_id=stats_.source_timestamp_us=0;return true;
 }
 void RuntimeSession::Poll(){
  HV_ObservationFrameV1 frame{};int64_t revision;
- if(body_.CopyLatest(frame,revision)&&frame.sequence!=body_sequence_){
+ if((gpu_?gpu_->CopyLatest(frame,revision):body_.CopyLatest(frame,revision))&&frame.sequence!=body_sequence_){
   body_sequence_=frame.sequence;
   if(revision==revision_){
    const auto elapsed=frame.source_timestamp_us-stats_.source_timestamp_us;
@@ -62,9 +98,18 @@ BodySnapshot RuntimeSession::Copy(int64_t sample_time,HV_RuntimeStatsV1& stats){
  std::lock_guard<std::mutex> lock(mutex_);Poll();stats=stats_;stats.dropped_frames=input_.dropped_frames()+body_.DroppedFrames()+hand_.DroppedFrames();
  return sample_time?services_.Sample(sample_time):services_.Raw();
 }
-std::string RuntimeSession::LastError()const{std::lock_guard<std::mutex> lock(mutex_);if(!error_.empty())return error_;auto error=body_.LastError();return error.empty()?hand_.LastError():error;}
+std::string RuntimeSession::LastError()const{std::lock_guard<std::mutex> lock(mutex_);if(!error_.empty())return error_;if(gpu_)return gpu_->LastError();auto error=body_.LastError();return error.empty()?hand_.LastError():error;}
 std::string RuntimeSession::Diagnostics()const{
  std::lock_guard<std::mutex> lock(mutex_);
+ if(profile_&&profile_->gpu_route){
+  const auto backend=factory_->SelectionDiagnostics();
+  std::ostringstream out;
+  out<<"Profile="<<profile_->id<<"\nPipeline="<<profile_->gpu_body->api.v1.plugin_id
+     <<"\nRequested backend=backend.ncnn.vulkan\nActual backend="<<backend.actual
+     <<"\nRaw observation bodies="<<services_.Raw().count
+     <<"\nGPU worker error="<<gpu_->LastError();
+  return out.str();
+ }
  const auto now=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
  const auto sample=services_.Diagnostics(now);const auto pipeline=body_.Diagnostics();const auto backend=factory_->SelectionDiagnostics();
  const auto state=sample.state==BodySampleState::Predicted?"Predicted":sample.state==BodySampleState::Held?"Held":"Stale";

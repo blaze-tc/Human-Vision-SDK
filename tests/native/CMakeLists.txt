@@ -116,6 +116,7 @@ if(WIN32)
              DESTINATION "${HV_ADAPTER_VULKAN_INCLUDE}")
         add_executable(humanvision_unity_vulkan_adapter_tests
             ../runtime/test_unity_vulkan_android_adapter.cpp
+            ${PROJECT_SOURCE_DIR}/runtime/host/gpu_runtime_host.cpp
             ${PROJECT_SOURCE_DIR}/runtime/gpu/android/unity_vulkan_bridge.cpp
             ${PROJECT_SOURCE_DIR}/runtime/gpu/android/ahb_slot_ring.cpp
             ${PROJECT_SOURCE_DIR}/runtime/gpu/android/ahb_capabilities.cpp)
@@ -124,6 +125,7 @@ if(WIN32)
             ${HV_ADAPTER_VULKAN_INCLUDE}
             ${PROJECT_SOURCE_DIR}/third_party/unity-plugin-api/include
             ${PROJECT_SOURCE_DIR}/runtime
+            ${PROJECT_SOURCE_DIR}/runtime/include
             ${PROJECT_SOURCE_DIR}/native/include)
         target_link_libraries(humanvision_unity_vulkan_adapter_tests PRIVATE
             GTest::gtest_main)
@@ -199,6 +201,7 @@ target_sources(humanvision_native_tests PRIVATE
     ../runtime/test_unity_vulkan_bridge_contract.cpp
     ../runtime/test_plugin_abi_v2.cpp
     ../runtime/test_plugin_abi_v3.cpp
+    ../runtime/test_runtime_gpu_composition.cpp
     ../runtime/test_android_gpu_abi.cpp)
 target_sources(humanvision_native_tests PRIVATE
     ../runtime/test_ncnn_input_contract.cpp

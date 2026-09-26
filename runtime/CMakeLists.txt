@@ -19,6 +19,7 @@ target_sources(humanvision_internal PRIVATE
     composition/session.cpp
     host/plugin_registry.cpp
     host/runtime_host.cpp
+    host/gpu_runtime_host.cpp
     host/model_pack_manager.cpp
     host/profile_manager.cpp
     host/backend_factory.cpp
