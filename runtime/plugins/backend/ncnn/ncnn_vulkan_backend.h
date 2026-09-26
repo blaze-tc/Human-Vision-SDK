@@ -1,6 +1,7 @@
 #pragma once
 
 #include "humanvision_plugin_v2.h"
+#include "humanvision_plugin_v3.h"
 #include "json/json.hpp"
 #include <array>
 #include <string>
@@ -36,3 +37,5 @@ struct HostContext {
 }
 extern "C" HV_Result HV_CALL HV_QueryNcnnVulkanPluginV2(
     uint32_t requested_api_version, HV_PluginApiV2* out_api);
+extern "C" HV_Result HV_CALL HV_QueryNcnnVulkanPluginV3(
+    uint32_t requested_api_version, HV_PluginApiV3* out_api);

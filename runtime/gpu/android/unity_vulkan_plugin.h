@@ -8,10 +8,16 @@ namespace humanvision::gpu {
 // source/AHB/device contract. This never probes or silently chooses a path.
 bool ConfigureUnityVulkanProducer(const AhbSelection &,
                                   const SlotContract &) noexcept;
-// The caller retains this Unity-owned texture until End returns. End closes
-// admission and synchronously drains the source cache before Release/Destroy.
+// The caller retains this Unity-owned texture until End returns and the
+// retention query is false. Query both before and after End (the worker may
+// quarantine while joining). On true, keep a process-lifetime strong texture
+// reference, never Release/Destroy it, and stop GPU use until process restart.
+// Native code does not own Unity's VkDevice and cannot make device recreation
+// safe after unknown GPU completion. End still joins CPU callbacks, without
+// attempting an unbounded GPU wait on the quarantined generation.
 bool BeginUnityVulkanSourceLease(void *unity_texture) noexcept;
 void EndUnityVulkanSourceLease() noexcept;
+bool UnityVulkanSourceRequiresRetention() noexcept;
 void ShutdownUnityVulkanProducer() noexcept;
 BridgeResult PrepareUnityVulkanFrame(const HV_AndroidGpuSubmissionV1 &,
                                      void **) noexcept;

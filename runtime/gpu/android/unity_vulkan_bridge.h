@@ -174,9 +174,10 @@ public:
   SlotResult ClaimConsumer(ConsumerFrame&) noexcept;
   SlotResult ClaimDropped(ConsumerFrame&) noexcept;
   SlotResult RetireConsumer(ConsumerFrame&, CompletionProof) noexcept;
-  // Terminal device fault: abandon this generation's GPU handles in place
-  // when completion cannot be proved. Allows shutdown to finish without
-  // falsely recycling or destroying an in-flight AHB.
+  // Terminal device fault: retain this generation's AHB/Vulkan owners for
+  // process lifetime when completion cannot be proved. Ends the CPU lease so
+  // shutdown can finish, without GPU drain, reuse, or a replacement generation.
+  // The backend must independently retain its consumer-device resource owners.
   SlotResult QuarantineConsumer(ConsumerFrame&) noexcept;
   // Control-thread warm-up borrows each AHB while shutdown is excluded. Caller
   // releases exactly the references it retained after all ncnn imports drain.
@@ -185,6 +186,7 @@ public:
   void GetStatus(HV_AndroidGpuBridgeStatusV1 &) const noexcept;
   void CloseAdmission() noexcept { accepting_calls_.store(false, std::memory_order_release); }
   bool IsClosed() const noexcept { return !initialized_.load(std::memory_order_acquire); }
+  bool IsQuarantined() const noexcept { return quarantined_.load(std::memory_order_acquire); }
   const char* Diagnostic() const noexcept;
   uint64_t Generation() const noexcept { return ring_.Generation(); }
   static void RenderEvent(int event_id, void *data) noexcept;

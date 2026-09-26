@@ -79,6 +79,36 @@ struct RecordingExtractor {
     return std::string(blob) == "in0" ? 0 : -1;
   }
 };
+struct SizedExtractor {
+  std::vector<int> blob_mats = std::vector<int>(4, 0);
+  std::vector<int> blob_mats_gpu = std::vector<int>(4, 0);
+  void clear() { blob_mats.clear(); blob_mats_gpu.clear(); }
+  int input(const char* blob, const FakeTensor&) {
+    if (std::string(blob) != "in0" || blob_mats.size() != 4 ||
+        blob_mats_gpu.size() != 4) return -1;
+    blob_mats_gpu[0] = 1;
+    return 0;
+  }
+};
+}
+
+TEST(NcnnDetectorPack1Input, ReusesSizedExtractorWithoutStaleOutputs) {
+  using humanvision::runtime::ncnn_backend::DeliverInput;
+  using humanvision::runtime::ncnn_backend::InputDeliveryResult;
+  const SizedExtractor pristine;
+  SizedExtractor active = pristine;
+  const auto* blob_storage = active.blob_mats.data();
+  const auto* gpu_storage = active.blob_mats_gpu.data();
+  for (int frame = 0; frame < 64; ++frame) {
+    active = pristine; // ncnn's operator= restores vector sizes and empty blob mats.
+    EXPECT_EQ(active.blob_mats.data(), blob_storage) << frame;
+    EXPECT_EQ(active.blob_mats_gpu.data(), gpu_storage) << frame;
+    EXPECT_EQ(DeliverInput(active, "in0", FakeTensor{3, 1, 16}, true),
+              InputDeliveryResult::Ok) << frame;
+    EXPECT_EQ(active.blob_mats_gpu[0], 1) << frame;
+    EXPECT_EQ(active.blob_mats_gpu[2], 0) << "stale output at frame " << frame;
+    active.blob_mats_gpu[2] = frame + 1; // Simulate an inferred, cached output.
+  }
 }
 
 TEST(NcnnDetectorPack1Input, ExtractorReceivesOnlyThreeChannelFp16Pack1) {
@@ -100,7 +130,7 @@ TEST(NcnnDetectorPack1Input, ExtractorReceivesOnlyThreeChannelFp16Pack1) {
   EXPECT_EQ(extractor.received.c, 3);
   EXPECT_EQ(extractor.received.elempack, 1);
   EXPECT_EQ(extractor.received.elembits(), 16);
-  EXPECT_EQ(extractor.clear_calls, 1);
+  EXPECT_EQ(extractor.clear_calls, 0);
   EXPECT_EQ(DeliverInput(extractor, "wrong", FakeTensor{3, 1, 16}, true),
             InputDeliveryResult::Rejected);
   EXPECT_EQ(extractor.input_calls, 2);

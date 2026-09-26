@@ -11,7 +11,6 @@ InputDeliveryResult DeliverInput(Extractor& extractor, const char* blob,
     if (detector &&
         (tensor.c != 3 || tensor.elempack != 1 || tensor.elembits() != 16))
         return InputDeliveryResult::InvalidTensor;
-    extractor.clear();
     return extractor.input(blob, tensor) == 0
         ? InputDeliveryResult::Ok : InputDeliveryResult::Rejected;
 }

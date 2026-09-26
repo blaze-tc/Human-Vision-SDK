@@ -1,4 +1,5 @@
 #include "plugins/backend/ncnn/ncnn_vulkan_backend.h"
+#include "humanvision_plugin_v3.h"
 #include <cmath>
 #include <set>
 #include <stdexcept>
@@ -159,6 +160,86 @@ HV_Result HV_CALL Info(void* instance, HV_BackendSessionInfoV1* info) {
 #endif
 }
 const HV_GpuBackendApiV1 backend_api{sizeof(backend_api), HV_GPU_FRAME_API_V1, Create, Destroy, Run, Info};
+
+HV_Result HV_CALL Prepare(void* instance, const HV_GpuFrameRefV1* frame,
+                          const HV_GpuImageTransformV1* transform,
+                          HV_GpuPreparedRefV1* out, HV_ErrorBufferV1* error) {
+    if (!instance || !frame || !transform || !out ||
+        out->struct_size < sizeof(*out) || out->api_version != HV_GPU_PREPARED_API_V1 ||
+        frame->struct_size < sizeof(*frame) || frame->api_version != HV_GPU_FRAME_API_V1 ||
+        transform->struct_size < sizeof(*transform) ||
+        transform->api_version != HV_GPU_FRAME_API_V1) return HV_ERR_INVALID_ARGUMENT;
+    *out = {sizeof(*out), HV_GPU_PREPARED_API_V1};
+#if defined(__ANDROID__)
+    auto* session = static_cast<humanvision::runtime::ncnn_backend::AndroidSession*>(instance);
+    try {
+        std::string reason;
+        const auto result = session->Prepare(*frame, *transform, *out, reason);
+        if (result != HV_OK) WriteError(error, reason.c_str());
+        return result;
+    } catch (const std::exception& ex) {
+        session->QuarantinePrepared(frame->opaque_slot);
+        WriteError(error, ex.what()); return HV_ERR_INTERNAL;
+    } catch (...) {
+        session->QuarantinePrepared(frame->opaque_slot);
+        WriteError(error, "ncnn prepared GPU copy raised an exception"); return HV_ERR_INTERNAL;
+    }
+#else
+    WriteError(error, "ncnn Vulkan prepared input requires Android API 26 ARM64");
+    return HV_ERR_NOT_INITIALIZED;
+#endif
+}
+HV_Result HV_CALL RunPrepared(void* instance, const HV_GpuPreparedRefV1* ref,
+                              HV_TensorViewV1* outputs, uint32_t capacity,
+                              uint32_t* count, HV_ErrorBufferV1* error) {
+    if (count) *count = 0;
+    if (!instance || !ref || !count || (capacity && !outputs) ||
+        ref->struct_size < sizeof(*ref) || ref->api_version != HV_GPU_PREPARED_API_V1)
+        return HV_ERR_INVALID_ARGUMENT;
+#if defined(__ANDROID__)
+    auto* session = static_cast<humanvision::runtime::ncnn_backend::AndroidSession*>(instance);
+    try {
+        std::string reason;
+        const auto result = session->RunPrepared(*ref, outputs, capacity, *count, reason);
+        if (result != HV_OK) WriteError(error, reason.c_str());
+        return result;
+    } catch (const std::exception& ex) {
+        session->QuarantinePrepared(nullptr);
+        WriteError(error, ex.what()); return HV_ERR_INTERNAL;
+    } catch (...) {
+        session->QuarantinePrepared(nullptr);
+        WriteError(error, "ncnn prepared inference raised an exception"); return HV_ERR_INTERNAL;
+    }
+#else
+    WriteError(error, "ncnn Vulkan prepared input requires Android API 26 ARM64");
+    return HV_ERR_NOT_INITIALIZED;
+#endif
+}
+HV_Result HV_CALL DiscardPrepared(void* instance, const HV_GpuPreparedRefV1* ref,
+                                  HV_ErrorBufferV1* error) {
+    if (!instance || !ref || ref->struct_size < sizeof(*ref) ||
+        ref->api_version != HV_GPU_PREPARED_API_V1) return HV_ERR_INVALID_ARGUMENT;
+#if defined(__ANDROID__)
+    try {
+        std::string reason;
+        const auto result = static_cast<humanvision::runtime::ncnn_backend::AndroidSession*>(instance)
+            ->DiscardPrepared(*ref, reason);
+        if (result != HV_OK) WriteError(error, reason.c_str());
+        return result;
+    } catch (...) {
+        static_cast<humanvision::runtime::ncnn_backend::AndroidSession*>(instance)
+            ->QuarantinePrepared(nullptr);
+        WriteError(error, "ncnn prepared discard raised an exception"); return HV_ERR_INTERNAL;
+    }
+#else
+    WriteError(error, "ncnn Vulkan prepared input requires Android API 26 ARM64");
+    return HV_ERR_NOT_INITIALIZED;
+#endif
+}
+const HV_GpuPreparedApiV1 prepared_api{sizeof(prepared_api), HV_GPU_PREPARED_API_V1,
+    Prepare, RunPrepared, DiscardPrepared};
+const HV_GpuBackendApiV2 backend_api_v3{{sizeof(backend_api_v3), HV_GPU_FRAME_API_V1,
+    Create, Destroy, Run, Info}, &prepared_api};
 }
 
 extern "C" HV_Result HV_CALL HV_QueryNcnnVulkanPluginV2(uint32_t version, HV_PluginApiV2* out) {
@@ -171,5 +252,18 @@ extern "C" HV_Result HV_CALL HV_QueryNcnnVulkanPluginV2(uint32_t version, HV_Plu
     out->v1 = {sizeof(*out), HV_PLUGIN_API_V2, "backend.ncnn.vulkan", "0.4.0-preview.4",
         HV_PLUGIN_BACKEND, caps, 0, nullptr, nullptr, 0};
     out->gpu_backend = &backend_api;
+    return HV_OK;
+}
+
+extern "C" HV_Result HV_CALL HV_QueryNcnnVulkanPluginV3(uint32_t version, HV_PluginApiV3* out) {
+    if (version != HV_PLUGIN_API_V3 || !out || out->v1.struct_size < sizeof(*out) ||
+        out->v1.api_version != HV_PLUGIN_API_V3) return HV_ERR_INVALID_ARGUMENT;
+    constexpr uint64_t caps = HV_CAP_GPU_INPUT | HV_CAP_TENSOR_INFERENCE | HV_CAP_VULKAN |
+        HV_CAP_FP16_STORAGE | HV_CAP_FP16_ARITHMETIC | HV_CAP_ANDROID_HARDWARE_BUFFER |
+        HV_CAP_EXTERNAL_SYNC_FD;
+    *out = {};
+    out->v1 = {sizeof(*out), HV_PLUGIN_API_V3, "backend.ncnn.vulkan", "0.4.0-preview.4",
+        HV_PLUGIN_BACKEND, caps, 0, nullptr, nullptr, 0};
+    out->gpu_backend = &backend_api_v3;
     return HV_OK;
 }

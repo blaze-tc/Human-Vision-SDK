@@ -7,6 +7,7 @@
 #include "composition/android_gpu_c.cpp"
 
 #include <gtest/gtest.h>
+#include <cstdlib>
 #include <future>
 #include <thread>
 #include <type_traits>
@@ -190,6 +191,7 @@ bool UNITY_INTERFACE_API UnityAccessTexture(
   out->extent = {320, 240, 1};
   out->type = VK_IMAGE_TYPE_2D;
   out->samples = VK_SAMPLE_COUNT_1_BIT;
+  out->layers = 1;
   return true;
 }
 void UNITY_INTERFACE_API UnityAccessQueue(UnityRenderingEventAndData callback,
@@ -394,12 +396,14 @@ TEST(UnityVulkanAndroidAdapter, PreloadCapturesEnabledInstanceFactsAndConfigures
 TEST(UnityVulkanAndroidAdapter, GateProbeBelongsOnlyToCurrentSourceLease) {
   g=AdapterFacts{};
   InstallAndCreateUnityDevice();
+  EXPECT_EQ(HV_AndroidGpuGateMustRetainSource(), 0u);
   void* texture=Handle<void*>(1234);
   ASSERT_TRUE(humanvision::gpu::BeginUnityVulkanSourceLease(texture));
   const auto old_token=AndroidProducer::TestSourceLeaseToken();
   AndroidProducer::TestGateProbePublication(old_token,"candidate=blit old lease");
   EXPECT_EQ(std::string(humanvision::gpu::UnityVulkanProducerGateProbe()),"candidate=blit old lease");
   humanvision::gpu::EndUnityVulkanSourceLease();
+  EXPECT_FALSE(humanvision::gpu::UnityVulkanSourceRequiresRetention());
   EXPECT_EQ(std::string(humanvision::gpu::UnityVulkanProducerGateProbe()),"");
   ASSERT_TRUE(humanvision::gpu::BeginUnityVulkanSourceLease(texture));
   const auto new_token=AndroidProducer::TestSourceLeaseToken();
@@ -412,6 +416,48 @@ TEST(UnityVulkanAndroidAdapter, GateProbeBelongsOnlyToCurrentSourceLease) {
   humanvision::gpu::EndUnityVulkanSourceLease();
   humanvision::gpu::ShutdownUnityVulkanProducer();
   UnityPluginUnload();
+}
+TEST(UnityVulkanAndroidAdapter, TerminalSourceLeaseCannotRestartOrDestroyUnprovedOwners) {
+  // Terminal retention intentionally survives for the whole process. Isolate
+  // this scenario so running the complete adapter binary cannot poison peers.
+  EXPECT_EXIT(([] {
+    using namespace humanvision::gpu;
+    g = AdapterFacts{};
+    InstallAndCreateUnityDevice();
+    vulkan_api.AccessTexture = UnityAccessTexture;
+    vulkan_api.AccessQueue = UnityAccessQueue;
+    if (!ConfigureUnityVulkanProducer(Selection(HV_ANDROID_GPU_COPY_BLIT),
+                                      Contract(HV_ANDROID_GPU_COPY_BLIT))) std::_Exit(10);
+    if (!BeginUnityVulkanSourceLease(Handle<void*>(1))) std::_Exit(11);
+    if (UnityVulkanSourceRequiresRetention() || HV_AndroidGpuGateMustRetainSource() != 0u)
+      std::_Exit(18);
+    auto* bridge = UnityVulkanProducerBridge();
+    HV_AndroidGpuSubmissionV1 frame{sizeof(frame), HV_ANDROID_GPU_API_V1,
+                                   Handle<void*>(1), 320, 240, 1, 1000, 0, 0};
+    void* event = nullptr;
+    if (bridge->Prepare(frame, &event) != BridgeResult::Ok ||
+        bridge->Render(event) != BridgeResult::Ok) std::_Exit(12);
+    ConsumerFrame consumer;
+    if (bridge->ClaimConsumer(consumer) != SlotResult::Ok) std::_Exit(13);
+    g.fence_complete = false;
+    if (bridge->QuarantineConsumer(consumer) != SlotResult::Ok) std::_Exit(14);
+    if (!UnityVulkanSourceRequiresRetention() || HV_AndroidGpuGateMustRetainSource() != 1u)
+      std::_Exit(19);
+    const int views = g.view_destroys;
+    EndUnityVulkanSourceLease();
+    if (!UnityVulkanSourceRequiresRetention() || HV_AndroidGpuGateMustRetainSource() != 1u)
+      std::_Exit(20);
+    if (g.ahb_live != 3 || g.view_destroys != views ||
+        g.fence_wait_calls != 0 || g.device_idle_calls != 0) std::_Exit(15);
+    if (BeginUnityVulkanSourceLease(Handle<void*>(2))) std::_Exit(16);
+    ShutdownUnityVulkanProducer();
+    if (g.ahb_live != 3 || g.view_destroys != views) std::_Exit(17);
+    UnityPluginUnload();
+    if (!UnityVulkanSourceRequiresRetention() || HV_AndroidGpuGateMustRetainSource() != 1u ||
+        g.ahb_live != 3 || g.view_destroys != views || g.device_idle_calls != 0)
+      std::_Exit(21);
+    std::_Exit(0);
+  }()), ::testing::ExitedWithCode(0), "");
 }
 TEST(UnityVulkanAndroidAdapter, RejectsDifferentLogicalDeviceAndZeroUuidAfterInterception) {
   g=AdapterFacts{};

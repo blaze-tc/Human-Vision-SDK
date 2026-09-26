@@ -37,3 +37,19 @@ TEST(NcnnBackendRegistration, RefusesMissingPhysicalIdentityWithoutFallback) {
     EXPECT_EQ(instance, nullptr);
     EXPECT_NE(std::string(message).find("UUID"), std::string::npos);
 }
+
+TEST(NcnnBackendRegistration, V3AdvertisesDetachedDetectorWithoutChangingV2) {
+    BackendFactory factory({}, false);
+    std::string error;
+    ASSERT_TRUE(factory.RegisterV2(HV_QueryNcnnVulkanPluginV2, error)) << error;
+    ASSERT_TRUE(factory.RegisterV3(HV_QueryNcnnVulkanPluginV3, error)) << error;
+    auto old_api = factory.FindV2("backend.ncnn.vulkan", HV_CAP_GPU_INPUT, error);
+    auto next_api = factory.FindV3("backend.ncnn.vulkan", HV_CAP_GPU_INPUT, error);
+    ASSERT_NE(old_api, nullptr);
+    ASSERT_NE(next_api, nullptr);
+    EXPECT_EQ(old_api->api.gpu_backend->struct_size, sizeof(HV_GpuBackendApiV1));
+    ASSERT_NE(next_api->api.gpu_backend->prepared, nullptr);
+    EXPECT_EQ(next_api->api.gpu_backend->v1.struct_size, sizeof(HV_GpuBackendApiV2));
+    EXPECT_EQ(next_api->api.gpu_backend->prepared->api_version, HV_GPU_PREPARED_API_V1);
+    EXPECT_EQ(next_api->api.gpu_pipeline, nullptr);
+}

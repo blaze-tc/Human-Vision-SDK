@@ -82,6 +82,7 @@ struct FakeVulkan {
   uint32_t created = 0;
   uint32_t drained = 0;
   uint32_t released = 0;
+  uint32_t completion_checks = 0;
   UnityVulkanDeviceContext last_device{};
   bool defer_queue = false;
   void (*queued_callback)(void *) noexcept = nullptr;
@@ -92,6 +93,7 @@ struct FakeVulkan {
   bool access_entered = false;
   std::function<void()> stall_ring_at_submit;
   std::function<void()> stall_ring_at_export;
+  std::function<void()> on_cancel;
 
   UnityVulkanBridgeDispatch Dispatch() {
     return {this, Create, Drain, Access, PrepareSource, Release, Queue, Blit,
@@ -229,11 +231,14 @@ struct FakeVulkan {
   }
   static bool Complete(void *p, const UnityVulkanDeviceContext &,
                        const UnityVulkanSlotCache &) noexcept {
-    return static_cast<FakeVulkan *>(p)->complete;
+    auto& f = *static_cast<FakeVulkan *>(p);
+    ++f.completion_checks;
+    return f.complete;
   }
   static void Cancel(void *p) noexcept {
     auto &f = *static_cast<FakeVulkan *>(p);
     f.calls.push_back("cancel-events");
+    if (f.on_cancel) f.on_cancel();
     if (f.queued_callback) {
       f.queued_callback(f.queued_data);
       f.queued_callback = nullptr;
@@ -594,18 +599,91 @@ TEST(UnityVulkanBridgeContract, SupersededFramesExposeFenceAndRetireAfterGpuProo
 
 TEST(UnityVulkanBridgeContract, UnprovenGpuFaultQuarantinesCachesWithoutShutdownHang) {
   FakeVulkan fake;
+  fake.complete = false;
+  {
+    UnityVulkanBridge bridge(fake.Dispatch());
+    ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+    const auto generation = bridge.Generation();
+    void* event = nullptr;
+    for (int64_t id = 1; id <= 3; ++id) {
+      fake.next_fd = static_cast<int>(40 + id);
+      ASSERT_EQ(bridge.Prepare(Submission(id), &event), BridgeResult::Ok);
+      ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+    }
+    ConsumerFrame frame;
+    ASSERT_EQ(bridge.ClaimConsumer(frame), SlotResult::Ok);
+    EXPECT_EQ(bridge.QuarantineConsumer(frame), SlotResult::Ok);
+    EXPECT_FALSE(frame.claimed);
+    EXPECT_FALSE(frame.producer_fd.HasPayload());
+    EXPECT_EQ(fake.closed_fds, 1u);
+    const auto start = std::chrono::steady_clock::now();
+    bridge.Shutdown();
+    EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(2));
+    EXPECT_TRUE(bridge.IsClosed());
+    EXPECT_EQ(fake.drained, 0u);
+    EXPECT_EQ(fake.closed_fds, 3u);
+    EXPECT_EQ(fake.completion_checks, 0u);
+    EXPECT_EQ(bridge.Prepare(Submission(4), &event), BridgeResult::Closed);
+    EXPECT_FALSE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+    EXPECT_EQ(bridge.Generation(), generation);
+    EXPECT_EQ(fake.created, 3u);
+    bridge.Shutdown();
+  } // Neither repeated shutdown nor the bridge/ring destructors may destroy AHBs.
+  EXPECT_EQ(fake.drained, 0u);
+  EXPECT_EQ(fake.closed_fds, 3u);
+}
+
+TEST(UnityVulkanBridgeContract, QuarantineDuringReinitializeCannotOpenANewGeneration) {
+  FakeVulkan fake;
   UnityVulkanBridge bridge(fake.Dispatch());
   ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  const auto generation = bridge.Generation();
   void* event = nullptr;
   ASSERT_EQ(bridge.Prepare(Submission(1), &event), BridgeResult::Ok);
   ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
   ConsumerFrame frame;
   ASSERT_EQ(bridge.ClaimConsumer(frame), SlotResult::Ok);
+  std::promise<void> cancelling;
+  auto entered = cancelling.get_future();
+  fake.on_cancel = [&] { cancelling.set_value(); };
+  auto rebuild = std::async(std::launch::async, [&] {
+    return bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract());
+  });
+  EXPECT_EQ(entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+  EXPECT_EQ(rebuild.wait_for(std::chrono::milliseconds(30)), std::future_status::timeout);
+  // A failed GPU wait on the worker arrives after Initialize's admission check.
   EXPECT_EQ(bridge.QuarantineConsumer(frame), SlotResult::Ok);
-  EXPECT_FALSE(frame.claimed);
-  bridge.Shutdown();
+  EXPECT_EQ(rebuild.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+  EXPECT_FALSE(rebuild.get());
+  fake.on_cancel = {};
+  EXPECT_TRUE(bridge.IsClosed());
+  EXPECT_EQ(bridge.Generation(), generation);
+  EXPECT_EQ(fake.created, 3u);
   EXPECT_EQ(fake.drained, 0u);
   EXPECT_EQ(bridge.Prepare(Submission(2), &event), BridgeResult::Closed);
+}
+
+TEST(UnityVulkanBridgeContract, ProvenConsumerStillDrainsAndAllowsANewGeneration) {
+  FakeVulkan fake;
+  fake.next_fd = 42;
+  {
+    UnityVulkanBridge bridge(fake.Dispatch());
+    ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+    const auto generation = bridge.Generation();
+    void* event = nullptr;
+    ASSERT_EQ(bridge.Prepare(Submission(1), &event), BridgeResult::Ok);
+    ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+    ConsumerFrame frame;
+    ASSERT_EQ(bridge.ClaimConsumer(frame), SlotResult::Ok);
+    ASSERT_EQ(bridge.RetireConsumer(frame, CompletionProof::GpuQuiescent), SlotResult::Ok);
+    bridge.Shutdown();
+    EXPECT_EQ(fake.drained, 3u);
+    EXPECT_EQ(fake.closed_fds, 1u);
+    ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+    EXPECT_GT(bridge.Generation(), generation);
+  }
+  EXPECT_EQ(fake.drained, 6u);
+  EXPECT_EQ(fake.closed_fds, 1u);
 }
 
 TEST(UnityVulkanBridgeContract,

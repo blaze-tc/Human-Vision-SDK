@@ -73,6 +73,10 @@ bool UnityVulkanBridge::Initialize(const UnityVulkanDeviceContext& device,
     std::lock_guard<std::mutex> control(control_mutex_);
     if (quarantined_.load(std::memory_order_acquire)) return false;
     ShutdownLocked();
+    // The worker can discover an unproved GPU completion while shutdown waits
+    // for its lease. Once all calls/leases have returned, admission stays closed;
+    // recheck the terminal latch before allocating or reopening a generation.
+    if (quarantined_.load(std::memory_order_acquire)) return false;
     if (!dispatch_.create_slot || !dispatch_.drain_slot || !dispatch_.access_texture ||
         !dispatch_.prepare_source || !dispatch_.release_texture ||
         !dispatch_.record_blit || !dispatch_.record_color ||
@@ -170,8 +174,13 @@ void UnityVulkanBridge::DrainSlot(void* context, uint32_t index, AhbSlotState st
                                   SlotResources&, SyncFd& fd) noexcept {
     auto& self = *static_cast<UnityVulkanBridge*>(context);
     if (self.quarantined_.load(std::memory_order_acquire)) {
-        // Deliberately leak the AndroidSlot heap owner and Vulkan handles on
-        // terminal device loss. Their GPU use cannot be proven complete.
+        // Process-lifetime retention: ahb is the AndroidSlot heap owner, which
+        // holds the allocation/importer AHB refs and every producer Vulkan
+        // object (including source views). Never dispatch its drain/destructor:
+        // it may wait forever or free memory still used by the consumer device.
+        // This ring's SlotResources are empty (CreateSlot uses slots_ only).
+        // Ring teardown still closes outstanding sync fds exactly once; closing
+        // an fd is not GPU completion proof and does not release the AHB owners.
         self.slots_[index] = {};
         return;
     }
@@ -536,6 +545,8 @@ void UnityVulkanBridge::GetStatus(HV_AndroidGpuBridgeStatusV1& status) const noe
     if(last_error_.load(std::memory_order_acquire))status.copy_path=HV_ANDROID_GPU_COPY_UNAVAILABLE;
 }
 const char* UnityVulkanBridge::Diagnostic() const noexcept {
+    if (IsQuarantined())
+        return "GPU completion is unproven; retain the Unity source texture, stop GPU use and restart the process";
     switch(last_error_.load(std::memory_order_acquire)) {
     case 1:return "Unity Vulkan AccessTexture failed";
     case 2:return "Unity Vulkan source differs from the measured source contract; rebuild the generation";

@@ -4,6 +4,7 @@
 #include "plugins/backend/ncnn/ncnn_vulkan_backend.h"
 #include "plugins/backend/ncnn/ncnn_preprocess.h"
 #include "plugins/backend/ncnn/ncnn_model_options.h"
+#include "plugins/backend/ncnn/ncnn_prepared_input.h"
 #include "gpu/android/unity_vulkan_bridge.h"
 #include <allocator.h>
 #include <android/hardware_buffer.h>
@@ -25,9 +26,19 @@ public:
                         const HostContext& host, std::string& error);
     const InputContract& GateContract() const noexcept { return contract_; }
     const gpu::SlotContract& GateGenerationContract() const noexcept { return generation_.contract; }
+    bool VerifyPreparedGoldenForGate(const HV_GpuPreparedRefV1&, std::string& diagnostic);
+    uint64_t GatePreparedOutputDownloadCalls() const noexcept {
+        return prepared_ ? prepared_->output_download_calls : 0;
+    }
 #endif
     HV_Result Run(const HV_GpuFrameRefV1&, const HV_GpuImageTransformV1&,
                   HV_TensorViewV1*, uint32_t capacity, uint32_t& count, std::string& error);
+    HV_Result Prepare(const HV_GpuFrameRefV1&, const HV_GpuImageTransformV1&,
+                      HV_GpuPreparedRefV1&, std::string& error);
+    HV_Result RunPrepared(const HV_GpuPreparedRefV1&, HV_TensorViewV1*,
+                          uint32_t capacity, uint32_t& count, std::string& error);
+    HV_Result DiscardPrepared(const HV_GpuPreparedRefV1&, std::string& error);
+    void QuarantinePrepared(void* opaque_slot) noexcept;
     HV_Result Info(HV_BackendSessionInfoV1& info) const;
     void RetireUnsubmitted(void* opaque_slot) noexcept;
     // Internal worker boundary: one borrowed slot spans detector and every pose ROI.
@@ -56,7 +67,10 @@ private:
     gpu::SlotToken active_token_{};
     ncnn::Option option_;
     BackendOptions backend_options_{};
+    bool detector_role_ = false;
     InputContract contract_;
+    PreparedInputState prepared_state_;
+    std::unique_ptr<PreparedGpuResources> prepared_;
     gpu::ConsumerGeneration generation_{};
     std::array<std::unique_ptr<Slot, SlotDeleter>, gpu::AhbSlotRing::kSlotCount> slots_{};
     std::unique_ptr<GpuPreprocess> preprocess_;

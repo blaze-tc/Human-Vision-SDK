@@ -1,0 +1,15 @@
+{
+  "modelpack": "precision-t-26-ncnn-fp16",
+  "role": "detector",
+  "width": 320,
+  "height": 320,
+  "image_format": "rgba8-unorm",
+  "color_order": "rgb",
+  "tensor_dtype": "fp16",
+  "elempack": 1,
+  "output_max_logical_bytes": {"cls": 8400, "bbox": 33600},
+  "mean": [123.675, 116.28, 103.53],
+  "norm": [0.017124753831663668, 0.01750700280112045, 0.017429193899782137],
+  "param_sha256": "9a4a89da2de4298427255950e58943f670a9e18a6d69b720270070741978b2b3",
+  "bin_sha256": "4329c052c86a53fd2f213b874f199a87755df6601e40bb7a45011b280dba42da"
+}

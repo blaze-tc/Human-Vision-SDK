@@ -1,3 +1,233 @@
+# Android Vulkan/ncnn — Revision 3 Task 4 prepared detector input DEVICE GATE PASSED (2026-09-26)
+
+Task 4's detached detector input gate passed in two independent cold starts on
+OnePlus 9 Pro LE2120 (Snapdragon 888, Adreno 660, Android API 34; ADB serial
+`e7c07019`). The installed development APK is
+`E:/UnityProject/Human-Vision-SDK-Test/Builds/humanvision-prepared-gate.apk`,
+SHA-256 `d744b2d6f596be56909123666757f87fc66336e3f4bf3b1d6da51a10361989b3`.
+Its native `libhumanvision.so` is
+SHA-256 `d9ab94631537e27605c46b9c139930d867490b8b678b1544706db681c28340b1`.
+The first and repeat cold-run PID-specific logs are retained locally in ignored
+`out/rev3-task4-evidence/device-extractor-reset-{logcat,cold-repeat-logcat}.txt`.
+After a reviewed active-RenderTexture teardown cleanup, the current APK was
+rebuilt, verified against all seven pinned ARM64 libraries, and installed
+with `adb install -r`; its final repeat log is
+`out/rev3-task4-evidence/device-active-texture-fix-logcat.txt` (PID 21141).
+The final run again reported the same three-generation PASS sequence and
+exact tensor hash, with no gate failure, fatal signal or active-RenderTexture
+release warning.
+Both runs reported generation 1 `PASS`, generation 2
+`RESTART_DRAIN_PASS` while a prepared token was outstanding, and generation 3
+`PASS` after restart. The exact 320×320×3 FP16 tensor hash was
+`9e598ea5d37ebe348bd8235c412d404d62ceb78018dfdfb942a88a26ad118d19`
+in each generation. The detector gate also checked source retirement before
+prepared inference, direct/prepared output parity, and exactly two bounded
+detector-output downloads per prepared job (`cls` 8,400 bytes and `bbox`
+33,600 bytes). No source-frame CPU pixel readback was used.
+
+The device reported AHB format 1 (Vulkan format 37), AHB usage `0x100`, Vulkan
+format features `0xFFD83`, and selected the supported GPU blit path after
+feature probing; producer and consumer AHB imports returned `VK_SUCCESS`.
+Unity and ncnn reported the same physical-device and driver UUIDs on separate
+logical devices. The observed `noSlot` counters (34/107 for the two complete
+generations in the repeat run) are latest/drop behavior during this deliberately
+slow diagnostic gate. This gate has a synthetic fixture and does not produce
+camera skeletons or establish the required 30 fresh full observation frames/s.
+Task 4's device gate is complete. Task 5 host composition and later integrated
+performance acceptance remain outstanding.
+
+Verification after the extractor lifecycle fix: `pwsh -NoProfile -File
+tools/test/run_native_tests.ps1` passed **225/225**; Python reference tests
+passed **56/56**; architecture tests passed **19/19**; focused Unity EditMode
+gate tests passed **9/9** and `debug_get_errors` returned **0**. The normal
+`pwsh -NoProfile -File tools/package/build_live_native.ps1 -Platform Android
+-AndroidApiLevel 26` build passed; `tools/test/verify_android_native.py`
+confirmed ELF64 ARM64, API 26, and 1,810 resolved native imports for
+`build/android-live/bin/Release/libhumanvision.so` (SHA-256
+`b7509141e314c92ad83df8e29c47380433516df5e6f2196cc45064e50bede8ac`).
+The gate-only diagnostic string is absent from the normal binary;
+`tools/maintenance/check_architecture_boundaries.py` and `git diff --check`
+passed. The temporary verification command first pointed at the wrong
+`build/android-live/runtime/` path; rerunning against the actual
+`build/android-live/bin/Release/` artifact passed.
+Independent full-diff SPEC and code-quality reviews passed. The latter
+identified the active-RenderTexture teardown warning; the focused cleanup
+was reviewed, rebuilt, and passed the final device rerun above.
+
+## Task 4 development chronology (earlier failures below were resolved)
+
+The detector-only V3 `prepare_image` now records an AHB import and GPU
+preprocess/packing into one persistent 320×320 RGB FP16 pack1 ncnn `VkMat`.
+The GPU command completes before the detector yields its AHB role; the current
+observation can retain the AHB for pose and release the final role separately.
+The generation-bound one-shot token then allows `run_prepared` to infer from
+the detached tensor after AHB retirement. Busy/stale tokens and unproved GPU
+completion fail closed; no ORT fallback, source-pixel CPU readback, or
+per-frame AHB/import-pipeline creation was added. This is **not yet a Task 4
+pass**: device-side source-to-prepared tensor parity and AHB lifecycle
+evidence remain outstanding.
+
+The fake-bridge test was run RED as four failing runtime assertions after an
+initial compile RED, then GREEN (4/4) after implementation. The observable
+test records GPU-copy proof, detector role handoff, final pose role/AHB
+retirement, and a detached extractor-input read in order. V3 registration
+tests passed 3/3; `pwsh -NoProfile -File tools/test/run_native_tests.ps1`
+passed 220/220 before independent review. The review found that a direct
+destructor could release Vulkan/AHB resources despite unproved GPU completion.
+The new lifetime-policy tests were first 2/5 failing runtime assertions with
+a temporary false implementation, then 5/5 passing; logs are preserved in
+ignored `out/rev3-task4-evidence/destructor-{assertion-red,green}.log`.
+The Android session now deliberately retains all dependent ncnn/Vulkan/AHB
+allocations and its GPU-instance lease for process lifetime if completion is
+uncertain. The destructor also rechecks after its final-role release, which
+can itself fail; a source-level Android regression was RED then GREEN with
+logs under the same ignored evidence directory. After combined repairs, full
+native passed **224/224**, reference tests **55/55**, architecture tests
+**19/19**, architecture guard and `git diff --check` passed. The gate-only
+Unity source-lifetime regression was RED against HEAD and GREEN on the
+terminal-aware C# script; ignored logs are under `out/rev3-task4-evidence/`.
+Physical device validation is still pending.
+Android ARM64/API26 `humanvision` with the development GPU
+gate enabled built; `.venv-reference/Scripts/python.exe
+tools/test/verify_android_native.py` passed ELF/API and 1813 dependency
+imports (latest combined gate binary SHA-256
+`16b6a489fae28b2c6c05fcd36b3c1060433be704d266d1cbe974293d79bfd098`).
+The architecture guard and `git diff --check` passed.
+The ordinary (non-gate) Android ARM64/API26 build also passed ELF/API audit
+(1810 imports, latest SHA-256
+`b7509141e314c92ad83df8e29c47380433516df5e6f2196cc45064e50bede8ac`);
+the gate-only tensor download and gate entry point are absent from this
+binary. Task 5 has not composed the V3 ncnn session into the runtime host;
+the development gate is required to exercise Task 4 on device. The ordinary
+binary includes the reviewed bridge terminal-state correction, so its bytes
+no longer match the Task 3 baseline.
+
+The isolated Prepared Gate uses a 320×320 four-quadrant RGBA fixture pinned to
+SHA-256 `3e1edfd04bd3abd1b260cc67b07b781e365a85559365032185cd8ec72545ce74`.
+It performs a **development-build-only** download of the small detached
+320×320×3 tensor and requires its FP16 channel-major SHA-256 to match the
+independently calculated
+`9e598ea5d37ebe348bd8235c412d404d62ceb78018dfdfb942a88a26ad118d19`;
+the production binary omits this diagnostic. The gate requires a real V3
+prepare, source role yield, same-source second role, final AHB retirement,
+then `run_prepared`; it snapshots and compares direct/prepared model outputs.
+It logs fixture, manifest and detector-file hashes, actual AHB format/usage/
+features, copy path, and generation. These are **unexecuted device checks**.
+`tools/test/generate_prepared_gate_golden.py` independently reproduces the
+reference from the tracked detector contract, validates local ModelPack
+param/bin bytes when present, and writes the checked
+`docs/validation/PREPARED_DETECTOR_INPUT_GOLDEN.json`; its focused Python
+test passed. This reference is separate from the ncnn output comparison.
+
+Independent review found two further fault/lifetime issues: bridge
+quarantine already retains its owned AHB/Vulkan resources, but an Initialize
+waiting on an active lease could reopen a new generation after quarantine;
+also Unity could destroy its source texture after the native gate terminates
+with unknown GPU completion. The bridge now keeps terminal state sticky,
+rejects new generation admission, and exposes a gate-only source-retention
+query. C# checks it before and after worker join and retains Unity textures
+and the command buffer for process lifetime on terminal failure. The focused
+bridge/ring/adapter suite passed **78/78** after RED tests. The independent
+Task 4 **SPEC and QUALITY code-level reviews passed**; device proof remains
+pending, so Task 4 is not complete. ncnn's small detector-output
+`record_download` also creates bounded temporary allocations per keyframe.
+Source restart while an active prepared job is pending has not yet been
+demonstrated on-device.
+The development gate now scripts three generations: full V3 parity; a second
+generation with an admitted prepared token and retired source AHB, where Unity
+requests restart and the worker drains the detector job before rebuilding;
+then full V3 parity after rejecting the old generation's token. This validates
+restart request overlapping an outstanding prepared job, **not** a Vulkan
+graph hot-switch during execution. The gate-only `End` waits for the worker;
+the production Unity main/render thread must never acquire this synchronous
+behavior. None of this three-generation evidence exists until a fresh APK
+runs on the device.
+The readback scope is exactly two `record_download` calls per admitted
+detector keyframe (`cls` at most 8,400 logical bytes, `bbox` at most 33,600),
+never source pixels or a per-pose-frame transfer. ncnn internally allocates
+temporary staging for each call; cached vector capacity does not remove those
+allocations. A gate-only counter now asserts/logs two calls per prepared job.
+This bounded ncnn output work is a Task 7 allocation-pressure/timing risk,
+not a Task 4 input-cache hard blocker. The detector hot path is **not**
+claimed allocation-free.
+
+`pwsh -NoProfile -File tools/test/build_android_gpu_bridge_gate.ps1 -Prepared
+-Unity 'D:/Developer/2021.3.45f1/Editor/Unity-verified.exe'` staged the native
+closure but could not build an APK. Unity batch exited 1 before project load:
+its Licensing Client reported signature validation error Code 10, an invalid
+ULF digital signature and no cached entitlement (`No valid Unity Editor license
+found`). The default Unity.exe was also independently found to have a
+HashMismatch signature and cannot launch normally. No licensing/security
+settings were changed, and no old APK is being treated as Task 4 evidence.
+Once a valid Unity editor/license is available, rebuild this gate, inspect
+the current device's AHB format/usage/features and sync-fd ownership, and
+require all three scripted generations and tensor/model parity before final
+device signoff and a separate Task 4 commit. Task 5 is not
+started.
+
+The user authorized the already-open Unity test project at
+`E:/UnityProject/Human-Vision-SDK-Test` for interactive validation. Its
+Unity 2021.3.45f1 Editor was available through UnitySkills, so the SDK
+assets, pinned prepared-gate detector/model contract, and Android ARM64
+native dependency closure were imported there. The focused EditMode class
+`HumanVision.Tests.HumanVisionAndroidGpuGateBuildTests` passed **8/8** via
+`test_run_by_name`; `debug_get_errors` returned **0** after the final build.
+The interactive menu
+`HumanVision/Android/Build PREPARED Detector Gate (Development APK)` built
+`E:/UnityProject/Human-Vision-SDK-Test/Builds/humanvision-prepared-gate.apk`
+(57,786,149 bytes, SHA-256
+`cc5c58cf68ee7edf4ca60c14063f29775871fc1bc19a9f9edb6439cda3bc7031`).
+`aapt dump badging` confirms its separate package
+`com.blazetc.humanvision.preparedgate`, API 26, and ARM64. `pwsh -NoProfile
+-File tools/test/verify_android_gpu_bridge_gate_libs.ps1 -Mode Verify
+-ApkPath E:/UnityProject/Human-Vision-SDK-Test/Builds/humanvision-prepared-gate.apk`
+verified all seven required ARM64 native libraries. The original
+`SampleScene` remained active and clean. Interactive settings before/after
+matched in Editor logs; the serialized ProjectSettings file also retained
+the user's original product name, Android application ID, and API level
+after the build. This required adding `File/Save Project` and a disk-field
+assertion to the gate-only restoration path after a live first-build
+regression exposed Unity's deferred ProjectSettings serialization.
+Independent static review passed the repair, while its failure path has
+not been exercised in Unity. The APK has **not** been installed or run on
+the Snapdragon 888. This build is a fixed-input detector/AHB gate and
+intentionally does not emit a skeleton. The physical parity, AHB feature,
+sync-fd, and three-generation restart checks in Task 4 remain open; Task 4
+is not complete and Task 5 must not begin.
+
+The user then authorized direct ADB installation on OnePlus 9 Pro LE2120
+(Snapdragon 888, Android API 34, serial `e7c07019`). The independent package
+`com.blazetc.humanvision.preparedgate` installed and launched. The first
+device run reached Vulkan/AHB import: the target reported AHB Vulkan format
+37, image usage 151, format features 1047939, and a supported blit path;
+Unity and ncnn physical-device UUIDs matched. The gate failed its first
+full-tensor hash (`e5475a...` versus the initial `fd1e68...` reference).
+The device's six samples isolated texture-edge mixing and one-ULP FP16
+conversion differences. The gate fixture was changed to Point/Clamp
+sampling; its focused Unity tests passed **9/9** and independent review
+passed. The next device run produced exactly the independently calculated
+full-tensor RTZ hash `9e598ea5...`, separating the texture problem from the
+offline reference's nearest-even conversion. The reference generator now
+models the observed Snapdragon/ncnn FP16 conversion without weakening the
+exact whole-tensor comparison; reference tests passed **56/56**, native
+**224/224**, architecture **19/19**, and independent review passed. This
+rounding result is device evidence, not a claim about every Android GPU.
+
+After rebuilding Android ARM64/API26 native (`libhumanvision.so` SHA-256
+`fc286d8eb06d7ee7ed474c2f5309694d430b69db03117d9f3979e8ec200837de`,
+ELF/dependency audit passed 1813 imports), staging all seven native libraries,
+and building the current gate APK (SHA-256
+`8facd05f7c5f0fc7d536c8c6629b7ce1d457847df6d4b1025dc00c920e577c87`),
+the next Snapdragon run passed the strict tensor-hash stage and reached the
+same-AHB detector role. It then failed with `ncnn model rejected explicit
+input tensor`. Inspection of pinned ncnn found the cause: `DeliverInput()`
+calls `Extractor::clear()` before input; ncnn's `clear()` empties its blob
+vectors, and `input(index, VkMat)` rejects the now-empty extractor. A reusable
+pristine-extractor reset with a RED regression is being implemented. Raw
+per-run logcat and device evidence are ignored under
+`out/rev3-task4-evidence/`. No source-to-detector output parity or
+three-generation restart PASS has yet been observed. Task 4 remains open.
+
 # Android Vulkan/ncnn — Revision 3 Task 3 V3 prepared-input ABI complete (2026-09-26)
 
 Independent Task 3 SPEC/QUALITY review requested four fixes. A V3 prepared

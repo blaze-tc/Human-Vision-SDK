@@ -1,0 +1,74 @@
+{
+  "colors_rgba": [
+    [
+      128,
+      64,
+      32,
+      255
+    ],
+    [
+      48,
+      160,
+      210,
+      255
+    ],
+    [
+      220,
+      118,
+      44,
+      255
+    ],
+    [
+      22,
+      35,
+      235,
+      255
+    ]
+  ],
+  "contract_sha256": "56497968878f302d4e106d7eaf6cdb6cbf722946f006541584918132997d076b",
+  "conversion_scope": "Observed Snapdragon 888 ncnn Vulkan packing semantics; other devices remain device-gated",
+  "fixture": "320x320 four-quadrant RGBA8, bottom-up source rows",
+  "fixture_rgba_sha256": "3e1edfd04bd3abd1b260cc67b07b781e365a85559365032185cd8ec72545ce74",
+  "model_bin_sha256": "4329c052c86a53fd2f213b874f199a87755df6601e40bb7a45011b280dba42da",
+  "model_param_sha256": "9a4a89da2de4298427255950e58943f670a9e18a6d69b720270070741978b2b3",
+  "modelpack": "precision-t-26-ncnn-fp16",
+  "output_max_logical_bytes": {
+    "bbox": 33600,
+    "cls": 8400
+  },
+  "sample_rgb_fp16": {
+    "0,0": [
+      0.07403564453125,
+      -0.9150390625,
+      -1.24609375
+    ],
+    "240,240": [
+      -1.740234375,
+      -1.4228515625,
+      2.291015625
+    ],
+    "240,80": [
+      -1.2958984375,
+      0.76513671875,
+      1.85546875
+    ],
+    "319,319": [
+      -1.740234375,
+      -1.4228515625,
+      2.291015625
+    ],
+    "80,240": [
+      1.6494140625,
+      0.0301055908203125,
+      -1.037109375
+    ],
+    "80,80": [
+      0.07403564453125,
+      -0.9150390625,
+      -1.24609375
+    ]
+  },
+  "tensor_conversion": "FP32 to FP16 round toward zero (RTZ)",
+  "tensor_fp16_sha256": "9e598ea5d37ebe348bd8235c412d404d62ceb78018dfdfb942a88a26ad118d19",
+  "tensor_layout": "RGB channel-major, 320x320, FP16 little-endian pack1"
+}

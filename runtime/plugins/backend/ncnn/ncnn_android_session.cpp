@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <sstream>
 #include <poll.h>
 #include <cerrno>
 #include <unistd.h>
@@ -97,10 +98,12 @@ struct AndroidSession::Slot {
     std::unique_ptr<ncnn::VkCompute> compute;
     ncnn::VkMat imported_rgb, normalized, prepared_input;
     std::unique_ptr<ncnn::Extractor> extractor;
+    std::unique_ptr<ncnn::Extractor> pristine_extractor;
     std::vector<ncnn::VkMat> gpu_outputs, fp32_outputs;
     std::vector<ncnn::Mat> cpu_outputs;
     std::vector<std::vector<float>> dense_outputs;
     ~Slot() {
+        pristine_extractor.reset();
         extractor.reset();
         gpu_outputs.clear(); fp32_outputs.clear(); cpu_outputs.clear(); dense_outputs.clear();
         prepared_input.release(); normalized.release(); imported_rgb.release();
@@ -114,11 +117,32 @@ void AndroidSession::SlotDeleter::operator()(Slot* slot) const noexcept { delete
 AndroidSession::AndroidSession() = default;
 
 AndroidSession::~AndroidSession() {
+    const auto retain_unproved = [this]() noexcept {
+        // A failed Vulkan submit/wait does not prove that the GPU stopped
+        // reading the cached tensor, import images, semaphores or model
+        // descriptors. Retain every dependent allocation and the ncnn GPU
+        // instance until process exit. Even a caller that bypasses the V3
+        // Destroy guard must never turn an uncertain fault into a UAF.
+        for (auto& slot : slots_) (void)slot.release();
+        (void)prepared_.release();
+        (void)preprocess_.release();
+        (void)net_.release();
+    };
+    if (prepared_state_.RequiresProcessLifetimeRetention(terminal_gpu_fault_)) {
+        retain_unproved();
+        return;
+    }
     if (active_consumer_) {
         std::string ignored;
         FinishObservation(*active_consumer_, ignored);
+        // The final release can itself fail after the first safety check.
+        if (prepared_state_.RequiresProcessLifetimeRetention(terminal_gpu_fault_)) {
+            retain_unproved();
+            return;
+        }
     }
     for (auto& slot : slots_) slot.reset();
+    prepared_.reset();
     preprocess_.reset();
     net_.reset();
     for (const auto handle : generation_.retained_ahb)
@@ -145,6 +169,7 @@ bool AndroidSession::ParseModel(const HV_GpuBackendConfigV1& config, std::string
             }
         }
         if (!chosen) throw std::runtime_error("ncnn active_role is absent from ModelPack");
+        detector_role_ = chosen->at("role").get<std::string>() == "detector";
         if (chosen->at("format").get<std::string>() != "ncnn")
             throw std::runtime_error("Selected model is not ncnn format");
         if (!ParseBackendOptions(*chosen, backend_options_, error)) return false;
@@ -235,6 +260,7 @@ bool AndroidSession::InitializeSlots(gpu::UnityVulkanBridge& bridge, std::string
             slot->extractor->set_blob_vkallocator(blob_allocator_);
             slot->extractor->set_workspace_vkallocator(blob_allocator_);
             slot->extractor->set_staging_vkallocator(staging_allocator_);
+            slot->pristine_extractor = std::make_unique<ncnn::Extractor>(*slot->extractor);
         }
         slot->gpu_outputs.resize(contract_.output_blobs.size());
         slot->fp32_outputs.resize(contract_.output_blobs.size());
@@ -306,7 +332,23 @@ bool AndroidSession::Initialize(const HV_GpuBackendConfigV1& config,
     option_.staging_vkallocator = staging_allocator_;
     preprocess_ = std::make_unique<GpuPreprocess>();
     if (!preprocess_->Initialize(device_, option_, error)) return false;
-    return InitializeSlots(*host.bridge, error);
+    if (!InitializeSlots(*host.bridge, error)) return false;
+    if (detector_role_) {
+        // VkCompute reuses its command pool/buffer. Without push descriptors
+        // pinned ncnn allocates descriptor pools per reset, breaking the
+        // one-job resource cache contract for this path.
+        if (!device_->info.support_VK_KHR_push_descriptor()) {
+            error = "ncnn detached detector requires reusable Vulkan push descriptors";
+            return false;
+        }
+        prepared_ = std::make_unique<PreparedGpuResources>();
+        if (!prepared_->Initialize(device_, *net_, blob_allocator_, staging_allocator_, contract_) ||
+            !prepared_state_.Initialize(generation_.generation)) {
+            error = "ncnn detached detector GPU resource initialization failed";
+            return false;
+        }
+    }
+    return true;
 }
 
 #if defined(HV_ANDROID_GPU_GATE)
@@ -441,12 +483,291 @@ bool AndroidSession::DrainDropped(std::string& error) {
     }
 }
 
+HV_Result AndroidSession::Prepare(const HV_GpuFrameRefV1& frame,
+                                  const HV_GpuImageTransformV1& transform,
+                                  HV_GpuPreparedRefV1& ref, std::string& error) {
+    std::unique_lock<std::mutex> lock(run_mutex_);
+    if (!detector_role_ || !prepared_ || !bridge_ || terminal_gpu_fault_ ||
+        prepared_state_.Quarantined()) {
+        error = "ncnn prepared input requires a healthy detector session";
+        return HV_ERR_NOT_INITIALIZED;
+    }
+    if (!prepared_state_.Idle() || active_consumer_) {
+        error = "ncnn detached detector job is busy";
+        return HV_ERR_INVALID_ARGUMENT;
+    }
+    if (!frame.opaque_slot) { error = "ncnn prepared source slot is missing"; return HV_ERR_INVALID_ARGUMENT; }
+    auto& consumer = *static_cast<gpu::ConsumerFrame*>(frame.opaque_slot);
+    if (consumer.token.index >= slots_.size() ||
+        !ValidateTransform(frame, transform, consumer, error)) return HV_ERR_INVALID_ARGUMENT;
+    if (!DrainDropped(error)) return HV_ERR_INTERNAL;
+    const auto start = gpu::NextNcnnRole(consumer);
+    if (start == gpu::NcnnRoleStart::Invalid) {
+        error = "ncnn prepared source has no valid producer or prior role proof";
+        return HV_ERR_INVALID_ARGUMENT;
+    }
+    if (!prepared_state_.Begin(frame, ref)) {
+        error = "ncnn detached detector token admission failed";
+        return HV_ERR_INVALID_ARGUMENT;
+    }
+    auto fail = [&](const char* reason) {
+        terminal_gpu_fault_ = true;
+        prepared_state_.Quarantine();
+        bridge_->QuarantineConsumer(consumer);
+        active_consumer_ = nullptr;
+        error = reason;
+        return HV_ERR_INTERNAL;
+    };
+    auto& source = *slots_[consumer.token.index];
+    auto& cmd = *prepared_->compute;
+    const bool producer_wait = start == gpu::NcnnRoleStart::WaitForProducer;
+    if (producer_wait) {
+        const auto import = reinterpret_cast<ImportSemaphoreFd>(
+            ncnn::vkGetDeviceProcAddr(device_->vkdevice(), "vkImportSemaphoreFdKHR"));
+        ImportSemaphoreFdInfo fd_info{kImportSemaphoreFdInfo};
+        fd_info.semaphore = source.import_semaphore;
+        fd_info.flags = kTemporaryImport;
+        fd_info.handleType = kSyncFdHandleType;
+        fd_info.fd = consumer.producer_fd.Get();
+        if (!import || import(device_->vkdevice(), &fd_info) != VK_SUCCESS)
+            return fail("ncnn detached detector sync-fd import failed");
+        consumer.producer_fd.Release(); // Vulkan takes ownership, including -1 sentinel.
+    }
+    cmd.record_import_android_hardware_buffer(source.import_pipeline.get(),
+        source.image, source.imported_rgb, VK_IMAGE_LAYOUT_GENERAL,
+        VK_QUEUE_FAMILY_EXTERNAL_KHR, device_->info.compute_queue_family_index());
+    if (!preprocess_->Record(source.imported_rgb, transform, prepared_->normalized,
+                             cmd, error))
+        return fail("ncnn detached detector GPU preprocessing record failed");
+    const auto* cached_tensor_buffer = prepared_->tensor.data;
+    device_->convert_packing(prepared_->normalized, prepared_->tensor,
+        1, 2, cmd, option_);
+    if (prepared_->tensor.empty() || prepared_->tensor.w != 320 ||
+        prepared_->tensor.h != 320 || prepared_->tensor.c != 3 ||
+        prepared_->tensor.elempack != 1 || prepared_->tensor.elembits() != 16 ||
+        prepared_->tensor.data != cached_tensor_buffer)
+        return fail("ncnn detached detector tensor is not 320x320 RGB FP16 pack1");
+    const int submitted = producer_wait
+        ? cmd.submit_and_wait(source.import_semaphore, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)
+        : cmd.submit_and_wait();
+    if (submitted != 0) return fail("ncnn detached detector GPU copy completion unproven");
+    if (!prepared_state_.ProveGpuCopy() || cmd.reset() != 0)
+        return fail("ncnn detached detector command reset failed after GPU copy");
+    // The copy is complete. The role release below transfers the sampled AHB
+    // back to external ownership; it does not retire the observation slot.
+    active_consumer_ = &consumer;
+    active_token_ = consumer.token;
+    consumer.role_owner = this;
+    consumer.complete_role = &AndroidSession::CompleteRoleCallback;
+    lock.unlock(); // CompleteGpuRole calls YieldObservation, which owns run_mutex_.
+    if (!gpu::CompleteGpuRole(consumer, false, error)) {
+        lock.lock();
+        terminal_gpu_fault_ = true;
+        prepared_state_.Quarantine();
+        if (consumer.claimed) bridge_->QuarantineConsumer(consumer);
+        active_consumer_ = nullptr;
+        return HV_ERR_INTERNAL;
+    }
+    lock.lock();
+    if (!prepared_state_.ReleaseSourceRole()) {
+        terminal_gpu_fault_ = true;
+        prepared_state_.Quarantine();
+        error = "ncnn detached detector lost GPU completion proof";
+        return HV_ERR_INTERNAL;
+    }
+    error.clear();
+    return HV_OK;
+}
+
+HV_Result AndroidSession::RunPrepared(const HV_GpuPreparedRefV1& ref,
+                                      HV_TensorViewV1* outputs, uint32_t capacity,
+                                      uint32_t& count, std::string& error) {
+    std::lock_guard<std::mutex> lock(run_mutex_);
+    count = 0;
+    if (!detector_role_ || !prepared_ || terminal_gpu_fault_ ||
+        !prepared_state_.Ready(ref)) {
+        error = "ncnn detector prepared token is stale or unavailable";
+        return HV_ERR_INVALID_ARGUMENT;
+    }
+    if (!outputs || capacity < contract_.output_blobs.size()) {
+        error = "ncnn prepared detector output capacity is insufficient";
+        return HV_ERR_INVALID_ARGUMENT;
+    }
+    auto& slot = *prepared_;
+    const auto unsafe_failure = [&](const char* message, HV_Result result) {
+        // An extractor may have recorded GPU commands even when it reports
+        // failure. Keep the command/tensor allocation alive; do not recycle it.
+        terminal_gpu_fault_ = true;
+        prepared_state_.Quarantine();
+        error = message;
+        return result;
+    };
+    // The pinned ncnn clear() empties blob_mats and blob_mats_gpu, making
+    // subsequent input(index, VkMat) fail. Assignment restores sized, empty
+    // vectors while retaining the active extractor's warmed vector capacity.
+    *slot.extractor = *slot.pristine_extractor;
+    const auto delivery = DeliverInput(*slot.extractor, contract_.input_blob.c_str(),
+        slot.tensor, true);
+    if (delivery != InputDeliveryResult::Ok) {
+        return unsafe_failure("ncnn detector rejected detached FP16 pack1 tensor",
+            delivery == InputDeliveryResult::InvalidTensor ? HV_ERR_INVALID_ARGUMENT : HV_ERR_MODEL_LOAD);
+    }
+    for (size_t i = 0; i < contract_.output_blobs.size(); ++i) {
+        slot.gpu_outputs[i].release();
+        if (slot.extractor->extract(contract_.output_blobs[i].c_str(),
+                                    slot.gpu_outputs[i], *slot.compute) != 0 ||
+            slot.gpu_outputs[i].empty()) {
+            return unsafe_failure("ncnn prepared detector extraction failed", HV_ERR_INTERNAL);
+        }
+        device_->convert_packing(slot.gpu_outputs[i], slot.fp32_outputs[i],
+                                 1, 1, *slot.compute, option_);
+        DenseOutputLayout layout;
+        if (slot.fp32_outputs[i].empty() || slot.fp32_outputs[i].elempack != 1 ||
+            slot.fp32_outputs[i].elembits() != 32 ||
+            !DescribeDenseOutput(slot.fp32_outputs[i].dims, slot.fp32_outputs[i].w,
+                slot.fp32_outputs[i].h, slot.fp32_outputs[i].d,
+                slot.fp32_outputs[i].c, slot.fp32_outputs[i].cstep,
+                output_byte_limits_[i], layout) ||
+            !ValidateDenseDownload(layout, slot.fp32_outputs[i].total())) {
+            return unsafe_failure("ncnn prepared detector output exceeds declared bounds", HV_ERR_MODEL_LOAD);
+        }
+        slot.compute->record_download(slot.fp32_outputs[i], slot.cpu_outputs[i], option_);
+        ++slot.output_download_calls;
+    }
+    if (slot.compute->submit_and_wait() != 0 || slot.compute->reset() != 0) {
+        terminal_gpu_fault_ = true;
+        prepared_state_.Quarantine();
+        error = "ncnn prepared detector inference GPU completion unproven";
+        return HV_ERR_INTERNAL;
+    }
+    for (size_t i = 0; i < contract_.output_blobs.size(); ++i) {
+        const auto& mat = slot.cpu_outputs[i];
+        DenseOutputLayout layout;
+        if (mat.empty() || mat.elemsize != sizeof(float) ||
+            !DescribeDenseOutput(mat.dims, mat.w, mat.h, mat.d, mat.c,
+                mat.cstep, output_byte_limits_[i], layout) ||
+            !ValidateDenseDownload(layout, mat.total())) {
+            return unsafe_failure("ncnn prepared detector download violates output bounds", HV_ERR_MODEL_LOAD);
+        }
+        const auto values = layout.logical_bytes / sizeof(float);
+        if (slot.dense_outputs[i].size() < values) slot.dense_outputs[i].resize(values);
+        if (!CompactDenseFp32(reinterpret_cast<const float*>(mat.data), layout,
+                              slot.dense_outputs[i].data(), slot.dense_outputs[i].size())) {
+            return unsafe_failure("ncnn prepared detector output channel stride invalid", HV_ERR_MODEL_LOAD);
+        }
+        auto& view = outputs[i];
+        view = {};
+        view.struct_size = sizeof(view); view.api_version = HV_PLUGIN_API_V1;
+        view.name = contract_.output_blobs[i].c_str();
+        view.element_type = 1; view.rank = layout.rank;
+        std::copy(layout.dimensions.begin(), layout.dimensions.end(), view.dimensions);
+        view.data = slot.dense_outputs[i].data();
+        view.byte_count = layout.logical_bytes;
+    }
+    count = static_cast<uint32_t>(contract_.output_blobs.size());
+    if (!prepared_state_.Consume(ref)) {
+        terminal_gpu_fault_ = true; prepared_state_.Quarantine();
+        error = "ncnn prepared detector token consumption failed";
+        return HV_ERR_INTERNAL;
+    }
+    error.clear(); return HV_OK;
+}
+
+HV_Result AndroidSession::DiscardPrepared(const HV_GpuPreparedRefV1& ref,
+                                          std::string& error) {
+    std::lock_guard<std::mutex> lock(run_mutex_);
+    if (!prepared_state_.Discard(ref)) {
+        error = "ncnn prepared detector discard token is stale or unproved";
+        return HV_ERR_INVALID_ARGUMENT;
+    }
+    error.clear(); return HV_OK;
+}
+
+#if defined(HV_ANDROID_GPU_GATE)
+bool AndroidSession::VerifyPreparedGoldenForGate(const HV_GpuPreparedRefV1& ref,
+                                                 std::string& diagnostic) {
+    std::lock_guard<std::mutex> lock(run_mutex_);
+    if (!prepared_ || !prepared_state_.Ready(ref)) {
+        diagnostic = "Prepared gate token unavailable for tensor proof";
+        return false;
+    }
+    // Test-only readback of the detached 320x320x3 tensor. Production builds
+    // never compile this method and never download source pixels or this input.
+    ncnn::Mat cpu;
+    prepared_->compute->record_download(prepared_->tensor, cpu, option_);
+    if (prepared_->compute->submit_and_wait() != 0 ||
+        prepared_->compute->reset() != 0) {
+        terminal_gpu_fault_ = true; prepared_state_.Quarantine();
+        diagnostic = "Prepared gate tensor diagnostic GPU completion unproven";
+        return false;
+    }
+    if (cpu.dims != 3 || cpu.w != 320 || cpu.h != 320 || cpu.c != 3 ||
+        cpu.elempack != 1 || (cpu.elemsize != 2 && cpu.elemsize != 4)) {
+        diagnostic = "Prepared gate tensor diagnostic shape/dtype invalid";
+        return false;
+    }
+    std::vector<unsigned char> fp16(320u * 320u * 3u * 2u);
+    for (int channel = 0; channel < 3; ++channel) {
+        const auto plane = cpu.channel(channel);
+        for (int y = 0; y < 320; ++y)
+            for (int x = 0; x < 320; ++x) {
+                const auto index = static_cast<size_t>(channel) * 320u * 320u +
+                    static_cast<size_t>(y) * 320u + x;
+                const auto bits = cpu.elemsize == 4
+                    ? ncnn::float32_to_float16(reinterpret_cast<const float*>(plane.data)[y * 320 + x])
+                    : reinterpret_cast<const uint16_t*>(plane.data)[y * 320 + x];
+                fp16[index * 2] = static_cast<unsigned char>(bits);
+                fp16[index * 2 + 1] = static_cast<unsigned char>(bits >> 8);
+            }
+    }
+    picosha2::hash256_one_by_one hash;
+    hash.process(fp16.begin(), fp16.end()); hash.finish();
+    const auto actual = picosha2::get_hash_hex_string(hash);
+    // Strict full-tensor golden from the Snapdragon 888 ncnn Vulkan RTZ cast.
+    // Other devices must independently pass this device gate.
+    constexpr const char* expected =
+        "9e598ea5d37ebe348bd8235c412d404d62ceb78018dfdfb942a88a26ad118d19";
+    auto sample = [&fp16](int x, int y, int channel) {
+        const auto index = (static_cast<size_t>(channel) * 320u * 320u +
+            static_cast<size_t>(y) * 320u + x) * 2u;
+        const uint16_t bits = static_cast<uint16_t>(fp16[index]) |
+            static_cast<uint16_t>(fp16[index + 1] << 8);
+        return ncnn::float16_to_float32(bits);
+    };
+    std::ostringstream samples;
+    for (const auto point : {std::pair<int, int>{80, 80}, {240, 80},
+                             {80, 240}, {240, 240}, {0, 0}, {319, 319}})
+        samples << " (" << point.first << ',' << point.second << ":"
+                << sample(point.first, point.second, 0) << ','
+                << sample(point.first, point.second, 1) << ','
+                << sample(point.first, point.second, 2) << ')';
+    diagnostic = "Prepared gate tensor_fp16_sha256=" + actual +
+        " expected=" + expected + " samples=" + samples.str();
+    return actual == expected;
+}
+#endif
+
+void AndroidSession::QuarantinePrepared(void* opaque_slot) noexcept {
+    std::lock_guard<std::mutex> lock(run_mutex_);
+    terminal_gpu_fault_ = true;
+    prepared_state_.Quarantine();
+    if (opaque_slot && bridge_) {
+        auto& source = *static_cast<gpu::ConsumerFrame*>(opaque_slot);
+        if (source.claimed) bridge_->QuarantineConsumer(source);
+    }
+    active_consumer_ = nullptr;
+}
+
 HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
                               const HV_GpuImageTransformV1& transform,
                               HV_TensorViewV1* outputs, uint32_t capacity,
                               uint32_t& count, std::string& error) {
     std::lock_guard<std::mutex> lock(run_mutex_); // One ncnn worker/queue sequence per session.
     count = 0;
+    if (terminal_gpu_fault_) {
+        error = "ncnn GPU completion was not proved; session is quarantined";
+        return HV_ERR_INTERNAL;
+    }
     if (!frame.opaque_slot) { error = "ncnn borrowed slot is missing"; return HV_ERR_INVALID_ARGUMENT; }
     auto& consumer = *static_cast<gpu::ConsumerFrame*>(frame.opaque_slot);
     if (!consumer.claimed || consumer.token.index >= slots_.size()) {
@@ -614,6 +935,8 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
         return HV_OK;
     }
 #endif
+    // The preceding preprocessing or inference command has completed/reset.
+    *slot.extractor = *slot.pristine_extractor;
     const auto delivery = DeliverInput(*slot.extractor, contract_.input_blob.c_str(),
         slot.prepared_input, contract_.output_blobs == std::vector<std::string>{"cls", "bbox"});
     if (delivery == InputDeliveryResult::InvalidTensor) {

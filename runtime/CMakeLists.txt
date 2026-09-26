@@ -31,6 +31,7 @@ target_sources(humanvision_internal PRIVATE
 target_sources(humanvision_internal PRIVATE
     plugins/backend/ncnn/ncnn_vulkan_backend.cpp
     plugins/backend/ncnn/ncnn_dense_output.cpp)
+target_sources(humanvision_internal PRIVATE plugins/backend/ncnn/ncnn_prepared_input.cpp)
 if(ANDROID)
     target_sources(humanvision_internal PRIVATE
         plugins/backend/ncnn/ncnn_android_session.cpp

@@ -165,7 +165,7 @@ public:
   }
   bool BeginSourceLease(void *texture) noexcept {
     std::lock_guard<std::mutex> lock(control_);
-    if (!texture || !device_live_.load(std::memory_order_acquire) ||
+    if (bridge_.IsQuarantined() || !texture || !device_live_.load(std::memory_order_acquire) ||
         source_lease_texture_.load(std::memory_order_acquire)) return false;
     source_image_.store(0, std::memory_order_release);
     source_lease_generation_.store(bridge_.Generation(), std::memory_order_release);
@@ -227,6 +227,7 @@ public:
       configuration_event_inflight_.store(false, std::memory_order_release);
   }
 public:
+  bool SourceRequiresRetention() const noexcept { return bridge_.IsQuarantined(); }
   static void UNITY_INTERFACE_API RenderEvent(int event_id, void *data) noexcept {
     if (event_id == 1) Get().ConfigurationEvent(data);
     else UnityVulkanBridge::RenderEvent(event_id, data);
@@ -235,6 +236,8 @@ public:
     std::lock_guard<std::mutex> lock(control_);
     InvalidateSourceLease();
     bridge_.Shutdown();
+    // Quarantine joins CPU users but intentionally retains AndroidSlot owners.
+    // Caller must inspect SourceRequiresRetention before destroying its texture.
     ReleaseMeasuredNcnnLease();
     std::lock_guard<std::mutex> queue(queue_mutex_);
     queue_closed_ = true;
@@ -571,6 +574,9 @@ public:
 
 private:
   void ReleaseMeasuredNcnnLease() noexcept {
+    // Keep the measured consumer-device instance lease with terminal resources.
+    // A producer teardown is not proof that the consumer VkDevice can die.
+    if (bridge_.IsQuarantined()) return;
 #if !defined(HV_ANDROID_ADAPTER_TEST)
     if (measured_ncnn_lease_) {
       ReleaseNcnnGpuInstance();
@@ -1567,6 +1573,9 @@ bool BeginUnityVulkanSourceLease(void *texture) noexcept {
 void EndUnityVulkanSourceLease() noexcept {
   AndroidProducer::Get().EndSourceLease();
 }
+bool UnityVulkanSourceRequiresRetention() noexcept {
+  return AndroidProducer::Get().SourceRequiresRetention();
+}
 void ShutdownUnityVulkanProducer() noexcept {
   AndroidProducer::Get().Shutdown();
 }
@@ -1606,6 +1615,13 @@ UnityPluginLoad(IUnityInterfaces *interfaces) {
 extern "C" UNITY_INTERFACE_EXPORT void UNITY_INTERFACE_API UnityPluginUnload() {
   humanvision::gpu::AndroidProducer::Get().Unload();
 }
+#if defined(HV_ANDROID_GPU_GATE)
+// Gate-only additive diagnostic. Never blocks or consumes/reset the terminal
+// latch; the managed owner must query again after GateEnd joins its worker.
+extern "C" UNITY_INTERFACE_EXPORT uint32_t HV_CALL HV_AndroidGpuGateMustRetainSource() {
+  return humanvision::gpu::UnityVulkanSourceRequiresRetention() ? 1u : 0u;
+}
+#endif
 
 #else
 namespace humanvision::gpu {
@@ -1615,6 +1631,7 @@ bool ConfigureUnityVulkanProducer(const AhbSelection &,
 }
 bool BeginUnityVulkanSourceLease(void *) noexcept { return false; }
 void EndUnityVulkanSourceLease() noexcept {}
+bool UnityVulkanSourceRequiresRetention() noexcept { return false; }
 void ShutdownUnityVulkanProducer() noexcept {}
 BridgeResult PrepareUnityVulkanFrame(const HV_AndroidGpuSubmissionV1 &,
                                      void **out) noexcept {
