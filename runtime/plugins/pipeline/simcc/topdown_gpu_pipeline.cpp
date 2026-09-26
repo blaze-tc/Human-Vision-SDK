@@ -329,7 +329,8 @@ HV_Result HV_CALL Process(void* opaque,const HV_GpuFrameRefV1* frame,
     if(!opaque||!frame||!output||frame->struct_size<sizeof(*frame)||
        frame->api_version!=HV_GPU_FRAME_API_V1||!frame->opaque_slot||
        frame->width<1||frame->height<1||!frame->generation||
-       output->struct_size<sizeof(*output))return HV_ERR_INVALID_ARGUMENT;
+       output->struct_size<sizeof(*output)||
+       output->api_version!=HV_PLUGIN_API_V1)return HV_ERR_INVALID_ARGUMENT;
     auto& self=*static_cast<Instance*>(opaque);
     const auto revision=frame->struct_size>=sizeof(HV_GpuFrameRefRegionV1)
         ? reinterpret_cast<const HV_GpuFrameRefRegionV1*>(frame)->region_revision : 0;
@@ -439,7 +440,14 @@ HV_Result HV_CALL Process(void* opaque,const HV_GpuFrameRefV1* frame,
             const bool accepted=self.crops->ApplyPose(frame->frame_id,frame->timestamp_us,
                 crop.track_id,self.joints,valid);
             if(!accepted){++self.pose_failures;continue;}
-            body.bbox_px=rect;output->bodies[output->body_count++]=body;
+            body.bbox_px=rect;
+            const auto index=output->body_count++;
+            output->bodies[index]=body;
+            if(output->struct_size>=sizeof(HV_GpuObservationFrameV3)){
+                auto* extended=reinterpret_cast<HV_GpuObservationFrameV3*>(output);
+                extended->detector_scores[index]=box.score;
+                extended->crop_track_ids[index]=crop.track_id;
+            }
         }
         if(posed){
             auto& consumer=*static_cast<gpu::ConsumerFrame*>(frame->opaque_slot);

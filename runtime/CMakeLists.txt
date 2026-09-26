@@ -17,6 +17,7 @@ endif()
 
 target_sources(humanvision_internal PRIVATE
     composition/session.cpp
+    composition/region_assignment.cpp
     host/plugin_registry.cpp
     host/runtime_host.cpp
     host/gpu_runtime_host.cpp

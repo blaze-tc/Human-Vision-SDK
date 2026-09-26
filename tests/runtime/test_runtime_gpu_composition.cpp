@@ -68,7 +68,7 @@ struct FakePipeline {
     std::atomic<bool> pause_run{false}, entered{false};
     std::atomic<int64_t> frame{0};
     std::atomic<int64_t> observed_capture_steady{0},observed_region_revision{0};
-    bool snapshot_mode=false;
+    bool snapshot_mode=false,sidecar_mode=false,region_mode=false,invalid_version=false;
 };
 FakePipeline* active = nullptr;
 HV_Result HV_CALL Create(const HV_PipelineConfigV1*, const HV_HostServicesV3*, void** out, HV_ErrorBufferV1* error) {
@@ -91,6 +91,20 @@ HV_Result HV_CALL Process(void* p, const HV_GpuFrameRefV1* input, HV_Observation
     if (fake.fail_run) { std::snprintf(error->data, error->capacity, "fake V3 run failed"); return HV_ERR_INTERNAL; }
     auto& lease = *static_cast<ConsumerFrame*>(input->opaque_slot);
     lease.producer_fd.Reset(); lease.ncnn_role_complete = true;
+    if(fake.invalid_version)output->api_version=HV_PLUGIN_API_V1+1;
+    if(fake.region_mode){
+        output->body_count=1;
+        auto& body=output->bodies[0];body.bbox_px={250,30,60,150};body.confidence=.8F;
+        auto& pelvis=body.joints[HV_CANONICAL_PELVIS];pelvis.valid=1;
+        pelvis.x_px=80;pelvis.y_px=100;pelvis.x_norm=.25F;
+        pelvis.y_norm=100.F/240;pelvis.confidence=.8F;
+        pelvis.observation_timestamp_us=input->timestamp_us;
+        if(output->struct_size>=sizeof(HV_GpuObservationFrameV3)){
+            auto* ext=reinterpret_cast<HV_GpuObservationFrameV3*>(output);
+            ext->detector_scores[0]=.9F;ext->crop_track_ids[0]=17;
+        }
+        return HV_OK;
+    }
     if(fake.snapshot_mode){
         output->body_count=input->frame_id==3?0:1;
         if(output->body_count){
@@ -104,6 +118,11 @@ HV_Result HV_CALL Process(void* p, const HV_GpuFrameRefV1* input, HV_Observation
     }
     output->body_count = 2;
     output->bodies[0].confidence = 0.7f; output->bodies[1].confidence = 0.9f;
+    if(fake.sidecar_mode&&output->struct_size>=sizeof(HV_GpuObservationFrameV3)){
+        auto* extended=reinterpret_cast<HV_GpuObservationFrameV3*>(output);
+        extended->detector_scores[0]=.8F;extended->detector_scores[1]=.4F;
+        extended->crop_track_ids[0]=17;extended->crop_track_ids[1]=29;
+    }
     return HV_OK;
 }
 const HV_GpuPipelineApiV2 api{sizeof(api), HV_GPU_PIPELINE_API_V2, Create, Destroy, Process};
@@ -183,6 +202,61 @@ TEST(RuntimeGpuComposition, ClaimsAndPublishesCompleteCurrentFrameWithoutCpuSubm
     EXPECT_FLOAT_EQ(observation.bodies[1].confidence,0.9f);
     EXPECT_EQ(source.claims,1); EXPECT_EQ(source.retires,1); EXPECT_EQ(source.quarantines,0);
     host.Stop(); EXPECT_EQ(fake.destroys,1);
+}
+
+TEST(RegionGpu, HostPreservesV3ScoreAndCropIdentitySidecarInBodyOrder) {
+    FakeSource source;FakePipeline fake;fake.sidecar_mode=true;active=&fake;
+    GpuRuntimeHost host(source);auto module=Module();
+    HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,2};HV_HostServicesV3 services{};
+    std::string error;ASSERT_TRUE(host.Start(module,services,config,error))<<error;
+    host.SetRevision(7);source.ready=true;
+    ASSERT_TRUE(Await([&]{HV_GpuObservationFrameV3 next{};int64_t revision;
+        return host.CopyLatest(next,revision);}));
+    HV_GpuObservationFrameV3 out{};int64_t revision=0;
+    ASSERT_TRUE(host.CopyLatest(out,revision));EXPECT_EQ(revision,7);
+    EXPECT_EQ(out.v1.body_count,2u);
+    EXPECT_FLOAT_EQ(out.detector_scores[0],.8F);
+    EXPECT_FLOAT_EQ(out.detector_scores[1],.4F);
+    EXPECT_EQ(out.crop_track_ids[0],17);EXPECT_EQ(out.crop_track_ids[1],29);
+    EXPECT_EQ(out.v1.bodies[0].reserved,0u);
+    EXPECT_EQ(out.v1.bodies[1].reserved,0u);
+    HV_ObservationFrameV1 prefix{};
+    ASSERT_TRUE(host.CopyLatest(prefix,revision));
+    EXPECT_EQ(prefix.struct_size,sizeof(prefix));
+    host.Stop();active=nullptr;
+}
+
+TEST(RegionGpu, HostRejectsIncompatibleObservationVersion) {
+    FakeSource source;FakePipeline fake;fake.invalid_version=true;active=&fake;
+    GpuRuntimeHost host(source);auto module=Module();
+    HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,2};HV_HostServicesV3 services{};
+    std::string error;ASSERT_TRUE(host.Start(module,services,config,error))<<error;
+    source.ready=true;
+    ASSERT_TRUE(Await([&]{return source.retires.load()>=1;}));
+    HV_ObservationFrameV1 out{};int64_t revision=0;
+    EXPECT_FALSE(host.CopyLatest(out,revision));
+    host.Stop();active=nullptr;
+}
+
+TEST(RegionGpu, SessionPublishesPelvisRegionAndDropsOldRevisionResult) {
+    SnapshotProfileFixture files;FakeSource source;FakePipeline fake;fake.region_mode=true;
+    fake.pause_run=true;active=&fake;RuntimeSession runtime;std::string error;
+    ASSERT_TRUE(runtime.Start(files.root,"android-ncnn-vulkan",1,error,QueryFixtureGpu,&source))<<error;
+    HV_Rect region{0,0,.4F,1};
+    ASSERT_TRUE(runtime.SetRegions(&region,1,1,error));
+    source.ready=true;ASSERT_TRUE(Await([&]{return fake.entered.load();}));
+    ASSERT_TRUE(runtime.SetRegions(&region,1,2,error));
+    fake.pause_run=false;
+    ASSERT_TRUE(Await([&]{return source.retires.load()>=1;}));
+    HV_RuntimeStatsV1 stats{};auto old=runtime.Copy(0,stats);
+    EXPECT_EQ(old.count,0u);EXPECT_EQ(stats.source_frame_id,0);
+    source.frame_id=89;source.timestamp_us=1033000;source.ready=true;
+    BodySnapshot fresh{};
+    ASSERT_TRUE(Await([&]{fresh=runtime.Copy(0,stats);return stats.source_frame_id==89;}));
+    ASSERT_EQ(fresh.count,1u);EXPECT_EQ(fresh.bodies[0].region_index,0);
+    EXPECT_EQ(fresh.bodies[0].region_revision,2);
+    EXPECT_EQ(fresh.bodies[0].source_frame_id,89);
+    active=nullptr;
 }
 
 TEST(RuntimeGpuComposition, RejectsTruncatedOrMismatchedV3CallbackTable){

@@ -35,6 +35,15 @@ typedef struct HV_GpuFrameRefRegionV1 {
     int64_t capture_steady_us;
 } HV_GpuFrameRefRegionV1;
 
+/* Optional output extent for the GPU runtime only. The V1 observation prefix,
+ * body reserved fields, and public canonical ABI remain unchanged. The sidecar
+ * follows each body in its original pipeline output order. */
+typedef struct HV_GpuObservationFrameV3 {
+    HV_ObservationFrameV1 v1;
+    float detector_scores[HV_MAX_PEOPLE];
+    int32_t crop_track_ids[HV_MAX_PEOPLE];
+} HV_GpuObservationFrameV3;
+
 typedef struct HV_GpuPreparedRefV1 {
     uint32_t struct_size, api_version;
     uint64_t token, generation;

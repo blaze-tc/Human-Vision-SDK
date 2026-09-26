@@ -1,4 +1,5 @@
 #include "composition/session.h"
+#include "composition/region_assignment.h"
 #include "services/region_mask.h"
 #include "plugins/pipeline/rtmo/rtmo_pipeline.h"
 #include "plugins/pipeline/simcc/simcc_pipeline.h"
@@ -79,13 +80,23 @@ bool RuntimeSession::SetRegions(const HV_Rect* regions,uint32_t count,int64_t re
  stats_.source_frame_id=stats_.source_timestamp_us=0;return true;
 }
 void RuntimeSession::Poll(){
- HV_ObservationFrameV1 frame{};int64_t revision;
- if((gpu_?gpu_->CopyLatest(frame,revision):body_.CopyLatest(frame,revision))&&frame.sequence!=body_sequence_){
+ HV_ObservationFrameV1 frame{};HV_GpuObservationFrameV3 gpu_frame{};int64_t revision;
+ const bool copied=gpu_?gpu_->CopyLatest(gpu_frame,revision):body_.CopyLatest(frame,revision);
+ if(gpu_&&copied){frame=gpu_frame.v1;frame.struct_size=sizeof(frame);}
+ if(copied&&frame.sequence!=body_sequence_){
   body_sequence_=frame.sequence;
   if(revision==revision_){
    const auto elapsed=frame.source_timestamp_us-stats_.source_timestamp_us;
    if(stats_.source_timestamp_us&&elapsed>0){float fps=1e6F/float(elapsed);stats_.body_fps=stats_.body_fps?stats_.body_fps*.8F+fps*.2F:fps;}
-   services_.Observe(frame,revision,!gpu_);stats_.body_sequence=frame.sequence;
+   if(gpu_){
+    RegionSet regions{regions_,region_count_};
+    auto assigned=AssignRegions(frame,regions,revision,services_.Anchors(),
+                                gpu_frame.detector_scores,gpu_frame.crop_track_ids);
+    if(!CanPublish(assigned,revision_))return;
+    services_.Observe(assigned.frame,revision,false,assigned.region_indices.data(),
+                      assigned.crop_track_ids.data());
+   }else services_.Observe(frame,revision,true);
+   stats_.body_sequence=frame.sequence;
    stats_.source_frame_id=frame.source_frame_id;stats_.source_timestamp_us=frame.source_timestamp_us;
    stats_.preprocess_ms=frame.preprocess_ms;stats_.inference_ms=frame.inference_ms;stats_.postprocess_ms=frame.postprocess_ms;
   }

@@ -87,6 +87,11 @@ bool GpuRuntimeHost::Start(std::shared_ptr<const GpuPluginModuleV3> module,
 bool GpuRuntimeHost::CopyLatest(HV_ObservationFrameV1& out, int64_t& revision) const {
     std::lock_guard<std::mutex> lock(result_mutex_);
     if (!has_result_) return false;
+    out = latest_.v1; out.struct_size=sizeof(out); revision = result_revision_; return true;
+}
+bool GpuRuntimeHost::CopyLatest(HV_GpuObservationFrameV3& out, int64_t& revision) const {
+    std::lock_guard<std::mutex> lock(result_mutex_);
+    if (!has_result_) return false;
     out = latest_; revision = result_revision_; return true;
 }
 std::string GpuRuntimeHost::LastError() const {
@@ -129,15 +134,15 @@ void GpuRuntimeHost::Run() {
             error_ = "GPU bridge claimed an invalid or stale frame lease";
             continue;
         }
-        HV_ObservationFrameV1 next{};
-        next.struct_size = sizeof(next); next.api_version = HV_PLUGIN_API_V1;
+        HV_GpuObservationFrameV3 next{};
+        next.v1.struct_size = sizeof(next); next.v1.api_version = HV_PLUGIN_API_V1;
         HV_GpuFrameRefRegionV1 input{{sizeof(input), HV_GPU_FRAME_API_V1, &frame,
             static_cast<int32_t>(source_.Width()), static_cast<int32_t>(source_.Height()),
             static_cast<int64_t>(frame.metadata.frame_id), frame.metadata.timestamp_us,
             generation, HV_GPU_IMAGE_RGBA8_UNORM, 0},revision,frame.metadata.capture_steady_us};
         char text[1024]{}; HV_ErrorBufferV1 buffer{sizeof(buffer), HV_PLUGIN_API_V1, text, sizeof(text)};
         HV_Result status = HV_ERR_INTERNAL;
-        try { status = module_->api.gpu_pipeline->process_gpu(instance_, &input.v1, &next, &buffer); }
+        try { status = module_->api.gpu_pipeline->process_gpu(instance_, &input.v1, &next.v1, &buffer); }
         catch (...) { std::strncpy(text, "V3 GPU process threw across C ABI", sizeof(text)-1); }
         text[sizeof(text)-1] = 0;
         bool retired = !frame.claimed;
@@ -147,17 +152,20 @@ void GpuRuntimeHost::Run() {
             else if (status != HV_OK) retired = source_.DrainUnsubmitted(frame);
             if (!retired && frame.claimed) source_.Quarantine(frame);
         }
-        if (status != HV_OK || !retired || next.body_count > static_cast<uint32_t>(capacity_) ||
-            next.hand_count > HV_MAX_PEOPLE*2 || generation != source_.Generation()) {
+        if (status != HV_OK || !retired || next.v1.body_count > static_cast<uint32_t>(capacity_) ||
+            next.v1.hand_count > HV_MAX_PEOPLE*2 || generation != source_.Generation() ||
+            next.v1.struct_size < sizeof(HV_ObservationFrameV1) ||
+            next.v1.struct_size > sizeof(next) ||
+            next.v1.api_version != HV_PLUGIN_API_V1) {
             std::lock_guard<std::mutex> lock(result_mutex_);
             error_ = !retired ? "V3 GPU completion unproven; source generation quarantined" :
                 status != HV_OK ? Message(text, "V3 GPU processing failed") :
                 "V3 GPU output count or source generation invalid";
             continue;
         }
-        next.sequence = ++sequence_;
-        next.source_frame_id = input.v1.frame_id; next.source_timestamp_us = input.v1.timestamp_us;
-        next.width = input.v1.width; next.height = input.v1.height;
+        next.v1.sequence = ++sequence_;
+        next.v1.source_frame_id = input.v1.frame_id; next.v1.source_timestamp_us = input.v1.timestamp_us;
+        next.v1.width = input.v1.width; next.v1.height = input.v1.height;
         std::lock_guard<std::mutex> lock(result_mutex_);
         latest_ = next; result_revision_ = revision; has_result_ = true; error_.clear();
     }

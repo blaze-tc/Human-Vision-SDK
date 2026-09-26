@@ -45,24 +45,52 @@ int BodyServices::Region(const HV_Rect& box,int width,int height) const{
  if(!region_count_)return -1;float x=(box.x+box.width*.5F)/width,y=(box.y+box.height*.5F)/height;
  for(uint32_t i=0;i<region_count_;++i){auto r=regions_[i];if(x>=r.x&&y>=r.y&&x<=r.x+r.width&&y<=r.y+r.height)return int(i);}return -2;
 }
-void BodyServices::Observe(const HV_ObservationFrameV1& frame,int64_t revision,bool preserve_previous_hands){
+TrackAnchors BodyServices::Anchors() const{
+ TrackAnchors out{};
+ for(const auto& track:tracks_)if(track.active&&track.raw.observation_timestamp_us>0){
+  out.items[out.count++]={track.raw.track_id,track.crop_track_id,track.raw.region_index,
+                          track.raw.bbox_px,track.raw.observation_timestamp_us};
+ }
+ return out;
+}
+void BodyServices::Observe(const HV_ObservationFrameV1& frame,int64_t revision,bool preserve_previous_hands,
+                           const int32_t* assigned_regions,const int32_t* crop_track_ids){
  if(revision!=revision_||frame.source_timestamp_us<=last_time_||frame.width<=0||frame.height<=0||frame.body_count>8)return;
  if(last_time_){const double period=double(frame.source_timestamp_us-last_time_);observation_period_ewma_us_=observation_period_ewma_us_>0?observation_period_ewma_us_+kObservationPeriodAlpha*(period-observation_period_ewma_us_):period;}
  last_time_=frame.source_timestamp_us;width_=frame.width;height_=frame.height;int obs[8]{},regions[8]{},num=0,slots[8]{},active=0;
  for(int i=0;i<capacity_;++i){auto& t=tracks_[i];if(t.active&&last_time_-t.raw.observation_timestamp_us>TrackLostUs())t.active=false;if(t.active){slots[active++]=i;t.raw.lifecycle=t.filtered.lifecycle=2;}}
- for(uint32_t i=0;i<frame.body_count&&num<capacity_;++i){const auto& b=frame.bodies[i].bbox_px;if(!std::isfinite(b.x)||!std::isfinite(b.y)||!std::isfinite(b.width)||!std::isfinite(b.height)||b.width<=0||b.height<=0)continue;int region=Region(b,frame.width,frame.height);if(region==-2)continue;bool taken=false;for(int j=0;j<num;++j)taken|=region>=0&&regions[j]==region;if(taken)continue;obs[num]=int(i);regions[num++]=region;}
+ for(uint32_t i=0;i<frame.body_count&&num<capacity_;++i){const auto& b=frame.bodies[i].bbox_px;if(!std::isfinite(b.x)||!std::isfinite(b.y)||!std::isfinite(b.width)||!std::isfinite(b.height)||b.width<=0||b.height<=0)continue;int region=assigned_regions?assigned_regions[i]:Region(b,frame.width,frame.height);if(region==-2||region_count_&&(region<0||region>=int(region_count_)))continue;bool taken=false;for(int j=0;j<num;++j)taken|=region>=0&&regions[j]==region;if(taken)continue;obs[num]=int(i);regions[num++]=region;}
  float costs[8][8];for(auto& row:costs)std::fill_n(row,8,2.F);int n=std::max(active,num);
  for(int i=0;i<active;++i)for(int j=0;j<num;++j){const auto& track=tracks_[slots[i]];const auto& t=track.raw;const auto& b=frame.bodies[obs[j]];
   float age=std::clamp(float(last_time_-t.observation_timestamp_us)/1e6F,0.F,.2F);auto box=t.bbox_px;
   box.x+=track.box_velocity.x*age;box.y+=track.box_velocity.y*age;box.width=std::max(1.F,box.width+track.box_velocity.width*age);box.height=std::max(1.F,box.height+track.box_velocity.height*age);
   float dx=(box.x-b.bbox_px.x)/frame.width,dy=(box.y-b.bbox_px.y)/frame.height;float distance=std::sqrt(dx*dx+dy*dy);float keydistance=0;int keys=0;
   for(int k=0;k<32;++k)if(t.joints[k].valid&&b.joints[k].valid){float x=t.joints[k].x_norm+track.vx[k]*age/frame.width-b.joints[k].x_norm,y=t.joints[k].y_norm+track.vy[k]*age/frame.height-b.joints[k].y_norm;keydistance+=std::sqrt(x*x+y*y);++keys;}
-  costs[i][j]=(distance>.4F||(regions[j]>=0&&t.region_index!=regions[j]))?10.F:.6F*(1-Iou(box,b.bbox_px))+distance+(keys?keydistance/keys:0);
+  const bool same_crop=crop_track_ids&&crop_track_ids[obs[j]]>0&&
+      crop_track_ids[obs[j]]==track.crop_track_id;
+  const bool other_crop=crop_track_ids&&crop_track_ids[obs[j]]>0&&
+      track.crop_track_id>0&&!same_crop;
+  costs[i][j]=same_crop?0.F:(other_crop||distance>.4F||
+      (regions[j]>=0&&t.region_index!=regions[j]))?10.F:
+      .6F*(1-Iou(box,b.bbox_px))+distance+(keys?keydistance/keys:0);
  }
  auto assignment=Assign(costs,n);int target[8];std::fill_n(target,8,-1);
  for(int i=0;i<active;++i){int j=assignment[i];if(j>=0&&j<num&&costs[i][j]<1.2F)target[j]=slots[i];}
- for(int j=0;j<num;++j){int slot=target[j];if(slot<0){for(int k=0;k<capacity_;++k)if(!tracks_[k].active){slot=k;break;}if(slot<0)continue;tracks_[slot]={};hand_served_mask_&=~(3u<<(slot*2));tracks_[slot].active=true;tracks_[slot].raw.track_id=next_id_++;}
-  auto& t=tracks_[slot];const auto previous=t.raw;HV_CanonicalBodyV1 body{};body.struct_size=sizeof(body);body.api_version=HV_API_VERSION_040;body.track_id=previous.track_id;body.region_index=regions[j]>=0?regions[j]:slot;body.region_revision=revision_;body.source_frame_id=frame.source_frame_id;body.observation_timestamp_us=last_time_;body.lifecycle=++t.hits>=2?1:0;body.bbox_px=frame.bodies[obs[j]].bbox_px;body.confidence=frame.bodies[obs[j]].confidence;std::copy_n(frame.bodies[obs[j]].joints,32,body.joints);Derive(body);
+ for(int j=0;j<num;++j){int slot=target[j];if(slot<0){
+   for(int k=0;k<capacity_;++k)if(!tracks_[k].active){slot=k;break;}
+   if(slot<0&&crop_track_ids&&crop_track_ids[obs[j]]>0){
+    // This is a complete GPU observation. A current crop may replace an old
+    // unsupported identity immediately when every public track slot is full.
+    for(int k=0;k<capacity_;++k){
+     bool assigned=false,present=false;
+     for(int m=0;m<num;++m){assigned|=target[m]==k;
+      present|=crop_track_ids[obs[m]]>0&&
+          crop_track_ids[obs[m]]==tracks_[k].crop_track_id;}
+     if(!assigned&&!present){slot=k;break;}
+    }
+   }
+   if(slot<0)continue;tracks_[slot]={};hand_served_mask_&=~(3u<<(slot*2));tracks_[slot].active=true;tracks_[slot].raw.track_id=next_id_++;}
+  auto& t=tracks_[slot];if(crop_track_ids)t.crop_track_id=crop_track_ids[obs[j]];const auto previous=t.raw;HV_CanonicalBodyV1 body{};body.struct_size=sizeof(body);body.api_version=HV_API_VERSION_040;body.track_id=previous.track_id;body.region_index=regions[j]>=0?regions[j]:slot;body.region_revision=revision_;body.source_frame_id=frame.source_frame_id;body.observation_timestamp_us=last_time_;body.lifecycle=++t.hits>=2?1:0;body.bbox_px=frame.bodies[obs[j]].bbox_px;body.confidence=frame.bodies[obs[j]].confidence;std::copy_n(frame.bodies[obs[j]].joints,32,body.joints);Derive(body);
   const float dt=float(last_time_-previous.observation_timestamp_us)/1e6F;
   if(previous.observation_timestamp_us&&dt>0&&dt<.5F){const auto a=previous.bbox_px,b=body.bbox_px;t.box_velocity={(b.x-a.x)/dt,(b.y-a.y)/dt,(b.width-a.width)/dt,(b.height-a.height)/dt};}
   auto filtered=body;

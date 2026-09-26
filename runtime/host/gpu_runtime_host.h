@@ -47,6 +47,7 @@ public:
     bool Start(std::shared_ptr<const GpuPluginModuleV3>, const HV_HostServicesV3&,
                const HV_PipelineConfigV1&, std::string& error);
     bool CopyLatest(HV_ObservationFrameV1&, int64_t& revision) const;
+    bool CopyLatest(HV_GpuObservationFrameV3&, int64_t& revision) const;
     std::string LastError() const;
     PipelineDiagnostics Diagnostics() const;
     void SetRevision(int64_t revision) noexcept { revision_.store(revision); }
@@ -60,7 +61,7 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<int64_t> revision_{0};
     mutable std::mutex result_mutex_;
-    HV_ObservationFrameV1 latest_{};
+    HV_GpuObservationFrameV3 latest_{};
     int64_t result_revision_ = 0, sequence_ = 0;
     bool has_result_ = false;
     int capacity_ = 0;

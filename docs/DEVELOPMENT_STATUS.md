@@ -1,3 +1,58 @@
+# Android Vulkan/ncnn — Revision 3 Task 8 Region assignment complete (2026-09-26)
+
+Task 8 assigns current GPU pose observations to configured Regions in runtime
+composition before common tracking and snapshot publication. Pelvis containment
+uses an explicit valid pelvis or the midpoint of valid hip joints; box center is
+used only without a valid pelvis. Bodies outside all Regions are discarded. One
+body occupies each Region. Existing assigned crop identity wins a valid
+collision, followed by pose confidence, detector confidence, and source order.
+For one body eligible for overlapping Regions, box coverage breaks the tie,
+then lowest Region index. The no-Region path preserves pipeline body order.
+Independent review found that two prior Region anchors could claim the same
+current candidate. Fixed-storage one-to-one matching now maximizes retained
+assignments, then overlap. It also found that a changed crop ID could disappear
+when `MaxPeople` was full; a complete GPU observation now reclaims an old
+unsupported public slot for the current crop. The legacy CPU hold and
+association path is unchanged.
+
+The GPU pipeline passes detector score and crop track ID through a guarded V3
+observation extent. V1 observation/body layouts and reserved fields remain
+unchanged. The common tracker maps that crop identity to its own public
+`track_id`, allowing a person to cross Region slots without swapping public
+identity merely because the Region index changed. GPU composition does not
+call `MaskRegions`; the legacy CPU worker retains its existing mask behavior.
+Old-revision results are rejected before common tracking, and the session test
+holds a fake GPU result across a Region edit to verify that no stale body or
+source frame is published.
+The GPU host and TopDown pipeline reject an incompatible observation
+`api_version`; V1 copies advertise their exact copied prefix size.
+
+RED: `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter RegionGpu`
+failed compilation because `composition/region_assignment.h` was absent.
+The initial GREEN run exposed a collision bug: two overlapping candidates
+both inherited priority from one anchor. The final one-to-one matching fixes
+this and the later two-anchor contention. A V1 copy regression verifies that
+its advertised `struct_size` describes only the copied V1 prefix. The final no-Region order regression was
+also included in the full verification below.
+
+Review repair RED: two `RegionGpu` cases failed for competing anchors and a
+capacity-full changed crop ID. After those fixes, the incompatible output
+version case failed before its host/pipeline guard. All three are GREEN now.
+
+Verification after the integration change:
+
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter RegionGpu`: **12/12 PASS**.
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1`: **288/288 PASS**.
+- `pwsh -NoProfile -File tools/package/build_live_native.ps1 -Platform Android -AndroidApiLevel 26`: **PASS**; tests were not run by the build script.
+- `.venv-reference/Scripts/python.exe tools/test/verify_android_native.py`: **PASS**, ELF64 AArch64/API 26, 1813 strong dynamic imports resolved; packaged `libhumanvision.so` SHA-256 `491dc5115f03dd29e87215a3b7be87872f8b0e0d0ed261b7c0accf146a66f9ad`.
+- `.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py`: **PASS**.
+- `git diff --check`: **PASS**.
+
+Independent Task 8 SPEC and QUALITY re-reviews passed after the one-to-one
+anchor, full-capacity reacquisition, and ABI-version repairs. Task 8 is ready
+for its separate verified commit. No Android device performance or physical
+camera result is claimed.
+
 # Android Vulkan/ncnn — Revision 3 Task 7 TopDown GPU pipeline complete (2026-09-26)
 
 Task 7 now selects a production V3 `pipeline.topdown` for the strict Android
