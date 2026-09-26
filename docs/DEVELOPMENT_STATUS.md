@@ -1,12 +1,13 @@
-# Android Vulkan/ncnn — Revision 4 written design awaiting review (2026-09-26)
+# Android Vulkan/ncnn — Revision 4 design approved; plan awaiting review (2026-09-26)
 
-The user confirmed drafting the recovery revision after the Revision 3 failure.
-The proposed design is
+The user approved the written recovery design after the Revision 3 failure:
 `docs/superpowers/specs/2026-09-26-android-gpu-input-camera-provenance-revision-4-design.md`.
 It sequences deterministic same-frame GPU parity, Camera2 same-image sensor
-provenance, then unchanged integrated TopDown physical acceptance. This is a
-documentation-only proposal, not implementation approval or a device PASS.
-Milestone C remains blocked on written-spec review and subsequent plan approval;
+provenance, then unchanged integrated TopDown physical acceptance. The ten-task
+plan `docs/superpowers/plans/2026-09-26-android-gpu-input-camera-revision-4.md`
+is written and self-reviewed, awaiting user review. Subagent-driven execution
+and Sol medium remain selected. No runtime changes or new device PASS are claimed.
+Milestone C awaits plan approval before Task 1;
 Milestone D, main merge and Release remain gated. Historical evidence follows.
 
 # Android Vulkan/ncnn — Revision 3 Task 10 integrated device gate FAIL (2026-09-26)
