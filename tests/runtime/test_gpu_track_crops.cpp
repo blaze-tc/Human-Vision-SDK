@@ -9,6 +9,15 @@ std::atomic<bool> count_allocations{false};
 std::atomic<std::size_t> counted_allocations{0};
 }
 
+void BeginNativeAllocationProbe() noexcept {
+ counted_allocations.store(0,std::memory_order_relaxed);
+ count_allocations.store(true,std::memory_order_relaxed);
+}
+std::size_t EndNativeAllocationProbe() noexcept {
+ count_allocations.store(false,std::memory_order_relaxed);
+ return counted_allocations.load(std::memory_order_relaxed);
+}
+
 void* operator new(std::size_t size) {
  void* memory=std::malloc(size ? size : 1);
  if(!memory) throw std::bad_alloc();

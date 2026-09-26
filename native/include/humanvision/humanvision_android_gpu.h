@@ -47,6 +47,12 @@ typedef struct HV_AndroidGpuSubmissionV1 {
     uint32_t mirrored;
 } HV_AndroidGpuSubmissionV1;
 
+/* Optional producer clock anchor. The V1 prefix and its 48-byte layout remain frozen. */
+typedef struct HV_AndroidGpuSubmissionClockV2 {
+    HV_AndroidGpuSubmissionV1 v1;
+    int64_t capture_steady_us;
+} HV_AndroidGpuSubmissionClockV2;
+
 typedef struct HV_AndroidGpuBridgeStatusV1 {
     uint32_t struct_size;
     uint32_t api_version;

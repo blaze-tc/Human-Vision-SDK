@@ -90,6 +90,7 @@ struct SlotToken {
 struct SlotMetadata {
     uint64_t generation = 0, frame_id = 0;
     int64_t timestamp_us = 0;
+    int64_t capture_steady_us = 0;
 };
 struct SlotSnapshot { AhbSlotState state = AhbSlotState::Free; SlotMetadata metadata; };
 struct SlotCounters { uint64_t no_slot_drops = 0, generation_drops = 0; };
@@ -112,7 +113,8 @@ public:
     AhbSlotRing& operator=(const AhbSlotRing&) = delete;
     bool Reconfigure(const SlotContract&, CallContext = CallContext::Control);
     bool Shutdown(CallContext = CallContext::Control);
-    SlotResult Reserve(uint64_t frame_id, int64_t timestamp_us, SlotToken& token);
+    SlotResult Reserve(uint64_t frame_id, int64_t timestamp_us, SlotToken& token,
+                       int64_t capture_steady_us=0);
     SlotResult Transition(const SlotToken&, AhbSlotState from, AhbSlotState to,
                           CompletionProof = CompletionProof::None);
     // A submitted Unity copy retains its exported fd until this nonblocking

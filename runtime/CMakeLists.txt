@@ -28,6 +28,8 @@ target_sources(humanvision_internal PRIVATE
     plugins/pipeline/rtmo/rtmo_pipeline.cpp
     plugins/pipeline/simcc/simcc_pipeline.cpp
     plugins/pipeline/simcc/gpu_track_crops.cpp
+    plugins/pipeline/simcc/detector_cadence.cpp
+    plugins/pipeline/simcc/topdown_gpu_pipeline.cpp
     plugins/legacy/legacy_pipeline.cpp
     plugins/backend/ort/ort_plugin.cpp)
 target_sources(humanvision_internal PRIVATE

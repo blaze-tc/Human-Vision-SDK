@@ -52,6 +52,17 @@ namespace HumanVision
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 8)]
+    internal struct AndroidGpuSubmissionClockNative
+    {
+        internal uint Size, Version;
+        internal IntPtr Texture;
+        internal int Width, Height;
+        internal long FrameId, TimestampUs;
+        internal uint RotationDegrees, Mirrored;
+        internal long CaptureSteadyUs;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 8)]
     internal unsafe struct AndroidGpuBridgeStatusNative
     {
         internal uint Size, Version, CopyPath, AhbFormat;
@@ -101,7 +112,9 @@ namespace HumanVision
             _renderEvent = RuntimeBindings.HV_GetAndroidGpuRenderEventAndDataFunction();
             if (_renderEvent == IntPtr.Zero)
                 throw new InvalidOperationException("android-ncnn-vulkan GPU render bridge is unavailable. Rebuild the Android ARM64 native plugin with Vulkan support.");
-            if (Marshal.SizeOf<AndroidGpuSubmissionNative>() != 48 || Marshal.SizeOf<AndroidGpuBridgeStatusNative>() != 128)
+            if (Marshal.SizeOf<AndroidGpuSubmissionNative>() != 48 ||
+                Marshal.SizeOf<AndroidGpuSubmissionClockNative>() != 56 ||
+                Marshal.SizeOf<AndroidGpuBridgeStatusNative>() != 128)
                 throw new InvalidOperationException("Android GPU bridge ABI layout mismatch.");
             _commands = new CommandBuffer { name = "HumanVision Android GPU frame" };
         }
@@ -137,13 +150,17 @@ namespace HumanVision
             if (texture == null || _leasedTexture == IntPtr.Zero) throw new InvalidOperationException("GPU source lease is not active.");
             ValidateSource(_leasedSource, texture);
             if (!texture.IsCreated()) throw new InvalidOperationException("GPU source texture is no longer created.");
-            var submission = new AndroidGpuSubmissionNative {
-                Size = 48, Version = Version, Texture = _leasedTexture,
+            long unityNowUs = (long)(Time.realtimeSinceStartupAsDouble * 1000000.0);
+            long nativeNowUs = RuntimeBindings.HV_RuntimeClockUs();
+            long captureSteadyUs = nativeNowUs - Math.Max(0, unityNowUs - timestampUs);
+            var submission = new AndroidGpuSubmissionClockNative {
+                Size = 56, Version = Version, Texture = _leasedTexture,
                 Width = texture.width, Height = texture.height,
                 FrameId = frameId, TimestampUs = timestampUs,
-                RotationDegrees = (uint)rotationDegrees, Mirrored = mirrored ? 1u : 0u
+                RotationDegrees = (uint)rotationDegrees, Mirrored = mirrored ? 1u : 0u,
+                CaptureSteadyUs = captureSteadyUs
             };
-            int result = RuntimeBindings.HV_RuntimePrepareAndroidGpuFrame(_runtime, ref submission, out IntPtr eventData);
+            int result = RuntimeBindings.HV_RuntimePrepareAndroidGpuFrameClock(_runtime, ref submission, out IntPtr eventData);
             if (HumanVisionAndroidGpuResult.IsPressureDrop(result))
             {
                 // A first-frame control event samples the actual Vulkan image on

@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include "json/json.hpp"
+#include "picosha2/picosha2.h"
 using namespace humanvision::runtime;
 namespace {
 constexpr uint64_t kVulkan = 1ull << 7;
@@ -186,7 +187,17 @@ TEST_F(ProfileManagerTest, AndroidNcnnSelectsOnlyV3Schema2AndNeverFallsBack) {
   {"required_capabilities",{"body_pose","multi_person","gpu_input","vulkan","fp16-storage",
       "fp16-arithmetic","android-hardware-buffer","external-sync-fd"}},
   {"backend",{{"preference",{"backend.ncnn.vulkan"}},{"allow_fallback",false}}}};
+ json["detector"]={{"person_score_threshold",0.35},{"cadence_interval_frames",4},
+                   {"max_capture_gap_us",200000}};
  std::ofstream(profile_path)<<json.dump();
+ auto profile_hash=[&]{
+  std::ifstream stream(profile_path,std::ios::binary);
+  picosha2::hash256_one_by_one hash;std::array<char,4096> buffer{};
+  while(stream){stream.read(buffer.data(),buffer.size());hash.process(buffer.begin(),buffer.begin()+stream.gcount());}
+  hash.finish();return picosha2::get_hash_hex_string(hash);
+ };
+ auto manifest=nlohmann::json::parse(Schema2Manifest());
+ manifest["profile_sha256"]=profile_hash();Save(manifest.dump());
  ModelPackManager packs(root/"packs");PluginRegistry registry;ProfileManager profiles(root/"profiles");
  BackendFactory factory({},false);std::string error;
  ASSERT_TRUE(factory.RegisterV3(HV_QueryNcnnVulkanPluginV3,error))<<error;
@@ -195,11 +206,27 @@ TEST_F(ProfileManagerTest, AndroidNcnnSelectsOnlyV3Schema2AndNeverFallsBack) {
  ASSERT_TRUE(factory.RegisterV3(QueryGpuPose,error))<<error;
  auto selected=profiles.Resolve("android-ncnn-vulkan",2,registry,packs,error,&factory);
  ASSERT_TRUE(selected)<<error;EXPECT_TRUE(selected->gpu_route);EXPECT_FALSE(selected->body.plugin);
+ EXPECT_EQ(selected->detector_cadence_interval_frames,4);
+ EXPECT_EQ(selected->detector_max_capture_gap_us,200000);
  EXPECT_FALSE(selected->allow_backend_fallback);ASSERT_TRUE(selected->gpu_body);
  EXPECT_STREQ(selected->gpu_body->api.v1.plugin_id,"fixture.pose");
+ manifest["profile_sha256"]=std::string(64,'0');Save(manifest.dump());
+ EXPECT_FALSE(profiles.Resolve("android-ncnn-vulkan",2,registry,packs,error,&factory));
+ EXPECT_NE(error.find("profile SHA-256"),std::string::npos)<<error;
+ manifest["profile_sha256"]=profile_hash();Save(manifest.dump());
  json["backend"]["allow_fallback"]=true;std::ofstream(profile_path)<<json.dump();
  EXPECT_FALSE(profiles.Resolve("android-ncnn-vulkan",2,registry,packs,error,&factory));
  EXPECT_NE(error.find("allow_fallback false"),std::string::npos)<<error;
+ json["backend"]["allow_fallback"]=false;
+ for (int bad : {1,7}) {
+  json["detector"]["cadence_interval_frames"]=bad;std::ofstream(profile_path)<<json.dump();
+  EXPECT_FALSE(profiles.Resolve("android-ncnn-vulkan",2,registry,packs,error,&factory));
+  EXPECT_NE(error.find("cadence_interval_frames"),std::string::npos)<<error;
+ }
+ json["detector"]["cadence_interval_frames"]=4;
+ json["detector"]["max_capture_gap_us"]=200001;std::ofstream(profile_path)<<json.dump();
+ EXPECT_FALSE(profiles.Resolve("android-ncnn-vulkan",2,registry,packs,error,&factory));
+ EXPECT_NE(error.find("max_capture_gap_us"),std::string::npos)<<error;
 }
 
 TEST(ProfileManagerProductionProfiles, AreStrictSingleCompositionContracts) {

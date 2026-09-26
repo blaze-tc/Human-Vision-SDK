@@ -255,8 +255,10 @@ BridgeResult UnityVulkanBridge::Prepare(const HV_AndroidGpuSubmissionV1& submiss
     if (submission.rotation_degrees != contract_.rotation ||
         (submission.mirrored != 0) != contract_.mirror) return BridgeResult::Invalid;
     SlotToken token;
+    const auto capture_steady_us=submission.struct_size>=sizeof(HV_AndroidGpuSubmissionClockV2)
+        ? reinterpret_cast<const HV_AndroidGpuSubmissionClockV2*>(&submission)->capture_steady_us : 0;
     const BridgeResult result = MapReserve(ring_.Reserve(static_cast<uint64_t>(submission.frame_id),
-                                                         submission.timestamp_us, token));
+                                                         submission.timestamp_us, token,capture_steady_us));
     if (result != BridgeResult::Ok) return result;
     auto& record = records_[token.index];
     const uint64_t reservation = next_reservation_.fetch_add(1, std::memory_order_relaxed);

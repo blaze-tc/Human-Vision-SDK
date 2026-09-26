@@ -14,7 +14,7 @@ struct BodySampleDiagnostics {
 class BodyServices {
 public:
  void Configure(int capacity,const HV_Rect* regions,uint32_t count,int64_t revision);
- void Observe(const HV_ObservationFrameV1&,int64_t revision);
+ void Observe(const HV_ObservationFrameV1&,int64_t revision,bool preserve_previous_hands=true);
  void MergeHands(const HV_HandObservationV1*,uint32_t count,int64_t revision);
  BodySnapshot Raw() const;
  BodySnapshot Sample(int64_t now_us) const;

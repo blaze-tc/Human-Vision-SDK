@@ -2,6 +2,7 @@
 #include "services/region_mask.h"
 #include "plugins/pipeline/rtmo/rtmo_pipeline.h"
 #include "plugins/pipeline/simcc/simcc_pipeline.h"
+#include "plugins/pipeline/simcc/topdown_gpu_pipeline.h"
 #include "plugins/legacy/legacy_pipeline.h"
 #include "plugins/backend/ort/ort_plugin.h"
 #include "plugins/backend/ncnn/ncnn_vulkan_backend.h"
@@ -21,6 +22,7 @@ RuntimeSession::~RuntimeSession(){
 bool RuntimeSession::Start(const std::filesystem::path& root,const std::string& profile,int capacity,std::string& error,
                            HV_QueryPluginV3Fn gpu_pipeline_query,GpuConsumerSource* gpu_test_source){
  if(profile=="android-ncnn-vulkan"){
+  if (!gpu_pipeline_query) gpu_pipeline_query=HV_QueryTopDownGpuPipelineV3;
   factory_=std::make_unique<BackendFactory>(std::vector<std::shared_ptr<const PluginModule>>{},false);
   if(!factory_->RegisterV3(HV_QueryNcnnVulkanPluginV3,error))return false;
   if(gpu_pipeline_query&&!factory_->RegisterV3(gpu_pipeline_query,error))return false;
@@ -83,7 +85,7 @@ void RuntimeSession::Poll(){
   if(revision==revision_){
    const auto elapsed=frame.source_timestamp_us-stats_.source_timestamp_us;
    if(stats_.source_timestamp_us&&elapsed>0){float fps=1e6F/float(elapsed);stats_.body_fps=stats_.body_fps?stats_.body_fps*.8F+fps*.2F:fps;}
-   services_.Observe(frame,revision);stats_.body_sequence=frame.sequence;
+   services_.Observe(frame,revision,!gpu_);stats_.body_sequence=frame.sequence;
    stats_.source_frame_id=frame.source_frame_id;stats_.source_timestamp_us=frame.source_timestamp_us;
    stats_.preprocess_ms=frame.preprocess_ms;stats_.inference_ms=frame.inference_ms;stats_.postprocess_ms=frame.postprocess_ms;
   }
@@ -96,17 +98,23 @@ void RuntimeSession::Poll(){
 }
 BodySnapshot RuntimeSession::Copy(int64_t sample_time,HV_RuntimeStatsV1& stats){
  std::lock_guard<std::mutex> lock(mutex_);Poll();stats=stats_;stats.dropped_frames=input_.dropped_frames()+body_.DroppedFrames()+hand_.DroppedFrames();
- return sample_time?services_.Sample(sample_time):services_.Raw();
+ return gpu_?services_.Raw():(sample_time?services_.Sample(sample_time):services_.Raw());
 }
 std::string RuntimeSession::LastError()const{std::lock_guard<std::mutex> lock(mutex_);if(!error_.empty())return error_;if(gpu_)return gpu_->LastError();auto error=body_.LastError();return error.empty()?hand_.LastError():error;}
 std::string RuntimeSession::Diagnostics()const{
  std::lock_guard<std::mutex> lock(mutex_);
  if(profile_&&profile_->gpu_route){
   const auto backend=factory_->SelectionDiagnostics();
+  const auto pipeline=gpu_->Diagnostics();
   std::ostringstream out;
   out<<"Profile="<<profile_->id<<"\nPipeline="<<profile_->gpu_body->api.v1.plugin_id
      <<"\nRequested backend=backend.ncnn.vulkan\nActual backend="<<backend.actual
      <<"\nRaw observation bodies="<<services_.Raw().count
+     <<"\nDetector cadence interval="<<pipeline.cadence_interval_frames
+     <<"\nDetector executions="<<pipeline.detector_execution_count
+     <<"\nMissed detector deadlines="<<pipeline.missed_detector_deadlines
+     <<"\nDelayed detector discards="<<pipeline.delayed_detector_discards
+     <<"\nPose validation failures="<<pipeline.pose_validation_failures
      <<"\nGPU worker error="<<gpu_->LastError();
   return out.str();
  }

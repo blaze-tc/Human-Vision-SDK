@@ -47,6 +47,8 @@ bool GpuRuntimeHost::Start(std::shared_ptr<const GpuPluginModuleV3> module,
                            const HV_HostServicesV3& services, const HV_PipelineConfigV1& config,
                            std::string& error) {
     if (!module || module->api.v1.type != HV_PLUGIN_PIPELINE || !module->api.gpu_pipeline ||
+        module->api.gpu_pipeline->struct_size < sizeof(HV_GpuPipelineApiV2) ||
+        module->api.gpu_pipeline->api_version != HV_GPU_PIPELINE_API_V2 ||
         !module->api.gpu_pipeline->create || !module->api.gpu_pipeline->destroy ||
         !module->api.gpu_pipeline->process_gpu || config.struct_size < sizeof(config) ||
         config.api_version != HV_PLUGIN_API_V1 || config.max_bodies < 1 ||
@@ -90,6 +92,11 @@ bool GpuRuntimeHost::CopyLatest(HV_ObservationFrameV1& out, int64_t& revision) c
 std::string GpuRuntimeHost::LastError() const {
     std::lock_guard<std::mutex> lock(result_mutex_); return error_;
 }
+PipelineDiagnostics GpuRuntimeHost::Diagnostics() const {
+    PipelineDiagnostics result{};
+    if(instance_)CopyPipelineDiagnostics(instance_,result);
+    return result;
+}
 void GpuRuntimeHost::Stop() {
     running_ = false;
     if (worker_.joinable()) worker_.join();
@@ -124,13 +131,13 @@ void GpuRuntimeHost::Run() {
         }
         HV_ObservationFrameV1 next{};
         next.struct_size = sizeof(next); next.api_version = HV_PLUGIN_API_V1;
-        HV_GpuFrameRefV1 input{sizeof(input), HV_GPU_FRAME_API_V1, &frame,
+        HV_GpuFrameRefRegionV1 input{{sizeof(input), HV_GPU_FRAME_API_V1, &frame,
             static_cast<int32_t>(source_.Width()), static_cast<int32_t>(source_.Height()),
             static_cast<int64_t>(frame.metadata.frame_id), frame.metadata.timestamp_us,
-            generation, HV_GPU_IMAGE_RGBA8_UNORM, 0};
+            generation, HV_GPU_IMAGE_RGBA8_UNORM, 0},revision,frame.metadata.capture_steady_us};
         char text[1024]{}; HV_ErrorBufferV1 buffer{sizeof(buffer), HV_PLUGIN_API_V1, text, sizeof(text)};
         HV_Result status = HV_ERR_INTERNAL;
-        try { status = module_->api.gpu_pipeline->process_gpu(instance_, &input, &next, &buffer); }
+        try { status = module_->api.gpu_pipeline->process_gpu(instance_, &input.v1, &next, &buffer); }
         catch (...) { std::strncpy(text, "V3 GPU process threw across C ABI", sizeof(text)-1); }
         text[sizeof(text)-1] = 0;
         bool retired = !frame.claimed;
@@ -149,8 +156,8 @@ void GpuRuntimeHost::Run() {
             continue;
         }
         next.sequence = ++sequence_;
-        next.source_frame_id = input.frame_id; next.source_timestamp_us = input.timestamp_us;
-        next.width = input.width; next.height = input.height;
+        next.source_frame_id = input.v1.frame_id; next.source_timestamp_us = input.v1.timestamp_us;
+        next.width = input.v1.width; next.height = input.v1.height;
         std::lock_guard<std::mutex> lock(result_mutex_);
         latest_ = next; result_revision_ = revision; has_result_ = true; error_.clear();
     }

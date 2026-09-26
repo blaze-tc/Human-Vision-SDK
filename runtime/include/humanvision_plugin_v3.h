@@ -26,6 +26,15 @@ extern "C" {
 #define HV_GPU_PREPARED_API_V1 1u
 #define HV_GPU_PIPELINE_API_V2 2u
 
+/* Optional V3 pipeline input extent. The V1 frame prefix and version remain
+ * unchanged so V1 backends can borrow &v1 without learning Region semantics. */
+typedef struct HV_GpuFrameRefRegionV1 {
+    HV_GpuFrameRefV1 v1;
+    int64_t region_revision;
+    /* Monotonic native capture time paired at Unity submission; source timestamp remains Unity time. */
+    int64_t capture_steady_us;
+} HV_GpuFrameRefRegionV1;
+
 typedef struct HV_GpuPreparedRefV1 {
     uint32_t struct_size, api_version;
     uint64_t token, generation;

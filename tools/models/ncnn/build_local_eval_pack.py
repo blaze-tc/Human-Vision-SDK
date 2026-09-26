@@ -19,7 +19,7 @@ from tools.models.ncnn.model_contract import (DETECTOR_CHECKPOINT_SHA256, POSE_C
 ROOT = Path(__file__).resolve().parents[3]
 PACK_ID = 'precision-t-26-ncnn-fp16'
 PROFILE_ID = 'android-ncnn-vulkan'
-PROFILE_SHA256 = '3aa57d5c12bc5e39d05d0a305d100708ab7e712f5a65f1a48bd82b4f0ed36091'
+PROFILE_SHA256 = '20e2714759f03fee79a94d0dcf7ccc80700785a2cb191a4a01b403e0b975d0b2'
 CAPABILITIES = ['body_pose','multi_person','gpu_input','vulkan','fp16-storage',
                 'fp16-arithmetic','android-hardware-buffer','external-sync-fd']
 POSE_ONNX_SHA256 = 'cb53464f622e08682a346661a9529d67cd505c58e36f06c967f5ab1ffe550201'

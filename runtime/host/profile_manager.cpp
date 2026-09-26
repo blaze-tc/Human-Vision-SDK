@@ -1,19 +1,46 @@
 #include "host/profile_manager.h"
 #include "common/config_io.h"
+#include "picosha2/picosha2.h"
+#include <array>
+#include <fstream>
 #include <set>
 
 namespace humanvision::runtime {
+namespace {
+std::string ProfileHash(const std::filesystem::path& path){
+    std::ifstream stream(path,std::ios::binary);
+    if(!stream)throw std::runtime_error("Cannot read Android GPU profile for SHA-256");
+    picosha2::hash256_one_by_one hash;std::array<char,65536> buffer{};
+    while(stream){stream.read(buffer.data(),buffer.size());
+        hash.process(buffer.begin(),buffer.begin()+stream.gcount());}
+    if(!stream.eof())throw std::runtime_error("Cannot finish Android GPU profile SHA-256");
+    hash.finish();return picosha2::get_hash_hex_string(hash);
+}
+}
 std::shared_ptr<const RuntimeProfile> ProfileManager::Resolve(const std::string& id, int max_people,
         const PluginRegistry& plugins, const ModelPackManager& packs, std::string& error,
         const BackendFactory* gpu_plugins) const {
     try {
         if (!ValidComponentId(id) || max_people < 1 || max_people > HV_MAX_PEOPLE) throw std::runtime_error("Invalid profile id or MaxBodies (1-8)");
-        const auto json = ReadConfig(ConfinedPath(root_, id + ".json"));
+        const auto profile_path=ConfinedPath(root_, id + ".json");
+        const auto json = ReadConfig(profile_path);
         if (json.at("schema_version").get<int>() != 1 || json.at("profile").get<std::string>() != id)
             throw std::runtime_error("Unsupported profile schema or identity");
         auto result = std::make_shared<RuntimeProfile>();
         result->id = id; result->json = json.dump(); result->max_people = max_people;
         if (id == "android-ncnn-vulkan") {
+            const auto& detector = json.at("detector");
+            if (!detector.is_object() || !detector.contains("cadence_interval_frames") ||
+                !detector.contains("max_capture_gap_us") ||
+                !detector.at("cadence_interval_frames").is_number_integer() ||
+                !detector.at("max_capture_gap_us").is_number_integer())
+                throw std::runtime_error("Android GPU detector cadence_interval_frames and max_capture_gap_us are required integers");
+            result->detector_cadence_interval_frames = detector.at("cadence_interval_frames").get<int>();
+            result->detector_max_capture_gap_us = detector.at("max_capture_gap_us").get<int64_t>();
+            if (result->detector_cadence_interval_frames < 2 || result->detector_cadence_interval_frames > 6)
+                throw std::runtime_error("detector.cadence_interval_frames must be 2-6");
+            if (result->detector_max_capture_gap_us < 1 || result->detector_max_capture_gap_us > 200000)
+                throw std::runtime_error("detector.max_capture_gap_us must be <=200000");
             // The GPU route is a separate V3 contract. Never resolve this profile
             // through a V1 CPU pipeline or a fallback backend.
             if (!gpu_plugins || json.at("hands").value("enabled", false) ||
@@ -25,7 +52,11 @@ std::shared_ptr<const RuntimeProfile> ProfileManager::Resolve(const std::string&
             const auto pipeline_id = json.at("body").at("pipeline").get<std::string>();
             result->gpu_pack = packs.Resolve(json.at("body").at("modelPack").get<std::string>(), error);
             if (!result->gpu_pack) throw std::runtime_error(error);
-            if (nlohmann::json::parse(result->gpu_pack->manifest_json).at("schema_version").get<int>() != 2 ||
+            const auto pack_json=nlohmann::json::parse(result->gpu_pack->manifest_json);
+            if(!pack_json.contains("profile_sha256")||!pack_json.at("profile_sha256").is_string()||
+                pack_json.at("profile_sha256").get<std::string>()!=ProfileHash(profile_path))
+                throw std::runtime_error("Android GPU ModelPack profile SHA-256 mismatch");
+            if (pack_json.at("schema_version").get<int>() != 2 ||
                 result->gpu_pack->pipeline_id != pipeline_id || result->gpu_pack->max_people < max_people)
                 throw std::runtime_error("Android GPU route requires a matching schema-2 ModelPack and capacity");
             result->gpu_body = gpu_plugins->FindV3(pipeline_id, HV_CAP_BODY_POSE | HV_CAP_GPU_INPUT, error);

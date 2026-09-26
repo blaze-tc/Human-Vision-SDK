@@ -1,5 +1,6 @@
 #pragma once
 #include "host/backend_factory.h"
+#include "common/pipeline_diagnostics.h"
 #include "gpu/android/unity_vulkan_bridge.h"
 #include <atomic>
 #include <memory>
@@ -47,6 +48,7 @@ public:
                const HV_PipelineConfigV1&, std::string& error);
     bool CopyLatest(HV_ObservationFrameV1&, int64_t& revision) const;
     std::string LastError() const;
+    PipelineDiagnostics Diagnostics() const;
     void SetRevision(int64_t revision) noexcept { revision_.store(revision); }
     void Stop();
 private:

@@ -143,15 +143,16 @@ bool AhbSlotRing::Shutdown(CallContext context) {
     if(initialized_)DrainLocked();
     return true;
 }
-SlotResult AhbSlotRing::Reserve(uint64_t frame,int64_t timestamp,SlotToken& token) {
+SlotResult AhbSlotRing::Reserve(uint64_t frame,int64_t timestamp,SlotToken& token,
+                                int64_t capture_steady_us) {
     token={};if(!accepting_.load(std::memory_order_acquire))return SlotResult::Closed;
     std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);if(!lock.owns_lock())return SlotResult::Busy;
     if(!accepting_.load(std::memory_order_acquire))return SlotResult::Closed;
-    if(!frame||frame<=last_reserved_frame_||timestamp<0)return SlotResult::Invalid;
+    if(!frame||frame<=last_reserved_frame_||timestamp<0||capture_steady_us<0)return SlotResult::Invalid;
     for(uint32_t i=0;i<kSlotCount;++i){auto& slot=slots_[i];auto expected=AhbSlotState::Free;
         if(!slot.state.compare_exchange_strong(expected,AhbSlotState::EventReserved,std::memory_order_acq_rel))continue;
         const auto gen=generation_.load(std::memory_order_acquire);
-        slot.metadata={gen,frame,timestamp};last_reserved_frame_=frame;token={i,gen,frame};return SlotResult::Ok;
+        slot.metadata={gen,frame,timestamp,capture_steady_us};last_reserved_frame_=frame;token={i,gen,frame};return SlotResult::Ok;
     }
     no_slot_drops_.fetch_add(1,std::memory_order_relaxed);return SlotResult::NoSlot;
 }

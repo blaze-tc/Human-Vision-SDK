@@ -394,7 +394,9 @@ HV_HostServicesV2 BackendFactory::ServicesV2() {
     return {Services(), CreateGpu, ReleaseGpu};
 }
 HV_HostServicesV3 BackendFactory::ServicesV3() {
-    return {ServicesV2(), CreateGpuV3, ReleaseGpuV3};
+    auto services=HV_HostServicesV3{ServicesV2(), CreateGpuV3, ReleaseGpuV3};
+    services.v2.v1.struct_size=sizeof(services);
+    return services;
 }
 
 bool BackendFactory::RegisterV3(HV_QueryPluginV3Fn query, std::string& error,

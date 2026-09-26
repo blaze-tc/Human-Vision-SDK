@@ -22,6 +22,18 @@ TEST(CommonServices, StableIdentityPreservesTimeAndRejectsOldRevision){
  EXPECT_LE(predicted.bodies[0].joints[HV_CANONICAL_WRIST_LEFT].prediction_ms,25);
  services.Configure(8,nullptr,0,2);services.Observe(Frame(3,1066000,108),1);EXPECT_EQ(services.Raw().count,0u);
 }
+TEST(CommonServices, GpuSnapshotNeverRestoresOldInvalidHandOrHeldBody){
+ BodyServices s;s.Configure(1,nullptr,0,1);
+ auto first=Frame(1,1000000,100);first.bodies[0].joints[HV_CANONICAL_HANDTIP_LEFT]=
+     first.bodies[0].joints[HV_CANONICAL_WRIST_LEFT];
+ s.Observe(first,1,false);
+ auto second=Frame(2,1033000,101);second.bodies[0].joints[HV_CANONICAL_HANDTIP_LEFT].valid=0;
+ s.Observe(second,1,false);
+ auto raw=s.Raw();ASSERT_EQ(raw.count,1u);
+ EXPECT_FALSE(raw.bodies[0].joints[HV_CANONICAL_HANDTIP_LEFT].valid);
+ auto empty=Frame(3,1066000,102);empty.body_count=0;s.Observe(empty,1,false);
+ EXPECT_EQ(s.Raw().count,0u);
+}
 TEST(CommonServices, RegionsExcludeOutsideAndExpireOldSamples){
  BodyServices services;HV_Rect region{0,0,.4F,1};services.Configure(1,&region,1,3);
  services.Observe(Frame(1,1000000,700),3);EXPECT_EQ(services.Raw().count,0u);

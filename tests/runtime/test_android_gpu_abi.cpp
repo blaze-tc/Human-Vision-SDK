@@ -9,6 +9,9 @@
 TEST(AndroidGpuAbi, Exact64BitLayoutAndExportSignatures) {
 #define O(T,F,N) static_assert(offsetof(T,F)==N); EXPECT_EQ(offsetof(T,F),size_t(N))
  static_assert(sizeof(HV_AndroidGpuSubmissionV1)==48);EXPECT_EQ(sizeof(HV_AndroidGpuSubmissionV1),48u);
+ static_assert(sizeof(HV_AndroidGpuSubmissionClockV2)==56);
+ static_assert(offsetof(HV_AndroidGpuSubmissionClockV2,v1)==0);
+ static_assert(offsetof(HV_AndroidGpuSubmissionClockV2,capture_steady_us)==48);
  O(HV_AndroidGpuSubmissionV1,struct_size,0);O(HV_AndroidGpuSubmissionV1,api_version,4);O(HV_AndroidGpuSubmissionV1,unity_texture,8);O(HV_AndroidGpuSubmissionV1,width,16);O(HV_AndroidGpuSubmissionV1,height,20);O(HV_AndroidGpuSubmissionV1,frame_id,24);O(HV_AndroidGpuSubmissionV1,timestamp_us,32);O(HV_AndroidGpuSubmissionV1,rotation_degrees,40);O(HV_AndroidGpuSubmissionV1,mirrored,44);
  static_assert(sizeof(HV_AndroidGpuBridgeStatusV1)==128);EXPECT_EQ(sizeof(HV_AndroidGpuBridgeStatusV1),128u);
  O(HV_AndroidGpuBridgeStatusV1,struct_size,0);O(HV_AndroidGpuBridgeStatusV1,api_version,4);O(HV_AndroidGpuBridgeStatusV1,copy_path,8);O(HV_AndroidGpuBridgeStatusV1,ahb_format,12);O(HV_AndroidGpuBridgeStatusV1,ahb_usage,16);O(HV_AndroidGpuBridgeStatusV1,ahb_format_features,24);O(HV_AndroidGpuBridgeStatusV1,submitted_frames,32);O(HV_AndroidGpuBridgeStatusV1,imported_frames,40);O(HV_AndroidGpuBridgeStatusV1,dropped_no_slot,48);O(HV_AndroidGpuBridgeStatusV1,dropped_generation,56);O(HV_AndroidGpuBridgeStatusV1,unity_device_uuid,64);O(HV_AndroidGpuBridgeStatusV1,ncnn_device_uuid,80);O(HV_AndroidGpuBridgeStatusV1,unity_driver_uuid,96);O(HV_AndroidGpuBridgeStatusV1,ncnn_driver_uuid,112);

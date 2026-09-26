@@ -12,6 +12,7 @@ namespace humanvision::runtime {
 struct DetectorResultMeta {
     std::int64_t frame_id = 0, capture_us = 0, arrival_us = 0, region_revision = 0;
     std::uint64_t generation = 0;
+    std::int64_t capture_steady_us = 0;
 };
 
 struct GpuCrop {

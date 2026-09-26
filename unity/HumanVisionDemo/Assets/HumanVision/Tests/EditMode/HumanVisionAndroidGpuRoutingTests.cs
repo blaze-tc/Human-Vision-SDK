@@ -49,6 +49,9 @@ namespace HumanVision.Tests
         public void ManagedGpuStructsMatchFrozenNativeLayout()
         {
             Assert.AreEqual(48, Marshal.SizeOf<AndroidGpuSubmissionNative>());
+            Assert.AreEqual(56, Marshal.SizeOf<AndroidGpuSubmissionClockNative>());
+            Assert.AreEqual(48, Marshal.OffsetOf<AndroidGpuSubmissionClockNative>(
+                nameof(AndroidGpuSubmissionClockNative.CaptureSteadyUs)).ToInt32());
             Assert.AreEqual(128, Marshal.SizeOf<AndroidGpuBridgeStatusNative>());
         }
 

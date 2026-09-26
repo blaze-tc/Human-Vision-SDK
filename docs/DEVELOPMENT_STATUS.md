@@ -1,3 +1,64 @@
+# Android Vulkan/ncnn — Revision 3 Task 7 TopDown GPU pipeline complete (2026-09-26)
+
+Task 7 now selects a production V3 `pipeline.topdown` for the strict Android
+ncnn route. Accepted source frames yield one complete current-frame observation:
+0 bodies while reacquiring, or only bodies whose current image completed
+Body26 pose. The detector takes prepared 320×320 keyframes on a bounded
+2–6 accepted-frame/200 ms schedule, runs one detached job at a time, and may
+supersede only an unstarted keyframe. A current pose rejection immediately
+removes that body; detector output updates future crops only. Source generation,
+dimensions and Region revision reset crop association; an old detector result
+cannot seed a new revision. The V3 Region frame extension preserves the exact
+56-byte V1 frame prefix and is read only after its `struct_size` guard. The
+producer also carries a paired native monotonic capture clock in a 56-byte
+extension of the frozen 48-byte Android submission. The Unity timestamp is
+unchanged for public results; detector age now includes source queue time.
+Task 8
+still owns post-inference Region assignment.
+
+RED: `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter TopDownGpu`
+first failed compilation on the absent pipeline header. Further focused RED
+cases caught the capture-clock epoch mismatch, repeated busy-deadline count,
+stale profile hash, and Region revision result leak. The latter produced 1
+failed focused case before the revision reset and guarded V3 frame extension.
+Independent first SPEC/QUALITY reviews then found five blockers: public GPU
+snapshots could inherit a previous valid hand joint; detector age omitted
+capture-to-prepare queue time; failed `prepare_image` wedged cadence; a queued
+detector token might never wake after a pose or role-completion error; and the
+V3 host accepted a truncated or mismatched callback table. New regressions
+cover each path. GPU snapshots now use current raw observations without
+previous-hand carry-forward or render hold while legacy/ORT samples retain
+their existing behavior. A prepare failure cancels its cadence reservation
+and enters terminal NCNN Vulkan error. A successfully queued detector wakes
+after current pose/role completion; an exit guard wakes it exactly once on an
+early error. The host validates the V3 callback prefix. A second QUALITY
+review caught the earlier wake violating pose priority and the V3 pipeline
+`Create` accepting a short host-services prefix. Both new focused tests failed
+before repair and passed after. The V3 factory advertises the full V3 host
+extent while retaining the historical V1 prefix API version and leaving
+ServicesV1/ServicesV2 unchanged. A host-to-pipeline clock/Region propagation
+test also covers the frame extension.
+
+GREEN after the final Region change:
+
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter 'TopDownGpu.*'`: **19/19 PASS**, including 180 ms queued capture plus 40 ms detector rejection, pose and role-error token wakeup, terminal prepare failure, V1 ABI prefix, host-services prefix and detector admission after current pose. The queue-delay test initially crashed from test-fixture teardown of an active fake worker; waiting for the second detached fake job corrected only the fixture.
+- Public `RuntimeSession::Copy` no-old-joint/no-held-body, host callback validation, and host-to-pipeline clock/Region extension tests passed in the final full native suite.
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1`: **276/276 PASS**. One prior 276-test run had 274 passes and two failures: an existing V3 ABI fixture expected its V1 API version, and the pose-priority fixture polled detector execution before its result was published. Keeping the V1 version with V3 extent and awaiting result publication fixed both; the final full rerun exited 0.
+- `.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -p test_rtmpose_ncnn_golden.py -v`: **5/5 PASS**, including the four captured real Vulkan pose cases and hashed local schema-2 pack. `test_rtmdet_eval.py`: **5/5 PASS**. Local evaluation weights remain ignored and unpublished.
+- `pwsh -NoProfile -File tools/package/build_live_native.ps1 -Platform Android -AndroidApiLevel 26`: **PASS**. `.venv-reference/Scripts/python.exe tools/test/verify_android_native.py`: **PASS**, ELF64 AArch64/API 26, 1813 strong dynamic imports resolved; packaged `libhumanvision.so` SHA-256 `3cab864a660f19a4530c41975ab8ac6d890dd350981dad03d5205ea713f7ff87`.
+- Focused Unity 2021.3.45f1 `HumanVision.Tests.HumanVisionAndroidGpuRoutingTests`: **12/12 PASS** in `out/unity040-route-task7-final-repair.xml`, including managed V1/V2 submission layout. Earlier full Unity EditMode run was **80 passed, 1 failed, 2 skipped**; the failing generated ProjectSettings fixture is described in Task 5 below.
+- `.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py`: **PASS**; `git diff --check`: **PASS** with line-ending advisories only.
+
+The pose-only fixture's warmed C++ hot path measured zero allocations. That
+does not certify the full ncnn detector hot path: Task 4 identified bounded
+`record_download` staging allocations on detector keyframes, and Task 7 has
+not measured their device timing/allocation pressure. Captured model output
+goldens pass, but an integrated Task 7 live source-to-pose device parity/FPS
+run is not claimed; the Revision 3 plan assigns that APK measurement to Task
+10. Independent Task 7 SPEC and QUALITY re-reviews both passed after the
+final pose-priority and host-prefix repairs. Task 7 is ready for its separate
+verified commit; Task 8 Region assignment remains next.
+
 # Android Vulkan/ncnn — Revision 3 Task 6 GPU crop state complete (2026-09-26)
 
 Task 6 adds a bounded, eight-slot GPU crop policy and detector identity

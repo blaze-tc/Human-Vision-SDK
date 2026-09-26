@@ -5,7 +5,11 @@
 #include <chrono>
 #include <cstdio>
 #include <functional>
+#include <filesystem>
+#include <fstream>
 #include <thread>
+#include "json/json.hpp"
+#include "picosha2/picosha2.h"
 
 using namespace humanvision::runtime;
 using namespace humanvision::gpu;
@@ -16,6 +20,7 @@ struct FakeSource final : GpuConsumerSource {
     std::atomic<bool> ready{false};
     bool stale_token = false;
     int64_t frame_id = 88, timestamp_us = 1000;
+    int64_t capture_steady_us = 0;
     AhbSlotRing ring{SlotLifecycle{this,Create,Drain}};
     static bool Create(void*,uint32_t,const SlotContract&,SlotResources&) noexcept { return true; }
     static void Drain(void*,uint32_t,AhbSlotState,SlotResources&,SyncFd&) noexcept {}
@@ -25,7 +30,7 @@ struct FakeSource final : GpuConsumerSource {
         if(quarantines.load())return SlotResult::Closed;
         if (ready.exchange(false)) {
             SlotToken prepared{};
-            if (ring.Reserve(static_cast<uint64_t>(frame_id),timestamp_us,prepared)!=SlotResult::Ok ||
+            if (ring.Reserve(static_cast<uint64_t>(frame_id),timestamp_us,prepared,capture_steady_us)!=SlotResult::Ok ||
                 ring.Transition(prepared,AhbSlotState::EventReserved,AhbSlotState::UnityCopySubmitted)!=SlotResult::Ok ||
                 ring.Transition(prepared,AhbSlotState::UnityCopySubmitted,AhbSlotState::ProducerSignalPending)!=SlotResult::Ok)
                 return SlotResult::Invalid;
@@ -62,6 +67,8 @@ struct FakePipeline {
     std::atomic<bool> fail_create{false}, fail_run{false}, throw_after_create{false};
     std::atomic<bool> pause_run{false}, entered{false};
     std::atomic<int64_t> frame{0};
+    std::atomic<int64_t> observed_capture_steady{0},observed_region_revision{0};
+    bool snapshot_mode=false;
 };
 FakePipeline* active = nullptr;
 HV_Result HV_CALL Create(const HV_PipelineConfigV1*, const HV_HostServicesV3*, void** out, HV_ErrorBufferV1* error) {
@@ -74,11 +81,27 @@ void HV_CALL Destroy(void* p) { ++static_cast<FakePipeline*>(p)->destroys; }
 HV_Result HV_CALL Process(void* p, const HV_GpuFrameRefV1* input, HV_ObservationFrameV1* output, HV_ErrorBufferV1* error) {
     auto& fake = *static_cast<FakePipeline*>(p);
     ++fake.processes; fake.frame = input->frame_id;
+    if(input->struct_size>=sizeof(HV_GpuFrameRefRegionV1)){
+        const auto* extension=reinterpret_cast<const HV_GpuFrameRefRegionV1*>(input);
+        fake.observed_capture_steady=extension->capture_steady_us;
+        fake.observed_region_revision=extension->region_revision;
+    }
     fake.entered=true;
     while (fake.pause_run) std::this_thread::sleep_for(std::chrono::milliseconds(1));
     if (fake.fail_run) { std::snprintf(error->data, error->capacity, "fake V3 run failed"); return HV_ERR_INTERNAL; }
     auto& lease = *static_cast<ConsumerFrame*>(input->opaque_slot);
     lease.producer_fd.Reset(); lease.ncnn_role_complete = true;
+    if(fake.snapshot_mode){
+        output->body_count=input->frame_id==3?0:1;
+        if(output->body_count){
+            auto& body=output->bodies[0];body.bbox_px={100,100,100,400};body.confidence=.9f;
+            auto& joint=body.joints[HV_CANONICAL_HANDTIP_LEFT];
+            joint.valid=input->frame_id==1?1:0;joint.confidence=.9f;
+            joint.x_px=120;joint.y_px=220;joint.x_norm=.375f;joint.y_norm=.916f;
+            joint.observation_timestamp_us=input->timestamp_us;
+        }
+        return HV_OK;
+    }
     output->body_count = 2;
     output->bodies[0].confidence = 0.7f; output->bodies[1].confidence = 0.9f;
     return HV_OK;
@@ -91,6 +114,51 @@ std::shared_ptr<GpuPluginModuleV3> Module() {
     module->api.gpu_pipeline = &api;
     return module;
 }
+HV_Result HV_CALL QueryFixtureGpu(uint32_t version,HV_PluginApiV3* out){
+    if(version!=HV_PLUGIN_API_V3||!out||out->v1.struct_size<sizeof(*out))return HV_ERR_INVALID_ARGUMENT;
+    *out={};out->v1={sizeof(*out),HV_PLUGIN_API_V3,"fixture.gpu","1",HV_PLUGIN_PIPELINE,
+        HV_CAP_BODY_POSE|HV_CAP_MULTI_PERSON|HV_CAP_GPU_INPUT,8,nullptr,nullptr,0};
+    out->gpu_pipeline=&api;return HV_OK;
+}
+struct SnapshotProfileFixture {
+    std::filesystem::path root;
+    SnapshotProfileFixture(){
+        root=std::filesystem::temp_directory_path()/
+            ("hv-gpu-snapshot-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        std::filesystem::create_directories(root/"profiles");
+        std::filesystem::create_directories(root/"modelpacks"/"fixture");
+        auto folder=root/"modelpacks"/"fixture";
+        for(const char* file:{"detector.param","detector.bin"})std::ofstream(folder/file)<<"abc";
+        nlohmann::json profile={{"schema_version",1},{"profile","android-ncnn-vulkan"},
+            {"body",{{"pipeline","fixture.gpu"},{"modelPack","fixture"}}},
+            {"hands",{{"enabled",false}}},
+            {"detector",{{"cadence_interval_frames",4},{"max_capture_gap_us",200000}}},
+            {"backend",{{"preference",{"backend.ncnn.vulkan"}},{"allow_fallback",false}}},
+            {"required_capabilities",{"body_pose","multi_person","gpu_input","vulkan",
+                "fp16-storage","fp16-arithmetic","android-hardware-buffer","external-sync-fd"}}};
+        const auto path=root/"profiles"/"android-ncnn-vulkan.json";
+        std::ofstream(path)<<profile.dump();
+        auto hash=picosha2::hash256_hex_string(profile.dump());
+        nlohmann::json model={{"role","detector"},{"format","ncnn"},
+            {"decoder_id","rtmdet_nano_raw_v1"},
+            {"param_path","detector.param"},{"bin_path","detector.bin"},
+            {"param_sha256","ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"},
+            {"bin_sha256","ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"},
+            {"input_contract",{{"image_format","rgba8-unorm"},{"color_order","rgb"},
+                {"normalization",{{"mean",{0,0,0}},{"norm",{1,1,1}}}},
+                {"tensor_dtype","fp16"},{"elempack",1},{"width",320},{"height",320},
+                {"input_blob","in0"}}},
+            {"output_contract",{{"decoder","rtmdet_nano_raw_v1"},{"output_blobs",{"cls","bbox"}}}},
+            {"source","fixture"},{"license","test-only"},{"conversion_recipe","fixture"}};
+        nlohmann::json pack={{"schema_version",2},{"pack_id","fixture"},{"pack_version","2.0.0"},
+            {"pipeline_id","fixture.gpu"},{"profile_sha256",hash},{"max_people",2},
+            {"capabilities",{"body_pose","multi_person","gpu_input","vulkan","fp16-storage",
+                "fp16-arithmetic","android-hardware-buffer","external-sync-fd"}},
+            {"models",nlohmann::json::array({model})}};
+        std::ofstream(folder/"modelpack.json")<<pack.dump();
+    }
+    ~SnapshotProfileFixture(){std::filesystem::remove_all(root);}
+};
 bool Await(const std::function<bool()>& predicate) {
     for (int i=0;i<200;++i) { if (predicate()) return true; std::this_thread::sleep_for(std::chrono::milliseconds(5)); }
     return false;
@@ -115,6 +183,50 @@ TEST(RuntimeGpuComposition, ClaimsAndPublishesCompleteCurrentFrameWithoutCpuSubm
     EXPECT_FLOAT_EQ(observation.bodies[1].confidence,0.9f);
     EXPECT_EQ(source.claims,1); EXPECT_EQ(source.retires,1); EXPECT_EQ(source.quarantines,0);
     host.Stop(); EXPECT_EQ(fake.destroys,1);
+}
+
+TEST(RuntimeGpuComposition, RejectsTruncatedOrMismatchedV3CallbackTable){
+    FakeSource source;FakePipeline fake;active=&fake;GpuRuntimeHost host(source);
+    HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,2};HV_HostServicesV3 services{};
+    std::string error;
+    auto module=Module();
+    HV_GpuPipelineApiV2 short_api=api;short_api.struct_size=sizeof(HV_GpuPipelineApiV2)-1;
+    module->api.gpu_pipeline=&short_api;
+    EXPECT_FALSE(host.Start(module,services,config,error));EXPECT_EQ(fake.creates,0);
+    short_api=api;short_api.api_version=HV_GPU_PIPELINE_API_V2+1;
+    EXPECT_FALSE(host.Start(module,services,config,error));EXPECT_EQ(fake.creates,0);
+}
+
+TEST(RuntimeGpuComposition, PreservesPairedCaptureClockAndRegionInV3FrameExtension){
+    FakeSource source;source.capture_steady_us=7654321;
+    FakePipeline fake;active=&fake;GpuRuntimeHost host(source);auto module=Module();
+    HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,2};HV_HostServicesV3 services{};
+    std::string error;ASSERT_TRUE(host.Start(module,services,config,error))<<error;
+    host.SetRevision(19);source.ready=true;
+    ASSERT_TRUE(Await([&]{return fake.processes.load()==1;}));
+    EXPECT_EQ(fake.observed_capture_steady.load(),7654321);
+    EXPECT_EQ(fake.observed_region_revision.load(),19);
+    host.Stop();active=nullptr;
+}
+
+TEST(RuntimeGpuComposition, PublicGpuSnapshotNeverCarriesPreviousJointsOrBodies){
+    SnapshotProfileFixture files;FakeSource source;FakePipeline fake;fake.snapshot_mode=true;active=&fake;
+    RuntimeSession runtime;std::string error;
+    ASSERT_TRUE(runtime.Start(files.root,"android-ncnn-vulkan",1,error,QueryFixtureGpu,&source))<<error;
+    auto next=[&](int64_t id,int64_t timestamp){
+        source.frame_id=id;source.timestamp_us=timestamp;source.ready=true;
+        HV_RuntimeStatsV1 stats{};BodySnapshot snapshot;
+        const bool ready=Await([&]{snapshot=runtime.Copy(timestamp+10000,stats);
+            return stats.source_frame_id==id;});
+        EXPECT_TRUE(ready);return snapshot;
+    };
+    const auto first=next(1,1000000);
+    ASSERT_EQ(first.count,1u);EXPECT_TRUE(first.bodies[0].joints[HV_CANONICAL_HANDTIP_LEFT].valid);
+    const auto second=next(2,1033000);
+    ASSERT_EQ(second.count,1u);EXPECT_FALSE(second.bodies[0].joints[HV_CANONICAL_HANDTIP_LEFT].valid);
+    const auto third=next(3,1066000);
+    EXPECT_EQ(third.count,0u);
+    active=nullptr;
 }
 
 TEST(RuntimeGpuComposition, V3ErrorsDoNotPublishOrFallback) {

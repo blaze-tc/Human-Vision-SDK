@@ -45,7 +45,7 @@ int BodyServices::Region(const HV_Rect& box,int width,int height) const{
  if(!region_count_)return -1;float x=(box.x+box.width*.5F)/width,y=(box.y+box.height*.5F)/height;
  for(uint32_t i=0;i<region_count_;++i){auto r=regions_[i];if(x>=r.x&&y>=r.y&&x<=r.x+r.width&&y<=r.y+r.height)return int(i);}return -2;
 }
-void BodyServices::Observe(const HV_ObservationFrameV1& frame,int64_t revision){
+void BodyServices::Observe(const HV_ObservationFrameV1& frame,int64_t revision,bool preserve_previous_hands){
  if(revision!=revision_||frame.source_timestamp_us<=last_time_||frame.width<=0||frame.height<=0||frame.body_count>8)return;
  if(last_time_){const double period=double(frame.source_timestamp_us-last_time_);observation_period_ewma_us_=observation_period_ewma_us_>0?observation_period_ewma_us_+kObservationPeriodAlpha*(period-observation_period_ewma_us_):period;}
  last_time_=frame.source_timestamp_us;width_=frame.width;height_=frame.height;int obs[8]{},regions[8]{},num=0,slots[8]{},active=0;
@@ -68,7 +68,7 @@ void BodyServices::Observe(const HV_ObservationFrameV1& frame,int64_t revision){
   auto filtered=body;
   for(int k=0;k<32;++k){auto& current=body.joints[k];auto& f=filtered.joints[k];if(!current.valid){t.vx[k]=t.vy[k]=0;continue;}if(previous.joints[k].valid&&dt>0&&dt<.5F){float vx=(current.x_px-previous.joints[k].x_px)/dt,vy=(current.y_px-previous.joints[k].y_px)/dt;t.vx[k]=.5F*t.vx[k]+.5F*vx;t.vy[k]=.5F*t.vy[k]+.5F*vy;float cutoff=2.F+.04F*std::sqrt(t.vx[k]*t.vx[k]+t.vy[k]*t.vy[k]);float alpha=1.F/(1.F+1.F/(6.2831853F*cutoff*dt));f.x_px=t.filtered.joints[k].x_px+alpha*(current.x_px-t.filtered.joints[k].x_px);f.y_px=t.filtered.joints[k].y_px+alpha*(current.y_px-t.filtered.joints[k].y_px);f.x_norm=f.x_px/frame.width;f.y_norm=f.y_px/frame.height;}}
   // Preserve independently observed hands; their own age controls validity.
-  for(int k:{8,9,10,15,16,17})if(!body.joints[k].valid&&previous.joints[k].valid&&last_time_-previous.joints[k].observation_timestamp_us<=200000){body.joints[k]=previous.joints[k];filtered.joints[k]=previous.joints[k];}
+  if(preserve_previous_hands)for(int k:{8,9,10,15,16,17})if(!body.joints[k].valid&&previous.joints[k].valid&&last_time_-previous.joints[k].observation_timestamp_us<=200000){body.joints[k]=previous.joints[k];filtered.joints[k]=previous.joints[k];}
   t.raw=body;t.filtered=filtered;
  }
 }

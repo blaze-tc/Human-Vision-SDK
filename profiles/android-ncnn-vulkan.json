@@ -7,7 +7,7 @@
   },
   "hands": {"enabled": false, "fps": 15},
   "body_fps": 30,
-  "detector": {"person_score_threshold": 0.35},
+  "detector": {"person_score_threshold": 0.35, "cadence_interval_frames": 4, "max_capture_gap_us": 200000},
   "output": {"hz": 60},
   "required_capabilities": [
     "body_pose",

@@ -17,6 +17,10 @@ struct PipelineDiagnostics {
     float detector_fps = 0;
     float pose_inference_total_ms = 0;
     uint32_t pose_person_count = 0;
+    uint32_t cadence_interval_frames = 0;
+    uint64_t missed_detector_deadlines = 0;
+    uint64_t delayed_detector_discards = 0;
+    uint64_t pose_validation_failures = 0;
 };
 
 namespace detail {

@@ -44,8 +44,7 @@ layout(push_constant) uniform parameter {
 } p;
 
 float pixel(int channel, int x, int y) {
-    x = clamp(x, 0, p.source_width - 1);
-    y = clamp(y, 0, p.source_height - 1);
+    if (x < 0 || y < 0 || x >= p.source_width || y >= p.source_height) return 0.0;
     return source_data[channel * p.source_cstep + y * p.source_width + x];
 }
 
@@ -106,8 +105,9 @@ bool GpuPreprocess::Record(const ncnn::VkMat& rgb, const HV_GpuImageTransformV1&
         normalized.w != transform.output_width || normalized.h != transform.output_height ||
         transform.channel_order != 1 && transform.channel_order != 2 ||
         !std::isfinite(r.x) || !std::isfinite(r.y) || !std::isfinite(r.width) || !std::isfinite(r.height) ||
-        r.x < 0 || r.y < 0 || r.width <= 0 || r.height <= 0 ||
-        r.x + r.width > rgb.w || r.y + r.height > rgb.h) {
+        r.width <= 0 || r.height <= 0 || r.x >= rgb.w || r.y >= rgb.h ||
+        r.x + r.width <= 0 || r.y + r.height <= 0 ||
+        r.width > 4 * rgb.w || r.height > 4 * rgb.h) {
         error = "GPU preprocessing source rectangle or tensor geometry is invalid"; return false;
     }
     for (int i = 0; i < 3; ++i)

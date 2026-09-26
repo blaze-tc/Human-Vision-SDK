@@ -1,7 +1,7 @@
 {
   "id": "pipeline.simcc",
   "type": "pipeline",
-  "version": "0.4.0-preview.3",
+  "version": "0.4.0-preview.4",
   "api_version": 1,
   "capabilities": [
     "body_pose",
@@ -14,7 +14,7 @@
   "test_targets": [
     "humanvision_native_tests"
   ],
-  "export_capabilities": {"pipeline.topdown": ["body_pose", "multi_person"], "pipeline.hand": ["hand_pose"]},
+  "export_capabilities": {"pipeline.topdown": ["body_pose", "multi_person", "gpu_input"], "pipeline.hand": ["hand_pose"]},
   "exports": [
     "pipeline.topdown",
     "pipeline.hand"

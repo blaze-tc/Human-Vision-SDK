@@ -20,6 +20,8 @@ struct RuntimeProfile {
     uint64_t required_capabilities = 0;
     std::vector<std::string> required_capability_names;
     int max_people = 0, body_fps = 30, hand_fps = 15, output_hz = 60;
+    int detector_cadence_interval_frames = 0;
+    int64_t detector_max_capture_gap_us = 0;
 };
 class ProfileManager {
 public:
