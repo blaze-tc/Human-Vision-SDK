@@ -597,8 +597,8 @@ MonoBehaviour:
   manager: {fileID: 513429456}
   frameSource: {fileID: 513429455}
   boxThickness: 3
-  boneThickness: 4
-  jointSize: 7
+  boneThickness: 32
+  jointSize: 56
 --- !u!222 &1471715189
 CanvasRenderer:
   m_ObjectHideFlags: 0

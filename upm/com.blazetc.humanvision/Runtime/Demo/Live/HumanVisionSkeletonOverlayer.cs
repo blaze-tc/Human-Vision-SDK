@@ -13,8 +13,8 @@ namespace HumanVision
         public GameObject jointPrefab;
         public LineRenderer linePrefab;
         public bool drawSkeleton = true, drawJoints = true, drawBones = true;
-        [Min(0.5f)] public float lineWidthPixels = 3;
-        [Min(1)] public float jointDiameterPixels = 9;
+        [Min(0.5f)] public float lineWidthPixels = 24;
+        [Min(1)] public float jointDiameterPixels = 72;
         [Min(.1f)] public float planeDistance = 1;
         private static readonly int[] Parents = { -1,0,0,1,2,6,5,5,6,7,8,5,6,11,12,13,14,9,17,17,10,20,20 };
         private Transform[] _joints = new Transform[0];

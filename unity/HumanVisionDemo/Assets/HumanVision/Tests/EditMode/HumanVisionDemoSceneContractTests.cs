@@ -84,8 +84,8 @@ namespace HumanVision.Tests
 
             Assert.That(boneThickness, Is.Not.Null);
             Assert.That(jointSize, Is.Not.Null);
-            Assert.That(boneThickness.floatValue, Is.EqualTo(4f));
-            Assert.That(jointSize.floatValue, Is.EqualTo(7f));
+            Assert.That(boneThickness.floatValue, Is.EqualTo(32f));
+            Assert.That(jointSize.floatValue, Is.EqualTo(56f));
         }
 
         private static void AssertReference(

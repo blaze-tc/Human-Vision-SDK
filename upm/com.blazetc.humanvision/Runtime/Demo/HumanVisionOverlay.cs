@@ -38,8 +38,8 @@ namespace HumanVision.Demo
         [SerializeField] private HumanVisionManager manager;
         [SerializeField] private VideoPlayerFrameSource frameSource;
         [SerializeField, Min(1f)] private float boxThickness = 3f;
-        [SerializeField, Min(1f)] private float boneThickness = 4f;
-        [SerializeField, Min(1f)] private float jointSize = 7f;
+        [SerializeField, Min(1f)] private float boneThickness = 32f;
+        [SerializeField, Min(1f)] private float jointSize = 56f;
 
         private readonly int[] _digits = new int[12];
 
