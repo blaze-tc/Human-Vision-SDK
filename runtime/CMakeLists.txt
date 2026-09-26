@@ -27,6 +27,7 @@ target_sources(humanvision_internal PRIVATE
     services/region_mask.cpp
     plugins/pipeline/rtmo/rtmo_pipeline.cpp
     plugins/pipeline/simcc/simcc_pipeline.cpp
+    plugins/pipeline/simcc/gpu_track_crops.cpp
     plugins/legacy/legacy_pipeline.cpp
     plugins/backend/ort/ort_plugin.cpp)
 target_sources(humanvision_internal PRIVATE

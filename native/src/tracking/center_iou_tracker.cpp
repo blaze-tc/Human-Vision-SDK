@@ -11,13 +11,6 @@ namespace humanvision {
 
 namespace {
 
-struct MatchCandidate {
-    std::size_t track_index = 0;
-    std::size_t detection_index = 0;
-    float cost = 0.0F;
-    int track_id = -1;
-};
-
 float CenterX(const Detection& detection) {
     return (detection.x1 + detection.x2) * 0.5F;
 }
@@ -85,6 +78,31 @@ void CenterIouTracker::Update(
     const std::vector<Detection>& detections,
     const std::int64_t timestamp_us,
     std::vector<TrackedDetection>& output) {
+    UpdateImpl(detections, timestamp_us, output,
+               std::numeric_limits<std::size_t>::max());
+}
+
+void CenterIouTracker::ReserveCapacity(std::size_t capacity) {
+    tracks_.reserve(capacity);
+    candidates_.reserve(capacity * capacity);
+    matched_tracks_.reserve(capacity);
+    matched_detections_.reserve(capacity);
+}
+
+void CenterIouTracker::UpdateBounded(
+    const std::vector<Detection>& detections,
+    const std::int64_t timestamp_us,
+    std::vector<TrackedDetection>& output,
+    std::size_t capacity) {
+    if (capacity > 8) capacity = 8;
+    UpdateImpl(detections, timestamp_us, output, capacity);
+}
+
+void CenterIouTracker::UpdateImpl(
+    const std::vector<Detection>& detections,
+    const std::int64_t timestamp_us,
+    std::vector<TrackedDetection>& output,
+    std::size_t capacity) {
     output.clear();
     output.resize(detections.size());
     for (std::size_t index = 0; index < detections.size(); ++index) {
@@ -92,8 +110,8 @@ void CenterIouTracker::Update(
         output[index].track_id = -1;
     }
 
-    std::vector<MatchCandidate> candidates;
-    candidates.reserve(tracks_.size() * detections.size());
+    candidates_.clear();
+    candidates_.reserve(tracks_.size() * detections.size());
     for (std::size_t track_index = 0; track_index < tracks_.size(); ++track_index) {
         const Track& track = tracks_[track_index];
         const std::int64_t delta_us = std::max<std::int64_t>(
@@ -111,16 +129,17 @@ void CenterIouTracker::Update(
             if (track.pose_timestamp_us > timestamp_us) {
                 bool anchor_eligible = false;
                 const float anchor_cost = MatchCost(track.detector_anchor, detections[detection_index], anchor_eligible);
-                if (anchor_eligible && (!eligible || anchor_cost < cost)) { cost = anchor_cost; eligible = true; }
+                cost = anchor_cost;
+                eligible = anchor_eligible;
             }
             if (eligible) {
-                candidates.push_back(MatchCandidate{
+                candidates_.push_back(MatchCandidate{
                     track_index, detection_index, cost, track.id});
             }
         }
     }
     std::sort(
-        candidates.begin(), candidates.end(), [](const auto& left, const auto& right) {
+        candidates_.begin(), candidates_.end(), [](const auto& left, const auto& right) {
             if (left.cost != right.cost) {
                 return left.cost < right.cost;
             }
@@ -130,11 +149,11 @@ void CenterIouTracker::Update(
             return left.detection_index < right.detection_index;
         });
 
-    std::vector<bool> matched_tracks(tracks_.size(), false);
-    std::vector<bool> matched_detections(detections.size(), false);
-    for (const MatchCandidate& candidate : candidates) {
-        if (matched_tracks[candidate.track_index] ||
-            matched_detections[candidate.detection_index]) {
+    matched_tracks_.assign(tracks_.size(), 0);
+    matched_detections_.assign(detections.size(), 0);
+    for (const MatchCandidate& candidate : candidates_) {
+        if (matched_tracks_[candidate.track_index] ||
+            matched_detections_[candidate.detection_index]) {
             continue;
         }
         Track& track = tracks_[candidate.track_index];
@@ -157,12 +176,12 @@ void CenterIouTracker::Update(
         }
         track.lost_frames = 0;
         output[candidate.detection_index].track_id = track.id;
-        matched_tracks[candidate.track_index] = true;
-        matched_detections[candidate.detection_index] = true;
+        matched_tracks_[candidate.track_index] = 1;
+        matched_detections_[candidate.detection_index] = 1;
     }
 
     for (std::size_t index = 0; index < tracks_.size(); ++index) {
-        if (!matched_tracks[index]) {
+        if (!matched_tracks_[index]) {
             ++tracks_[index].lost_frames;
         }
     }
@@ -174,7 +193,7 @@ void CenterIouTracker::Update(
         tracks_.end());
 
     for (std::size_t index = 0; index < detections.size(); ++index) {
-        if (matched_detections[index]) {
+        if (matched_detections_[index] || tracks_.size() >= capacity) {
             continue;
         }
         Track track;
@@ -224,6 +243,11 @@ void CenterIouTracker::ObservePose(int track_id, const Detection& crop, std::int
 
 void CenterIouTracker::RejectPose(int track_id) {
     for (auto& track : tracks_) if (track.id == track_id) { track.pose_rejected = true; return; }
+}
+
+void CenterIouTracker::ForgetTrack(int track_id) {
+    tracks_.erase(std::remove_if(tracks_.begin(), tracks_.end(),
+        [track_id](const Track& track) { return track.id == track_id; }), tracks_.end());
 }
 
 }  // namespace humanvision

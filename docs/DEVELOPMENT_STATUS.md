@@ -1,3 +1,51 @@
+# Android Vulkan/ncnn — Revision 3 Task 6 GPU crop state complete (2026-09-26)
+
+Task 6 adds a bounded, eight-slot GPU crop policy and detector identity
+association for a later V3 TopDown pipeline. Current valid pose joints update
+the next clipped ROI. A delayed detector result can refresh a detector-time
+anchor without rewinding a newer pose crop or changing its published frame.
+New identities require a detector result within 200 ms of capture; a result up
+to 500 ms old may correct an existing identity. Two missed detector matches or
+more than 500 ms since a matched detector expire that identity. A failed
+current pose clears its publishable frame immediately. The GPU route never
+uses the legacy tracker's three-second crop prediction to decide publication.
+
+RED: `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter
+GpuTrackCrops` failed compilation because the new crop header was absent. After
+the initial implementation, the same focused suite showed two failing pose
+cases; corrected one fixture's image-edge joints and made the failure fixture
+select its current frame. A later boundary test failed because `ApplyPose`
+accepted a track not selected for that frame; a selected-frame guard fixed it.
+The separate aged-result test failed until known-track correction and new-track
+discovery were given their distinct 500/200 ms limits. One more RED case
+showed that a newer detector arriving during a selected pose frame incorrectly
+cancelled that pose; the frame-selection timestamp now governs pose acceptance.
+The discovery geometry/score gate also failed a RED test until low-score and
+out-of-image boxes were rejected. Independent SPEC and QUALITY reviews then
+found four blockers. New RED tests showed warmed detector matching still
+allocated, delayed crossing could swap IDs, a future second detector miss
+could cancel an already selected pose, and expiring one of two tracks could
+erase the reacquisition request. The matcher now reuses reserved scratch,
+caps the GPU identity path at eight tracks, scores delayed results only from
+detector-time anchors, defers selected-frame expiry, and preserves the
+reacquisition request. The final delayed-crossing fixture was also run against
+the original cost rule and failed as intended before restoration of the fix.
+A second SPEC/QUALITY review found the inverse ordering: a detector correction
+captured after pose selection was overwritten when that older pose completed.
+The RED regression checked both the next crop center and a following detector
+association. The older pose now publishes its own frame while leaving the
+newer detector crop/identity untouched. A warmed eight-track churn test also
+confirmed no allocations at the maximum GPU capacity.
+
+GREEN: focused `GpuTrackCrops` **18/18 PASS**; full
+`pwsh -NoProfile -File tools/test/run_native_tests.ps1` **253/253 PASS**;
+`.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py`
+**PASS**; `git diff --check` **PASS** (line-ending advisory only). This is a
+policy component and does not claim Task 7 pipeline integration or device FPS.
+Independent final SPEC and QUALITY reviews passed after the ordering repair;
+the SPEC reviewer independently reran the focused **18/18** suite. Task 6 is
+ready for its separate verified commit before Task 7 begins.
+
 # Android Vulkan/ncnn — Revision 3 Task 5 GPU runtime composition complete (2026-09-26)
 
 Task 5 adds a V3 GPU runtime worker that claims the existing AHB bridge's
