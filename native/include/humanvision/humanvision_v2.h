@@ -65,6 +65,38 @@ typedef struct HV_RuntimeStatsV1 {
     uint32_t reserved;
 } HV_RuntimeStatsV1;
 
+/* Independent additive query; HV_RuntimeStatsV1 and HV_RuntimeCopy are unchanged.
+ * Times use a paired native steady observation anchor and first publication.
+ * Only SENSOR_VERIFIED permits the anchor to be called original sensor capture. */
+#define HV_RUNTIME_STATS_V2_VERSION 2u
+typedef enum HV_CaptureProvenanceV2 {
+    HV_CAPTURE_PROVENANCE_UNKNOWN = 0,
+    HV_CAPTURE_PROVENANCE_UNITY_OBSERVED = 1,
+    HV_CAPTURE_PROVENANCE_SENSOR_VERIFIED = 2
+} HV_CaptureProvenanceV2;
+typedef struct HV_RuntimeStatsV2 {
+    uint32_t struct_size, api_version;
+    uint64_t fresh_observation_frames, output_samples;
+    uint64_t source_frames_seen, source_rate_limited_drops;
+    uint64_t gpu_capture_requested, gpu_capture_submitted;
+    uint64_t gpu_copy_errors, gpu_import_errors;
+    uint64_t gpu_bridge_no_free_slot_drops, gpu_bridge_superseded_ready_drops;
+    uint64_t pose_job_drops, detector_attempted, detector_completed;
+    uint64_t detector_late, detector_discarded, missed_detector_deadlines;
+    uint64_t pose_validation_failures;
+    int64_t source_frame_id, capture_timestamp_us, publication_timestamp_us;
+    float gpu_capture_fps, fresh_observation_fps, output_sampling_fps;
+    float age_p50_ms, age_p95_ms, pose_age_p50_ms, pose_age_p95_ms;
+    /* NaN until an original sensor timestamp is paired with this exact image. */
+    float sensor_capture_age_p50_ms, sensor_capture_age_p95_ms;
+    /* Age of observations that scheduled a detector capture; completion is separate. */
+    float scheduled_detector_frame_age_p50_ms, scheduled_detector_frame_age_p95_ms;
+    float detector_age_ms, detector_completion_lag_ms;
+    float pose_per_body_p50_ms, pose_per_body_p95_ms;
+    uint32_t detector_interval_frames, copy_path;
+    uint32_t capture_provenance, reserved;
+} HV_RuntimeStatsV2;
+
 typedef void* HV_RuntimeHandle;
 /* Native steady clock, also used by RTSP capture; callers can translate clock
  * domains by subtracting native capture age from their own monotonic now. */
@@ -79,6 +111,11 @@ HV_API HV_Result HV_CALL HV_RuntimeSetRegions(HV_RuntimeHandle, const HV_Rect*, 
 HV_API HV_Result HV_CALL HV_RuntimeCopy(HV_RuntimeHandle, int64_t sample_timestamp_us, HV_CanonicalBodyV1*, uint32_t capacity, uint32_t* written, HV_RuntimeStatsV1*);
 HV_API HV_Result HV_CALL HV_RuntimeGetError(HV_RuntimeHandle, char* error, uint32_t capacity);
 HV_API HV_Result HV_CALL HV_RuntimeGetDiagnostics(HV_RuntimeHandle, char* text, uint32_t capacity);
+HV_API HV_Result HV_CALL HV_RuntimeGetStatsV2(HV_RuntimeHandle, HV_RuntimeStatsV2*);
+HV_API HV_Result HV_CALL HV_RuntimeRecordSourceFrameV2(HV_RuntimeHandle, uint32_t rate_limited);
+/* Current Unity WebCamTexture route can only report UNITY_OBSERVED. A future
+ * same-image native sensor route requires its own verified ingestion contract. */
+HV_API HV_Result HV_CALL HV_RuntimeSetCaptureProvenanceV2(HV_RuntimeHandle, uint32_t provenance);
 HV_API void HV_CALL HV_RuntimeDestroy(HV_RuntimeHandle);
 
 #ifdef __cplusplus

@@ -21,4 +21,16 @@ HV_Result HV_CALL HV_RuntimeCopy(HV_RuntimeHandle handle,int64_t time,HV_Canonic
 HV_Result HV_CALL HV_RuntimeGetError(HV_RuntimeHandle handle,char* error,uint32_t capacity){if(!handle||!error||!capacity)return HV_ERR_INVALID_ARGUMENT;try{Message(error,capacity,static_cast<RuntimeSession*>(handle)->LastError());return HV_OK;}catch(...){Message(error,capacity,"Runtime error query failed");return HV_ERR_INTERNAL;}}
 void HV_CALL HV_RuntimeDestroy(HV_RuntimeHandle handle){try{delete static_cast<RuntimeSession*>(handle);}catch(...){}}
 HV_Result HV_CALL HV_RuntimeGetDiagnostics(HV_RuntimeHandle handle,char* text,uint32_t capacity){if(!handle||!text||!capacity)return HV_ERR_INVALID_ARGUMENT;try{Message(text,capacity,static_cast<RuntimeSession*>(handle)->Diagnostics());return HV_OK;}catch(...){return HV_ERR_INTERNAL;}}
+HV_Result HV_CALL HV_RuntimeGetStatsV2(HV_RuntimeHandle handle,HV_RuntimeStatsV2* stats){
+ if(!handle||!stats||stats->struct_size<sizeof(*stats)||stats->api_version!=HV_RUNTIME_STATS_V2_VERSION)return HV_ERR_INVALID_ARGUMENT;
+ try{*stats=static_cast<RuntimeSession*>(handle)->StatsV2();return HV_OK;}catch(...){return HV_ERR_INTERNAL;}
+}
+HV_Result HV_CALL HV_RuntimeRecordSourceFrameV2(HV_RuntimeHandle handle,uint32_t rate_limited){
+ if(!handle||rate_limited>1)return HV_ERR_INVALID_ARGUMENT;
+ try{static_cast<RuntimeSession*>(handle)->RecordSourceArrival(rate_limited!=0);return HV_OK;}catch(...){return HV_ERR_INTERNAL;}
+}
+HV_Result HV_CALL HV_RuntimeSetCaptureProvenanceV2(HV_RuntimeHandle handle,uint32_t provenance){
+ if(!handle||provenance>HV_CAPTURE_PROVENANCE_UNITY_OBSERVED)return HV_ERR_INVALID_ARGUMENT;
+ try{static_cast<RuntimeSession*>(handle)->SetCaptureProvenance(provenance);return HV_OK;}catch(...){return HV_ERR_INTERNAL;}
+}
 }

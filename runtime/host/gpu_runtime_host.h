@@ -42,14 +42,20 @@ private:
 
 class GpuRuntimeHost {
 public:
+    using ObservationSink = bool (*)(void*,const HV_GpuObservationFrameV3&,int64_t,int64_t);
     explicit GpuRuntimeHost(GpuConsumerSource& source) : source_(source) {}
     ~GpuRuntimeHost() { Stop(); }
     bool Start(std::shared_ptr<const GpuPluginModuleV3>, const HV_HostServicesV3&,
                const HV_PipelineConfigV1&, std::string& error);
     bool CopyLatest(HV_ObservationFrameV1&, int64_t& revision) const;
     bool CopyLatest(HV_GpuObservationFrameV3&, int64_t& revision) const;
+    bool CopyLatest(HV_GpuObservationFrameV3&, int64_t& revision, int64_t& capture_steady_us) const;
     std::string LastError() const;
     PipelineDiagnostics Diagnostics() const;
+    uint64_t SupersededReadyDrops() const noexcept { return superseded_ready_drops_.load(); }
+    uint64_t PoseJobDrops() const noexcept { return pose_job_drops_.load(); }
+    uint64_t ImportErrors() const noexcept { return import_errors_.load(); }
+    void SetObservationSink(void* context,ObservationSink sink) noexcept { sink_context_=context;sink_=sink; }
     void SetRevision(int64_t revision) noexcept { revision_.store(revision); }
     void Stop();
 private:
@@ -60,9 +66,14 @@ private:
     std::thread worker_;
     std::atomic<bool> running_{false};
     std::atomic<int64_t> revision_{0};
+    std::atomic<uint64_t> superseded_ready_drops_{0}, pose_job_drops_{0};
+    std::atomic<uint64_t> import_errors_{0};
+    void* sink_context_=nullptr;
+    ObservationSink sink_=nullptr;
     mutable std::mutex result_mutex_;
     HV_GpuObservationFrameV3 latest_{};
     int64_t result_revision_ = 0, sequence_ = 0;
+    int64_t capture_steady_us_ = 0;
     bool has_result_ = false;
     int capacity_ = 0;
     std::string error_;

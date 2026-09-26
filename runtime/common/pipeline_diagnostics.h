@@ -21,6 +21,13 @@ struct PipelineDiagnostics {
     uint64_t missed_detector_deadlines = 0;
     uint64_t delayed_detector_discards = 0;
     uint64_t pose_validation_failures = 0;
+    uint64_t detector_attempted = 0;
+    uint64_t detector_late = 0;
+    uint64_t pose_job_drops = 0;
+    float detector_age_ms = 0;
+    float detector_completion_lag_ms = 0;
+    int64_t last_detector_capture_steady_us = 0;
+    bool detector_keyframe = false;
 };
 
 namespace detail {

@@ -1,6 +1,8 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using System.Text;
+using HumanVision.Demo;
 
 namespace HumanVision
 {
@@ -62,6 +64,11 @@ namespace HumanVision
                 if (pipeline.BodyCount == 0) _diagnostics += "\nNo valid pose (result age is not skeleton age)";
                 if (!string.IsNullOrEmpty(bridge.LastError)) _diagnostics = bridge.LastError;
                 else if (!manager.IsReady) _diagnostics = manager.Status;
+                else if (pipeline.UsesAndroidGpuFrames) {
+                    var text = new StringBuilder(768);
+                    HumanVisionDiagnosticsText.Append(text, pipeline.RuntimeStatsV2, pipeline.RuntimeDiagnostics);
+                    _diagnostics += text.ToString();
+                }
                 else if (pipeline.UsesRuntimeProfile)
                     _diagnostics += "\nHand jobs " + pipeline.HandInferenceFps.ToString("F1") + " FPS (shared budget)\nSampled bodies " + pipeline.SampledBodyCount + "\n" + pipeline.RuntimeDiagnostics;
             }

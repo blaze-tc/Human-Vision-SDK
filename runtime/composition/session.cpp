@@ -36,9 +36,12 @@ bool RuntimeSession::Start(const std::filesystem::path& root,const std::string& 
   HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,capacity,0,
       profile_->gpu_pack->manifest_json.c_str(),asset_root.c_str(),profile_->json.c_str()};
   gpu_=std::make_unique<GpuRuntimeHost>(*source);
-  if(!gpu_->Start(profile_->gpu_body,factory_->ServicesV3(),config,error))return false;
   services_.Configure(capacity,nullptr,0,0);
   stats_.struct_size=sizeof(stats_);stats_.api_version=HV_API_VERSION_040;
+  gpu_->SetObservationSink(this,[](void* context,const HV_GpuObservationFrameV3& frame,int64_t revision,int64_t capture){
+   return static_cast<RuntimeSession*>(context)->AcceptGpuObservation(frame,revision,capture);
+  });
+  if(!gpu_->Start(profile_->gpu_body,factory_->ServicesV3(),config,error))return false;
   return true;
  }
  for(auto query:{HV_QueryOrtCpuPlugin,HV_QueryRtmoPipeline,HV_QueryTopDownPipeline,HV_QueryHandPipeline})
@@ -79,23 +82,53 @@ bool RuntimeSession::SetRegions(const HV_Rect* regions,uint32_t count,int64_t re
  services_.Configure(profile_->max_people,regions,count,revision);stats_.region_revision=revision;
  stats_.source_frame_id=stats_.source_timestamp_us=0;return true;
 }
+bool RuntimeSession::AcceptGpuObservation(const HV_GpuObservationFrameV3& gpu_frame,int64_t revision,int64_t capture_steady_us){
+ std::lock_guard<std::mutex> lock(mutex_);
+ if(revision!=revision_){error_="GPU observation rejected: stale Region revision";return false;}
+ auto frame=gpu_frame.v1;frame.struct_size=sizeof(frame);
+ RegionSet regions{regions_,region_count_};
+ auto assigned=AssignRegions(frame,regions,revision,services_.Anchors(),
+                             gpu_frame.detector_scores,gpu_frame.crop_track_ids);
+ if(!CanPublish(assigned,revision_)){error_="GPU observation rejected: Region assignment contract";return false;}
+ const auto publish_check_us=std::chrono::duration_cast<std::chrono::microseconds>(
+     std::chrono::steady_clock::now().time_since_epoch()).count();
+ if(!stats_v2_.CanPublish(frame.source_frame_id,assigned.frame.body_count,
+                         capture_steady_us,publish_check_us,frame.source_frame_id,frame.inference_ms) ||
+    frame.source_timestamp_us<=stats_.source_timestamp_us){
+  error_="GPU observation rejected: duplicate source frame or incompatible native clock";return false;}
+ for(uint32_t i=0;i<frame.body_count;++i)
+  for(const auto& joint:frame.bodies[i].joints)
+   if(joint.valid&&(joint.observation_timestamp_us!=frame.source_timestamp_us||joint.prediction_ms!=0)){
+    error_="GPU observation rejected: stale or predicted joint provenance";return false;}
+ services_.Observe(assigned.frame,revision,false,assigned.region_indices.data(),
+                   assigned.crop_track_ids.data());
+ body_sequence_=frame.sequence;
+ stats_.body_sequence=frame.sequence;
+ stats_.source_frame_id=frame.source_frame_id;stats_.source_timestamp_us=frame.source_timestamp_us;
+ stats_.preprocess_ms=frame.preprocess_ms;stats_.inference_ms=frame.inference_ms;
+ stats_.postprocess_ms=frame.postprocess_ms;
+ const auto published_us=std::chrono::duration_cast<std::chrono::microseconds>(
+     std::chrono::steady_clock::now().time_since_epoch()).count();
+ // The source capture clock accompanies the host observation separately from
+ // Unity's display clock; the host stores the pair atomically with this result.
+ const auto pipeline=gpu_->Diagnostics();
+ if(!stats_v2_.Publish(frame.source_frame_id,services_.Raw().count,capture_steady_us,
+                   published_us,frame.source_frame_id,frame.inference_ms,
+                   pipeline.detector_keyframe,pipeline.pose_person_count,true)){
+  error_="GPU observation rejected after publication prevalidation";return false;}
+ error_.clear();
+ return true;
+}
 void RuntimeSession::Poll(){
- HV_ObservationFrameV1 frame{};HV_GpuObservationFrameV3 gpu_frame{};int64_t revision;
- const bool copied=gpu_?gpu_->CopyLatest(gpu_frame,revision):body_.CopyLatest(frame,revision);
- if(gpu_&&copied){frame=gpu_frame.v1;frame.struct_size=sizeof(frame);}
+ if(gpu_)return;
+ HV_ObservationFrameV1 frame{};int64_t revision;
+ const bool copied=body_.CopyLatest(frame,revision);
  if(copied&&frame.sequence!=body_sequence_){
   body_sequence_=frame.sequence;
   if(revision==revision_){
    const auto elapsed=frame.source_timestamp_us-stats_.source_timestamp_us;
    if(stats_.source_timestamp_us&&elapsed>0){float fps=1e6F/float(elapsed);stats_.body_fps=stats_.body_fps?stats_.body_fps*.8F+fps*.2F:fps;}
-   if(gpu_){
-    RegionSet regions{regions_,region_count_};
-    auto assigned=AssignRegions(frame,regions,revision,services_.Anchors(),
-                                gpu_frame.detector_scores,gpu_frame.crop_track_ids);
-    if(!CanPublish(assigned,revision_))return;
-    services_.Observe(assigned.frame,revision,false,assigned.region_indices.data(),
-                      assigned.crop_track_ids.data());
-   }else services_.Observe(frame,revision,true);
+   services_.Observe(frame,revision,true);
    stats_.body_sequence=frame.sequence;
    stats_.source_frame_id=frame.source_frame_id;stats_.source_timestamp_us=frame.source_timestamp_us;
    stats_.preprocess_ms=frame.preprocess_ms;stats_.inference_ms=frame.inference_ms;stats_.postprocess_ms=frame.postprocess_ms;
@@ -109,7 +142,46 @@ void RuntimeSession::Poll(){
 }
 BodySnapshot RuntimeSession::Copy(int64_t sample_time,HV_RuntimeStatsV1& stats){
  std::lock_guard<std::mutex> lock(mutex_);Poll();stats=stats_;stats.dropped_frames=input_.dropped_frames()+body_.DroppedFrames()+hand_.DroppedFrames();
+ if(gpu_&&sample_time)stats_v2_.Sample(stats_.source_frame_id);
  return gpu_?services_.Raw():(sample_time?services_.Sample(sample_time):services_.Raw());
+}
+void RuntimeSession::RecordSourceArrival(bool rate_limited) noexcept {
+ source_frames_seen_.fetch_add(1,std::memory_order_relaxed);
+ if(rate_limited)source_rate_limited_drops_.fetch_add(1,std::memory_order_relaxed);
+}
+HV_RuntimeStatsV2 RuntimeSession::StatsV2(){
+ std::lock_guard<std::mutex> lock(mutex_);Poll();auto result=stats_v2_.Snapshot(0,capture_provenance_.load(std::memory_order_relaxed));
+ result.source_frames_seen=source_frames_seen_.load(std::memory_order_relaxed);
+ result.source_rate_limited_drops=source_rate_limited_drops_.load(std::memory_order_relaxed);
+ const auto now=std::chrono::duration_cast<std::chrono::microseconds>(
+     std::chrono::steady_clock::now().time_since_epoch()).count();
+ if(gpu_){
+  const auto pipeline=gpu_->Diagnostics();
+  result.detector_interval_frames=pipeline.cadence_interval_frames;
+  result.detector_attempted=pipeline.detector_attempted;
+  result.detector_completed=pipeline.detector_execution_count;
+  result.detector_late=pipeline.detector_late;
+  result.detector_discarded=pipeline.delayed_detector_discards;
+  result.missed_detector_deadlines=pipeline.missed_detector_deadlines;
+  result.pose_validation_failures=pipeline.pose_validation_failures;
+  result.pose_job_drops=gpu_->PoseJobDrops();
+  result.detector_age_ms=pipeline.last_detector_capture_steady_us>0
+   ?float(std::max<int64_t>(0,now-pipeline.last_detector_capture_steady_us))/1000.f:0.f;
+  result.detector_completion_lag_ms=pipeline.detector_completion_lag_ms;
+  HV_AndroidGpuBridgeStatusV1 bridge{sizeof(bridge),HV_ANDROID_GPU_API_V1};
+  gpu::GetUnityVulkanProducerStatus(bridge);
+  result.copy_path=bridge.copy_path;
+  if(auto* producer=gpu::UnityVulkanProducerBridge()){
+   result.gpu_capture_submitted=producer->SuccessfulCopies();
+   result.gpu_capture_fps=producer->SuccessfulCopyFps(now);
+   result.gpu_copy_errors=producer->CopyErrors();
+  }
+  result.gpu_capture_requested=gpu_capture_requested_.load(std::memory_order_relaxed);
+  result.gpu_bridge_no_free_slot_drops=gpu_no_slot_drops_.load(std::memory_order_relaxed);
+  result.gpu_bridge_superseded_ready_drops=gpu_->SupersededReadyDrops();
+  result.gpu_import_errors=gpu_->ImportErrors();
+ }
+ return result;
 }
 std::string RuntimeSession::LastError()const{std::lock_guard<std::mutex> lock(mutex_);if(!error_.empty())return error_;if(gpu_)return gpu_->LastError();auto error=body_.LastError();return error.empty()?hand_.LastError():error;}
 std::string RuntimeSession::Diagnostics()const{

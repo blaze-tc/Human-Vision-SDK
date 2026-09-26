@@ -9,6 +9,8 @@ class RuntimeSession {
 public:
   void ReportError(const char* message) { error=message; }
   void RecordGpuDimensions(uint32_t, uint32_t) noexcept {}
+  void RecordGpuCaptureAttempt() noexcept {}
+  void RecordGpuNoSlotDrop() noexcept {}
   void SetGpuSourceLeaseActive(bool) noexcept {}
   bool UsesGpuRoute() const noexcept { return true; }
   std::string error;

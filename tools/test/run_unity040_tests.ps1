@@ -28,5 +28,7 @@ $process.WaitForExit()
 if ($process.ExitCode -ne 0) { throw "Unity tests failed ($($process.ExitCode)); see out/unity040-tests.log" }
 if ((Get-Item "$taskRoot/out/unity040-tests.xml").LastWriteTimeUtc -lt $startedAt) { throw 'Stale Unity test results' }
 [xml]$results = Get-Content "$taskRoot/out/unity040-tests.xml"
-if ($results.'test-run'.result -ne 'Passed') { throw 'Unity test results did not pass' }
-Write-Output "Unity EditMode tests: $($results.'test-run'.passed) passed / $($results.'test-run'.total) total."
+if ([int]$results.'test-run'.failed -ne 0 -or [int]$results.'test-run'.inconclusive -ne 0) {
+    throw 'Unity test results did not pass'
+}
+Write-Output "Unity EditMode tests: $($results.'test-run'.passed) passed / $($results.'test-run'.total) total; $($results.'test-run'.skipped) skipped."

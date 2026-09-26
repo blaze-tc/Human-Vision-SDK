@@ -27,6 +27,7 @@ namespace HumanVision
         public bool IsReady => _manager != null && _manager.IsInitialized;
         public string ActiveRuntimeProfile => string.IsNullOrEmpty(_activeRuntimeProfile) ? "not initialized" : _activeRuntimeProfile;
         public string InputStatus => _source != null ? _source.Status : "Stopped";
+        public string RuntimeDiagnostics => _manager != null ? _manager.RuntimeDiagnostics : "not initialized";
         public long ResultSequence => _manager != null ? _manager.ResultSequence : 0;
         public event Action<long> SkeletonUpdated;
         private HumanVisionManager _manager;

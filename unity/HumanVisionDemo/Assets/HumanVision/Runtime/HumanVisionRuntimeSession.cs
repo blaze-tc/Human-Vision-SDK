@@ -16,6 +16,7 @@ namespace HumanVision
         private HumanVisionAndroidGpuFrameBridge _gpuBridge;
         private RenderTexture _gpuSourceTexture;
         private RuntimeStatsNative _native;
+        private RuntimeStatsV2Native _nativeV2;
         private readonly int[] _regions = new int[8];
         private long _lastHand, _submitted;
         private static readonly int HeaderBytes = Marshal.SizeOf<CanonicalHeaderNative>();
@@ -32,6 +33,15 @@ namespace HumanVision
         public HumanVisionStats Stats { get; private set; }
         internal float HandFps => _native.HandFps;
         internal string ProfileId => _config.Profile;
+        internal RuntimeStatsV2Native StatsV2 => _nativeV2;
+        internal void RecordSourceArrival(bool rateLimited)
+        {
+            if (UsesGpuFrames) Check(RuntimeBindings.HV_RuntimeRecordSourceFrameV2(_handle, rateLimited ? 1u : 0u), "source diagnostics");
+        }
+        internal void SetCaptureProvenance(uint provenance)
+        {
+            if (UsesGpuFrames) Check(RuntimeBindings.HV_RuntimeSetCaptureProvenanceV2(_handle, provenance), "capture provenance");
+        }
         internal bool UsesGpuFrames => HumanVisionAndroidFrameRoute.UsesGpu(_config.Profile);
         internal string Diagnostics {
             get { var text = new StringBuilder(4096); Check(RuntimeBindings.HV_RuntimeGetDiagnostics(_handle, text, 4096), "diagnostics"); return "Android mode: " + _config.Profile + "; input: " + (UsesGpuFrames ? "GPU" : "CPU") + "\n" + (_gpuBridge == null ? "" : _gpuBridge.Diagnostics + "\n") + text; }
@@ -132,8 +142,14 @@ namespace HumanVision
         public bool CopyRegions(long sequence, int[] indices, out long revision)
         { revision = _native.Revision; if (sequence != ResultSequence || indices.Length < BodyCount) return false; Array.Copy(_regions, indices, BodyCount); return true; }
         public void RefreshStats()
-        { Stats = new HumanVisionStats(0, _native.BodyFps, _native.PreprocessMs, _native.InferenceMs, _native.PostprocessMs,
-            _native.PreprocessMs + _native.InferenceMs + _native.PostprocessMs, _submitted, _native.BodySequence, _native.Dropped); }
+        {
+            if (UsesGpuFrames) {
+                _nativeV2.Size = (uint)Marshal.SizeOf<RuntimeStatsV2Native>(); _nativeV2.Version = 2;
+                Check(RuntimeBindings.HV_RuntimeGetStatsV2(_handle, ref _nativeV2), "V2 runtime stats");
+            }
+            Stats = new HumanVisionStats(0, _native.BodyFps, _native.PreprocessMs, _native.InferenceMs, _native.PostprocessMs,
+                _native.PreprocessMs + _native.InferenceMs + _native.PostprocessMs, _submitted, _native.BodySequence, _native.Dropped);
+        }
         public void ReconfigureMaxBodies(int maxBodies)
         {
             if (maxBodies == MaxBodies) return;

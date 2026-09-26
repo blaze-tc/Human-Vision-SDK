@@ -98,6 +98,7 @@ namespace HumanVision
                 if (!found) { Status = "Selected camera is unavailable"; yield break; }
                 _webcam = new WebCamTexture(device, _settings.width, _settings.height, _settings.framesPerSecond);
                 _webcam.Play();
+                GetComponent<HumanVisionManager>().SetCaptureProvenance(1u);
             } else {
                 if (Application.platform == RuntimePlatform.Android && GetComponent<HumanVisionManager>().UsesAndroidGpuFrames) {
                     Status = "android-ncnn-vulkan requires a GPU camera texture; this RTSP decoder produces CPU frames.";

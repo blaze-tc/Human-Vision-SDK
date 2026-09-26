@@ -322,7 +322,8 @@ namespace HumanVision.Demo
             _livePreview = true;
             PresentLiveTexture(texture);
             double now = Time.realtimeSinceStartupAsDouble;
-            if (now < _nextLiveSubmitTime) return false;
+            if (now < _nextLiveSubmitTime) { manager.RecordSourceArrival(true); return false; }
+            manager.RecordSourceArrival(false);
             if (SourceWidth != texture.width || SourceHeight != texture.height) {
                 SourceWidth = texture.width; SourceHeight = texture.height;
                 VideoLayoutChanged?.Invoke();

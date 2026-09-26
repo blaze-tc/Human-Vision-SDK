@@ -1,9 +1,24 @@
 #include "gpu/android/unity_vulkan_bridge.h"
 
 #include <algorithm>
+#include <chrono>
 #include <limits>
 
 namespace humanvision::gpu {
+void UnityVulkanBridge::RecordSuccessfulCopy() noexcept {
+    const auto now=std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    const auto index=successful_copies_.fetch_add(1,std::memory_order_acq_rel);
+    successful_copy_times_[index%successful_copy_times_.size()].store(now,std::memory_order_release);
+}
+float UnityVulkanBridge::SuccessfulCopyFps(int64_t now_us) const noexcept {
+    const auto total=successful_copies_.load(std::memory_order_acquire);
+    const auto limit=std::min<uint64_t>(total,successful_copy_times_.size());
+    uint64_t count=0;int64_t first=0;
+    for(uint64_t i=0;i<limit;++i){const auto time=successful_copy_times_[i].load(std::memory_order_acquire);
+        if(time>0&&time<=now_us&&now_us-time<=10'000'000){++count;first=first?std::min(first,time):time;}}
+    return count>1&&now_us>first?float(count-1)*1'000'000.f/float(now_us-first):0.f;
+}
 namespace {
 constexpr uint32_t kExternalQueueFamily = UINT32_MAX - 1u;
 
@@ -108,6 +123,9 @@ bool UnityVulkanBridge::Initialize(const UnityVulkanDeviceContext& device,
     contract_ = contract;
     submitted_frames_.store(0, std::memory_order_relaxed);
     imported_frames_.store(0, std::memory_order_relaxed);
+    copy_errors_.store(0, std::memory_order_relaxed);
+    successful_copies_.store(0, std::memory_order_relaxed);
+    for (auto& time : successful_copy_times_) time.store(0, std::memory_order_relaxed);
     last_error_.store(0, std::memory_order_relaxed);
     source_contract_signature_.store(0, std::memory_order_relaxed);
     if (!ring_.Reconfigure(contract_)) {
@@ -203,11 +221,12 @@ void UnityVulkanBridge::Recover() noexcept {
             const SlotResult published = ring_.PublishSubmitted(token, fd);
             if (published == SlotResult::Ok) {
                 imported_frames_.fetch_add(1);
+                RecordSuccessfulCopy();
             } else if (published == SlotResult::Busy) {
                 r.fd = std::move(fd);
                 r.kind.store(3, std::memory_order_release);
             } else {
-                if (published != SlotResult::Closed) last_error_.store(7);
+                if (published != SlotResult::Closed) {copy_errors_.fetch_add(1,std::memory_order_relaxed);last_error_.store(7);}
                 r.fd = std::move(fd);
                 r.kind.store(2, std::memory_order_release);
             }
@@ -289,7 +308,7 @@ BridgeResult UnityVulkanBridge::Render(void* identity) noexcept {
         return BridgeResult::Closed;
     if (record.generation != ring_.Generation()) return BridgeResult::Closed;
     if (!dispatch_.access_texture(dispatch_.context, record.unity_texture, record.access)) {
-        last_error_.store(1);
+        copy_errors_.fetch_add(1,std::memory_order_relaxed);last_error_.store(1);
         RetireWithoutSubmission(record.token); return BridgeResult::GpuError;
     }
     const auto& a = record.access;
@@ -312,7 +331,7 @@ BridgeResult UnityVulkanBridge::Render(void* identity) noexcept {
             expected_signature, signature, std::memory_order_acq_rel) && expected_signature != signature)) {
         dispatch_.release_texture(dispatch_.context, record.unity_texture, record.access);
         RetireWithoutSubmission(record.token);
-        last_error_.store(2);
+        copy_errors_.fetch_add(1,std::memory_order_relaxed);last_error_.store(2);
         CloseAdmission();
         return BridgeResult::Closed;
     }
@@ -322,7 +341,7 @@ BridgeResult UnityVulkanBridge::Render(void* identity) noexcept {
         dispatch_.release_texture(dispatch_.context, record.unity_texture,
                                   record.access);
         RetireWithoutSubmission(record.token);
-        if (prepared == SourcePreparation::Unsupported) { last_error_.store(3); CloseAdmission(); }
+        if (prepared == SourcePreparation::Unsupported) { copy_errors_.fetch_add(1,std::memory_order_relaxed);last_error_.store(3); CloseAdmission(); }
         return prepared == SourcePreparation::Warmed ? BridgeResult::Busy
                                                       : BridgeResult::GpuError;
     }
@@ -344,7 +363,7 @@ BridgeResult UnityVulkanBridge::Render(void* identity) noexcept {
     }
     record.queue_pending.store(true, std::memory_order_release);
     if (!dispatch_.queue_access(dispatch_.context, &UnityVulkanBridge::QueueEvent, &record)) {
-        last_error_.store(4);
+        copy_errors_.fetch_add(1,std::memory_order_relaxed);last_error_.store(4);
         record.queue_pending.store(false); dispatch_.release_texture(dispatch_.context, record.unity_texture, record.access);
         record.texture_accessed.store(false); RetireWithoutSubmission(record.token); return BridgeResult::GpuError;
     }
@@ -499,13 +518,13 @@ BridgeResult UnityVulkanBridge::ExecuteQueue(EventRecord* record) noexcept {
         dispatch_.record_blit(dispatch_.context, slot, record->access, record->barriers.data(), 4) :
         dispatch_.record_color(dispatch_.context, slot, record->access, record->barriers.data(), 4, true);
     if (!recorded) {
-        last_error_.store(5);
+        copy_errors_.fetch_add(1,std::memory_order_relaxed);last_error_.store(5);
         release();
         recovery_[record->token.index].token = record->token; recovery_[record->token.index].kind.store(1);
         return BridgeResult::GpuError;
     }
     if (!dispatch_.submit_signal(dispatch_.context, device_, slot)) {
-        last_error_.store(6);
+        copy_errors_.fetch_add(1,std::memory_order_relaxed);last_error_.store(6);
         release();
         recovery_[record->token.index].token = record->token; recovery_[record->token.index].kind.store(1);
         return BridgeResult::GpuError;
@@ -513,20 +532,20 @@ BridgeResult UnityVulkanBridge::ExecuteQueue(EventRecord* record) noexcept {
     auto& recovery = recovery_[record->token.index]; recovery.token = record->token;
     SyncFd fd;
     if (!dispatch_.export_sync_fd(dispatch_.context, device_, slot, fd)) {
-        last_error_.store(8);
+        copy_errors_.fetch_add(1,std::memory_order_relaxed);last_error_.store(8);
         release(); recovery.kind.store(2); return BridgeResult::GpuError;
     }
     // No callback reads mutable event/source data after publication.
     release();
     const SlotToken token = record->token;
     const SlotResult published = ring_.PublishSubmitted(token, fd);
-    if (published == SlotResult::Ok) { last_error_.store(0); imported_frames_.fetch_add(1); return BridgeResult::Ok; }
+    if (published == SlotResult::Ok) { last_error_.store(0); imported_frames_.fetch_add(1); RecordSuccessfulCopy(); return BridgeResult::Ok; }
     recovery.fd = std::move(fd);
     if (published == SlotResult::Busy) {
         recovery.kind.store(3, std::memory_order_release);
         return BridgeResult::Busy;
     }
-    if (published != SlotResult::Closed) last_error_.store(7);
+    if (published != SlotResult::Closed) {copy_errors_.fetch_add(1,std::memory_order_relaxed);last_error_.store(7);}
     recovery.kind.store(2, std::memory_order_release);
     return published == SlotResult::Closed ? BridgeResult::Closed : BridgeResult::GpuError;
 }

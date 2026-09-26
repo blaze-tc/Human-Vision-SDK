@@ -340,6 +340,7 @@ TEST(UnityVulkanBridgeContract, BlitUsesMeasuredPathAndExactOwnershipBarriers) {
   EXPECT_EQ(status.copy_path, HV_ANDROID_GPU_COPY_BLIT);
   EXPECT_EQ(status.submitted_frames, 1u);
   EXPECT_EQ(status.imported_frames, 1u);
+  EXPECT_EQ(bridge.SuccessfulCopies(),1u);
 }
 
 TEST(UnityVulkanBridgeContract, ColorPathReusesGenerationCachedGpuObjects) {
@@ -716,6 +717,8 @@ TEST(UnityVulkanBridgeContract, ReleasesTextureWhenSubmitOrFenceExportFails) {
         bridge.Render(static_cast<UnityVulkanBridge::EventRecord *>(data)),
         BridgeResult::Ok);
     EXPECT_EQ(fake.released, 1u);
+    EXPECT_EQ(bridge.SuccessfulCopies(),0u);
+    EXPECT_GT(bridge.CopyErrors(),0u);
   }
 }
 
@@ -1053,6 +1056,28 @@ TEST(UnityVulkanBridgeContract, FirstSourceMustMatchTheActuallyMeasuredSourceFor
   void* data=nullptr;ASSERT_EQ(bridge.Prepare(Submission(1),&data),BridgeResult::Ok);
   EXPECT_EQ(bridge.Render(data),BridgeResult::Closed);
   EXPECT_EQ(std::count(fake.calls.begin(),fake.calls.end(),"queue-access"),0);
+}
+
+TEST(UnityVulkanBridgeContract, ReinitializationClearsSuccessfulCopyTelemetry) {
+  FakeVulkan fake;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(),Selection(HV_ANDROID_GPU_COPY_BLIT),Contract()));
+  void* data=nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1),&data),BridgeResult::Ok);
+  ASSERT_EQ(bridge.Render(data),BridgeResult::Ok);
+  ASSERT_EQ(bridge.SuccessfulCopies(),1u);
+  fake.export_ok=false;
+  void* failed=nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(2),&failed),BridgeResult::Ok);
+  ASSERT_EQ(bridge.Render(failed),BridgeResult::Ok);
+  ASSERT_GT(bridge.CopyErrors(),0u);
+  fake.export_ok=true;
+  ASSERT_TRUE(bridge.Initialize(Device(),Selection(HV_ANDROID_GPU_COPY_BLIT),Contract()));
+  EXPECT_EQ(bridge.SuccessfulCopies(),0u);
+  EXPECT_EQ(bridge.CopyErrors(),0u);
+  const auto now=std::chrono::duration_cast<std::chrono::microseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+  EXPECT_EQ(bridge.SuccessfulCopyFps(now),0.f);
 }
 
 } // namespace

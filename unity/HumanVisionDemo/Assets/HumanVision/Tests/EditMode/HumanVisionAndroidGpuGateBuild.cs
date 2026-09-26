@@ -128,12 +128,20 @@ namespace HumanVision.Tests
         [Test]
         public void SerializedAndroidSettingsSnapshotDetectsPackageIdentityChange()
         {
-            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
-            string projectSettings = Path.Combine(projectRoot, "ProjectSettings/ProjectSettings.asset");
             string temporary = Path.GetTempFileName();
             try
             {
-                string original = File.ReadAllText(projectSettings);
+                // The temporary EditMode project can let Unity omit empty Android
+                // mappings. This parser test owns a complete serialized fixture.
+                string original = "PlayerSettings:\n" +
+                    "  productName: Human Vision\n" +
+                    "  applicationIdentifier:\n    Android: com.example.humanvision\n" +
+                    "  AndroidMinSdkVersion: 26\n" +
+                    "  AndroidTargetArchitectures: 2\n" +
+                    "  scriptingDefineSymbols:\n    Android: HV_TEST\n" +
+                    "  scriptingBackend:\n    Android: 1\n" +
+                    "  m_BuildTargetGraphicsAPIs:\n  - m_BuildTarget: AndroidPlayer\n" +
+                    "    m_APIs: 15000000\n    m_Automatic: 0\n";
                 File.WriteAllText(temporary, original);
                 string before = HumanVisionAndroidGpuGateBuild.ReadSerializedAndroidSettings(temporary);
                 StringAssert.Contains("productName:", before);

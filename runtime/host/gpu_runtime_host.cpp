@@ -71,6 +71,7 @@ bool GpuRuntimeHost::Start(std::shared_ptr<const GpuPluginModuleV3> module,
         error = Message(text, "V3 GPU pipeline creation failed"); return false;
     }
     module_ = std::move(module); instance_ = created; capacity_ = config.max_bodies;
+    superseded_ready_drops_=0;pose_job_drops_=0;import_errors_=0;
     {
         std::lock_guard<std::mutex> lock(result_mutex_);
         latest_ = {}; result_revision_ = 0; sequence_ = 0; has_result_ = false; error_.clear();
@@ -94,6 +95,13 @@ bool GpuRuntimeHost::CopyLatest(HV_GpuObservationFrameV3& out, int64_t& revision
     if (!has_result_) return false;
     out = latest_; revision = result_revision_; return true;
 }
+bool GpuRuntimeHost::CopyLatest(HV_GpuObservationFrameV3& out, int64_t& revision,
+                                int64_t& capture_steady_us) const {
+    std::lock_guard<std::mutex> lock(result_mutex_);
+    if (!has_result_) return false;
+    out = latest_; revision = result_revision_; capture_steady_us = capture_steady_us_;
+    return true;
+}
 std::string GpuRuntimeHost::LastError() const {
     std::lock_guard<std::mutex> lock(result_mutex_); return error_;
 }
@@ -115,6 +123,7 @@ void GpuRuntimeHost::Run() {
         gpu::ConsumerFrame frame;
         const auto dropped = source_.ClaimDropped(frame);
         if (dropped == gpu::SlotResult::Ok) {
+            ++superseded_ready_drops_;
             if (!source_.DrainUnsubmitted(frame) && frame.claimed) source_.Quarantine(frame);
             continue;
         }
@@ -157,6 +166,8 @@ void GpuRuntimeHost::Run() {
             next.v1.struct_size < sizeof(HV_ObservationFrameV1) ||
             next.v1.struct_size > sizeof(next) ||
             next.v1.api_version != HV_PLUGIN_API_V1) {
+            ++pose_job_drops_;
+            if(status!=HV_OK && std::strstr(text,"import"))++import_errors_;
             std::lock_guard<std::mutex> lock(result_mutex_);
             error_ = !retired ? "V3 GPU completion unproven; source generation quarantined" :
                 status != HV_OK ? Message(text, "V3 GPU processing failed") :
@@ -166,8 +177,16 @@ void GpuRuntimeHost::Run() {
         next.v1.sequence = ++sequence_;
         next.v1.source_frame_id = input.v1.frame_id; next.v1.source_timestamp_us = input.v1.timestamp_us;
         next.v1.width = input.v1.width; next.v1.height = input.v1.height;
+        if (sink_ && !sink_(sink_context_,next,revision,input.capture_steady_us)) {
+            ++pose_job_drops_;
+            std::lock_guard<std::mutex> lock(result_mutex_);
+            error_="GPU observation rejected by composition; inspect runtime error for provenance/revision";
+            continue;
+        }
         std::lock_guard<std::mutex> lock(result_mutex_);
-        latest_ = next; result_revision_ = revision; has_result_ = true; error_.clear();
+        latest_ = next; result_revision_ = revision;
+        capture_steady_us_ = input.capture_steady_us;
+        has_result_ = true; error_.clear();
     }
 }
 

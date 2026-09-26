@@ -1,3 +1,62 @@
+# Android Vulkan/ncnn — Revision 3 Task 9 diagnostics complete (2026-09-26)
+
+Task 9 adds a separate size/version-prefixed `HV_RuntimeStatsV2` query and
+managed interop. V1 stats layout, `HV_RuntimeCopy` and the public skeleton API
+are unchanged. The GPU worker now assigns Regions, validates current joint
+timestamps and native capture clock, and counts each accepted complete
+observation at native publication. A Unity poll may sample the same result many
+times without increasing the fresh counter. The paired native source-observation
+anchor and first publication clock drive fixed-capacity rolling age
+quantiles; pose-only and scheduled-detector-frame age are separate, as are per-body
+pose timings. Empty observations do not enter the per-body timing quantiles.
+Fresh, capture and sampled-output rates use bounded 10-second windows and
+decay to zero after a stall. Source arrivals/rate limiting, capture attempts,
+bridge and pose drops, detector cadence/outcomes, copy/import errors, selected
+copy path and actual backend have separate fields. Successful GPU copy counters
+and timestamps reset across bridge generations. The camera scene and Demo
+HUD use the same labelled V2 presentation.
+
+**Capture-clock limitation:** the Android camera scene uses Unity
+`WebCamTexture.didUpdateThisFrame`. `HumanVisionLiveSource` records the timestamp
+in `Update`, after the camera produced the buffer; Unity's 2021.3 public
+WebCamTexture API does not expose that image's original sensor timestamp.
+Accordingly V2 marks `capture_provenance=UNITY_OBSERVED`, labels Age P50/P95
+as a Unity-observed-to-publication **lower bound**, and leaves verified sensor
+capture age unavailable (`NaN`). The Task 10 end-to-end age gate must reject
+this provenance and cannot pass on the lower bound. An actual same-image
+timestamp would require a native camera image/metadata route (for example
+Android Camera2 `SENSOR_TIMESTAMP`) or another verified camera integration;
+that is a Task 10 architecture blocker, not evidence of physical acceptance.
+The current Task 9 contract does not permit callers to claim sensor-verified
+provenance through its setter.
+
+RED: `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter StatsV2`
+failed compilation when the new `StatsCollectorV2` contract was absent.
+Regression coverage now includes 1/4/8-body frame counting, sample/clone
+rejection, invalid clocks and stale valid joints before public publication,
+sparse Unity polling, deterministic P50/P95, separate pose/keyframe age,
+per-person timing, empty-frame exclusion, stalled FPS decay, unknown/observed
+unavailable sensor age, exact sensor-verified fixture quantiles, public
+verified-provenance spoof rejection, bridge restart telemetry reset and nonfinite
+pose timing rejection before publication. The new Unity tests cover the V1/V2 managed
+layouts, required provenance/HUD labels and actual camera scene connection.
+
+Verification after the final diagnostics changes:
+
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter StatsV2`: **10/10 PASS**.
+- `pwsh -NoProfile -File tools/test/run_native_tests.ps1`: **299/299 PASS**.
+- `pwsh -NoProfile -File tools/package/build_live_native.ps1 -Platform Windows`: **PASS** (build only).
+- `pwsh -NoProfile -File tools/test/run_unity040_tests.ps1`: **85/87 passed, 2 intentionally skipped, 0 failed**. The existing serialized Android settings test now uses a complete deterministic fixture because Unity's temporary EditMode project omits empty Android mappings; the test runner reports ignored tests without treating them as failures.
+- `pwsh -NoProfile -File tools/package/build_live_native.ps1 -Platform Android -AndroidApiLevel 26`: **PASS** (build only).
+- `.venv-reference/Scripts/python.exe tools/test/verify_android_native.py`: **PASS**, ELF64 AArch64/API 26, 1813 strong dynamic imports resolved; packaged `libhumanvision.so` SHA-256 `a5d0fbd95977b766bba1a2171a278ecd2c840df4484528979a39fb5f2a73e340`.
+- `.venv-reference/Scripts/python.exe tools/maintenance/check_architecture_boundaries.py`: **PASS**.
+- `git diff --check`: **PASS**.
+
+Independent Task 9 SPEC and QUALITY re-reviews passed after the provenance,
+bridge-restart and prepublication validation repairs. Task 9 is ready for its
+separate verified commit. No physical-device FPS or camera acceptance is
+claimed.
+
 # Android Vulkan/ncnn — Revision 3 Task 8 Region assignment complete (2026-09-26)
 
 Task 8 assigns current GPU pose observations to configured Regions in runtime

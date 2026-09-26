@@ -184,6 +184,9 @@ public:
   SlotResult RetainGeneration(ConsumerGeneration&,
                               void (*retain_ahb)(uintptr_t) noexcept) noexcept;
   void GetStatus(HV_AndroidGpuBridgeStatusV1 &) const noexcept;
+  uint64_t CopyErrors() const noexcept { return copy_errors_.load(std::memory_order_relaxed); }
+  uint64_t SuccessfulCopies() const noexcept { return successful_copies_.load(std::memory_order_relaxed); }
+  float SuccessfulCopyFps(int64_t now_us) const noexcept;
   void CloseAdmission() noexcept { accepting_calls_.store(false, std::memory_order_release); }
   bool IsClosed() const noexcept { return !initialized_.load(std::memory_order_acquire); }
   bool IsQuarantined() const noexcept { return quarantined_.load(std::memory_order_acquire); }
@@ -232,6 +235,10 @@ private:
   std::atomic<uint64_t> source_contract_signature_{0};
   std::atomic<uint64_t> submitted_frames_{0};
   std::atomic<uint64_t> imported_frames_{0};
+  std::atomic<uint64_t> copy_errors_{0};
+  std::atomic<uint64_t> successful_copies_{0};
+  std::array<std::atomic<int64_t>,512> successful_copy_times_{};
+  void RecordSuccessfulCopy() noexcept;
   std::atomic<uint32_t> last_error_{0};
   static std::atomic<UnityVulkanBridge *> callback_bridge_;
 };

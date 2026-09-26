@@ -7,6 +7,7 @@
 #include <functional>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <thread>
 #include "json/json.hpp"
 #include "picosha2/picosha2.h"
@@ -29,6 +30,8 @@ struct FakeSource final : GpuConsumerSource {
     SlotResult Claim(ConsumerFrame& frame) noexcept override {
         if(quarantines.load())return SlotResult::Closed;
         if (ready.exchange(false)) {
+            if(capture_steady_us==0)capture_steady_us=std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count()-5000;
             SlotToken prepared{};
             if (ring.Reserve(static_cast<uint64_t>(frame_id),timestamp_us,prepared,capture_steady_us)!=SlotResult::Ok ||
                 ring.Transition(prepared,AhbSlotState::EventReserved,AhbSlotState::UnityCopySubmitted)!=SlotResult::Ok ||
@@ -68,7 +71,7 @@ struct FakePipeline {
     std::atomic<bool> pause_run{false}, entered{false};
     std::atomic<int64_t> frame{0};
     std::atomic<int64_t> observed_capture_steady{0},observed_region_revision{0};
-    bool snapshot_mode=false,sidecar_mode=false,region_mode=false,invalid_version=false;
+    bool snapshot_mode=false,sidecar_mode=false,region_mode=false,invalid_version=false,stale_joint=false,invalid_pose_time=false;
 };
 FakePipeline* active = nullptr;
 HV_Result HV_CALL Create(const HV_PipelineConfigV1*, const HV_HostServicesV3*, void** out, HV_ErrorBufferV1* error) {
@@ -89,6 +92,7 @@ HV_Result HV_CALL Process(void* p, const HV_GpuFrameRefV1* input, HV_Observation
     fake.entered=true;
     while (fake.pause_run) std::this_thread::sleep_for(std::chrono::milliseconds(1));
     if (fake.fail_run) { std::snprintf(error->data, error->capacity, "fake V3 run failed"); return HV_ERR_INTERNAL; }
+    if (fake.invalid_pose_time) output->inference_ms=std::numeric_limits<float>::quiet_NaN();
     auto& lease = *static_cast<ConsumerFrame*>(input->opaque_slot);
     lease.producer_fd.Reset(); lease.ncnn_role_complete = true;
     if(fake.invalid_version)output->api_version=HV_PLUGIN_API_V1+1;
@@ -112,7 +116,7 @@ HV_Result HV_CALL Process(void* p, const HV_GpuFrameRefV1* input, HV_Observation
             auto& joint=body.joints[HV_CANONICAL_HANDTIP_LEFT];
             joint.valid=input->frame_id==1?1:0;joint.confidence=.9f;
             joint.x_px=120;joint.y_px=220;joint.x_norm=.375f;joint.y_norm=.916f;
-            joint.observation_timestamp_us=input->timestamp_us;
+            joint.observation_timestamp_us=fake.stale_joint?input->timestamp_us-33000:input->timestamp_us;
         }
         return HV_OK;
     }
@@ -288,7 +292,7 @@ TEST(RuntimeGpuComposition, PublicGpuSnapshotNeverCarriesPreviousJointsOrBodies)
     RuntimeSession runtime;std::string error;
     ASSERT_TRUE(runtime.Start(files.root,"android-ncnn-vulkan",1,error,QueryFixtureGpu,&source))<<error;
     auto next=[&](int64_t id,int64_t timestamp){
-        source.frame_id=id;source.timestamp_us=timestamp;source.ready=true;
+        source.frame_id=id;source.timestamp_us=timestamp;source.capture_steady_us=0;source.ready=true;
         HV_RuntimeStatsV1 stats{};BodySnapshot snapshot;
         const bool ready=Await([&]{snapshot=runtime.Copy(timestamp+10000,stats);
             return stats.source_frame_id==id;});
@@ -300,6 +304,83 @@ TEST(RuntimeGpuComposition, PublicGpuSnapshotNeverCarriesPreviousJointsOrBodies)
     ASSERT_EQ(second.count,1u);EXPECT_FALSE(second.bodies[0].joints[HV_CANONICAL_HANDTIP_LEFT].valid);
     const auto third=next(3,1066000);
     EXPECT_EQ(third.count,0u);
+    active=nullptr;
+}
+
+TEST(StatsV2, GpuWorkerCountsPublicationsBeforeSparseUnityPoll) {
+    SnapshotProfileFixture files;FakeSource source;FakePipeline fake;fake.snapshot_mode=true;active=&fake;
+    RuntimeSession runtime;std::string error;
+    ASSERT_TRUE(runtime.Start(files.root,"android-ncnn-vulkan",1,error,QueryFixtureGpu,&source))<<error;
+    for (int i=1;i<=3;++i) {
+        source.frame_id=i;source.timestamp_us=1'000'000+i*33'000;
+        source.capture_steady_us=std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count()-5'000;
+        source.ready=true;
+        ASSERT_TRUE(Await([&]{return source.retires.load()>=i;}));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    const auto before=runtime.StatsV2();
+    EXPECT_EQ(before.fresh_observation_frames,3u);
+    EXPECT_LE(before.age_p95_ms,50.0F);
+    HV_RuntimeStatsV1 v1{};runtime.Copy(0,v1);runtime.Copy(2'000'000,v1);
+    const auto after=runtime.StatsV2();
+    EXPECT_EQ(after.fresh_observation_frames,3u);
+    EXPECT_EQ(after.output_samples,1u);
+    EXPECT_FLOAT_EQ(after.age_p95_ms,before.age_p95_ms);
+    HV_RuntimeStatsV2 abi{};
+    abi.struct_size=sizeof(abi)-1;abi.api_version=HV_RUNTIME_STATS_V2_VERSION;
+    EXPECT_EQ(HV_RuntimeGetStatsV2(&runtime,&abi),HV_ERR_INVALID_ARGUMENT);
+    abi.struct_size=sizeof(abi);abi.api_version=HV_RUNTIME_STATS_V2_VERSION+1;
+    EXPECT_EQ(HV_RuntimeGetStatsV2(&runtime,&abi),HV_ERR_INVALID_ARGUMENT);
+    abi.api_version=HV_RUNTIME_STATS_V2_VERSION;
+    EXPECT_EQ(HV_RuntimeGetStatsV2(&runtime,&abi),HV_OK);
+    EXPECT_EQ(abi.fresh_observation_frames,3u);
+    EXPECT_EQ(abi.capture_provenance,HV_CAPTURE_PROVENANCE_UNKNOWN);
+    EXPECT_TRUE(std::isnan(abi.sensor_capture_age_p50_ms));
+    EXPECT_TRUE(std::isnan(abi.sensor_capture_age_p95_ms));
+    EXPECT_EQ(HV_RuntimeSetCaptureProvenanceV2(&runtime,HV_CAPTURE_PROVENANCE_SENSOR_VERIFIED),HV_ERR_INVALID_ARGUMENT);
+    EXPECT_EQ(HV_RuntimeSetCaptureProvenanceV2(&runtime,99),HV_ERR_INVALID_ARGUMENT);
+    EXPECT_EQ(HV_RuntimeSetCaptureProvenanceV2(&runtime,HV_CAPTURE_PROVENANCE_UNITY_OBSERVED),HV_OK);
+    EXPECT_EQ(HV_RuntimeGetStatsV2(&runtime,&abi),HV_OK);
+    EXPECT_EQ(abi.capture_provenance,HV_CAPTURE_PROVENANCE_UNITY_OBSERVED);
+    EXPECT_TRUE(std::isnan(abi.sensor_capture_age_p50_ms));
+    EXPECT_FLOAT_EQ(abi.age_p95_ms,after.age_p95_ms);
+    active=nullptr;
+}
+
+TEST(StatsV2, RejectsOldJointAndClockBeforePublicSnapshot) {
+    SnapshotProfileFixture files;FakeSource source;FakePipeline fake;fake.snapshot_mode=true;
+    fake.stale_joint=true;active=&fake;RuntimeSession runtime;std::string error;
+    ASSERT_TRUE(runtime.Start(files.root,"android-ncnn-vulkan",1,error,QueryFixtureGpu,&source))<<error;
+    source.frame_id=1;source.ready=true;
+    ASSERT_TRUE(Await([&]{return source.retires.load()>=1;}));
+    HV_RuntimeStatsV1 v1{};EXPECT_EQ(runtime.Copy(0,v1).count,0u);
+    EXPECT_EQ(v1.source_frame_id,0);
+    EXPECT_EQ(runtime.StatsV2().fresh_observation_frames,0u);
+    EXPECT_NE(runtime.LastError().find("joint provenance"),std::string::npos);
+    fake.stale_joint=false;source.frame_id=2;source.timestamp_us=1'033'000;
+    source.capture_steady_us=std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count()-20'000'000;
+    source.ready=true;ASSERT_TRUE(Await([&]{return source.retires.load()>=2;}));
+    EXPECT_EQ(runtime.Copy(0,v1).count,0u);
+    EXPECT_EQ(v1.source_frame_id,0);
+    EXPECT_EQ(runtime.StatsV2().fresh_observation_frames,0u);
+    EXPECT_NE(runtime.LastError().find("incompatible native clock"),std::string::npos);
+    EXPECT_GE(runtime.StatsV2().pose_job_drops,2u);
+    active=nullptr;
+}
+
+TEST(StatsV2, RejectsNonfinitePoseTimingBeforePublicSnapshot) {
+    SnapshotProfileFixture files;FakeSource source;FakePipeline fake;
+    fake.snapshot_mode=true;fake.invalid_pose_time=true;active=&fake;
+    RuntimeSession runtime;std::string error;
+    ASSERT_TRUE(runtime.Start(files.root,"android-ncnn-vulkan",1,error,QueryFixtureGpu,&source))<<error;
+    source.frame_id=1;source.ready=true;
+    ASSERT_TRUE(Await([&]{return source.retires.load()>=1;}));
+    HV_RuntimeStatsV1 v1{};EXPECT_EQ(runtime.Copy(0,v1).count,0u);
+    EXPECT_EQ(v1.source_frame_id,0);
+    EXPECT_EQ(runtime.StatsV2().fresh_observation_frames,0u);
+    EXPECT_NE(runtime.LastError().find("incompatible native clock"),std::string::npos);
     active=nullptr;
 }
 

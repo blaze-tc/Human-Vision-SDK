@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using HumanVision.Interop;
 
 namespace HumanVision
 {
@@ -35,6 +36,9 @@ namespace HumanVision
         public string ActiveRuntimeProfile => (_session as HumanVisionRuntimeSession)?.ProfileId ?? string.Empty;
         public float HandInferenceFps => (_session as HumanVisionRuntimeSession)?.HandFps ?? 0;
         public string RuntimeDiagnostics => (_session as HumanVisionRuntimeSession)?.Diagnostics ?? "V1 compatibility session";
+        internal RuntimeStatsV2Native RuntimeStatsV2 => (_session as HumanVisionRuntimeSession)?.StatsV2 ?? default;
+        internal void RecordSourceArrival(bool rateLimited) => (_session as HumanVisionRuntimeSession)?.RecordSourceArrival(rateLimited);
+        internal void SetCaptureProvenance(uint provenance) => (_session as HumanVisionRuntimeSession)?.SetCaptureProvenance(provenance);
         public string LastError { get; private set; }
         public bool TrySetRegions(Rect[] regions, long revision)
         {

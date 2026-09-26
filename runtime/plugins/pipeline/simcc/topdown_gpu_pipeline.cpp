@@ -171,7 +171,10 @@ struct Instance {
     HV_GpuPreparedRefV1 pending{};DetectorResultMeta pending_meta{},finished_meta{};
     bool running=true,job_ready=false,result_ready=false,fatal=false;
     char fatal_message[256]{};
-    uint64_t detector_executions=0,delayed_discards=0,pose_failures=0;
+    uint64_t detector_executions=0,delayed_discards=0,pose_failures=0,detector_late=0;
+    uint64_t detector_attempted_offset=0,missed_deadlines_offset=0;
+    int64_t last_detector_capture_steady_us=0;
+    float detector_completion_lag_ms=0;
     uint64_t generation=0;
     int64_t region_revision=0;
     int64_t last_processed_frame=-1;
@@ -211,6 +214,8 @@ struct Instance {
                 StopWorker();
                 {
                     std::lock_guard<std::mutex> lock(mutex);
+                    detector_attempted_offset+=cadence.Captures();
+                    missed_deadlines_offset+=cadence.MissedDeadlines();
                     cadence=DetectorCadenceScheduler(interval_frames,max_gap_us);
                     job_ready=result_ready=fatal=false;pending={};finished_boxes.clear();
                     fatal_message[0]=0;running=true;
@@ -227,6 +232,8 @@ struct Instance {
             last_selected_count=0;
             {
                 std::lock_guard<std::mutex> lock(mutex);
+                detector_attempted_offset+=cadence.Captures();
+                missed_deadlines_offset+=cadence.MissedDeadlines();
                 cadence=DetectorCadenceScheduler(interval_frames,max_gap_us);
                 job_ready=result_ready=fatal=false;pending={};finished_boxes.clear();
                 fatal_message[0]=0;running=true;
@@ -275,7 +282,10 @@ struct Instance {
                  const size_t length=std::min(std::strlen(reason),sizeof(fatal_message)-1);
                  std::memcpy(fatal_message,reason,length);fatal_message[length]=0;}
              else{finished_meta=meta;finished_boxes.swap(local_selected);result_ready=true;
-                 ++detector_executions;}
+                 ++detector_executions;
+                 last_detector_capture_steady_us=meta.capture_steady_us;
+                 detector_completion_lag_ms=float(std::max<int64_t>(0,now_us-meta.capture_steady_us))/1000.f;
+                 if(detector_completion_lag_ms>200.f)++detector_late;}
             }
         }
     }
@@ -467,12 +477,21 @@ HV_Result HV_CALL Process(void* opaque,const HV_GpuFrameRefV1* frame,
         PipelineDiagnostics diagnostics{};
         diagnostics.cadence_interval_frames=static_cast<uint32_t>(self.interval_frames);
         diagnostics.pose_person_count=static_cast<uint32_t>(next.size());
+        diagnostics.detector_keyframe=prepared;
         diagnostics.accepted_detection_count=output->body_count;
         diagnostics.pose_inference_total_ms=output->inference_ms;
         {
             std::lock_guard<std::mutex> lock(self.mutex);
             diagnostics.detector_execution_count=self.detector_executions;
-            diagnostics.missed_detector_deadlines=self.cadence.MissedDeadlines();
+            diagnostics.detector_attempted=self.detector_attempted_offset+self.cadence.Captures();
+            diagnostics.detector_late=self.detector_late;
+            diagnostics.detector_completion_lag_ms=self.detector_completion_lag_ms;
+            diagnostics.last_detector_capture_steady_us=self.last_detector_capture_steady_us;
+            const auto now_us=std::chrono::duration_cast<std::chrono::microseconds>(
+                Clock::now().time_since_epoch()).count();
+            diagnostics.detector_age_ms=self.last_detector_capture_steady_us>0
+                ?float(std::max<int64_t>(0,now_us-self.last_detector_capture_steady_us))/1000.f:0.f;
+            diagnostics.missed_detector_deadlines=self.missed_deadlines_offset+self.cadence.MissedDeadlines();
             diagnostics.delayed_detector_discards=self.delayed_discards;
             diagnostics.pose_validation_failures=self.pose_failures;
         }
