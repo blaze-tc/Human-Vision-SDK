@@ -1,5 +1,7 @@
+using System;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Xml;
 using HumanVision;
 using HumanVision.Editor;
@@ -17,6 +19,31 @@ namespace HumanVision.Tests
                 CompleteEnvironment());
 
             Assert.IsEmpty(issues.Where(issue => issue.IsError));
+        }
+
+        [Test]
+        public void StaticNcnnAuditRejectsMissingProofAndWrongAbi()
+        {
+            var library = Path.GetTempFileName();
+            var manifest = Path.GetTempFileName();
+            try
+            {
+                var elf = new byte[20];
+                elf[0] = 0x7f; elf[1] = (byte)'E'; elf[2] = (byte)'L'; elf[3] = (byte)'F';
+                elf[4] = 2; elf[5] = 1; elf[18] = 183;
+                File.WriteAllBytes(library, elf);
+                var hash = BitConverter.ToString(SHA256.Create().ComputeHash(elf)).Replace("-", "").ToLowerInvariant();
+                Assert.IsFalse(HumanVisionAndroidBuildSettings.ValidateStaticNcnnAudit(library, manifest));
+                File.WriteAllText(manifest, "{\"native_sha256\":\"" + hash +
+                    "\",\"abi\":\"x86_64\",\"api_level\":26,\"ncnn_vulkan_symbols_verified\":true}");
+                Assert.IsFalse(HumanVisionAndroidBuildSettings.ValidateStaticNcnnAudit(library, manifest));
+                File.WriteAllText(manifest, "{\"native_sha256\":\"" + hash +
+                    "\",\"abi\":\"arm64-v8a\",\"api_level\":26,\"ncnn_vulkan_symbols_verified\":true}");
+                Assert.IsTrue(HumanVisionAndroidBuildSettings.ValidateStaticNcnnAudit(library, manifest));
+                elf[18] = 62; File.WriteAllBytes(library, elf);
+                Assert.IsFalse(HumanVisionAndroidBuildSettings.ValidateStaticNcnnAudit(library, manifest));
+            }
+            finally { File.Delete(library); File.Delete(manifest); }
         }
 
         [TestCase("MinimumApiLevel", 25)]

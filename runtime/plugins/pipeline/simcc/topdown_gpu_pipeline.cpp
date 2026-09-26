@@ -1,6 +1,7 @@
 #include "plugins/pipeline/simcc/topdown_gpu_pipeline.h"
 #include "plugins/pipeline/simcc/detector_cadence.h"
 #include "plugins/pipeline/simcc/gpu_track_crops.h"
+#include "plugins/pipeline/simcc/topdown_tensor_contract.h"
 #include "plugins/backend/ncnn/ncnn_vulkan_backend.h"
 #include "common/pipeline_diagnostics.h"
 #include "models/rtmpose/pose_affine.h"
@@ -13,14 +14,28 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <thread>
 #if defined(__ANDROID__)
 #include <poll.h>
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+#include <android/log.h>
+#endif
 #endif
 
 namespace humanvision::runtime {
+bool BuildGpuDetectorLetterbox(int source_width,int source_height,int model_width,int model_height,
+                               HV_GpuImageTransformV1& transform,DetectorLetterbox& inverse){
+    if(source_width<=0||source_height<=0||model_width<=0||model_height<=0)return false;
+    inverse.scale=std::min(float(model_width)/source_width,float(model_height)/source_height);
+    inverse.pad_x=(model_width-source_width*inverse.scale)*.5f;
+    inverse.pad_y=(model_height-source_height*inverse.scale)*.5f;
+    transform.source_rect_px={-inverse.pad_x/inverse.scale,-inverse.pad_y/inverse.scale,
+        model_width/inverse.scale,model_height/inverse.scale};
+    return true;
+}
 bool BuildGpuPoseCrop(const Detection& box,HV_GpuImageTransformV1& transform,
                       HV_Rect& inverse_rect){
     PoseAffineTransform affine{};std::string error;
@@ -62,10 +77,7 @@ struct Backend {
     HV_GpuImageTransformV1 transform{};
 };
 bool Tensor(const HV_TensorViewV1& view,const char* name,int rows,int cols) {
-    return view.name && std::strcmp(view.name,name)==0 && view.element_type==1 &&
-        view.data && view.rank==3 && view.dimensions[0]==1 &&
-        view.dimensions[1]==rows && view.dimensions[2]==cols &&
-        view.byte_count==uint64_t(rows)*cols*sizeof(float);
+    return MatchesTopDownTensor(view,name,rows,cols);
 }
 float IoU(const Detection& a,const Detection& b) {
     const float w=std::max(0.f,std::min(a.x2,b.x2)-std::max(a.x1,b.x1));
@@ -78,13 +90,19 @@ bool DecodeDetector(const HV_TensorViewV1* views,uint32_t count,int width,int he
     const HV_TensorViewV1 *cls=nullptr,*bbox=nullptr;
     for(uint32_t i=0;i<count;++i){if(Tensor(views[i],"cls",2100,1))cls=&views[i];
         if(Tensor(views[i],"bbox",2100,4))bbox=&views[i];}
-    if(!cls||!bbox)return false;
+    if(!cls||!bbox){
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+        __android_log_print(ANDROID_LOG_ERROR,"HV_TOPDOWN_PIPELINE",
+            "detector decode rejected tensor contract cls=%d bbox=%d",cls?1:0,bbox?1:0);
+#endif
+        return false;
+    }
     const auto* scores=static_cast<const float*>(cls->data);
     const auto* distances=static_cast<const float*>(bbox->data);
     candidates.clear();selected.clear();
-    // The V3 AHB preprocessor resizes the declared full source rectangle to
-    // 320x320. Reverse that exact transform, including non-square sources.
-    const float scale_x=320.f/width,scale_y=320.f/height;
+    HV_GpuImageTransformV1 letterbox_transform{};
+    DetectorLetterbox inverse{};
+    if(!BuildGpuDetectorLetterbox(width,height,320,320,letterbox_transform,inverse))return false;
     for(int i=0;i<2100;++i){
         const float raw=scores[i],score=1.f/(1.f+std::exp(-raw));
         if(!std::isfinite(raw)||score<.35f)continue;
@@ -94,11 +112,18 @@ bool DecodeDetector(const HV_TensorViewV1* views,uint32_t count,int width,int he
         const float stride=static_cast<float>(8<<level);
         const float cx=(local%grid+.5f)*stride,cy=(local/grid+.5f)*stride;
         const float* d=distances+i*4;
-        if(!std::all_of(d,d+4,[](float v){return std::isfinite(v)&&v>=0;}))return false;
-        Detection box{std::clamp((cx-d[0])/scale_x,0.f,float(width)),
-                      std::clamp((cy-d[1])/scale_y,0.f,float(height)),
-                      std::clamp((cx+d[2])/scale_x,0.f,float(width)),
-                      std::clamp((cy+d[3])/scale_y,0.f,float(height)),score};
+        if(!std::all_of(d,d+4,[](float v){return std::isfinite(v)&&v>=0;})){
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+            __android_log_print(ANDROID_LOG_ERROR,"HV_TOPDOWN_PIPELINE",
+                "detector decode rejected bbox index=%d values=%g,%g,%g,%g score=%g",
+                i,d[0],d[1],d[2],d[3],score);
+#endif
+            return false;
+        }
+        Detection box{std::clamp((cx-d[0]-inverse.pad_x)/inverse.scale,0.f,float(width)),
+                      std::clamp((cy-d[1]-inverse.pad_y)/inverse.scale,0.f,float(height)),
+                      std::clamp((cx+d[2]-inverse.pad_x)/inverse.scale,0.f,float(width)),
+                      std::clamp((cy+d[3]-inverse.pad_y)/inverse.scale,0.f,float(height)),score};
         if(box.x2>box.x1&&box.y2>box.y1)candidates.push_back(box);
     }
     std::sort(candidates.begin(),candidates.end(),[](const auto& a,const auto& b){return a.score>b.score;});
@@ -123,13 +148,25 @@ bool DecodePose(const HV_TensorViewV1* views,uint32_t count,const HV_Rect& rect,
     const HV_TensorViewV1 *x=nullptr,*y=nullptr;
     for(uint32_t i=0;i<count;++i){if(Tensor(views[i],"simcc_x",26,384))x=&views[i];
         if(Tensor(views[i],"simcc_y",26,512))y=&views[i];}
-    if(!x||!y)return false;
+    if(!x||!y){
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+        __android_log_print(ANDROID_LOG_ERROR,"HV_TOPDOWN_PIPELINE",
+            "pose decode rejected tensor contract x=%d y=%d",x?1:0,y?1:0);
+#endif
+        return false;
+    }
     const auto* xs=static_cast<const float*>(x->data);const auto* ys=static_cast<const float*>(y->data);
     joints.clear();int valid=0;
     for(int k=0;k<26;++k){
         const auto* xb=xs+k*384;const auto* yb=ys+k*512;
         if(!std::all_of(xb,xb+384,[](float v){return std::isfinite(v);})||
-           !std::all_of(yb,yb+512,[](float v){return std::isfinite(v);}))return false;
+           !std::all_of(yb,yb+512,[](float v){return std::isfinite(v);})){
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+            __android_log_print(ANDROID_LOG_ERROR,"HV_TOPDOWN_PIPELINE",
+                "pose decode rejected nonfinite joint=%d",k);
+#endif
+            return false;
+        }
         const auto* xp=std::max_element(xb,xb+384);const auto* yp=std::max_element(yb,yb+512);
         const float px=rect.x+float(xp-xb)*rect.width/384.f;
         const float py=rect.y+float(yp-yb)*rect.height/512.f;
@@ -142,7 +179,17 @@ bool DecodePose(const HV_TensorViewV1* views,uint32_t count,const HV_Rect& rect,
         if(k<17&&joint.valid)++valid;
         joints.push_back(joint);
     }
-    if(valid<5)return false;
+    if(valid<5){
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+        float low=1.f,high=0.f;
+        for(int i=0;i<17;++i){low=std::min(low,joints[i].confidence);
+            high=std::max(high,joints[i].confidence);}
+        __android_log_print(ANDROID_LOG_ERROR,"HV_TOPDOWN_PIPELINE",
+            "pose decode rejected valid17=%d confidence_range=%g,%g crop=%g,%g,%g,%g",
+            valid,low,high,rect.x,rect.y,rect.width,rect.height);
+#endif
+        return false;
+    }
     body={};body.struct_size=sizeof(body);body.api_version=HV_PLUGIN_API_V1;
     for(auto& joint:body.joints){joint.struct_size=sizeof(joint);joint.api_version=HV_API_VERSION_040;}
     float confidence=1.f;for(int k=0;k<22;++k){body.joints[kMapping[k]]=joints[k];
@@ -269,7 +316,51 @@ struct Instance {
             HV_TensorViewV1 views[2]{};uint32_t count=0;char message[256]{};
             HV_ErrorBufferV1 error{sizeof(error),HV_PLUGIN_API_V1,message,sizeof(message)};
             const auto status=detector.api->prepared->run_prepared(detector.instance,&ref,views,2,&count,&error);
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+            const auto decode_begun=Clock::now();
+            __android_log_print(ANDROID_LOG_INFO,"HV_TOPDOWN_PIPELINE",
+                "detector frame=%lld run_status=%d count=%u error=%s decode_begin",
+                static_cast<long long>(ref.frame_id),static_cast<int>(status),count,message);
+            for(uint32_t i=0;i<count&&i<2;++i)
+                __android_log_print(ANDROID_LOG_INFO,"HV_TOPDOWN_PIPELINE",
+                    "detector tensor=%u name=%s type=%u rank=%u dims=%lld,%lld,%lld bytes=%llu",
+                    i,views[i].name?views[i].name:"null",views[i].element_type,
+                    views[i].rank,static_cast<long long>(views[i].dimensions[0]),
+                    static_cast<long long>(views[i].dimensions[1]),
+                    static_cast<long long>(views[i].dimensions[2]),
+                    static_cast<unsigned long long>(views[i].byte_count));
+            for(uint32_t i=0;i<count&&i<2;++i){
+                if(!views[i].data||views[i].element_type!=1)continue;
+                const auto* values=static_cast<const float*>(views[i].data);
+                const auto size=std::min<uint64_t>(views[i].byte_count/sizeof(float),8400);
+                float low=std::numeric_limits<float>::infinity();
+                float high=-std::numeric_limits<float>::infinity();
+                uint64_t finite=0,negative=0;
+                for(uint64_t j=0;j<size;++j){
+                    if(!std::isfinite(values[j]))continue;
+                    ++finite;if(values[j]<0)++negative;
+                    low=std::min(low,values[j]);high=std::max(high,values[j]);
+                }
+                __android_log_print(ANDROID_LOG_INFO,"HV_TOPDOWN_PIPELINE",
+                    "detector tensor=%u finite=%llu/%llu negative=%llu range=%g,%g",
+                    i,static_cast<unsigned long long>(finite),static_cast<unsigned long long>(size),
+                    static_cast<unsigned long long>(negative),low,high);
+            }
+#endif
             const bool decoded=status==HV_OK&&DecodeDetector(views,count,width,height,local_candidates,local_selected);
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+            __android_log_print(ANDROID_LOG_INFO,"HV_TOPDOWN_PIPELINE",
+                "detector frame=%lld decoded=%d candidates=%zu selected=%zu decode_ms=%lld",
+                static_cast<long long>(ref.frame_id),decoded?1:0,local_candidates.size(),
+                local_selected.size(),static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                    Clock::now()-decode_begun).count()));
+            if(!local_selected.empty()){
+                const auto& box=local_selected.front();
+                __android_log_print(ANDROID_LOG_INFO,"HV_TOPDOWN_PIPELINE",
+                    "detector selected_top score=%g box=%g,%g,%g,%g image=%d,%d",
+                    box.score,box.x1,box.y1,box.x2,box.y2,width,height);
+            }
+#endif
             // The paired native capture clock includes time spent in Unity/AHB
             // queues before prepare_image. Keep published timestamps in the
             // original Unity clock domain.
@@ -371,6 +462,13 @@ HV_Result HV_CALL Process(void* opaque,const HV_GpuFrameRefV1* frame,
                 self.result_ready=false;self.finished_boxes.clear();}
         }
         const auto& next=self.crops->NextCrops(frame->frame_id,frame->timestamp_us);
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+        if(!next.empty())
+            __android_log_print(ANDROID_LOG_INFO,"HV_TOPDOWN_PIPELINE",
+                "pose frame=%lld crop_count=%zu first_track=%d first_box=%g,%g,%g,%g",
+                static_cast<long long>(frame->frame_id),next.size(),next.front().track_id,
+                next.front().box.x1,next.front().box.y1,next.front().box.x2,next.front().box.y2);
+#endif
         if(self.crops->NeedsReacquisition())trigger=DetectorCadenceTrigger::NoTracks;
         else if(self.last_selected_count&&next.size()!=self.last_selected_count)
             trigger=DetectorCadenceTrigger::BodyCountChanged;
@@ -398,7 +496,10 @@ HV_Result HV_CALL Process(void* opaque,const HV_GpuFrameRefV1* frame,
             }
         }
         if(prepared){
-            self.detector.transform.source_rect_px={0,0,float(frame->width),float(frame->height)};
+            DetectorLetterbox inverse{};
+            if(!BuildGpuDetectorLetterbox(frame->width,frame->height,
+                self.detector_contract.width,self.detector_contract.height,
+                self.detector.transform,inverse))return HV_ERR_INVALID_ARGUMENT;
             HV_GpuPreparedRefV1 ref{sizeof(ref),HV_GPU_PREPARED_API_V1};
             const auto native_now=std::chrono::duration_cast<std::chrono::microseconds>(
                 Clock::now().time_since_epoch()).count();
@@ -442,6 +543,20 @@ HV_Result HV_CALL Process(void* opaque,const HV_GpuFrameRefV1* frame,
             const auto pose_begin=Clock::now();
             const auto status=self.pose.api->v1.run_image(self.pose.instance,frame,
                 &self.pose.transform,views,2,&count,error);
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+            __android_log_print(ANDROID_LOG_INFO,"HV_TOPDOWN_PIPELINE",
+                "pose run_status=%d frame=%lld count=%u crop_rect=%g,%g,%g,%g",
+                static_cast<int>(status),static_cast<long long>(frame->frame_id),count,
+                decode_rect.x,decode_rect.y,decode_rect.width,decode_rect.height);
+            for(uint32_t i=0;i<count&&i<2;++i)
+                __android_log_print(ANDROID_LOG_INFO,"HV_TOPDOWN_PIPELINE",
+                    "pose tensor=%u name=%s rank=%u dims=%lld,%lld,%lld bytes=%llu",
+                    i,views[i].name?views[i].name:"null",views[i].rank,
+                    static_cast<long long>(views[i].dimensions[0]),
+                    static_cast<long long>(views[i].dimensions[1]),
+                    static_cast<long long>(views[i].dimensions[2]),
+                    static_cast<unsigned long long>(views[i].byte_count));
+#endif
             if(status!=HV_OK)return status;
             output->inference_ms+=std::chrono::duration<float,std::milli>(Clock::now()-pose_begin).count();
             posed=true;
@@ -449,6 +564,12 @@ HV_Result HV_CALL Process(void* opaque,const HV_GpuFrameRefV1* frame,
             const bool valid=DecodePose(views,count,decode_rect,*frame,self.joints,body);
             const bool accepted=self.crops->ApplyPose(frame->frame_id,frame->timestamp_us,
                 crop.track_id,self.joints,valid);
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+            __android_log_print(ANDROID_LOG_INFO,"HV_TOPDOWN_PIPELINE",
+                "pose frame=%lld track=%d decoded=%d accepted=%d joints=%zu",
+                static_cast<long long>(frame->frame_id),crop.track_id,valid?1:0,
+                accepted?1:0,self.joints.size());
+#endif
             if(!accepted){++self.pose_failures;continue;}
             body.bbox_px=rect;
             const auto index=output->body_count++;

@@ -13,6 +13,9 @@ namespace humanvision::gpu { class UnityVulkanBridge; }
 
 namespace humanvision::runtime::ncnn_backend {
 struct InputContract {
+    enum class CropMode { Letterbox, BboxAffine };
+    CropMode crop_mode = CropMode::BboxAffine;
+    std::array<float, 3> pad_rgb{};
     uint32_t image_format = 0;
     uint32_t channel_order = 0;
     uint32_t output_type = 0;

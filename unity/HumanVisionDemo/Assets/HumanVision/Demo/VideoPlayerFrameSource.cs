@@ -222,6 +222,8 @@ namespace HumanVision.Demo
         public int SourceHeight { get; private set; }
         public long ReadbackDrops { get; private set; }
         public long ReadbackErrors { get; private set; }
+        public long FullFrameReadbackRequests { get; private set; }
+        public int MaxOverlayLagFrames => maxOverlayLagFrames;
         public string CurrentVideoPath { get; private set; }
         public string LastError { get; private set; }
         public bool IsPlaying => _videoPlayer != null && _videoPlayer.isPlaying;
@@ -311,6 +313,7 @@ namespace HumanVision.Demo
                 _livePendingFrameId = slot.FrameId; _livePendingTime = Time.realtimeSinceStartupAsDouble;
                 _nextLiveSubmitTime = _livePendingTime + 1.0 / 30.0;
             } else CapturePresentationFrame(slot.FrameId);
+            ++FullFrameReadbackRequests;
             slot.Request = AsyncGPUReadback.RequestIntoNativeArray(ref slot.Buffer, _renderTexture,
                 0, TextureFormat.RGBA32, slot.Completion);
             return true;

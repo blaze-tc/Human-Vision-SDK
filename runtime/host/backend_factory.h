@@ -15,6 +15,7 @@ struct GpuPluginModuleV3 {
 };
 struct BackendDiagnostic {std::mutex mutex;HV_BackendSessionInfoV1 info{};std::string creation_failures,model_name;float inference_ms=0;};
 struct BackendSelectionDiagnostics {std::string requested="uninitialized",actual="uninitialized";};
+struct GpuV3SelectionState {std::mutex mutex;std::map<std::string,unsigned> active;};
 // Immutable ordered candidates. Keep factory alive until pipeline creation ends.
 // Returned sessions retain their plugin modules independently of this factory.
 class BackendFactory {
@@ -45,5 +46,6 @@ private:
  bool allow_fallback_=true;
  mutable std::mutex diagnostics_mutex_;
  std::vector<std::shared_ptr<BackendDiagnostic>> diagnostics_;
+ std::shared_ptr<GpuV3SelectionState> gpu_v3_selection_=std::make_shared<GpuV3SelectionState>();
 };
 }

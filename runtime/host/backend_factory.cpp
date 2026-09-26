@@ -79,7 +79,14 @@ std::string BackendFactory::Diagnostics() const {
 }
 BackendSelectionDiagnostics BackendFactory::SelectionDiagnostics() const {
  std::lock_guard<std::mutex> lock(diagnostics_mutex_);BackendSelectionDiagnostics result;
- if(diagnostics_.empty())return result;
+ if(diagnostics_.empty()){
+  std::lock_guard<std::mutex> gpu_lock(gpu_v3_selection_->mutex);
+  if(!gpu_v3_selection_->active.empty()){
+   result.requested=gpu_v3_selection_->active.begin()->first;
+   result.actual=result.requested;
+  }
+  return result;
+ }
  std::lock_guard<std::mutex> item(diagnostics_.front()->mutex);auto info=diagnostics_.front()->info;
  info.requested[sizeof(info.requested)-1]=0;info.actual[sizeof(info.actual)-1]=0;
  result.requested=info.requested;result.actual=info.actual;return result;
@@ -139,6 +146,8 @@ const HV_GpuBackendApiV1 gpu_lease_api{
 
 struct GpuLeaseV3 {
     std::shared_ptr<const GpuPluginModuleV3> module;
+    std::shared_ptr<GpuV3SelectionState> selection;
+    std::string selected_id;
     void* instance = nullptr;
     std::mutex mutex;
     HV_GpuPreparedRefV1 active{};
@@ -152,6 +161,12 @@ struct GpuLeaseV3 {
             module->api.gpu_backend->prepared->discard_prepared(instance, &active, nullptr);
         } catch (...) {}
         try { module->api.gpu_backend->v1.destroy(instance); } catch (...) {}
+        if (selection) {
+            std::lock_guard<std::mutex> lock(selection->mutex);
+            auto found=selection->active.find(selected_id);
+            if(found!=selection->active.end() && --found->second==0)
+                selection->active.erase(found);
+        }
     }
 };
 
@@ -567,6 +582,12 @@ HV_Result BackendFactory::CreateGpuBackendV3(const HV_GpuBackendConfigV1* config
             Error(error, provider + ": " +
                 (text[0] ? text : "V3 GPU backend creation failed; no fallback is permitted"));
             return result == HV_OK ? HV_ERR_INTERNAL : result;
+        }
+        lease->selection=gpu_v3_selection_;
+        lease->selected_id=lease->module->api.v1.plugin_id;
+        {
+            std::lock_guard<std::mutex> lock(gpu_v3_selection_->mutex);
+            ++gpu_v3_selection_->active[lease->selected_id];
         }
         *api = &gpu_lease_api_v3;
         *out = lease.release();

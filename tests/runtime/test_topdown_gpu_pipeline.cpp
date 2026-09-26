@@ -121,6 +121,24 @@ TEST(TopDownGpu, GpuPoseCropMatchesFourRealGoldenAffines) {
     }
 }
 
+TEST(TopDownGpu, DetectorLetterboxPreservesNonSquareFrameAndInverse) {
+    HV_GpuImageTransformV1 transform{};
+    humanvision::runtime::DetectorLetterbox inverse{};
+    ASSERT_TRUE(humanvision::runtime::BuildGpuDetectorLetterbox(1280,720,320,320,transform,inverse));
+    EXPECT_FLOAT_EQ(transform.source_rect_px.x,0.f);
+    EXPECT_FLOAT_EQ(transform.source_rect_px.y,-280.f);
+    EXPECT_FLOAT_EQ(transform.source_rect_px.width,1280.f);
+    EXPECT_FLOAT_EQ(transform.source_rect_px.height,1280.f);
+    EXPECT_FLOAT_EQ(inverse.scale,0.25f);
+    EXPECT_FLOAT_EQ(inverse.pad_x,0.f);
+    EXPECT_FLOAT_EQ(inverse.pad_y,70.f);
+    EXPECT_FLOAT_EQ((70.f-inverse.pad_y)/inverse.scale,0.f);
+    EXPECT_FLOAT_EQ((250.f-inverse.pad_y)/inverse.scale,720.f);
+    HV_GpuImageTransformV1 pose{}; HV_Rect pose_inverse{};
+    ASSERT_TRUE(humanvision::runtime::BuildGpuPoseCrop({100,100,300,500,1},pose,pose_inverse));
+    EXPECT_NEAR(pose.source_rect_px.width,pose_inverse.width,0.0001f);
+}
+
 namespace {
 struct FakeGpu {
     std::array<float,2100> cls{};
@@ -204,6 +222,9 @@ void HV_CALL ReleaseBackend(void*,const HV_GpuBackendApiV2*,void*){}
 std::string Manifest(){
     auto input=[](int w,int h,int pack){return nlohmann::json{{"image_format","rgba8-unorm"},
         {"color_order","rgb"},{"normalization",{{"mean",{0,0,0}},{"norm",{1,1,1}}}},
+        {"crop",w==320?"letterbox":"bbox_affine"},
+        {"resize_interpolation","bilinear"},{"affine_interpolation","bilinear"},
+        {"pad_rgb",{114,114,114}},
         {"tensor_dtype","fp16"},{"elempack",pack},{"width",w},{"height",h},{"input_blob","in0"}};};
     nlohmann::json models=nlohmann::json::array();
     models.push_back({{"role","detector"},{"input_contract",input(320,320,1)},

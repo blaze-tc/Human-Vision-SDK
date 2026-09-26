@@ -152,14 +152,17 @@ TEST(GpuAbiV3, RejectsMalformedRegistration) {
 
 TEST(GpuAbiV3, ExplicitProviderAndOneShotGenerationBoundToken) {
     Reset(); BackendFactory factory({}); std::string error;
+    EXPECT_EQ(factory.SelectionDiagnostics().actual, "uninitialized");
     ASSERT_TRUE(factory.RegisterV3(Query, error)) << error;
     auto services = factory.ServicesV3();
     const HV_GpuBackendApiV2* api = nullptr; void* instance = nullptr;
     config.requested_provider_utf8 = "backend.ort.cpu";
     EXPECT_EQ(services.create_gpu_backend_v3(services.v2.v1.context, &config, &device, &api, &instance, nullptr), HV_ERR_MODEL_LOAD);
+    EXPECT_EQ(factory.SelectionDiagnostics().actual, "uninitialized");
     EXPECT_EQ(creates, 0);
     config.requested_provider_utf8 = "fixture.v3";
     ASSERT_EQ(services.create_gpu_backend_v3(services.v2.v1.context, &config, &device, &api, &instance, nullptr), HV_OK);
+    EXPECT_EQ(factory.SelectionDiagnostics().actual, "fixture.v3");
     EXPECT_EQ(api->v1.struct_size, sizeof(HV_GpuBackendApiV2));
     HV_GpuPreparedRefV1 ref{sizeof(ref), HV_GPU_PREPARED_API_V1};
     ASSERT_EQ(api->prepared->prepare_image(instance, &frame, &transform, &ref, nullptr), HV_OK);
@@ -178,6 +181,7 @@ TEST(GpuAbiV3, ExplicitProviderAndOneShotGenerationBoundToken) {
     EXPECT_EQ(repeated.token, 0u);
     services.release_gpu_backend_v3(nullptr, api, instance);
     EXPECT_EQ(destroys, 1);
+    EXPECT_EQ(factory.SelectionDiagnostics().actual, "uninitialized");
 }
 
 TEST(GpuAbiV3, RejectsMalformedRefsAndCleansPartialCreation) {

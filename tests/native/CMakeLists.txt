@@ -206,6 +206,7 @@ target_sources(humanvision_native_tests PRIVATE
 target_sources(humanvision_native_tests PRIVATE
     ../runtime/test_ncnn_input_contract.cpp
     ../runtime/test_ncnn_dense_output.cpp
+    ../runtime/test_topdown_tensor_contract.cpp
     ../runtime/test_ncnn_preprocess_contract.cpp
     ../runtime/test_ncnn_prepared_input.cpp
     ../runtime/test_ncnn_backend_registration.cpp

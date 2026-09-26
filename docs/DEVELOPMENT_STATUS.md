@@ -1,3 +1,46 @@
+# Android Vulkan/ncnn — Revision 3 Task 10 integrated device gate FAIL (2026-09-26)
+
+The integrated Development/IL2CPP/ARM64/API-26/Vulkan Camera Demo was built
+with interval 2/capacity 1 and a separately hashed local model profile. The
+one-person, front-camera 60-second window produced 1,137 distinct complete
+native observations (18.95/s), zero native Bodies and zero facade body slots while
+the user confirmed their upper body visible. A corrected GPU letterbox and
+rank-2 output decoder passed native regressions but did not restore live
+recognition. A hash-bound supplemental video run in the same Demo with a
+verified `VideoPlayer` GPU texture also produced zero candidates, while pinned
+ONNX recognizes that video. Its sparse normalized GPU input has an unexpected
+black content row; GPU copy/import/preprocess versus ncnn parity needs further
+isolation. `WebCamTexture` still lacks the same-image sensor timestamp, so
+verified sensor age is unavailable. The 30 fresh/s, body correctness and age
+gates therefore fail independently. No 2-person or 15-minute thermal window
+was run, no interval was selected, and RTMO/Hand/release work remains gated.
+See `docs/validation/ANDROID_NCNN_TOPDOWN_GATE.md` and ignored raw evidence.
+Post-review RED→GREEN fixtures closed analyzer false-pass paths for rolling
+10-second exit boundaries, 1/2-person cardinality, runtime telemetry/fatal
+lines, live overlay presentation and thermal sample validity. The analyzer
+suite is 10/10 PASS; full native CTest remains 302/302 PASS, architecture checks
+PASS, and the isolated Unity project imported the final evaluation-only C#
+teardown edit without errors. The measured device APK was not rebuilt after
+that teardown edit. Facade slots do not prove rendered skeleton geometry, so
+renderer evidence is now unavailable and fail-closed. The controlled video
+bypasses live-source recency; its native detector trace is diagnostic only.
+Thermal evidence must bind body correctness and source to the same
+APK/device/PID/log timeline, and none exists for this failed candidate. The
+currently open `E:\UnityProject\Human-Vision-SDK-Test` Editor imported the
+reviewed Task 10 Unity sources and four narrowly required older-runtime
+dependencies after every overwritten file was backed up and hash checked. Its
+CameraDemo and CameraSettings scenes were created, and Unity's Build Settings
+API reads both enabled exactly once. Both scenes entered bounded Play with zero
+compile/Console errors; the Demo overlayer retained the requested 24/72 visual
+defaults. Actual Editor inference is blocked: `HumanVisionCameraManager.Status`
+reports `Runtime data index missing: HTTP/1.1 404 Not Found` because
+`Assets/StreamingAssets/HumanVision/Runtime/index.json` is absent from both the
+repository Unity Demo and open project. `IsReady=false`, `ResultSequence=0`;
+this Editor run does not demonstrate a visible skeleton or change device FAIL.
+The open project remains on Android build target and its user assets/settings
+and eight 24/72 prepared scene overrides were preserved. Exact hashes and
+Play snapshots are under ignored `out/android-topdown-eval/open-project-validation/`.
+
 # Android Vulkan/ncnn — Revision 3 Task 9 diagnostics complete (2026-09-26)
 
 Task 9 adds a separate size/version-prefixed `HV_RuntimeStatsV2` query and

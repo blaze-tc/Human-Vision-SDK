@@ -28,7 +28,7 @@ public:
     bool Initialize(const ncnn::VulkanDevice*, const ncnn::Option&, std::string& error);
     bool Record(const ncnn::VkMat& rgb, const HV_GpuImageTransformV1& transform,
                 ncnn::VkMat& normalized, ncnn::VkCompute& compute,
-                std::string& error);
+                const float pad_rgb[3], std::string& error);
 private:
     std::unique_ptr<ncnn::Pipeline> pipeline_;
     std::vector<ncnn::VkMat> bindings_;

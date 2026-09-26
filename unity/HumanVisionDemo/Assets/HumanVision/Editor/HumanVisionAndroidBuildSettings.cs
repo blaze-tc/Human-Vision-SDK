@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Xml;
 using UnityEditor;
 using UnityEditor.Android;
@@ -40,7 +41,9 @@ namespace HumanVision.Editor
                 AutomaticGraphicsApis = PlayerSettings.GetUseDefaultGraphicsAPIs(BuildTarget.Android),
                 OpenGlesAvailable = graphicsApis.Contains(GraphicsDeviceType.OpenGLES3) || graphicsApis.Contains(GraphicsDeviceType.OpenGLES2),
                 HasHumanVisionLibrary = HasAndroidArm64Plugin("libhumanvision.so"),
-                HasNcnnLibrary = HasAndroidArm64Plugin("libncnn.so"),
+                // The production Android build links ncnn statically into libhumanvision.so.
+                // The symbol manifest is emitted only after the ELF/ncnn audit succeeds.
+                HasNcnnLibrary = HasAndroidArm64Plugin("libncnn.so") || HasAuditedStaticNcnn(),
                 HasBridgeSymbolManifest = HasProjectFile("android-gpu-bridge-symbols.json"),
                 HasProfile = HasProjectFile(Path.Combine("profiles", descriptor.ProfileId + ".json")),
                 HasNcnnModelPackAssets = HasProjectFile(Path.Combine("modelpacks", "precision-t-26-ncnn-fp16", "detector", "model.param")) &&
@@ -57,6 +60,45 @@ namespace HumanVision.Editor
                 string.Equals(Path.GetFileName(importer.assetPath), filename, StringComparison.OrdinalIgnoreCase) &&
                 importer.GetCompatibleWithPlatform(BuildTarget.Android) &&
                 string.Equals(importer.GetPlatformData("Android", "CPU"), "ARM64", StringComparison.OrdinalIgnoreCase));
+        }
+
+        [Serializable]
+        private sealed class StaticNcnnAudit
+        {
+            public string native_sha256;
+            public string abi;
+            public int api_level;
+            public bool ncnn_vulkan_symbols_verified;
+        }
+
+        private static bool HasAuditedStaticNcnn()
+        {
+            if (!HasAndroidArm64Plugin("libhumanvision.so")) return false;
+            var root = Directory.GetParent(Application.dataPath).FullName;
+            return ValidateStaticNcnnAudit(
+                Path.Combine(Application.dataPath, "Plugins", "Android", "arm64-v8a", "libhumanvision.so"),
+                Path.Combine(root, "android-gpu-bridge-symbols.json"));
+        }
+
+        public static bool ValidateStaticNcnnAudit(string library, string manifest)
+        {
+            if (!File.Exists(library) || !File.Exists(manifest)) return false;
+            StaticNcnnAudit audit;
+            try { audit = JsonUtility.FromJson<StaticNcnnAudit>(File.ReadAllText(manifest)); }
+            catch { return false; }
+            if (audit == null || audit.abi != "arm64-v8a" || audit.api_level != 26 ||
+                !audit.ncnn_vulkan_symbols_verified || audit.native_sha256 == null ||
+                audit.native_sha256.Length != 64) return false;
+            using (var file = File.OpenRead(library))
+            {
+                var header = new byte[20];
+                if (file.Read(header, 0, header.Length) != header.Length ||
+                    header[0] != 0x7f || header[1] != 'E' || header[2] != 'L' || header[3] != 'F' ||
+                    header[4] != 2 || header[5] != 1 || header[18] != 183 || header[19] != 0) return false;
+                file.Position = 0;
+                using (var sha = SHA256.Create())
+                    return BitConverter.ToString(sha.ComputeHash(file)).Replace("-", "").ToLowerInvariant() == audit.native_sha256;
+            }
         }
 
         private static bool HasProjectFile(string relativePath)

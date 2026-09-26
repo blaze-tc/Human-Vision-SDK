@@ -52,6 +52,9 @@ namespace HumanVision
         private void Awake() { _bridge = GetComponent<VideoPlayerFrameSource>(); }
         public void Open(HumanVisionCameraSettings settings)
         {
+#if HV_TOPDOWN_EVAL
+            Debug.Log("HV_TOPDOWN_LIFECYCLE open_begin frame=" + Time.frameCount + " status=" + Status);
+#endif
             Close();
             settings.Validate();
             bool mobile = Application.platform == RuntimePlatform.Android;
@@ -67,6 +70,9 @@ namespace HumanVision
                 mobile ? androidAnalysisWidth : 1280, mobile ? androidAnalysisHeight : 720);
             _settings = JsonUtility.FromJson<HumanVisionCameraSettings>(JsonUtility.ToJson(settings));
             _startRoutine = StartCoroutine(OpenRoutine());
+#if HV_TOPDOWN_EVAL
+            Debug.Log("HV_TOPDOWN_LIFECYCLE open_queued frame=" + Time.frameCount);
+#endif
         }
         private IEnumerator OpenRoutine()
         {
@@ -92,9 +98,20 @@ namespace HumanVision
                 var devices = WebCamTexture.devices;
                 if (devices.Length == 0) { Status = "No camera reported by the operating system"; yield break; }
                 string device = _settings.deviceName;
+#if HV_TOPDOWN_EVAL
+                if (string.IsNullOrEmpty(device)) {
+                    foreach (var item in devices) if (item.isFrontFacing) { device = item.name; break; }
+                    if (string.IsNullOrEmpty(device)) { Status = "Evaluation requires a front-facing camera"; yield break; }
+                }
+#endif
                 if (string.IsNullOrEmpty(device)) device = devices[0].name;
                 bool found = false;
-                foreach (var item in devices) if (item.name == device) found = true;
+                foreach (var item in devices) if (item.name == device) {
+                    found = true;
+#if HV_TOPDOWN_EVAL
+                    Debug.Log("HV_TOPDOWN_CAMERA device=" + item.name + " front_facing=" + item.isFrontFacing);
+#endif
+                }
                 if (!found) { Status = "Selected camera is unavailable"; yield break; }
                 _webcam = new WebCamTexture(device, _settings.width, _settings.height, _settings.framesPerSecond);
                 _webcam.Play();
@@ -154,6 +171,10 @@ namespace HumanVision
                 if (input != null) {
                     // Discard results from the old coordinate system, including 180-degree turns.
                     if (_lastRotation != rotation || _lastFlipY != flipY) {
+#if HV_TOPDOWN_EVAL
+                        Debug.Log("HV_TOPDOWN_LIFECYCLE orientation_change frame=" + Time.frameCount +
+                            " from=" + _lastRotation + "/" + _lastFlipY + " to=" + rotation + "/" + flipY);
+#endif
                         // Reset tracked crops as well as displayed results when coordinates change.
                         ReleaseOrientedTexture();
                         if (_lastRotation >= 0) GetComponent<HumanVisionCameraManager>()?.ApplySettings();
@@ -185,8 +206,14 @@ namespace HumanVision
         }
         public void Close()
         {
+#if HV_TOPDOWN_EVAL
+            Debug.Log("HV_TOPDOWN_LIFECYCLE close_begin frame=" + Time.frameCount + " status=" + Status);
+#endif
             if (_startRoutine != null) { StopCoroutine(_startRoutine); _startRoutine = null; }
             CloseResources(); Status = "Stopped";
+#if HV_TOPDOWN_EVAL
+            Debug.Log("HV_TOPDOWN_LIFECYCLE close_end frame=" + Time.frameCount);
+#endif
         }
         private void CloseResources()
         {
@@ -214,6 +241,9 @@ namespace HumanVision
         private void OnDisable() { Close(); }
         private void OnApplicationPause(bool paused)
         {
+#if HV_TOPDOWN_EVAL
+            Debug.Log("HV_TOPDOWN_LIFECYCLE application_pause=" + paused + " frame=" + Time.frameCount);
+#endif
             if (paused) { _resumeAfterPause = _running; if (_running) Close(); }
             else if (_resumeAfterPause && isActiveAndEnabled) { _resumeAfterPause = false; Open(_settings); }
         }

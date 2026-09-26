@@ -3,6 +3,11 @@
 #include "models/rtmdet/rtmdet_model.h"
 
 namespace humanvision::runtime {
+struct DetectorLetterbox { float scale=0, pad_x=0, pad_y=0; };
+bool BuildGpuDetectorLetterbox(int source_width, int source_height,
+                               int model_width, int model_height,
+                               HV_GpuImageTransformV1& transform,
+                               DetectorLetterbox& inverse);
 bool BuildGpuPoseCrop(const Detection& box, HV_GpuImageTransformV1& transform,
                       HV_Rect& inverse_rect);
 }

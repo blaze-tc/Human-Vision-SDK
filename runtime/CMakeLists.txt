@@ -5,6 +5,13 @@ set(HV_ANDROID_GPU_PROBE_SOURCES
     gpu/android/unity_vulkan_bridge.cpp
     gpu/android/unity_vulkan_plugin.cpp)
 option(HV_ANDROID_GPU_GATE "Build development-only Android GPU bridge gate" OFF)
+option(HV_ANDROID_TOPDOWN_EVAL_TRACE "Trace ncnn detector stages for local top-down evaluation" OFF)
+if(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    if(NOT ANDROID)
+        message(FATAL_ERROR "HV_ANDROID_TOPDOWN_EVAL_TRACE requires Android")
+    endif()
+    target_compile_definitions(humanvision_internal PRIVATE HV_ANDROID_TOPDOWN_EVAL_TRACE=1)
+endif()
 if(HV_ANDROID_GPU_GATE AND NOT ANDROID)
     message(FATAL_ERROR "HV_ANDROID_GPU_GATE requires Android")
 endif()

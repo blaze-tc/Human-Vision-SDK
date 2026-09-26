@@ -16,9 +16,26 @@
 #include <cerrno>
 #include <unistd.h>
 #include <fcntl.h>
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+#include <android/log.h>
+#include <time.h>
+#endif
 
 namespace humanvision::runtime::ncnn_backend {
 namespace {
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+int64_t TraceMs() noexcept {
+    timespec now{};
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return static_cast<int64_t>(now.tv_sec) * 1000 + now.tv_nsec / 1000000;
+}
+void TraceDetectorStage(const char* stage, size_t output, int64_t begun) noexcept {
+    __android_log_print(ANDROID_LOG_INFO, "HV_TOPDOWN_NCNN",
+        "run_prepared stage=%s output=%zu elapsed_ms=%lld now_ms=%lld",
+        stage, output, static_cast<long long>(TraceMs() - begun),
+        static_cast<long long>(TraceMs()));
+}
+#endif
 std::string HashFile(const std::filesystem::path& path) {
     std::ifstream input(path, std::ios::binary);
     if (!input) throw std::runtime_error("Cannot open ncnn model asset: " + path.string());
@@ -537,8 +554,18 @@ HV_Result AndroidSession::Prepare(const HV_GpuFrameRefV1& frame,
         source.image, source.imported_rgb, VK_IMAGE_LAYOUT_GENERAL,
         VK_QUEUE_FAMILY_EXTERNAL_KHR, device_->info.compute_queue_family_index());
     if (!preprocess_->Record(source.imported_rgb, transform, prepared_->normalized,
-                             cmd, error))
+                             cmd, contract_.pad_rgb.data(), error))
         return fail("ncnn detached detector GPU preprocessing record failed");
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    if (frame.frame_id % 120 == 0)
+        __android_log_print(ANDROID_LOG_INFO, "HV_TOPDOWN_NCNN",
+            "input_contract frame=%lld source=%dx%d rect=%g,%g,%g,%g pad=%g,%g,%g",
+            static_cast<long long>(frame.frame_id), source.imported_rgb.w,
+            source.imported_rgb.h, transform.source_rect_px.x,
+            transform.source_rect_px.y, transform.source_rect_px.width,
+            transform.source_rect_px.height, contract_.pad_rgb[0],
+            contract_.pad_rgb[1], contract_.pad_rgb[2]);
+#endif
     const auto* cached_tensor_buffer = prepared_->tensor.data;
     device_->convert_packing(prepared_->normalized, prepared_->tensor,
         1, 2, cmd, option_);
@@ -553,6 +580,49 @@ HV_Result AndroidSession::Prepare(const HV_GpuFrameRefV1& frame,
     if (submitted != 0) return fail("ncnn detached detector GPU copy completion unproven");
     if (!prepared_state_.ProveGpuCopy() || cmd.reset() != 0)
         return fail("ncnn detached detector command reset failed after GPU copy");
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    // Sparse diagnostic: 5x5x3 floats from the already GPU-resident normalized
+    // detector input. This never downloads the source image or full input.
+    if (frame.frame_id % 30 == 0) {
+        ncnn::VkMat sparse;
+        sparse.create(5, 5, 3, sizeof(float), 1, blob_allocator_);
+        if (sparse.empty()) return fail("ncnn sparse diagnostic allocation failed");
+        HV_GpuImageTransformV1 sample = transform;
+        sample.source_rect_px = {0, 0, float(prepared_->normalized.w), float(prepared_->normalized.h)};
+        sample.output_width = 5; sample.output_height = 5;
+        for (int i = 0; i < 3; ++i) { sample.mean[i] = 0; sample.norm[i] = 1; }
+        constexpr float zero_pad[3] = {0, 0, 0};
+        if (!preprocess_->Record(prepared_->normalized, sample, sparse, cmd, zero_pad, error))
+            return fail("ncnn sparse diagnostic GPU record failed");
+        ncnn::Mat sparse_cpu;
+        cmd.record_download(sparse, sparse_cpu, option_);
+        if (cmd.submit_and_wait() != 0 || cmd.reset() != 0 ||
+            sparse_cpu.dims != 3 || sparse_cpu.w != 5 || sparse_cpu.h != 5 ||
+            sparse_cpu.c != 3 || sparse_cpu.elembits() != 32)
+            return fail("ncnn sparse diagnostic GPU completion or shape unproven");
+        for (int c = 0; c < 3; ++c) {
+            auto channel = sparse_cpu.channel(c);
+            float low = std::numeric_limits<float>::infinity();
+            float high = -std::numeric_limits<float>::infinity();
+            for (int y = 0; y < 5; ++y) for (int x = 0; x < 5; ++x) {
+                const float v = channel.row<float>(y)[x];
+                low = std::min(low, v); high = std::max(high, v);
+            }
+            __android_log_print(ANDROID_LOG_INFO, "HV_TOPDOWN_NCNN",
+                "sparse_input frame=%lld channel=%d min=%g max=%g center=%g",
+                static_cast<long long>(frame.frame_id), c, low, high,
+                channel.row<float>(2)[2]);
+            if (frame.frame_id % 120 == 0)
+                for (int y = 0; y < 5; ++y) {
+                    const float* row = channel.row<float>(y);
+                    __android_log_print(ANDROID_LOG_INFO, "HV_TOPDOWN_NCNN",
+                        "sparse_grid frame=%lld channel=%d row=%d values=%g,%g,%g,%g,%g",
+                        static_cast<long long>(frame.frame_id), c, y,
+                        row[0], row[1], row[2], row[3], row[4]);
+                }
+        }
+    }
+#endif
     // The copy is complete. The role release below transfers the sampled AHB
     // back to external ownership; it does not retire the observation slot.
     active_consumer_ = &consumer;
@@ -583,6 +653,10 @@ HV_Result AndroidSession::RunPrepared(const HV_GpuPreparedRefV1& ref,
                                       HV_TensorViewV1* outputs, uint32_t capacity,
                                       uint32_t& count, std::string& error) {
     std::lock_guard<std::mutex> lock(run_mutex_);
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    const auto run_begun = TraceMs();
+    TraceDetectorStage("begin", 0, run_begun);
+#endif
     count = 0;
     if (!detector_role_ || !prepared_ || terminal_gpu_fault_ ||
         !prepared_state_.Ready(ref)) {
@@ -606,21 +680,37 @@ HV_Result AndroidSession::RunPrepared(const HV_GpuPreparedRefV1& ref,
     // subsequent input(index, VkMat) fail. Assignment restores sized, empty
     // vectors while retaining the active extractor's warmed vector capacity.
     *slot.extractor = *slot.pristine_extractor;
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    TraceDetectorStage("deliver_begin", 0, run_begun);
+#endif
     const auto delivery = DeliverInput(*slot.extractor, contract_.input_blob.c_str(),
         slot.tensor, true);
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    TraceDetectorStage("deliver_end", 0, run_begun);
+#endif
     if (delivery != InputDeliveryResult::Ok) {
         return unsafe_failure("ncnn detector rejected detached FP16 pack1 tensor",
             delivery == InputDeliveryResult::InvalidTensor ? HV_ERR_INVALID_ARGUMENT : HV_ERR_MODEL_LOAD);
     }
     for (size_t i = 0; i < contract_.output_blobs.size(); ++i) {
         slot.gpu_outputs[i].release();
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+        TraceDetectorStage("extract_begin", i, run_begun);
+#endif
         if (slot.extractor->extract(contract_.output_blobs[i].c_str(),
                                     slot.gpu_outputs[i], *slot.compute) != 0 ||
             slot.gpu_outputs[i].empty()) {
             return unsafe_failure("ncnn prepared detector extraction failed", HV_ERR_INTERNAL);
         }
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+        TraceDetectorStage("extract_end", i, run_begun);
+        TraceDetectorStage("convert_begin", i, run_begun);
+#endif
         device_->convert_packing(slot.gpu_outputs[i], slot.fp32_outputs[i],
                                  1, 1, *slot.compute, option_);
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+        TraceDetectorStage("convert_end", i, run_begun);
+#endif
         DenseOutputLayout layout;
         if (slot.fp32_outputs[i].empty() || slot.fp32_outputs[i].elempack != 1 ||
             slot.fp32_outputs[i].elembits() != 32 ||
@@ -632,14 +722,23 @@ HV_Result AndroidSession::RunPrepared(const HV_GpuPreparedRefV1& ref,
             return unsafe_failure("ncnn prepared detector output exceeds declared bounds", HV_ERR_MODEL_LOAD);
         }
         slot.compute->record_download(slot.fp32_outputs[i], slot.cpu_outputs[i], option_);
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+        TraceDetectorStage("download_recorded", i, run_begun);
+#endif
         ++slot.output_download_calls;
     }
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    TraceDetectorStage("submit_begin", 0, run_begun);
+#endif
     if (slot.compute->submit_and_wait() != 0 || slot.compute->reset() != 0) {
         terminal_gpu_fault_ = true;
         prepared_state_.Quarantine();
         error = "ncnn prepared detector inference GPU completion unproven";
         return HV_ERR_INTERNAL;
     }
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    TraceDetectorStage("submit_end", 0, run_begun);
+#endif
     for (size_t i = 0; i < contract_.output_blobs.size(); ++i) {
         const auto& mat = slot.cpu_outputs[i];
         DenseOutputLayout layout;
@@ -876,7 +975,8 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
             slot.image, slot.imported_rgb, VK_IMAGE_LAYOUT_GENERAL, VK_QUEUE_FAMILY_EXTERNAL_KHR,
             device_->info.compute_queue_family_index());
         acquired = true;
-        if (!preprocess_->Record(slot.imported_rgb, transform, slot.normalized, *slot.compute, error))
+        if (!preprocess_->Record(slot.imported_rgb, transform, slot.normalized, *slot.compute,
+                                 contract_.pad_rgb.data(), error))
             return HV_ERR_INVALID_ARGUMENT;
         device_->convert_packing(slot.normalized, slot.prepared_input,
             contract_.output_elempack, contract_.cast_type_to, *slot.compute, option_);
@@ -908,7 +1008,8 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
             error = "ncnn repeated observation unexpectedly owns producer sync-fd";
             return HV_ERR_INVALID_ARGUMENT;
         }
-        if (!preprocess_->Record(slot.imported_rgb, transform, slot.normalized, *slot.compute, error))
+        if (!preprocess_->Record(slot.imported_rgb, transform, slot.normalized, *slot.compute,
+                                 contract_.pad_rgb.data(), error))
             return HV_ERR_INVALID_ARGUMENT;
         device_->convert_packing(slot.normalized, slot.prepared_input,
             contract_.output_elempack, contract_.cast_type_to, *slot.compute, option_);

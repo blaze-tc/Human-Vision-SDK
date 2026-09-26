@@ -41,10 +41,14 @@ layout(push_constant) uniform parameter {
     float norm_g;
     float norm_b;
     int channel_order;
+    float pad_r;
+    float pad_g;
+    float pad_b;
 } p;
 
 float pixel(int channel, int x, int y) {
-    if (x < 0 || y < 0 || x >= p.source_width || y >= p.source_height) return 0.0;
+    if (x < 0 || y < 0 || x >= p.source_width || y >= p.source_height)
+        return channel == 0 ? p.pad_r : channel == 1 ? p.pad_g : p.pad_b;
     return source_data[channel * p.source_cstep + y * p.source_width + x];
 }
 
@@ -84,19 +88,19 @@ bool GpuPreprocess::Initialize(const ncnn::VulkanDevice* device,
     pipeline->set_local_size_xyz(8, 8, 1);
     if (pipeline->create(spirv.data(), spirv.size() * sizeof(uint32_t), {}) != 0 ||
         pipeline->shader_info().binding_count != 2 ||
-        pipeline->shader_info().push_constant_count != 18) {
+        pipeline->shader_info().push_constant_count != 21) {
         error = "ncnn GPU preprocessing pipeline contract is invalid"; return false;
     }
     pipeline_ = std::move(pipeline);
     bindings_.resize(2);
-    constants_.resize(18);
+    constants_.resize(21);
     error.clear();
     return true;
 }
 
 bool GpuPreprocess::Record(const ncnn::VkMat& rgb, const HV_GpuImageTransformV1& transform,
                            ncnn::VkMat& normalized, ncnn::VkCompute& compute,
-                           std::string& error) {
+                           const float pad_rgb[3], std::string& error) {
     const auto& r = transform.source_rect_px;
     if (!pipeline_ || rgb.empty() || normalized.empty() || rgb.dims != 3 || rgb.c != 3 ||
         rgb.elempack != 1 || rgb.elemsize != sizeof(float) || normalized.dims != 3 ||
@@ -110,8 +114,10 @@ bool GpuPreprocess::Record(const ncnn::VkMat& rgb, const HV_GpuImageTransformV1&
         r.width > 4 * rgb.w || r.height > 4 * rgb.h) {
         error = "GPU preprocessing source rectangle or tensor geometry is invalid"; return false;
     }
+    if (!pad_rgb) { error = "GPU preprocessing pad is missing"; return false; }
     for (int i = 0; i < 3; ++i)
-        if (!std::isfinite(transform.mean[i]) || !std::isfinite(transform.norm[i])) {
+        if (!std::isfinite(transform.mean[i]) || !std::isfinite(transform.norm[i]) ||
+            !std::isfinite(pad_rgb[i]) || pad_rgb[i] < 0 || pad_rgb[i] > 255) {
             error = "GPU preprocessing normalization contains a non-finite value"; return false;
         }
     constants_[0].i = rgb.w; constants_[1].i = rgb.h;
@@ -126,6 +132,7 @@ bool GpuPreprocess::Record(const ncnn::VkMat& rgb, const HV_GpuImageTransformV1&
         constants_[14 + i].f = transform.norm[i];
     }
     constants_[17].i = static_cast<int>(transform.channel_order);
+    for (int i = 0; i < 3; ++i) constants_[18 + i].f = pad_rgb[i];
     bindings_[0] = rgb;
     bindings_[1] = normalized;
     compute.record_pipeline(pipeline_.get(), bindings_, constants_, normalized);

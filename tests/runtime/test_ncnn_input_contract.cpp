@@ -8,7 +8,26 @@ using humanvision::runtime::ncnn_backend::InputContract;
 using humanvision::runtime::ncnn_backend::ParseInputContract;
 
 namespace {
-constexpr const char* good = R"({"image_format":"rgba8-unorm","color_order":"rgb","normalization":{"mean":[0,0,0],"norm":[0.0039215686,0.0039215686,0.0039215686]},"tensor_dtype":"fp32","elempack":1,"width":320,"height":320,"input_blob":"in0","output_blobs":["cls","bbox"]})";
+constexpr const char* good = R"({"image_format":"rgba8-unorm","color_order":"rgb","crop":"letterbox","pad_rgb":[114,114,114],"resize_interpolation":"bilinear","normalization":{"mean":[0,0,0],"norm":[0.0039215686,0.0039215686,0.0039215686]},"tensor_dtype":"fp32","elempack":1,"width":320,"height":320,"input_blob":"in0","output_blobs":["cls","bbox"]})";
+}
+
+TEST(NcnnInputContract, RejectsUnsupportedGeometryAndPad) {
+  for (const auto& key : {"crop", "resize_interpolation", "pad_rgb"}) {
+    auto json = nlohmann::json::parse(good); json.erase(key);
+    InputContract contract; std::string error;
+    EXPECT_FALSE(ParseInputContract(json, contract, error)) << key;
+  }
+  for (const auto& [key, value] : {std::pair{"crop", "stretch"}, {"resize_interpolation", "nearest"}}) {
+    auto json = nlohmann::json::parse(good); json[key] = value;
+    InputContract contract; std::string error;
+    EXPECT_FALSE(ParseInputContract(json, contract, error)) << key;
+  }
+  auto pose = nlohmann::json::parse(good);
+  pose["crop"] = "bbox_affine"; pose.erase("pad_rgb"); pose.erase("resize_interpolation");
+  pose["affine_interpolation"] = "bilinear";
+  InputContract contract; std::string error;
+  ASSERT_TRUE(ParseInputContract(pose, contract, error)) << error;
+  EXPECT_EQ(contract.crop_mode, InputContract::CropMode::BboxAffine);
 }
 
 TEST(NcnnInputContract, AcceptsExactRgbaToRgbTensorCases) {
@@ -23,6 +42,8 @@ TEST(NcnnInputContract, AcceptsExactRgbaToRgbTensorCases) {
     EXPECT_EQ(contract.output_elempack, pack);
     EXPECT_EQ(contract.cast_type_to, cast);
     EXPECT_EQ(contract.channel_order, 1u);
+    EXPECT_EQ(contract.crop_mode, InputContract::CropMode::Letterbox);
+    EXPECT_EQ(contract.pad_rgb, (std::array<float,3>{114.f,114.f,114.f}));
     EXPECT_EQ(contract.input_blob, "in0");
     EXPECT_EQ(contract.output_blobs, (std::vector<std::string>{"cls", "bbox"}));
   }

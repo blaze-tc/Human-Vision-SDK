@@ -18,6 +18,11 @@ namespace HumanVision.Editor
         {
             Build(path, "Assets/Scenes/HumanVisionCameraSettings.unity", false);
         }
+        internal static void CreateEvaluationPair(string live, string settings)
+        {
+            Build(live, settings, false);
+            Build(settings, live, true);
+        }
         private static void CreatePair(bool openSettings)
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;

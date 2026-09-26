@@ -25,6 +25,25 @@ bool ParseInputContract(const nlohmann::json& value, InputContract& result, std:
         if (required("color_order").get<std::string>() != "rgb")
             throw std::runtime_error("Input color_order must be rgb");
         parsed.channel_order = 1;
+        const auto crop = required("crop").get<std::string>();
+        if (crop == "letterbox") {
+            parsed.crop_mode = InputContract::CropMode::Letterbox;
+            if (required("resize_interpolation").get<std::string>() != "bilinear")
+                throw std::runtime_error("Letterbox resize_interpolation must be bilinear");
+            const auto& pad = required("pad_rgb");
+            if (!pad.is_array() || pad.size() != 3)
+                throw std::runtime_error("Letterbox pad_rgb must have three channels");
+            for (size_t i = 0; i < 3; ++i) {
+                if (!pad.at(i).is_number()) throw std::runtime_error("Non-numeric pad_rgb");
+                parsed.pad_rgb[i] = pad.at(i).get<float>();
+                if (!std::isfinite(parsed.pad_rgb[i]) || parsed.pad_rgb[i] < 0 || parsed.pad_rgb[i] > 255)
+                    throw std::runtime_error("pad_rgb must be finite byte-range values");
+            }
+        } else if (crop == "bbox_affine") {
+            parsed.crop_mode = InputContract::CropMode::BboxAffine;
+            if (required("affine_interpolation").get<std::string>() != "bilinear")
+                throw std::runtime_error("Bbox affine interpolation must be bilinear");
+        } else throw std::runtime_error("Unsupported input crop: " + crop);
         const auto& normalization = required("normalization");
         if (!normalization.is_object()) throw std::runtime_error("normalization must be an object");
         for (const auto key : {"mean", "norm"}) {
