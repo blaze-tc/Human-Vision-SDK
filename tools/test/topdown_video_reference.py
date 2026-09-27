@@ -45,6 +45,13 @@ def preprocess(image: np.ndarray) -> np.ndarray:
     return ((rgb - MEAN) * NORM).transpose(2, 0, 1)[None].copy()
 
 
+def preprocess_rgba(rgba: np.ndarray) -> np.ndarray:
+    """Offline exact decoded-pixel entry to the existing detector reference."""
+    if rgba.dtype != np.uint8 or rgba.ndim != 3 or rgba.shape[2] != 4:
+        raise ValueError("Expected packed RGBA8 source")
+    return preprocess(cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGR))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True, type=Path)

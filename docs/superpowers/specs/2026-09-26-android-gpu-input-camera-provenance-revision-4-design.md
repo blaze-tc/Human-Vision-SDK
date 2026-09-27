@@ -1,6 +1,6 @@
 # Android GPU input correctness and camera provenance — Revision 4
 
-Status: **written spec approved by user on 2026-09-26; implementation plan awaits review**  
+Status: **written spec and implementation plan approved by user on 2026-09-26**  
 Date: 2026-09-26  
 Base: `codex/android-ncnn-vulkan-implementation`, commits `4b5d426` and `9a95572`  
 Scope: resume Milestone C through deterministic input correctness, same-image camera provenance, then integrated TopDown acceptance.
@@ -324,6 +324,6 @@ live capture; absence cannot be marked pass. Status updates retain historical FA
   Vulkan/device support; documentation is not device evidence.
 
 The user approved this written Revision 4 on 2026-09-26. Its detailed plan is
-`../plans/2026-09-26-android-gpu-input-camera-revision-4.md` and awaits review.
+`../plans/2026-09-26-android-gpu-input-camera-revision-4.md` was also approved.
 This revision has made documentation changes only; no runtime behavior or prior
 acceptance result is changed.

@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-26-android-gpu-input-camera-provenance-revision-4-design.md`, approved by the user following commit `ee2d8c0`. Revision 2 and Revision 3 remain controlling outside R4's explicit amendments.
 
-**Status:** Written plan awaiting user review. No task below is complete. Reuse `E:/Project/Human Vision SDK/.worktrees/android-ncnn-vulkan`, branch `codex/android-ncnn-vulkan-implementation`; do not create another checkout or merge main.
+**Status:** User approved execution on 2026-09-26; Task 1 implementation verified, independent reviews pending. Reuse `E:/Project/Human Vision SDK/.worktrees/android-ncnn-vulkan`, branch `codex/android-ncnn-vulkan-implementation`; do not create another checkout or merge main.
 
 ## Global Constraints
 
@@ -93,11 +93,11 @@ needs device evidence cannot be marked complete from fake dispatch tests.
 
 **Interfaces:** Python `build_manifest(video_path: Path, frame_index: int, output_dir: Path) -> dict` and `validate_manifest(manifest: dict, root: Path) -> None`. Schema 1 contains decoded RGBA byte SHA, video SHA, decoder/version, frame index, width/height, row stride, RGB range/color space/alpha, transforms, expected tensor hashes, model/profile hashes and per-person annotations. Generated RGBA/tensor files remain ignored.
 
-- [ ] Write `R4FixtureManifest` tests: altered byte, wrong frame index, missing decoder, wrong shape/stride and nonfinite tensor each reject; identical extraction from pinned input gives identical bytes/hash. Analytic asymmetric corner/grid fixtures prove all rotations and mirror transforms preserve annotated locations.
-- [ ] Run `.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -p test_r4_fixture_manifest.py -v`; save expected RED.
-- [ ] Implement exact offline decoding/export using the pinned reference tooling; choose and record one full-person frame and one multi-person frame from the supplied videos after viewing them. Do not guess annotations from model output. Serialize exact preprocessing/packing metadata and generate independent expected tensors.
-- [ ] Run GREEN and existing video-reference/model golden tests. Record commands/hashes, not private pixels, in the parity report.
-- [ ] Review and commit `test(android): pin exact-frame GPU parity fixtures`.
+- [x] Write `R4FixtureManifest` tests: altered byte, wrong frame index, missing decoder, wrong shape/stride and nonfinite tensor each reject; identical extraction from pinned input gives identical bytes/hash. Analytic asymmetric corner/grid fixtures prove all rotations and mirror transforms preserve annotated locations.
+- [x] Run `.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -p test_r4_fixture_manifest.py -v`; save expected RED.
+- [x] Implement exact offline decoding/export using the pinned reference tooling; choose and record one full-person frame and one multi-person frame from the supplied videos after viewing them. Do not guess annotations from model output. Serialize exact preprocessing/packing metadata and generate independent expected tensors.
+- [x] Run GREEN and existing video-reference/model golden tests. Record commands/hashes, not private pixels, in the parity report.
+- [x] Self-review and commit `test(android): pin exact-frame GPU parity fixtures`; independent spec and quality reviews follow.
 
 ### Task 2: Instrument GPU boundaries and fix the first proven mismatch
 
@@ -224,6 +224,6 @@ are limited to a demonstrated first divergence; file mapping is not authority to
 rewrite unrelated modules. No tests or device gates were run by writing this plan.
 
 The user has already selected Subagent-driven execution; retain that method.
-Review/approval of this written plan is the remaining pre-implementation gate.
-After approval begin Task 1 and proceed automatically within the stated stop
+The user approved this written plan on 2026-09-26.
+Begin Task 1 and proceed automatically within the stated stop
 conditions; do not ask the user to choose the execution method again.
