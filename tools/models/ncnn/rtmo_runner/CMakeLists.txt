@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.24)
+project(rtmo_model_gate LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+find_package(ncnn REQUIRED)
+add_executable(rtmo_golden_runner ../rtmo_golden_runner.cpp)
+target_link_libraries(rtmo_golden_runner PRIVATE ncnn)
