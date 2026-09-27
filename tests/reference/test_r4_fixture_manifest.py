@@ -162,5 +162,52 @@ class R4FixtureManifest(unittest.TestCase):
         changed["cases"][0]["artifacts"]["rgba"]["sha256"] = "0" * 64
         with self.assertRaises(ValueError): validate_analytic_fixtures(changed, output)
 
+    def test_saved_rgba_pixels_match_independent_color_and_coordinate_oracle(self):
+        output = self.root / "pixel-oracle"
+        manifest = build_analytic_fixtures(output)
+        # Each tuple is TL, TR, BL, BR, P. These locations are hand-derived
+        # for the two source geometries; this test never calls transform_point,
+        # _rotate_mirror, or _analytic_source for its expected output.
+        locations = {
+            "asymmetric_corners": {
+                (0, False): ((0, 0), (4, 0), (0, 2), (4, 2), (1, 2)),
+                (0, True): ((4, 0), (0, 0), (4, 2), (0, 2), (3, 2)),
+                (90, False): ((2, 0), (2, 4), (0, 0), (0, 4), (0, 1)),
+                (90, True): ((0, 0), (0, 4), (2, 0), (2, 4), (2, 1)),
+                (180, False): ((4, 2), (0, 2), (4, 0), (0, 0), (3, 0)),
+                (180, True): ((0, 2), (4, 2), (0, 0), (4, 0), (1, 0)),
+                (270, False): ((0, 4), (0, 0), (2, 4), (2, 0), (2, 3)),
+                (270, True): ((2, 4), (2, 0), (0, 4), (0, 0), (0, 3)),
+            },
+            "non_square_grid": {
+                (0, False): ((0, 0), (6, 0), (0, 3), (6, 3), (1, 3)),
+                (0, True): ((6, 0), (0, 0), (6, 3), (0, 3), (5, 3)),
+                (90, False): ((3, 0), (3, 6), (0, 0), (0, 6), (0, 1)),
+                (90, True): ((0, 0), (0, 6), (3, 0), (3, 6), (3, 1)),
+                (180, False): ((6, 3), (0, 3), (6, 0), (0, 0), (5, 0)),
+                (180, True): ((0, 3), (6, 3), (0, 0), (6, 0), (1, 0)),
+                (270, False): ((0, 6), (0, 0), (3, 6), (3, 0), (3, 5)),
+                (270, True): ((3, 6), (3, 0), (0, 6), (0, 0), (0, 5)),
+            },
+        }
+        colors = {
+            "asymmetric_corners": ((255, 0, 0, 255), (0, 255, 0, 255),
+                                   (0, 0, 255, 255), (240, 200, 40, 255),
+                                   (18, 230, 170, 255)),
+            "non_square_grid": ((17, 11, 23, 255), (179, 11, 53, 255),
+                                (17, 170, 116, 255), (179, 170, 146, 255),
+                                (44, 170, 121, 255)),
+        }
+        for case in manifest["cases"]:
+            key = (case["rotation"], case["mirror"])
+            rgba = np.frombuffer((output / case["folder"] / "source.rgba").read_bytes(),
+                                 dtype=np.uint8).reshape(case["height"], case["width"], 4)
+            for name, (x, y), color in zip(("TL", "TR", "BL", "BR", "P"),
+                                            locations[case["fixture"]][key], colors[case["fixture"]]):
+                with self.subTest(fixture=case["fixture"], transform=key, point=name):
+                    self.assertEqual(tuple(rgba[y, x]), color)
+                    self.assertEqual(case["landmarks"][name]["output_xy"], [x, y])
+                    self.assertEqual(case["landmarks"][name]["rgba"], list(color))
+
 
 if __name__ == "__main__": unittest.main()

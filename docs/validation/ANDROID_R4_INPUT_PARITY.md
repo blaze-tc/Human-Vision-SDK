@@ -40,7 +40,11 @@ RGBA value). The manifest at `out/android-r4/analytic/manifest.json` has SHA-256
 `11f772fe4d375dfafdb6a91ed22e2dc5984e373b1bf91a580027659700629635`.
 This supplies uploadable known colors/locations for Task 2; it does not imply
 any GPU path passed. Tests independently pin hand-derived landmark coordinates
-for all eight transform choices.
+for all eight transform choices. A separate saved-output pixel oracle reads the
+RGBA files and checks literal source colors at hand-derived expected coordinates
+for all five landmarks in all 16 cases. Deliberately generating mirrored cases
+without mirroring made that oracle fail 40 comparisons; the generator's existing
+self-validation would otherwise share the same faulty transform helper.
 
 ## Decode and tensor contract
 
@@ -75,7 +79,7 @@ already handles each combination.
 ## Verification
 
 - Focused RED: `.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -p test_r4_fixture_manifest.py -v` failed because the manifest module was absent; log `out/android-r4/task-1/red.log`.
-- Focused GREEN: the same command passed 10/10. Tests reject altered bytes, changed frame index, missing/wrong decoder, shape/stride errors, nonfinite tensors even with a renewed hash, and changed fixture identity. Separate oracles check padding, RGB channels, sampled FP16 RTZ bits and all eight geometry mappings.
+- Focused GREEN: the same command passed 11/11. Tests reject altered bytes, changed frame index, missing/wrong decoder, shape/stride errors, nonfinite tensors even with a renewed hash, and changed fixture identity. Separate oracles check padding, RGB channels, sampled FP16 RTZ bits and saved RGBA colors at all eight geometry mappings. Controlled wrong-mirror RED and normal GREEN logs are `out/android-r4/task-1/review-oracle-red.log` and `review-oracle-green.log`.
 - Analytic generation: `.venv-reference/Scripts/python.exe tools/test/r4_fixture_manifest.py --analytic --output-dir out/android-r4/analytic` wrote 16 cases with the manifest hash above; a saved-manifest validation pass checked every artifact byte.
 - Existing video reference: `.venv-reference/Scripts/python.exe tools/test/topdown_video_reference.py --model out/c2-local-detector/rebuild/rtmdet-nano.onnx --video 'E:\Project\Human Vision SDK\video-1.mp4' --video 'E:\Project\Human Vision SDK\video-2.mp4' --seconds 5` passed; its frame-150 FP32 hashes equal the manifest hashes. The pinned ONNX scores are 0.646 and 0.744 respectively, without any Android GPU claim.
 - Existing prepared detector golden: `.venv-reference/Scripts/python.exe -m unittest discover -s tests/reference -p test_prepared_gate_golden.py -v` passed 2/2.
