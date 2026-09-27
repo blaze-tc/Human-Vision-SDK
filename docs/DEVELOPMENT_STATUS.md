@@ -1,3 +1,60 @@
+# Android Vulkan/ncnn — Revision 4 Task 3 active (2026-09-27)
+
+Task 2 passed independent spec compliance and code quality review. The reviewer
+verified all 48 frozen file hashes and 47 referenced evidence hashes; all material
+findings are closed. Task 3 is now the sole active task: verify the actual
+VideoPlayer route, using the current landscape video 1 from 37 seconds. Camera2
+work has not begun. No main merge, Release or real-time FPS acceptance is claimed.
+
+The cached GPU probe compares every element at source, producer, imported RGB,
+normalized FP32 and packed FP16 boundaries. It returns bounded scalar/sample
+summaries and binds generation, source, layout, golden hash and device identity.
+No source image or preprocessed GPU tensor is downloaded.
+
+On device `e7c07019`, all16 analytic transforms pass both measured copy paths
+(32/32) on native `20becafd129a84696be85c252e5c1ebef6b10b72fb6dbe8d088c9123a0f51c07`.
+Each run passes24 actual image/import controls,16 tensor controls and three
+metadata controls. Source/producer/import errors are0; normalized maximum is
+0.0175070763 and packed maximum0.017578125, within unchanged limits.
+`out/android-r4/matrix-review1-summary.json` binds the evidence. Observed slots
+are recorded without claiming every stage/transform on all slots.
+
+Two later1920x1080 runs exposed device loss from the diagnostic fault-control
+burst; both failures remain preserved. Scheduling one full-image/import control
+per completed submission resolved it on both copy paths. A1024x576 representative
+also passes input, all24 controls and the inherited detector comparator. This
+scheduling-only binary is `d6f0ec685c1817d63ae7060edcd829e40f840b4497061a5425ad1c189e78349f`.
+The32-case matrix is not mislabeled as a run of this later binary.
+
+Scoped review additionally required session-specific completion state. An atomic
+epoch now prevents old sessions completing or overwriting a new session's controls.
+Focused lifecycle tests fail2/2 before and pass2/2 after the fix. Final native/ELF
+is `1237b475866e64496d5424f27b5a286272483d291750db74f83db6b26883d0b3`;
+one current-epoch1920 blit check passes all24 controls, five input stages, strict
+detector comparison and seven-person association. No production ownership/sync-fd,
+model, geometry, confidence or tolerance changes were made for these diagnostics.
+
+The current video1 fixture is landscape frame1500 (60 seconds), video SHA
+`e3620101d8218e7e9f2736cf5dab7a497bfcfc23e33a40244b63ae317c1bb0c8`.
+Complete primary samples associate all seven people on each real image and pass
+unchanged same-crop coordinate/confidence limits. Three visible video1 wrists
+remain below confidence threshold in both implementation and reference. Video2's
+supplemental exact-mask check remains6/7 because one clipped ankle straddles the
+image boundary by1.635px. Some log bursts omit canonical joint lines; incomplete
+samples are excluded rather than filled in. Static repeats establish neither live
+FPS nor visible VideoPlayer overlay acceptance. Task3 playback starts at37 seconds.
+
+Validation: full native313/313 (25.53s) and architecture33/33 before the narrow
+scheduling/epoch corrections; focused aggregation4/4 and lifecycle2/2 afterward.
+Fixture11/11, prepared golden2/2, model contract30/30, architecture boundaries,
+Unity routing12/12 and GPU build-gate9/9 pass. Unchanged strict VkMat pose runner
+passes8/8 with normal output bytes identical to pinned goldens. Detector raw
+array errors are retained separately; inherited IoU/score/repeat criteria pass.
+An exact uploaded-reference-tensor ncnn detector isolation run is absent.
+
+Commands, hashes, crash RED/GREEN evidence and qualifications are in
+`docs/validation/ANDROID_R4_INPUT_PARITY.md` and the Task2 execution report.
+
 # Android Vulkan/ncnn — Revision 4 Task 1 offline fixture contract (2026-09-26)
 
 The user approved the written recovery design and implementation plan after the Revision 3 failure:

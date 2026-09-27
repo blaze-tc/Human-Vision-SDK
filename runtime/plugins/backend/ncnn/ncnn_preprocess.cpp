@@ -1,6 +1,11 @@
 #include "plugins/backend/ncnn/ncnn_preprocess.h"
 
 namespace humanvision::runtime::ncnn_backend {
+bool RequiresPackedAhbImport(unsigned width,unsigned height) noexcept {
+    // Pinned ncnn's planar AHB shader rounds cstep down to a multiple of four.
+    // Its RGBA pack4 branch uses contiguous pixels and has no planar cstep.
+    return ((width&3u)*(height&3u))%4u!=0;
+}
 int NormalizedChannelCount(int output_elempack) noexcept {
     return output_elempack == 4 ? 4 : output_elempack == 1 ? 3 : 0;
 }
@@ -44,9 +49,13 @@ layout(push_constant) uniform parameter {
     float pad_r;
     float pad_g;
     float pad_b;
+    int quantized_letterbox;
 } p;
 
 float pixel(int channel, int x, int y) {
+    if (p.quantized_letterbox != 0) {
+        x=clamp(x,0,p.source_width-1); y=clamp(y,0,p.source_height-1);
+    }
     if (x < 0 || y < 0 || x >= p.source_width || y >= p.source_height)
         return channel == 0 ? p.pad_r : channel == 1 ? p.pad_g : p.pad_b;
     return source_data[channel * p.source_cstep + y * p.source_width + x];
@@ -72,8 +81,15 @@ void main() {
     float b = mix(pixel(source_channel, x0, y0 + 1), pixel(source_channel, x0 + 1, y0 + 1), wx);
     float mean_value = output_channel == 0 ? p.mean_r : output_channel == 1 ? p.mean_g : p.mean_b;
     float norm_value = output_channel == 0 ? p.norm_r : output_channel == 1 ? p.norm_g : p.norm_b;
+    float value=mix(a,b,wy);
+    if(p.quantized_letterbox!=0) {
+        // Resize uint8 content first, then paste it into the integer padding.
+        // Padding pixels never blend with the edge, while resize taps clamp.
+        bool outside=fx<-.5||fy<-.5||fx>=float(p.source_width)-.5||fy>=float(p.source_height)-.5;
+        value=outside?(source_channel==0?p.pad_r:source_channel==1?p.pad_g:p.pad_b):floor(value+.5);
+    }
     target_data[output_channel * p.target_cstep + y * p.target_width + x] =
-        (mix(a, b, wy) - mean_value) * norm_value;
+        (value - mean_value) * norm_value;
 }
 )glsl";
 }
@@ -88,19 +104,19 @@ bool GpuPreprocess::Initialize(const ncnn::VulkanDevice* device,
     pipeline->set_local_size_xyz(8, 8, 1);
     if (pipeline->create(spirv.data(), spirv.size() * sizeof(uint32_t), {}) != 0 ||
         pipeline->shader_info().binding_count != 2 ||
-        pipeline->shader_info().push_constant_count != 21) {
+        pipeline->shader_info().push_constant_count != 22) {
         error = "ncnn GPU preprocessing pipeline contract is invalid"; return false;
     }
     pipeline_ = std::move(pipeline);
     bindings_.resize(2);
-    constants_.resize(21);
+    constants_.resize(22);
     error.clear();
     return true;
 }
 
 bool GpuPreprocess::Record(const ncnn::VkMat& rgb, const HV_GpuImageTransformV1& transform,
                            ncnn::VkMat& normalized, ncnn::VkCompute& compute,
-                           const float pad_rgb[3], std::string& error) {
+                           const float pad_rgb[3], std::string& error, bool quantized_letterbox) {
     const auto& r = transform.source_rect_px;
     if (!pipeline_ || rgb.empty() || normalized.empty() || rgb.dims != 3 || rgb.c != 3 ||
         rgb.elempack != 1 || rgb.elemsize != sizeof(float) || normalized.dims != 3 ||
@@ -133,6 +149,7 @@ bool GpuPreprocess::Record(const ncnn::VkMat& rgb, const HV_GpuImageTransformV1&
     }
     constants_[17].i = static_cast<int>(transform.channel_order);
     for (int i = 0; i < 3; ++i) constants_[18 + i].f = pad_rgb[i];
+    constants_[21].i = quantized_letterbox;
     bindings_[0] = rgb;
     bindings_[1] = normalized;
     compute.record_pipeline(pipeline_.get(), bindings_, constants_, normalized);

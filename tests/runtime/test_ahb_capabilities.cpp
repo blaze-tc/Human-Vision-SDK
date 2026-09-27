@@ -158,3 +158,17 @@ TEST(AhbCapabilities, ProbeSequenceUsesSeparateContractsAndRetainsBothRejections
     }).path, HV_ANDROID_GPU_COPY_BLIT);
     EXPECT_EQ(requests.size(), 1u);
 }
+
+TEST(AhbCapabilities, RequestedEvaluationPathIsMeasuredWithoutFallback) {
+    std::vector<HV_AndroidGpuCopyPath> measured;
+    auto probe=[&](const AhbDescription&,HV_AndroidGpuCopyPath path) {
+        measured.push_back(path); return Complete(path);
+    };
+    EXPECT_EQ(ProbeAhbContracts(640,480,probe,HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT).path,
+              HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT);
+    EXPECT_EQ(measured,(std::vector<HV_AndroidGpuCopyPath>{HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT}));
+    const auto failed=ProbeAhbContracts(640,480,[](const AhbDescription&,HV_AndroidGpuCopyPath path) {
+        auto c=Complete(path); c.producer.color_attachment=false; return c;
+    },HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT);
+    EXPECT_EQ(failed.path,HV_ANDROID_GPU_COPY_UNAVAILABLE);
+}

@@ -60,6 +60,8 @@ struct UnityTextureAccess {
   uint32_t tiling = 0;
   uint32_t layers = 0;
   void *texture = nullptr;
+  uint64_t diagnostic_generation = 0, diagnostic_source_id = 0;
+  uint32_t diagnostic_slot = 0;
 };
 
 struct UnityVulkanSlotCache {

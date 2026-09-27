@@ -8,6 +8,10 @@
 #include "gpu/android/shaders/embedded_shaders.h"
 #include "gpu/vulkan/vulkan_device_identity.h"
 #include "gpu/android/ahb_capabilities.h"
+#include "gpu/android/gpu_parity_image.h"
+#if defined(HV_ANDROID_R4_PARITY)
+#include "gpu/android/gpu_parity_fixture_data.h"
+#endif
 
 #include <android/hardware_buffer.h>
 #include <unistd.h>
@@ -29,6 +33,9 @@ namespace humanvision::gpu {
 namespace {
 
 struct AndroidSlot {
+#if defined(HV_ANDROID_R4_PARITY)
+  std::unique_ptr<ImageParityReduction> parity;
+#endif
   struct SourceView {
     VkImage image = VK_NULL_HANDLE;
     VkImageView view = VK_NULL_HANDLE;
@@ -64,6 +71,9 @@ struct AndroidSlot {
   const std::atomic<bool>* device_live = nullptr;
   bool Alive() const noexcept { return !device_live || device_live->load(std::memory_order_acquire); }
   ~AndroidSlot() {
+#if defined(HV_ANDROID_R4_PARITY)
+    if (Alive()) parity.reset(); else (void)parity.release();
+#endif
     // An out-of-order Unity device shutdown quarantines the generation. The
     // VkDevice owner reclaims its children; later control cleanup must never
     // issue Vulkan destruction calls against that dead device.
@@ -629,7 +639,11 @@ private:
     }
     measured_ncnn_lease_ = true;
     const AhbSelection selection = ProbeAndroidAhbCapabilities(
-        producer, consumer, source, source.width, source.height);
+        producer, consumer, source, source.width, source.height
+#if defined(HV_ANDROID_R4_PARITY)
+        , static_cast<HV_AndroidGpuCopyPath>(RequestedParityCopyPath())
+#endif
+        );
     if (selection.path == HV_ANDROID_GPU_COPY_UNAVAILABLE) {
       diagnostic_ = selection.diagnostic;
       configuration_failed_.store(true, std::memory_order_release);
@@ -1214,6 +1228,10 @@ private:
     if (selection.path == HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT &&
         !CreateColor(*slot))
       return false;
+#if defined(HV_ANDROID_R4_PARITY)
+    slot->parity = std::make_unique<ImageParityReduction>();
+    if (!slot->parity->Initialize(P(c), D(c),c.device_uuid)) return false;
+#endif
     out.ahb = reinterpret_cast<uintptr_t>(slot.get());
     out.ahb_buffer = reinterpret_cast<uintptr_t>(slot->ahb);
     out.image = reinterpret_cast<uintptr_t>(slot->image);
@@ -1286,7 +1304,11 @@ private:
       self->runtime_error_.store(2, std::memory_order_release);
       return SourcePreparation::Unsupported;
     }
-    if (!slot->pipeline) {
+    if (!slot->pipeline
+#if defined(HV_ANDROID_R4_PARITY)
+        && !slot->parity
+#endif
+       ) {
       slot->active_source_view = VK_NULL_HANDLE;
       return SourcePreparation::Ready;
     }
@@ -1345,6 +1367,12 @@ private:
   }
   static bool Begin(AndroidSlot &s, const UnityTextureAccess& access,
                     const BridgeBarrier *b, uint32_t n) noexcept {
+#if defined(HV_ANDROID_R4_PARITY)
+    if (s.submitted && s.parity) {
+      if (vkGetFenceStatus(s.device, s.submission_fence) != VK_SUCCESS) return false;
+      s.parity->ReportCompleted();
+    }
+#endif
     if (!s.Alive() || n != 4 || vkResetCommandBuffer(s.command, 0) != VK_SUCCESS)
       return false;
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
@@ -1396,6 +1424,12 @@ private:
                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, s->image,
                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region,
                    VK_FILTER_LINEAR);
+#if defined(HV_ANDROID_R4_PARITY)
+    if (!s->parity || !s->parity->Record(s->command, reinterpret_cast<VkImage>(access.image),
+        s->active_source_view, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        s->image, s->view, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        access.diagnostic_generation, access.diagnostic_source_id, access.diagnostic_slot)) return false;
+#endif
     EndBarriers(*s, access, b);
     return vkEndCommandBuffer(s->command) == VK_SUCCESS;
   }
@@ -1427,11 +1461,17 @@ private:
                             s->pipeline_layout, 0, 1, &s->descriptor, 0,
                             nullptr);
     // Typed BGRA sampling already yields semantic RGBA components.
-    uint32_t swap = 0u;
+    uint32_t flags = access.width==s->width && access.height==s->height ? 2u : 0u;
     vkCmdPushConstants(s->command, s->pipeline_layout,
-                       VK_SHADER_STAGE_FRAGMENT_BIT, 0, 4, &swap);
+                       VK_SHADER_STAGE_FRAGMENT_BIT, 0, 4, &flags);
     vkCmdDraw(s->command, 3, 1, 0, 0);
     vkCmdEndRenderPass(s->command);
+#if defined(HV_ANDROID_R4_PARITY)
+    if (!s->parity || !s->parity->Record(s->command, reinterpret_cast<VkImage>(access.image),
+        s->active_source_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        s->image, s->view, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        access.diagnostic_generation, access.diagnostic_source_id, access.diagnostic_slot)) return false;
+#endif
     EndBarriers(*s, access, b);
     return vkEndCommandBuffer(s->command) == VK_SUCCESS;
   }
@@ -1482,6 +1522,9 @@ private:
     auto* s = S(c);
     if (!s || !s->Alive() || vkGetFenceStatus(s->device, s->submission_fence) != VK_SUCCESS)
       return false;
+#if defined(HV_ANDROID_R4_PARITY)
+    if (s->parity) s->parity->ReportCompleted();
+#endif
     // A completed queue signal still leaves the binary semaphore signaled if
     // export failed. Retry the payload transfer and close the discarded fd;
     // never recycle it for another signal until that transfer succeeds.

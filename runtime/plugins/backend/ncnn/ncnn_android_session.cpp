@@ -113,7 +113,7 @@ struct AndroidSession::Slot {
     ncnn::VkImageMat image;
     std::unique_ptr<ncnn::ImportAndroidHardwareBufferPipeline> import_pipeline;
     std::unique_ptr<ncnn::VkCompute> compute;
-    ncnn::VkMat imported_rgb, normalized, prepared_input;
+    ncnn::VkMat imported_rgb, imported_rgba, rgba_planes, normalized, prepared_input;
     std::unique_ptr<ncnn::Extractor> extractor;
     std::unique_ptr<ncnn::Extractor> pristine_extractor;
     std::vector<ncnn::VkMat> gpu_outputs, fp32_outputs;
@@ -123,7 +123,7 @@ struct AndroidSession::Slot {
         pristine_extractor.reset();
         extractor.reset();
         gpu_outputs.clear(); fp32_outputs.clear(); cpu_outputs.clear(); dense_outputs.clear();
-        prepared_input.release(); normalized.release(); imported_rgb.release();
+        prepared_input.release(); normalized.release(); imported_rgb.release(); rgba_planes.release(); imported_rgba.release();
         compute.reset(); import_pipeline.reset(); image.release(); allocator.reset();
         if (import_semaphore && device && device->vkdevice())
             ncnn::vkDestroySemaphore(device->vkdevice(), import_semaphore, nullptr);
@@ -142,6 +142,9 @@ AndroidSession::~AndroidSession() {
         // Destroy guard must never turn an uncertain fault into a UAF.
         for (auto& slot : slots_) (void)slot.release();
         (void)prepared_.release();
+#if defined(HV_ANDROID_R4_PARITY)
+        (void)parity_.release();
+#endif
         (void)preprocess_.release();
         (void)net_.release();
     };
@@ -160,6 +163,9 @@ AndroidSession::~AndroidSession() {
     }
     for (auto& slot : slots_) slot.reset();
     prepared_.reset();
+#if defined(HV_ANDROID_R4_PARITY)
+    parity_.reset();
+#endif
     preprocess_.reset();
     net_.reset();
     for (const auto handle : generation_.retained_ahb)
@@ -249,9 +255,22 @@ bool AndroidSession::InitializeSlots(gpu::UnityVulkanBridge& bridge, std::string
         import_option.use_fp16_packed = false;
         import_option.use_fp16_storage = false;
         import_option.use_fp16_arithmetic = false;
-        if (slot->import_pipeline->create(slot->allocator.get(), 1, 1, import_option) != 0) {
+        // The pinned ncnn four-argument overload reads its uninitialized
+        // rotate_from member while selecting output dimensions. Source pixels
+        // have already been oriented by the producer; import without resizing.
+        const int import_type=RequiresPackedAhbImport(generation_.contract.width,generation_.contract.height)?4:1;
+        if (slot->import_pipeline->create(slot->allocator.get(), import_type, 1,
+                static_cast<int>(generation_.contract.width),
+                static_cast<int>(generation_.contract.height), import_option) != 0 ||
+            slot->import_pipeline->need_resize) {
             error = "ncnn RGB AHB import pipeline creation failed"; return false;
         }
+#if defined(HV_ANDROID_R4_PARITY)
+        __android_log_print(ANDROID_LOG_INFO,"HV_R4_PARITY",
+            "import_pipeline slot=%zu width=%u height=%u rotate=%d resize=%d",
+            i,generation_.contract.width,generation_.contract.height,
+            slot->import_pipeline->rotate_from,slot->import_pipeline->need_resize);
+#endif
         ExportSemaphoreCreateInfo export_info{kExportSemaphoreCreateInfo};
         export_info.handleTypes = kSyncFdHandleType;
         VkSemaphoreCreateInfo sem{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, &export_info};
@@ -259,8 +278,18 @@ bool AndroidSession::InitializeSlots(gpu::UnityVulkanBridge& bridge, std::string
             error = "ncnn external sync-fd semaphore creation failed"; return false;
         }
         slot->compute = std::make_unique<ncnn::VkCompute>(device_);
-        slot->imported_rgb.create(generation_.contract.width, generation_.contract.height, 3,
-                                  sizeof(float), 1, blob_allocator_);
+        if(import_type==4) {
+            slot->imported_rgba.create(generation_.contract.width,generation_.contract.height,1,
+                                      sizeof(float)*4,4,blob_allocator_);
+            slot->rgba_planes.create(generation_.contract.width,generation_.contract.height,4,
+                                     sizeof(float),1,blob_allocator_);
+            slot->imported_rgb=slot->rgba_planes;
+            slot->imported_rgb.c=3; // retained first three planes, same allocation/cstep
+            if(slot->imported_rgba.empty()||slot->rgba_planes.empty()) {
+                error="ncnn cached non-aligned AHB unpack allocation failed"; return false;
+            }
+        } else slot->imported_rgb.create(generation_.contract.width, generation_.contract.height,3,
+                                        sizeof(float),1,blob_allocator_);
         slot->normalized.create(contract_.width, contract_.height,
                                 NormalizedChannelCount(contract_.output_elempack),
                                 sizeof(float), 1, blob_allocator_);
@@ -286,6 +315,25 @@ bool AndroidSession::InitializeSlots(gpu::UnityVulkanBridge& bridge, std::string
         slots_[i] = std::move(slot);
     }
     error.clear(); return true;
+}
+
+bool AndroidSession::RecordRgbImport(Slot& slot,ncnn::VkCompute& cmd,std::string& error) {
+    auto& target=slot.imported_rgba.empty()?slot.imported_rgb:slot.imported_rgba;
+    cmd.record_import_android_hardware_buffer(slot.import_pipeline.get(),slot.image,target,
+        VK_IMAGE_LAYOUT_GENERAL,VK_QUEUE_FAMILY_EXTERNAL_KHR,device_->info.compute_queue_family_index());
+    // The import recorder binds the destination directly, so declare its write
+    // before either preprocessing or unpack records its first read dependency.
+    target.data->access_flags=VK_ACCESS_SHADER_WRITE_BIT;
+    target.data->stage_flags=VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    if(slot.imported_rgba.empty()) return true;
+    const auto* allocation=slot.rgba_planes.data;
+    device_->convert_packing(target,slot.rgba_planes,1,1,cmd,option_);
+    if(slot.rgba_planes.empty()||slot.rgba_planes.data!=allocation||
+       slot.rgba_planes.elempack!=1||slot.rgba_planes.elembits()!=32||slot.rgba_planes.c!=4||
+       slot.rgba_planes.w!=target.w||slot.rgba_planes.h!=target.h) {
+        error="ncnn non-aligned AHB unpack changed cached geometry/dtype/allocation"; return false;
+    }
+    return true;
 }
 
 bool AndroidSession::Initialize(const HV_GpuBackendConfigV1& config,
@@ -359,6 +407,10 @@ bool AndroidSession::Initialize(const HV_GpuBackendConfigV1& config,
             return false;
         }
         prepared_ = std::make_unique<PreparedGpuResources>();
+#if defined(HV_ANDROID_R4_PARITY)
+        parity_ = std::make_unique<gpu::NcnnParityStages>();
+        if (!parity_->Initialize(device_, blob_allocator_, staging_allocator_, match.identity.device_uuid,error)) return false;
+#endif
         if (!prepared_->Initialize(device_, *net_, blob_allocator_, staging_allocator_, contract_) ||
             !prepared_state_.Initialize(generation_.generation)) {
             error = "ncnn detached detector GPU resource initialization failed";
@@ -475,9 +527,9 @@ bool AndroidSession::DrainDropped(std::string& error) {
             error = "ncnn superseded frame sync-fd import failed"; return false;
         }
         frame.producer_fd.Release();
-        slot.compute->record_import_android_hardware_buffer(slot.import_pipeline.get(),
-            slot.image, slot.imported_rgb, VK_IMAGE_LAYOUT_GENERAL, VK_QUEUE_FAMILY_EXTERNAL_KHR,
-            device_->info.compute_queue_family_index());
+        if(!RecordRgbImport(slot,*slot.compute,error)) {
+            terminal_gpu_fault_=true; bridge_->QuarantineConsumer(frame); return false;
+        }
         slot.compute->record_release_android_hardware_buffer(slot.image,
             device_->info.compute_queue_family_index(), VK_QUEUE_FAMILY_EXTERNAL_KHR);
         if (slot.compute->submit_and_wait(slot.import_semaphore,
@@ -550,11 +602,16 @@ HV_Result AndroidSession::Prepare(const HV_GpuFrameRefV1& frame,
             return fail("ncnn detached detector sync-fd import failed");
         consumer.producer_fd.Release(); // Vulkan takes ownership, including -1 sentinel.
     }
-    cmd.record_import_android_hardware_buffer(source.import_pipeline.get(),
-        source.image, source.imported_rgb, VK_IMAGE_LAYOUT_GENERAL,
-        VK_QUEUE_FAMILY_EXTERNAL_KHR, device_->info.compute_queue_family_index());
+    if(!RecordRgbImport(source,cmd,error)) return fail("ncnn detached AHB RGB unpack failed");
+#if defined(HV_ANDROID_R4_PARITY)
+    __android_log_print(ANDROID_LOG_INFO,"HV_R4_PARITY",
+        "import_state source=%lld slot=%u access=%u stage=%u cstep=%zu offset=%zu capacity=%zu",
+        (long long)frame.frame_id,consumer.token.index,source.imported_rgb.data->access_flags,
+        source.imported_rgb.data->stage_flags,source.imported_rgb.cstep,
+        size_t(source.imported_rgb.buffer_offset()),size_t(source.imported_rgb.buffer_capacity()));
+#endif
     if (!preprocess_->Record(source.imported_rgb, transform, prepared_->normalized,
-                             cmd, contract_.pad_rgb.data(), error))
+                             cmd, contract_.pad_rgb.data(), error, contract_.crop_mode==InputContract::CropMode::Letterbox))
         return fail("ncnn detached detector GPU preprocessing record failed");
 #if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
     if (frame.frame_id % 120 == 0)
@@ -574,10 +631,18 @@ HV_Result AndroidSession::Prepare(const HV_GpuFrameRefV1& frame,
         prepared_->tensor.elempack != 1 || prepared_->tensor.elembits() != 16 ||
         prepared_->tensor.data != cached_tensor_buffer)
         return fail("ncnn detached detector tensor is not 320x320 RGB FP16 pack1");
+#if defined(HV_ANDROID_R4_PARITY)
+    if (!parity_ || !parity_->Record(source.imported_rgb, prepared_->normalized,
+                                    prepared_->tensor,cmd,generation_.generation,frame.frame_id,error))
+        return fail("R4 GPU reduction record failed");
+#endif
     const int submitted = producer_wait
         ? cmd.submit_and_wait(source.import_semaphore, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)
         : cmd.submit_and_wait();
     if (submitted != 0) return fail("ncnn detached detector GPU copy completion unproven");
+#if defined(HV_ANDROID_R4_PARITY)
+    parity_->ReportCompleted(generation_.generation, frame.frame_id, consumer.token.index);
+#endif
     if (!prepared_state_.ProveGpuCopy() || cmd.reset() != 0)
         return fail("ncnn detached detector command reset failed after GPU copy");
 #if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
@@ -762,6 +827,10 @@ HV_Result AndroidSession::RunPrepared(const HV_GpuPreparedRefV1& ref,
         std::copy(layout.dimensions.begin(), layout.dimensions.end(), view.dimensions);
         view.data = slot.dense_outputs[i].data();
         view.byte_count = layout.logical_bytes;
+#if defined(HV_ANDROID_R4_PARITY)
+        if(parity_) parity_->ReportDetectorOutput(ref.frame_id,view.name,
+            slot.dense_outputs[i].data(),values);
+#endif
     }
     count = static_cast<uint32_t>(contract_.output_blobs.size());
     if (!prepared_state_.Consume(ref)) {
@@ -971,12 +1040,10 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
             consumer.producer_fd.Release(); // Vulkan owns the first role's fd.
             imported = true;
         }
-        slot.compute->record_import_android_hardware_buffer(slot.import_pipeline.get(),
-            slot.image, slot.imported_rgb, VK_IMAGE_LAYOUT_GENERAL, VK_QUEUE_FAMILY_EXTERNAL_KHR,
-            device_->info.compute_queue_family_index());
         acquired = true;
+        if(!RecordRgbImport(slot,*slot.compute,error)) return HV_ERR_INTERNAL;
         if (!preprocess_->Record(slot.imported_rgb, transform, slot.normalized, *slot.compute,
-                                 contract_.pad_rgb.data(), error))
+                                 contract_.pad_rgb.data(), error, contract_.crop_mode==InputContract::CropMode::Letterbox))
             return HV_ERR_INVALID_ARGUMENT;
         device_->convert_packing(slot.normalized, slot.prepared_input,
             contract_.output_elempack, contract_.cast_type_to, *slot.compute, option_);
@@ -1009,7 +1076,7 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
             return HV_ERR_INVALID_ARGUMENT;
         }
         if (!preprocess_->Record(slot.imported_rgb, transform, slot.normalized, *slot.compute,
-                                 contract_.pad_rgb.data(), error))
+                                 contract_.pad_rgb.data(), error, contract_.crop_mode==InputContract::CropMode::Letterbox))
             return HV_ERR_INVALID_ARGUMENT;
         device_->convert_packing(slot.normalized, slot.prepared_input,
             contract_.output_elempack, contract_.cast_type_to, *slot.compute, option_);

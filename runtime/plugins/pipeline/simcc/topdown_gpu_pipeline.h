@@ -3,7 +3,8 @@
 #include "models/rtmdet/rtmdet_model.h"
 
 namespace humanvision::runtime {
-struct DetectorLetterbox { float scale=0, pad_x=0, pad_y=0; };
+struct DetectorLetterbox { float scale=0, pad_x=0, pad_y=0, scale_x=0, scale_y=0; };
+bool BuildGpuDetectorPrior(int anchor_index,float& x,float& y);
 bool BuildGpuDetectorLetterbox(int source_width, int source_height,
                                int model_width, int model_height,
                                HV_GpuImageTransformV1& transform,

@@ -24,6 +24,15 @@ LOCAL_PACK = ROOT / "out/c3-local-runtime/modelpacks/precision-t-26-ncnn-fp16"
 # Human annotations made after viewing the exact decoded frames, in source
 # pixel coordinates. These are deliberately independent of model predictions.
 ANNOTATIONS = {
+    ("e3620101d8218e7e9f2736cf5dab7a497bfcfc23e33a40244b63ae317c1bb0c8", 1500): [
+        {"id": "left-rear", "bbox_xyxy": [155, 182, 236, 387], "visibility": "full"},
+        {"id": "left-front", "bbox_xyxy": [263, 189, 360, 434], "visibility": "full"},
+        {"id": "middle-left-rear", "bbox_xyxy": [387, 177, 463, 393], "visibility": "full"},
+        {"id": "center-front", "bbox_xyxy": [491, 161, 625, 456], "visibility": "full"},
+        {"id": "middle-right-rear", "bbox_xyxy": [608, 181, 681, 391], "visibility": "full"},
+        {"id": "right-front", "bbox_xyxy": [731, 160, 826, 431], "visibility": "full"},
+        {"id": "right-rear", "bbox_xyxy": [846, 167, 936, 388], "visibility": "full"},
+    ],
     ("55cd66ae01696939a9c78ab55039e4011c2be4b8449e9e1c893959bc0d1975e0", 150): [
         {"id": "left-black", "bbox_xyxy": [34, 962, 279, 1598], "visibility": "full"},
         {"id": "left-gray", "bbox_xyxy": [241, 977, 461, 1576], "visibility": "full"},

@@ -7,6 +7,9 @@
 #include "models/rtmpose/pose_affine.h"
 #include "gpu/android/unity_vulkan_bridge.h"
 #include "gpu/android/unity_vulkan_plugin.h"
+#if defined(HV_ANDROID_R4_PARITY)
+#include "gpu/android/gpu_parity_fixture_data.h"
+#endif
 #include "json/json.hpp"
 #include <algorithm>
 #include <array>
@@ -20,20 +23,43 @@
 #include <thread>
 #if defined(__ANDROID__)
 #include <poll.h>
-#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE) || defined(HV_ANDROID_R4_PARITY)
 #include <android/log.h>
 #endif
 #endif
 
 namespace humanvision::runtime {
+bool BuildGpuDetectorPrior(int index,float& x,float& y) {
+    if(index<0||index>=2100)return false;
+    const int level=index<1600?0:index<2000?1:2;
+    const int local=index-(level==0?0:level==1?1600:2000);
+    const int grid=level==0?40:level==1?20:10;
+    const float stride=float(8<<level);
+    // Exported person Nano inherits RTMDet's MlvlPointGenerator(offset=0).
+    x=(local%grid)*stride; y=(local/grid)*stride;
+    return true;
+}
 bool BuildGpuDetectorLetterbox(int source_width,int source_height,int model_width,int model_height,
                                HV_GpuImageTransformV1& transform,DetectorLetterbox& inverse){
     if(source_width<=0||source_height<=0||model_width<=0||model_height<=0)return false;
-    inverse.scale=std::min(float(model_width)/source_width,float(model_height)/source_height);
-    inverse.pad_x=(model_width-source_width*inverse.scale)*.5f;
-    inverse.pad_y=(model_height-source_height*inverse.scale)*.5f;
-    transform.source_rect_px={-inverse.pad_x/inverse.scale,-inverse.pad_y/inverse.scale,
-        model_width/inverse.scale,model_height/inverse.scale};
+    const bool width_limited=int64_t(model_width)*source_height<=int64_t(model_height)*source_width;
+    const int denominator=width_limited?source_width:source_height;
+    const int numerator=width_limited?model_width:model_height;
+    // Python's pinned offline round uses ties-to-even. Integer arithmetic keeps
+    // that extent independent of the process floating-point rounding mode.
+    const auto round_extent=[&](int extent) {
+        const int64_t n=int64_t(extent)*numerator,q=n/denominator,r=n%denominator;
+        return int(q+(2*r>denominator||(2*r==denominator&&(q&1))));
+    };
+    const int resized_width=round_extent(source_width),resized_height=round_extent(source_height);
+    if(resized_width<=0||resized_height<=0)return false;
+    inverse.scale=float(numerator)/denominator;
+    inverse.pad_x=float((model_width-resized_width)/2);
+    inverse.pad_y=float((model_height-resized_height)/2);
+    inverse.scale_x=float(resized_width)/source_width;
+    inverse.scale_y=float(resized_height)/source_height;
+    transform.source_rect_px={-inverse.pad_x/inverse.scale_x,-inverse.pad_y/inverse.scale_y,
+        model_width/inverse.scale_x,model_height/inverse.scale_y};
     return true;
 }
 bool BuildGpuPoseCrop(const Detection& box,HV_GpuImageTransformV1& transform,
@@ -91,7 +117,7 @@ bool DecodeDetector(const HV_TensorViewV1* views,uint32_t count,int width,int he
     for(uint32_t i=0;i<count;++i){if(Tensor(views[i],"cls",2100,1))cls=&views[i];
         if(Tensor(views[i],"bbox",2100,4))bbox=&views[i];}
     if(!cls||!bbox){
-#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE) || defined(HV_ANDROID_R4_PARITY)
         __android_log_print(ANDROID_LOG_ERROR,"HV_TOPDOWN_PIPELINE",
             "detector decode rejected tensor contract cls=%d bbox=%d",cls?1:0,bbox?1:0);
 #endif
@@ -106,24 +132,21 @@ bool DecodeDetector(const HV_TensorViewV1* views,uint32_t count,int width,int he
     for(int i=0;i<2100;++i){
         const float raw=scores[i],score=1.f/(1.f+std::exp(-raw));
         if(!std::isfinite(raw)||score<.35f)continue;
-        const int level=i<1600?0:i<2000?1:2;
-        const int local=i-(level==0?0:level==1?1600:2000);
-        const int grid=level==0?40:level==1?20:10;
-        const float stride=static_cast<float>(8<<level);
-        const float cx=(local%grid+.5f)*stride,cy=(local/grid+.5f)*stride;
+        float cx=0,cy=0;
+        if(!BuildGpuDetectorPrior(i,cx,cy))return false;
         const float* d=distances+i*4;
         if(!std::all_of(d,d+4,[](float v){return std::isfinite(v)&&v>=0;})){
-#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE) || defined(HV_ANDROID_R4_PARITY)
             __android_log_print(ANDROID_LOG_ERROR,"HV_TOPDOWN_PIPELINE",
                 "detector decode rejected bbox index=%d values=%g,%g,%g,%g score=%g",
                 i,d[0],d[1],d[2],d[3],score);
 #endif
             return false;
         }
-        Detection box{std::clamp((cx-d[0]-inverse.pad_x)/inverse.scale,0.f,float(width)),
-                      std::clamp((cy-d[1]-inverse.pad_y)/inverse.scale,0.f,float(height)),
-                      std::clamp((cx+d[2]-inverse.pad_x)/inverse.scale,0.f,float(width)),
-                      std::clamp((cy+d[3]-inverse.pad_y)/inverse.scale,0.f,float(height)),score};
+        Detection box{std::clamp((cx-d[0]-inverse.pad_x)/inverse.scale_x,0.f,float(width)),
+                      std::clamp((cy-d[1]-inverse.pad_y)/inverse.scale_y,0.f,float(height)),
+                      std::clamp((cx+d[2]-inverse.pad_x)/inverse.scale_x,0.f,float(width)),
+                      std::clamp((cy+d[3]-inverse.pad_y)/inverse.scale_y,0.f,float(height)),score};
         if(box.x2>box.x1&&box.y2>box.y1)candidates.push_back(box);
     }
     std::sort(candidates.begin(),candidates.end(),[](const auto& a,const auto& b){return a.score>b.score;});
@@ -149,7 +172,7 @@ bool DecodePose(const HV_TensorViewV1* views,uint32_t count,const HV_Rect& rect,
     for(uint32_t i=0;i<count;++i){if(Tensor(views[i],"simcc_x",26,384))x=&views[i];
         if(Tensor(views[i],"simcc_y",26,512))y=&views[i];}
     if(!x||!y){
-#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE) || defined(HV_ANDROID_R4_PARITY)
         __android_log_print(ANDROID_LOG_ERROR,"HV_TOPDOWN_PIPELINE",
             "pose decode rejected tensor contract x=%d y=%d",x?1:0,y?1:0);
 #endif
@@ -161,7 +184,7 @@ bool DecodePose(const HV_TensorViewV1* views,uint32_t count,const HV_Rect& rect,
         const auto* xb=xs+k*384;const auto* yb=ys+k*512;
         if(!std::all_of(xb,xb+384,[](float v){return std::isfinite(v);})||
            !std::all_of(yb,yb+512,[](float v){return std::isfinite(v);})){
-#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE) || defined(HV_ANDROID_R4_PARITY)
             __android_log_print(ANDROID_LOG_ERROR,"HV_TOPDOWN_PIPELINE",
                 "pose decode rejected nonfinite joint=%d",k);
 #endif
@@ -180,7 +203,7 @@ bool DecodePose(const HV_TensorViewV1* views,uint32_t count,const HV_Rect& rect,
         joints.push_back(joint);
     }
     if(valid<5){
-#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE) || defined(HV_ANDROID_R4_PARITY)
         float low=1.f,high=0.f;
         for(int i=0;i<17;++i){low=std::min(low,joints[i].confidence);
             high=std::max(high,joints[i].confidence);}
@@ -225,6 +248,9 @@ struct Instance {
     uint64_t generation=0;
     int64_t region_revision=0;
     int64_t last_processed_frame=-1;
+#if defined(HV_ANDROID_R4_PARITY)
+    bool parity_pose_reported=false;
+#endif
     std::size_t last_selected_count=0;
     int width=0,height=0,capacity=0,interval_frames=0;
     int64_t max_gap_us=0;
@@ -316,7 +342,7 @@ struct Instance {
             HV_TensorViewV1 views[2]{};uint32_t count=0;char message[256]{};
             HV_ErrorBufferV1 error{sizeof(error),HV_PLUGIN_API_V1,message,sizeof(message)};
             const auto status=detector.api->prepared->run_prepared(detector.instance,&ref,views,2,&count,&error);
-#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE) || defined(HV_ANDROID_R4_PARITY)
             const auto decode_begun=Clock::now();
             __android_log_print(ANDROID_LOG_INFO,"HV_TOPDOWN_PIPELINE",
                 "detector frame=%lld run_status=%d count=%u error=%s decode_begin",
@@ -348,7 +374,7 @@ struct Instance {
             }
 #endif
             const bool decoded=status==HV_OK&&DecodeDetector(views,count,width,height,local_candidates,local_selected);
-#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE) || defined(HV_ANDROID_R4_PARITY)
             __android_log_print(ANDROID_LOG_INFO,"HV_TOPDOWN_PIPELINE",
                 "detector frame=%lld decoded=%d candidates=%zu selected=%zu decode_ms=%lld",
                 static_cast<long long>(ref.frame_id),decoded?1:0,local_candidates.size(),
@@ -462,7 +488,7 @@ HV_Result HV_CALL Process(void* opaque,const HV_GpuFrameRefV1* frame,
                 self.result_ready=false;self.finished_boxes.clear();}
         }
         const auto& next=self.crops->NextCrops(frame->frame_id,frame->timestamp_us);
-#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE) || defined(HV_ANDROID_R4_PARITY)
         if(!next.empty())
             __android_log_print(ANDROID_LOG_INFO,"HV_TOPDOWN_PIPELINE",
                 "pose frame=%lld crop_count=%zu first_track=%d first_box=%g,%g,%g,%g",
@@ -543,7 +569,7 @@ HV_Result HV_CALL Process(void* opaque,const HV_GpuFrameRefV1* frame,
             const auto pose_begin=Clock::now();
             const auto status=self.pose.api->v1.run_image(self.pose.instance,frame,
                 &self.pose.transform,views,2,&count,error);
-#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE) || defined(HV_ANDROID_R4_PARITY)
             __android_log_print(ANDROID_LOG_INFO,"HV_TOPDOWN_PIPELINE",
                 "pose run_status=%d frame=%lld count=%u crop_rect=%g,%g,%g,%g",
                 static_cast<int>(status),static_cast<long long>(frame->frame_id),count,
@@ -564,7 +590,7 @@ HV_Result HV_CALL Process(void* opaque,const HV_GpuFrameRefV1* frame,
             const bool valid=DecodePose(views,count,decode_rect,*frame,self.joints,body);
             const bool accepted=self.crops->ApplyPose(frame->frame_id,frame->timestamp_us,
                 crop.track_id,self.joints,valid);
-#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE) || defined(HV_ANDROID_R4_PARITY)
             __android_log_print(ANDROID_LOG_INFO,"HV_TOPDOWN_PIPELINE",
                 "pose frame=%lld track=%d decoded=%d accepted=%d joints=%zu",
                 static_cast<long long>(frame->frame_id),crop.track_id,valid?1:0,
@@ -593,6 +619,27 @@ HV_Result HV_CALL Process(void* opaque,const HV_GpuFrameRefV1* frame,
 #endif
         }
         wake.Notify();
+#if defined(HV_ANDROID_R4_PARITY)
+        if(!self.parity_pose_reported) {
+            const auto fixture=humanvision::gpu::CurrentParityFixture();
+            if(fixture&&fixture->expected_people&&output->body_count>=fixture->expected_people) {
+                self.parity_pose_reported=true;
+                for(uint32_t b=0;b<output->body_count;b++) {
+                    const auto& body=output->bodies[b];
+                    __android_log_print(ANDROID_LOG_INFO,"HV_R4_PARITY",
+                        "pose_sample frame=%lld body=%u count=%u confidence=%.9g box=%.9g,%.9g,%.9g,%.9g timestamp=%lld",
+                        (long long)frame->frame_id,b,output->body_count,body.confidence,
+                        body.bbox_px.x,body.bbox_px.y,body.bbox_px.width,body.bbox_px.height,(long long)frame->timestamp_us);
+                    uint32_t joint_index=0;
+                    for(const auto& j:body.joints) {
+                        __android_log_print(ANDROID_LOG_INFO,"HV_R4_PARITY",
+                            "pose_joint frame=%lld body=%u joint=%u valid=%u x=%.9g y=%.9g confidence=%.9g timestamp=%lld",
+                            (long long)frame->frame_id,b,joint_index++,j.valid,j.x_px,j.y_px,j.confidence,(long long)j.observation_timestamp_us);
+                    }
+                }
+            }
+        }
+#endif
         output->preprocess_ms=std::max(0.f,
             std::chrono::duration<float,std::milli>(Clock::now()-begin).count()-output->inference_ms);
         PipelineDiagnostics diagnostics{};

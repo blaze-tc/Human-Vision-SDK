@@ -6,6 +6,7 @@
 #include "plugins/backend/ncnn/ncnn_model_options.h"
 #include "plugins/backend/ncnn/ncnn_prepared_input.h"
 #include "gpu/android/unity_vulkan_bridge.h"
+#include "gpu/android/gpu_parity_fixture.h"
 #include <allocator.h>
 #include <android/hardware_buffer.h>
 #include <net.h>
@@ -50,6 +51,7 @@ private:
     struct SlotDeleter { void operator()(Slot*) const noexcept; };
     bool ParseModel(const HV_GpuBackendConfigV1&, std::string& error);
     bool InitializeSlots(gpu::UnityVulkanBridge&, std::string& error);
+    bool RecordRgbImport(Slot&,ncnn::VkCompute&,std::string& error);
     bool ValidateTransform(const HV_GpuFrameRefV1&, const HV_GpuImageTransformV1&,
                            const gpu::ConsumerFrame&, std::string& error) const;
     bool DrainDropped(std::string& error);
@@ -71,6 +73,9 @@ private:
     InputContract contract_;
     PreparedInputState prepared_state_;
     std::unique_ptr<PreparedGpuResources> prepared_;
+#if defined(HV_ANDROID_R4_PARITY)
+    std::unique_ptr<gpu::NcnnParityStages> parity_;
+#endif
     gpu::ConsumerGeneration generation_{};
     std::array<std::unique_ptr<Slot, SlotDeleter>, gpu::AhbSlotRing::kSlotCount> slots_{};
     std::unique_ptr<GpuPreprocess> preprocess_;

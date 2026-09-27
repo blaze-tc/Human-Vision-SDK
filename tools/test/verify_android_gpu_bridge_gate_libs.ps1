@@ -2,6 +2,7 @@ param(
     [ValidateSet('Stage','Verify')][string]$Mode = 'Verify',
     [string]$PluginDirectory = 'out/android-gpu-gate-runtime/UnityProject/Assets/Plugins/Android/arm64-v8a',
     [string]$ApkPath = 'out/android-gpu-gate-runtime/humanvision-gpu-bridge-gate.apk',
+    [string]$NativeLibrary = 'build/android-live/bin/Release/libhumanvision.so',
     [string]$AndroidNdk = 'D:/Developer/2022.3.61t4/Editor/Data/PlaybackEngines/AndroidPlayer/NDK'
 )
 $ErrorActionPreference = 'Stop'
@@ -17,12 +18,13 @@ $systemLibs = Join-Path $AndroidNdk 'toolchains/llvm/prebuilt/windows-x86_64/sys
 if (!(Test-Path -LiteralPath $readelf)) { throw "Missing Android NDK llvm-readelf: $readelf" }
 
 $candidates = @{}
-$native = Join-Path $root 'build/android-live/bin/Release/libhumanvision.so'
+$native = AbsolutePath $NativeLibrary
 $ort = Join-Path $root 'out/live-deps/ort-android/lib/libonnxruntime.so'
 $ffmpeg = Join-Path $root 'out/live-deps/ffmpeg-android'
 foreach ($path in @($native, $ort)) {
     if (!(Test-Path -LiteralPath $path)) { throw "Missing Android ARM64 library: $path" }
-    $candidates[[IO.Path]::GetFileName($path)] = $path
+    $name = if($path -eq $native) { 'libhumanvision.so' } else { [IO.Path]::GetFileName($path) }
+    $candidates[$name] = $path
 }
 if (!(Test-Path -LiteralPath $ffmpeg)) { throw "Missing pinned Android FFmpeg directory: $ffmpeg" }
 foreach ($file in Get-ChildItem -LiteralPath $ffmpeg -Filter '*.so' -File) {

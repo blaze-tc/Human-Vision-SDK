@@ -139,6 +139,38 @@ TEST(TopDownGpu, DetectorLetterboxPreservesNonSquareFrameAndInverse) {
     EXPECT_NEAR(pose.source_rect_px.width,pose_inverse.width,0.0001f);
 }
 
+TEST(TopDownGpu, DetectorLetterboxMatchesPinnedRoundedExtentAndIntegerPadding) {
+    HV_GpuImageTransformV1 transform{};
+    humanvision::runtime::DetectorLetterbox inverse{};
+    ASSERT_TRUE(humanvision::runtime::BuildGpuDetectorLetterbox(1080,1884,320,320,transform,inverse));
+    // Pinned offline resize rounds the content to183x320, with68 pixels left
+    // and69 right. Fractional symmetric padding shifts every content sample.
+    EXPECT_FLOAT_EQ(inverse.pad_x,68.f);
+    EXPECT_FLOAT_EQ(inverse.pad_y,0.f);
+    EXPECT_NEAR(transform.source_rect_px.x,-68.f*1080.f/183.f,0.0001f);
+    EXPECT_NEAR(transform.source_rect_px.width,320.f*1080.f/183.f,0.0002f);
+    EXPECT_FLOAT_EQ(transform.source_rect_px.height,1884.f);
+    const float first_x=transform.source_rect_px.x+68.5f*transform.source_rect_px.width/320.f-.5f;
+    EXPECT_NEAR(first_x,.5f*1080.f/183.f-.5f,0.0001f);
+}
+
+TEST(TopDownGpu, DetectorPriorsMatchPinnedZeroOffsetAtEveryFeatureLevel) {
+    // Official exported Nano config inherits MlvlPointGenerator offset=0,
+    // strides8/16/32. Expected points come from that independent model config.
+    const int indices[]={0,1,40,1599,1600,1601,1999,2000,2001,2099};
+    const float expected_x[]={0,8,0,312,0,16,304,0,32,288};
+    const float expected_y[]={0,0,8,312,0,0,304,0,0,288};
+    for(int i=0;i<10;i++) {
+        float x=-1,y=-1;
+        ASSERT_TRUE(humanvision::runtime::BuildGpuDetectorPrior(indices[i],x,y));
+        EXPECT_FLOAT_EQ(x,expected_x[i])<<indices[i];
+        EXPECT_FLOAT_EQ(y,expected_y[i])<<indices[i];
+    }
+    float x=0,y=0;
+    EXPECT_FALSE(humanvision::runtime::BuildGpuDetectorPrior(-1,x,y));
+    EXPECT_FALSE(humanvision::runtime::BuildGpuDetectorPrior(2100,x,y));
+}
+
 namespace {
 struct FakeGpu {
     std::array<float,2100> cls{};

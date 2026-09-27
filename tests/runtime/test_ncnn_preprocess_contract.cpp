@@ -4,6 +4,16 @@
 
 using humanvision::runtime::ncnn_backend::NormalizedChannelCount;
 using humanvision::runtime::ncnn_backend::NormalizeRgbPixel;
+using humanvision::runtime::ncnn_backend::RequiresPackedAhbImport;
+
+TEST(NcnnPreprocessContract, NonAlignedAhbExtentRequiresContiguousRgbaImport) {
+    EXPECT_TRUE(RequiresPackedAhbImport(5,3));
+    EXPECT_TRUE(RequiresPackedAhbImport(3,5));
+    EXPECT_TRUE(RequiresPackedAhbImport(1,1));
+    EXPECT_FALSE(RequiresPackedAhbImport(1080,1884));
+    EXPECT_FALSE(RequiresPackedAhbImport(7,4));
+    EXPECT_FALSE(RequiresPackedAhbImport(1920,1080));
+}
 
 TEST(NcnnPreprocessContract, PadsPack4InputOnGpu) {
     EXPECT_EQ(NormalizedChannelCount(1), 3);

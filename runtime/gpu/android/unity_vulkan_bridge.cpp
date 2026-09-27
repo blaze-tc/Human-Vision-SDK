@@ -311,6 +311,9 @@ BridgeResult UnityVulkanBridge::Render(void* identity) noexcept {
         copy_errors_.fetch_add(1,std::memory_order_relaxed);last_error_.store(1);
         RetireWithoutSubmission(record.token); return BridgeResult::GpuError;
     }
+    record.access.diagnostic_generation = record.token.generation;
+    record.access.diagnostic_source_id = record.token.frame_id;
+    record.access.diagnostic_slot = record.token.index;
     const auto& a = record.access;
     const auto& measured = selection_.source;
     const bool source_valid = a.image && a.width == record.submitted_width &&

@@ -90,10 +90,13 @@ AhbSelection SelectAhbCopyPath(const std::vector<AhbCandidate>& candidates) {
     result.diagnostic = out.str();
     return result;
 }
-AhbSelection ProbeAhbContracts(uint32_t width, uint32_t height, const AhbProbe& probe) {
-    if (width == 0 || height == 0 || !probe) return SelectAhbCopyPath({});
+AhbSelection ProbeAhbContracts(uint32_t width, uint32_t height, const AhbProbe& probe, HV_AndroidGpuCopyPath requested_path) {
+    if (width == 0 || height == 0 || !probe ||
+        (requested_path != HV_ANDROID_GPU_COPY_UNAVAILABLE && requested_path != HV_ANDROID_GPU_COPY_BLIT &&
+         requested_path != HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT)) return SelectAhbCopyPath({});
     std::vector<AhbCandidate> candidates;
     for (const auto path : {HV_ANDROID_GPU_COPY_BLIT, HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT}) {
+        if (requested_path != HV_ANDROID_GPU_COPY_UNAVAILABLE && requested_path != path) continue;
         const AhbDescription request{width, height, 1, rgba8,
             path == HV_ANDROID_GPU_COPY_BLIT ? sampled_usage : sampled_usage | color_usage, 0};
         auto candidate = probe(request, path);
@@ -319,7 +322,7 @@ AhbImageFacts ProbeImport(const VulkanDeviceContext& context, AHardwareBuffer* b
 }
 
 AhbSelection ProbeAndroidAhbCapabilities(const VulkanDeviceContext& unity,
-    const VulkanDeviceContext& consumer, const VulkanSourceImage& source, uint32_t width, uint32_t height) {
+    const VulkanDeviceContext& consumer, const VulkanSourceImage& source, uint32_t width, uint32_t height, HV_AndroidGpuCopyPath requested_path) {
     const auto match = MatchNcnnDevice(unity);
     const auto producer_identity = QueryDeviceIdentity(unity);
     const auto consumer_identity = QueryDeviceIdentity(consumer);
@@ -386,7 +389,7 @@ AhbSelection ProbeAndroidAhbCapabilities(const VulkanDeviceContext& unity,
         }
         c.detail = detail.str();
         return c;
-    });
+    },requested_path);
     bind_measurement(result);
     return result;
 }

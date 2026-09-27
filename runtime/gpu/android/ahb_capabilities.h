@@ -55,13 +55,14 @@ AhbSelection SelectAhbCopyPath(const std::vector<AhbCandidate>& candidates);
 // The probe callback owns and releases its temporary AHB/import resources before
 // returning; the second allocation must never reuse the first candidate's facts.
 using AhbProbe = std::function<AhbCandidate(const AhbDescription&, HV_AndroidGpuCopyPath)>;
-AhbSelection ProbeAhbContracts(uint32_t width, uint32_t height, const AhbProbe& probe);
+AhbSelection ProbeAhbContracts(uint32_t width, uint32_t height, const AhbProbe& probe,
+    HV_AndroidGpuCopyPath requested_path = HV_ANDROID_GPU_COPY_UNAVAILABLE);
 #if defined(__ANDROID__)
 // Initialization/control-thread only. Each candidate owns a temporary allocation
 // and both temporary imports, destroyed before the next candidate is allocated.
 // The returned description is the contract B3 must re-describe for every slot.
 AhbSelection ProbeAndroidAhbCapabilities(const VulkanDeviceContext& unity,
     const VulkanDeviceContext& consumer, const VulkanSourceImage& source,
-    uint32_t width, uint32_t height);
+    uint32_t width, uint32_t height, HV_AndroidGpuCopyPath requested_path = HV_ANDROID_GPU_COPY_UNAVAILABLE);
 #endif
 }

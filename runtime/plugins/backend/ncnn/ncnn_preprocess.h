@@ -1,6 +1,7 @@
 #pragma once
 
 namespace humanvision::runtime::ncnn_backend {
+bool RequiresPackedAhbImport(unsigned width,unsigned height) noexcept;
 // The fourth lane is explicit zero padding for a three-channel RGB model.
 int NormalizedChannelCount(int output_elempack) noexcept;
 bool NormalizeRgbPixel(const float rgb[3], const float mean[3],
@@ -28,7 +29,7 @@ public:
     bool Initialize(const ncnn::VulkanDevice*, const ncnn::Option&, std::string& error);
     bool Record(const ncnn::VkMat& rgb, const HV_GpuImageTransformV1& transform,
                 ncnn::VkMat& normalized, ncnn::VkCompute& compute,
-                const float pad_rgb[3], std::string& error);
+                const float pad_rgb[3], std::string& error, bool quantized_letterbox = false);
 private:
     std::unique_ptr<ncnn::Pipeline> pipeline_;
     std::vector<ncnn::VkMat> bindings_;
