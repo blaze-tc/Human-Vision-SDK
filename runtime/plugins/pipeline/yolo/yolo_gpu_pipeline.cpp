@@ -116,6 +116,10 @@ HV_Result HV_CALL Process(void* p,const HV_GpuFrameRefV1* f,HV_ObservationFrameV
         float scores[8]{};uint32_t count=0;const auto decode_begin=Clock::now();
         if(!self.decoder.Decode(tensors,tensor_count,g,f->timestamp_us,out->bodies,scores,self.capacity,count)){
             Error(e,"YOLO output shape or finite-value contract invalid");return HV_ERR_INTERNAL;}
+        auto& consumer=*static_cast<humanvision::gpu::ConsumerFrame*>(f->opaque_slot);
+        std::string reason;
+        if(!humanvision::gpu::CompleteGpuRole(consumer,true,reason)){
+            Error(e,reason.c_str());return HV_ERR_INTERNAL;}
         out->body_count=count;out->postprocess_ms=std::chrono::duration<float,std::milli>(Clock::now()-decode_begin).count();
         if(out->struct_size>=sizeof(HV_GpuObservationFrameV3)) {
             auto& sidecar=*reinterpret_cast<HV_GpuObservationFrameV3*>(out);

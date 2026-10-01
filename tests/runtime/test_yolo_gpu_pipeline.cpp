@@ -8,6 +8,7 @@
 #include "plugins/backend/ncnn/ncnn_vulkan_backend.h"
 #include "plugins/pipeline/simcc/topdown_gpu_pipeline.h"
 #include "json/json.hpp"
+#include "gpu/android/unity_vulkan_bridge.h"
 #include <fstream>
 #include <chrono>
 
@@ -18,16 +19,28 @@ namespace {
 nlohmann::json Load(const std::filesystem::path& path){std::ifstream f(path);if(!f)throw std::runtime_error(path.string());nlohmann::json j;f>>j;return j;}
 std::filesystem::path Root(){return std::filesystem::path(HV_TEST_PROJECT_ROOT)/"out/android-yolo/runtime-square320";}
 struct Fake {
-    int creates=0,runs=0,releases=0;bool fail=false,malformed=false;HV_GpuImageTransformV1 transform{};
+    int creates=0,runs=0,releases=0,completions=0;
+    bool fail=false,malformed=false,missing_completion=false,completion_fail=false,throw_after_run=false;
+    HV_GpuImageTransformV1 transform{};
     std::vector<float> detection=std::vector<float>(2100*65,-80),points=std::vector<float>(2100*51,0);
 };
-HV_Result HV_CALL Run(void* opaque,const HV_GpuFrameRefV1*,const HV_GpuImageTransformV1* transform,
+bool Complete(void* opaque,humanvision::gpu::ConsumerFrame& lease,bool final_role,std::string& error) noexcept {
+    auto& self=*static_cast<Fake*>(opaque);++self.completions;
+    EXPECT_TRUE(final_role);EXPECT_EQ(lease.role_owner,nullptr);EXPECT_EQ(lease.complete_role,nullptr);
+    if(self.completion_fail){error="GPU release proof unavailable";return false;}
+    lease.ncnn_role_complete=true;lease.claimed=false;return true;
+}
+HV_Result HV_CALL Run(void* opaque,const HV_GpuFrameRefV1* frame,const HV_GpuImageTransformV1* transform,
     HV_TensorViewV1* views,uint32_t capacity,uint32_t* count,HV_ErrorBufferV1*) {
     auto& self=*static_cast<Fake*>(opaque);++self.runs;self.transform=*transform;
     if(self.fail)return HV_ERR_INTERNAL;if(capacity<2)return HV_ERR_INVALID_ARGUMENT;
     for(int i=0;i<2;++i){auto& v=views[i];v={};v.struct_size=sizeof(v);v.api_version=HV_PLUGIN_API_V1;
         v.name=i?"out1":"out0";v.element_type=1;v.rank=2;v.dimensions[0]=2100;v.dimensions[1]=i?51:65;
         const auto& data=i?self.points:self.detection;v.data=data.data();v.byte_count=data.size()*4;}
+    auto& lease=*static_cast<humanvision::gpu::ConsumerFrame*>(frame->opaque_slot);
+    lease.claimed=true;lease.ncnn_role_complete=false;
+    if(!self.missing_completion){lease.role_owner=&self;lease.complete_role=Complete;}
+    if(self.throw_after_run)throw std::runtime_error("Backend threw after acquiring role");
     if(self.malformed)--views[1].dimensions[0];
     *count=2;return HV_OK;
 }
@@ -88,7 +101,8 @@ TEST(YoloGpuPipeline, OneNetworkPerSourceFrameProvenanceAndInvalidHands) {
     HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,8,0,manifest.c_str(),"fixture",profile.c_str()};
     void* instance=nullptr;ASSERT_EQ(api.gpu_pipeline->create(&config,&host,&instance,nullptr),HV_OK);
     HV_GpuFrameRefRegionV1 frame{};frame.v1.struct_size=sizeof(frame);frame.v1.api_version=HV_GPU_FRAME_API_V1;
-    frame.v1.opaque_slot=&fake;frame.v1.width=1024;frame.v1.height=576;frame.v1.generation=1;
+    humanvision::gpu::ConsumerFrame lease{};frame.v1.opaque_slot=&lease;
+    frame.v1.width=1024;frame.v1.height=576;frame.v1.generation=1;
     frame.v1.frame_id=10;frame.v1.timestamp_us=10000;
     HV_GpuObservationFrameV3 out{};out.v1.struct_size=sizeof(out);out.v1.api_version=HV_PLUGIN_API_V1;
     ASSERT_EQ(api.gpu_pipeline->process_gpu(instance,&frame.v1,&out.v1,nullptr),HV_OK);
@@ -154,5 +168,45 @@ TEST(YoloContract, LocalFp32ExceptionPreservesProductionFp16CapabilityGuard) {
         if(mutation==2)manifest["capabilities"].push_back("fp16-storage");
         {std::ofstream output(target/"modelpack.json");output<<manifest.dump();}
         EXPECT_FALSE(packs.Resolve("yolov8n-pose-square320-fp32-local",error))<<mutation;
+    }
+}
+
+// Exercise the production one-shot ConsumerFrame dispatcher; only device work is doubled.
+TEST(YoloGpuPipeline, SuccessRetiresFinalRoleAndCompletionFailureRejectsPublication) {
+    const auto manifest=Load(Root()/"modelpacks/yolov8n-pose-square320-fp32-local/modelpack.json").dump();
+    const auto profile=Load(Root()/"profiles/android-ncnn-vulkan.json").dump();
+    for(int scenario=0;scenario<7;++scenario) {
+        SCOPED_TRACE(scenario);
+        Fake fake;fake.detection[820*65+64]=8;
+        fake.missing_completion=scenario==2;fake.completion_fail=scenario==3;
+        fake.malformed=scenario==4;fake.fail=scenario==5;fake.throw_after_run=scenario==6;
+        if(scenario==1)std::fill(fake.detection.begin(),fake.detection.end(),-80.f);
+        auto api=Query();HV_HostServicesV3 host{};host.v2.v1.struct_size=sizeof(host);
+        host.v2.v1.api_version=HV_PLUGIN_API_V1;host.v2.v1.context=&fake;
+        host.create_gpu_backend_v3=Create;host.release_gpu_backend_v3=Release;
+        HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,8,0,manifest.c_str(),"fixture",profile.c_str()};
+        void* instance=nullptr;ASSERT_EQ(api.gpu_pipeline->create(&config,&host,&instance,nullptr),HV_OK);
+        struct Cleanup { const HV_GpuPipelineApiV2* api;void* instance;~Cleanup(){api->destroy(instance);} } cleanup{api.gpu_pipeline,instance};
+        humanvision::gpu::ConsumerFrame lease{};lease.claimed=true;
+        HV_GpuFrameRefV1 frame{sizeof(frame),HV_GPU_FRAME_API_V1,&lease,1024,576,10,10000,1,HV_GPU_IMAGE_RGBA8_UNORM,0};
+        HV_GpuObservationFrameV3 out{};out.v1.struct_size=sizeof(out);out.v1.api_version=HV_PLUGIN_API_V1;
+        char text[256]{};HV_ErrorBufferV1 error{sizeof(error),HV_PLUGIN_API_V1,text,sizeof(text)};
+        const auto status=api.gpu_pipeline->process_gpu(instance,&frame,&out.v1,&error);
+        if(scenario<2) {
+            EXPECT_EQ(status,HV_OK);EXPECT_EQ(out.v1.body_count,scenario==0?1u:0u);
+            EXPECT_EQ(fake.completions,1);EXPECT_FALSE(lease.claimed);EXPECT_TRUE(lease.ncnn_role_complete);
+            EXPECT_EQ(lease.role_owner,nullptr);EXPECT_EQ(lease.complete_role,nullptr);
+        }else {
+            EXPECT_EQ(status,HV_ERR_INTERNAL);EXPECT_EQ(out.v1.body_count,0u);EXPECT_TRUE(lease.claimed);
+            EXPECT_FALSE(lease.ncnn_role_complete);if(scenario!=5)EXPECT_NE(text[0],0);
+            EXPECT_EQ(fake.completions,scenario==3?1:0);
+            // Decode/exception errors retain the callback for the host error drain.
+            EXPECT_EQ(lease.role_owner,scenario==4||scenario==6?&fake:nullptr);
+            EXPECT_EQ(lease.complete_role,scenario==4||scenario==6?Complete:nullptr);
+            if(scenario==4||scenario==6) {
+                std::string reason;EXPECT_TRUE(humanvision::gpu::CompleteGpuRole(lease,true,reason));
+                EXPECT_FALSE(lease.claimed);
+            }
+        }
     }
 }
