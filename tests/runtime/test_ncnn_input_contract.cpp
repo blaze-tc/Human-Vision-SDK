@@ -219,6 +219,7 @@ TEST(NcnnBackendOptions, AppliesSelectedRoleFlagsBeforeModelLoad) {
     bool use_fp16_arithmetic = true;
     bool use_winograd_convolution = true;
     bool use_sgemm_convolution = true;
+    bool use_shader_local_memory = true;
   } option;
   ApplyBackendOptions(option, BackendOptions{false, false});
   EXPECT_FALSE(option.use_subgroup_ops);

@@ -1,3 +1,15 @@
+# Current YOLO-M3 update: no-local-memory SDK integration (2026-10-01)
+
+Explicit local-only eight-option FP32 contract passes independent spec/quality
+review,161 native tests,95 YOLO Python tests and API26 ARM64 audit with1813
+resolved imports. Host combined production/FP16 bypass regression RED thenGREEN;
+actual shader-local-memory binding, legacy defaults,640 geometry/API/sync stable.
+Frozen native8a1ab8d2, rawindex9e7df19e, Unityindex64e3ea59;239 source/artifact
+hashes verified. See [integration evidence](reports/2026-10-01-yolo-no-local-memory-integration.md).
+Next is current Unity build/install/continuous seven-person measurement.
+No speed/default-promotion claim yet; >=25 complete FPS remains unmet, target30.
+M3 sole active; existing R4 work preserved, no main merge/Release or fallback.
+
 # Current YOLO-M3 update: FP32 local-memory candidate eligible (2026-10-01)
 
 Separate gpu-fp32-no-local-memory runner passes all11 fresh Snapdragon888

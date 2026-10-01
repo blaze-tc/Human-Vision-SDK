@@ -8,6 +8,8 @@ from yolo_pose_gate import MODEL_HASHES, REVISION, sha, compare_directory, execu
 ROOT=Path(__file__).resolve().parents[3]
 SGEMM_EVIDENCE_SHA='1cb1dec026bdc920371a73bfd6da1abbcb88fa6ae22130e0894838b6e69ab104'
 SGEMM_CONTRACT='raw_tensor_fp32_sgemm_v1'
+NO_LOCAL_MEMORY_EVIDENCE_SHA='211a59e74cfe3d8d0d96b836f0bbe626d844e863e283acc955b2c3dfd7af5680'
+NO_LOCAL_MEMORY_CONTRACT='raw_tensor_fp32_no_local_memory_v1'
 RECTANGLE512_EVIDENCE_SHA='fe23f93f39a77ad8fc3f3b78a60dbb728e34749116fcd22478074b5d493dde74'
 
 def validate_rectangle512_evidence():
@@ -105,6 +107,58 @@ def validate_sgemm_evidence():
                     raise ValueError('Fresh SGEMM seven raised left-arm semantic gate failed')
     return path,evidence
 
+def validate_no_local_memory_evidence():
+    """Recompute the entire frozen numerical gate before writing runtime files."""
+    path=Path(__file__).with_name('yolo_no_local_memory_gate_evidence.json')
+    if sha(path)!=NO_LOCAL_MEMORY_EVIDENCE_SHA: raise ValueError('Reviewed NO_LOCAL_MEMORY evidence index hash mismatch')
+    evidence=json.loads(path.read_text())
+    mode='gpu-fp32-no-local-memory'
+    if (evidence['status']!='ELIGIBLE_FP32_NO_LOCAL_MEMORY_OFFLINE_ONLY' or evidence['precision_mode']!=mode
+        or evidence['hardware_fps_acceptance'] is not False or evidence['integration_completed'] is not False
+        or evidence['performance_claim'] is not False or evidence['cpu_hash_matches']!=22
+        or evidence['model_hashes']!=MODEL_HASHES or evidence['model_upstream_revision']!=REVISION
+        or evidence['options']!=execution_options(mode) or evidence['cpu_options']!=execution_options('cpu') or evidence['limits']!=LIMITS):
+        raise ValueError('No-local-memory offline options/limits identity mismatch')
+    source,recipe=runner_recipe(mode)
+    if sha(source)!=evidence['runner_source_sha256'] or sha(recipe)!=evidence['runner_cmake_sha256']:
+        raise ValueError('NO_LOCAL_MEMORY source/recipe hash mismatch')
+    expected={'seven-416','one-416','seven-320','one-320','seven-640','one-640','empty-416',
+              'seven-square320','one-square320','seven-square416','one-square416'}
+    if len(evidence['fixtures'])!=11 or {f['fixture'] for f in evidence['fixtures']}!=expected:
+        raise ValueError('NO_LOCAL_MEMORY requires all eleven reviewed fixtures')
+    for fixture in evidence['fixtures']:
+        run=ROOT/'out'/fixture['archive']
+        for name,key in [('fixture.json','fixture_sha256'),('comparison.json','comparison_sha256'),
+                         ('execution.json','execution_sha256'),('input.fp32','input_sha256'),('source.png','source_png_sha256')]:
+            if sha(run/name)!=fixture[key]: raise ValueError('NO_LOCAL_MEMORY archive metadata hash mismatch')
+        if sha(run/'runner')!=evidence['runner_sha256']: raise ValueError('NO_LOCAL_MEMORY runner hash mismatch')
+        for name,digest in fixture['output_sha256'].items():
+            if sha(run/name)!=digest: raise ValueError('NO_LOCAL_MEMORY output hash mismatch')
+        for name,digest in fixture['cpu_output_sha256'].items():
+            if sha(run/name)!=digest or sha(ROOT/'out'/fixture['historical_cpu_archive']/name)!=digest:
+                raise ValueError('NO_LOCAL_MEMORY historical CPU oracle hash mismatch')
+        for stage in fixture['stages'].values():
+            if sha(run/stage['log_file'])!=stage['log_sha256']: raise ValueError('No-local-memory log hash mismatch')
+        metadata=json.loads((run/'fixture.json').read_text())
+        if metadata['geometry']!=fixture['geometry'] or metadata.get('source_video_sha256')!=fixture['source_video_sha256'] or (fixture['source_video_sha256'] is not None and sha(Path(metadata['source_video']))!=fixture['source_video_sha256']):
+            raise ValueError('No-local-memory source/geometry mismatch')
+        report=compare_directory(run,mode)
+        if report!=json.loads((run/'comparison.json').read_text()):
+            raise ValueError('Fresh no-local-memory numerical gate failed: archived comparison differs')
+        if (not report['passed'] or not fixture['passed'] or report['limits']!=LIMITS
+            or len(report['reference'])!=fixture['reference_people'] or len(report['actual'])!=fixture['gpu_people']):
+            raise ValueError('Fresh no-local-memory numerical gate failed: '+fixture['fixture'])
+        if fixture['fixture']=='seven-640':
+            metadata=json.loads((run/'fixture.json').read_text())
+            if metadata['sequential_frame_index']!=1500 or len(report['actual'])!=7:
+                raise ValueError('NO_LOCAL_MEMORY raised-arm source frame identity mismatch')
+            for person in report['reference']+report['actual']:
+                shoulder,wrist=person['joints'][5],person['joints'][9]
+                if not (shoulder[2]>=.2 and wrist[2]>=.2 and wrist[1]<shoulder[1]
+                        and all(0<=joint[0]<1024 and 0<=joint[1]<576 for joint in (shoulder,wrist))):
+                    raise ValueError('Fresh no-local-memory seven raised left-arm semantic gate failed')
+    return path,evidence
+
 def shape_contract(size):
     if size==512:return ('rectangle512x288',512,288,'seven-512')
     if size not in (320,416,640): raise ValueError('Only reviewed square320/416 and rectangle640x384 are supported')
@@ -115,8 +169,10 @@ def write(path,value):
     path.write_text(json.dumps(value,indent=2,allow_nan=False)+'\n',encoding='utf-8')
 
 def stage(size,destination,convolution_kernel='default'):
-    if convolution_kernel not in ('default','sgemm'): raise ValueError('Unsupported convolution kernel')
+    if convolution_kernel not in ('default','sgemm','no-local-memory'): raise ValueError('Unsupported convolution kernel')
     sgemm=convolution_kernel=='sgemm'
+    no_local_memory=convolution_kernel=='no-local-memory'
+    if no_local_memory and size!=640: raise ValueError('No-local-memory runtime is reviewed only for rectangle640x384')
     if sgemm and size!=640: raise ValueError('SGEMM runtime is reviewed only for rectangle640x384')
     shape,width,height,fixture_name=shape_contract(size)
     destination=destination.resolve()
@@ -124,16 +180,17 @@ def stage(size,destination,convolution_kernel='default'):
         raise ValueError('Evaluation runtime root must stay inside ignored out/android-yolo')
     if destination.exists(): raise ValueError('Choose a fresh runtime root; existing artifacts are preserved')
     if size==512:evidence_path,evidence=validate_rectangle512_evidence()
+    elif no_local_memory:evidence_path,evidence=validate_no_local_memory_evidence()
     elif sgemm:evidence_path,evidence=validate_sgemm_evidence()
     else:
         evidence_path=Path(__file__).with_name('yolo_model_gate_evidence.json')
         evidence=json.loads(evidence_path.read_text())
-    if not sgemm and size!=512 and (evidence['status']!='ELIGIBLE_FP32_OFFLINE_ONLY' or evidence['precision_mode']!='gpu-fp32'):
+    if not sgemm and not no_local_memory and size!=512 and (evidence['status']!='ELIGIBLE_FP32_OFFLINE_ONLY' or evidence['precision_mode']!='gpu-fp32'):
         raise ValueError('FP32 eligibility evidence missing')
     fixture=next(x for x in evidence['fixtures'] if x['fixture']==fixture_name)
     if not fixture['passed'] or fixture['reference_people']!=7 or fixture['gpu_people']!=7:
         raise ValueError('Reviewed seven-person eligibility failed')
-    expected_archive='android-yolo/device-runs/seven-640/'+('gpu-fp32-sgemm-bb9d3dd06afd4311b27bae810c35a9fa' if sgemm else 'gpu-fp32-866e333068bf4b058ca0c40176faf897')
+    expected_archive='android-yolo/device-runs/seven-640/'+('gpu-fp32-no-local-memory-5c7bb015e67f4cef9129dddec5b5dcf9' if no_local_memory else 'gpu-fp32-sgemm-bb9d3dd06afd4311b27bae810c35a9fa' if sgemm else 'gpu-fp32-866e333068bf4b058ca0c40176faf897')
     if size==640 and fixture['archive']!=expected_archive:
         raise ValueError('Rectangle640x384 must bind the frozen M1 FP32 archive')
     run=ROOT/evidence['archive_base']/fixture['archive'] if size==512 else ROOT/'out'/fixture['archive']
@@ -150,8 +207,8 @@ def stage(size,destination,convolution_kernel='default'):
     assets=ROOT/'out/android-yolo/upstream/app/src/main/assets'
     for name,digest in MODEL_HASHES.items():
         if sha(assets/name)!=digest: raise ValueError('Pinned upstream weight hash mismatch')
-    pack_id=f'yolov8n-pose-{shape}-fp32'+('-sgemm' if sgemm else '')+'-local'
-    execution_contract=SGEMM_CONTRACT if sgemm else 'raw_tensor_fp32_v1'
+    pack_id=f'yolov8n-pose-{shape}-fp32'+('-no-local-memory' if no_local_memory else '-sgemm' if sgemm else '')+'-local'
+    execution_contract=NO_LOCAL_MEMORY_CONTRACT if no_local_memory else SGEMM_CONTRACT if sgemm else 'raw_tensor_fp32_v1'
     capabilities=['body_pose','multi_person','gpu_input','vulkan','android-hardware-buffer','external-sync-fd']
     profile={'schema_version':1,'profile':'android-ncnn-vulkan','local_evaluation_only':True,
         'frame_policy':'every_frame','body':{'pipeline':'pipeline.yolo.pose','modelPack':pack_id},
@@ -174,6 +231,9 @@ def stage(size,destination,convolution_kernel='default'):
             'width':width,'height':height,'tensor_dtype':'fp32','elempack':1,'input_blob':'in0'},
         'output_contract':{'decoder':'yolov8_pose_dfl17_v1','output_blobs':['out0','out1'],
             'max_output_bytes':{'out0':anchors*65*4,'out1':anchors*51*4}}}
+    if no_local_memory:
+        model['backend_options'].update(use_winograd_convolution=True,use_sgemm_convolution=True,use_shader_local_memory=False)
+        model['conversion_recipe']='Pinned upstream ncnn graph; reviewed FP32 no-local-memory eleven-fixture offline and rectangle640x384 frame1500 raised-left-arm eligibility'
     if sgemm:
         model['backend_options'].update(use_winograd_convolution=False,use_sgemm_convolution=True)
         model['conversion_recipe']='Pinned upstream ncnn graph; reviewed FP32 SGEMM eleven-fixture offline and rectangle640x384 frame1500 raised-left-arm eligibility'
@@ -192,7 +252,7 @@ def stage(size,destination,convolution_kernel='default'):
         eligibility_archives=[str((ROOT/evidence['archive_base']/f['archive']).relative_to(ROOT/'out')).replace('\\','/') for f in evidence['fixtures']],
         runner_sha256=evidence['runner_sha256'],runner_source_sha256=evidence['runner_source_sha256'],
         runner_cmake_sha256=evidence['runner_cmake_sha256'],raised_arm_semantic=fixture['arm_semantics'])
-    if sgemm:index.update(convolution_kernel='sgemm',execution_contract=execution_contract,
+    if sgemm or no_local_memory:index.update(convolution_kernel=convolution_kernel,execution_contract=execution_contract,
         eligibility_archives=[f['archive'] for f in evidence['fixtures']],
         runner_sha256=evidence['runner_sha256'],runner_source_sha256=evidence['runner_source_sha256'],
         runner_cmake_sha256=evidence['runner_cmake_sha256'],raised_arm_semantic=evidence['raised_arm_semantic'])
@@ -201,6 +261,6 @@ def stage(size,destination,convolution_kernel='default'):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--size',type=int,choices=(320,416,512,640),default=320)
-    p.add_argument('--destination',type=Path);p.add_argument('--convolution-kernel',choices=('default','sgemm'),default='default');a=p.parse_args()
-    suffix='-sgemm-verified' if a.convolution_kernel=='sgemm' else ''
+    p.add_argument('--destination',type=Path);p.add_argument('--convolution-kernel',choices=('default','sgemm','no-local-memory'),default='default');a=p.parse_args()
+    suffix='-no-local-memory-verified' if a.convolution_kernel=='no-local-memory' else '-sgemm-verified' if a.convolution_kernel=='sgemm' else ''
     print(stage(a.size,a.destination or ROOT/f'out/android-yolo/runtime-{shape_contract(a.size)[0]}{suffix}',a.convolution_kernel))

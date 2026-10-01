@@ -125,8 +125,11 @@ std::shared_ptr<const ModelPack> ModelPackManager::Resolve(const std::string& id
         if (!pack->capabilities) throw std::runtime_error("ModelPack capabilities cannot be empty");
         if (schema == 2) {
             const auto execution=json.value("execution_contract",std::string{});
+            if(execution=="raw_tensor_fp32_no_local_memory_v1"&&
+               (!json.value("local_evaluation_only",false)||(pack->capabilities&(HV_CAP_FP16_STORAGE|HV_CAP_FP16_ARITHMETIC))))
+                throw std::runtime_error("Raw FP32 no-local-memory ModelPack requires local evaluation without FP16 eligibility");
             const bool local_fp32=json.value("local_evaluation_only",false)&&
-                (execution=="raw_tensor_fp32_v1"||execution=="raw_tensor_fp32_sgemm_v1");
+                (execution=="raw_tensor_fp32_v1"||execution=="raw_tensor_fp32_sgemm_v1"||execution=="raw_tensor_fp32_no_local_memory_v1");
             const auto required=local_fp32?std::vector<std::string>{"vulkan"}:
                 std::vector<std::string>{"vulkan","fp16-storage","fp16-arithmetic"};
             for (const auto& capability : required)

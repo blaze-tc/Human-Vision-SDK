@@ -32,6 +32,17 @@ SGEMM_PROVENANCE = {
     'runner_sha256':'d754708bcb687bcb5413de06ce075fba1781cbe5972d9a9c2cc425451ed6c73f',
     'runner_source_sha256':'f5e2fbc7e545d0fea842038c797a7ca7cfe79e747067c91dcf93bb264d5f76bd',
     'runner_cmake_sha256':'819a695b322fa62c50d7c06e0405c781ade94cff16e578d52720dd870b8fe4e1'}
+NO_LOCAL_MEMORY_NATIVE_SHA = '8a1ab8d250c8d214e3fd5b976c4a55043a5de655d760e7688bb604d5470b8b98'
+NO_LOCAL_MEMORY_INDEX_SHA = '9e7df19ee235e85061f3703d1dd4a02bc740fddc02c9c29d743c834fa9f78d65'
+NO_LOCAL_MEMORY_UNITY_INDEX_SHA = '64e3ea59c79cfdae0430b54b981daeebe630f8751c35d23765c5b7ada6c11f3c'
+NO_LOCAL_MEMORY_EVIDENCE_SHA = '211a59e74cfe3d8d0d96b836f0bbe626d844e863e283acc955b2c3dfd7af5680'
+NO_LOCAL_MEMORY_FIXTURE = 'android-yolo/device-runs/seven-640/gpu-fp32-no-local-memory-5c7bb015e67f4cef9129dddec5b5dcf9'
+NO_LOCAL_MEMORY_SELECTED_FILES = {'modelpacks/yolov8n-pose-rectangle640x384-fp32-no-local-memory-local/modelpack.json': '1991d6051f006b9630dcc55b9eb561b1ab849e12c7082304eb9fa9cc7b35b636', 'modelpacks/yolov8n-pose-rectangle640x384-fp32-no-local-memory-local/yolov8n_pose.ncnn.bin': '6128010de189605795a496f3d3f6baa6435a493b31796ceaf400cced07038da9', 'modelpacks/yolov8n-pose-rectangle640x384-fp32-no-local-memory-local/yolov8n_pose.ncnn.param': '908ace8e8d5b99622e0b492ebb18a6b287e647d2df7dff81205e8322752e0905', 'profiles/android-ncnn-vulkan.json': '09e4635b18ca15eb94d9bd66cd917c0bfc485fae254d13a0623276f85a63ed49'}
+NO_LOCAL_MEMORY_PROVENANCE = {
+    'runner_sha256':'4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537',
+    'runner_source_sha256':'62bb3d5e4acdc15709a04f41bee21a2fe78c14e41f7ec835b30dfe71d1f00a02',
+    'runner_cmake_sha256':'6fd87d16b50461cdd53597c59e2b7e7d1bcd86e69091e7b4395b79c99f576e70'}
+
 VIDEO_SHA = 'e3620101d8218e7e9f2736cf5dab7a497bfcfc23e33a40244b63ae317c1bb0c8'
 INDEX_SHA = {320: '9119eb49528758d2b4d9237406fd98643e2d0c5d624804ee16769bff9d81ba69',
              416: '10454b1a73e4c86e1d6396e3de251ac398176ed24d31a0d09f7dd8969d7f6629',
@@ -44,9 +55,9 @@ def shape_id(size):
 
 
 def runtime_version(size, kernel):
-    if kernel not in ('default', 'sgemm') or kernel=='sgemm' and size!=640:
+    if kernel not in ('default', 'sgemm', 'no-local-memory') or kernel in ('sgemm','no-local-memory') and size!=640:
         raise ValueError('Unreviewed convolution kernel or shape')
-    return f'yolo-local-fp32-{shape_id(size)}' + ('-sgemm' if kernel=='sgemm' else '')
+    return f'yolo-local-fp32-{shape_id(size)}' + ('-'+kernel if kernel!='default' else '')
 
 
 def sha256(path):
@@ -78,6 +89,17 @@ def verify_sgemm_identity(index, files):
         raise ValueError('Reviewed SGEMM model/profile/source identity differs')
 
 
+def verify_no_local_memory_identity(index, files):
+    if files != NO_LOCAL_MEMORY_SELECTED_FILES or any(index.get(key)!=value for key,value in NO_LOCAL_MEMORY_PROVENANCE.items()):
+        raise ValueError('Reviewed no-local-memory model/profile/source identity differs')
+
+
+def verify_reviewed_no_local_memory_runtime(root, index, files):
+    verify_no_local_memory_identity(index, files)
+    if sha256(root/'index.json') not in (NO_LOCAL_MEMORY_INDEX_SHA,NO_LOCAL_MEMORY_UNITY_INDEX_SHA):
+        raise ValueError('Reviewed no-local-memory runtime index hash differs')
+
+
 def verify_rectangle512_identity(index, files):
     if files != RECTANGLE512_SELECTED_FILES or any(index.get(key)!=value for key,value in RECTANGLE512_PROVENANCE.items()):
         raise ValueError('Reviewed rectangle512 model/profile/source identity differs')
@@ -90,11 +112,13 @@ def verify_runtime(root, size, kernel='default'):
         raise ValueError('Runtime eligibility metadata mismatch')
     if index.get('convolution_kernel','default') != kernel:
         raise ValueError('Explicit convolution kernel selection mismatch')
+    if kernel=='no-local-memory' and index.get('eligibility_evidence_sha256')!=NO_LOCAL_MEMORY_EVIDENCE_SHA:
+        raise ValueError('Reviewed no-local-memory eligibility identity differs')
     if kernel=='sgemm' and index.get('eligibility_evidence_sha256')!=SGEMM_EVIDENCE_SHA:
         raise ValueError('Reviewed SGEMM eligibility identity differs')
     if size==640 and (index.get('shape_id')!='rectangle640x384' or index.get('input_width')!=640 or
         index.get('input_height')!=384 or index.get('source_aspect_ratio')!='16:9' or
-        index.get('fixture')!=(SGEMM_FIXTURE if kernel=='sgemm' else 'android-yolo/device-runs/seven-640/gpu-fp32-866e333068bf4b058ca0c40176faf897')):
+        index.get('fixture')!=(NO_LOCAL_MEMORY_FIXTURE if kernel=='no-local-memory' else SGEMM_FIXTURE if kernel=='sgemm' else 'android-yolo/device-runs/seven-640/gpu-fp32-866e333068bf4b058ca0c40176faf897')):
         raise ValueError('Frozen rectangle640x384 source/eligibility identity differs')
     if size==512 and (index.get('shape_id')!='rectangle512x288' or index.get('input_width')!=512 or
         index.get('input_height')!=288 or index.get('source_aspect_ratio')!='16:9' or
@@ -123,6 +147,8 @@ def verify_runtime(root, size, kernel='default'):
     pack = json.loads((pack_root/'modelpack.json').read_text(encoding='utf-8-sig'))
     if size==512 and (pack.get('execution_contract')!='raw_tensor_fp32_v1' or index.get('execution_contract')!='raw_tensor_fp32_v1'):
         raise ValueError('Rectangle512 index/pack/model execution contract mismatch')
+    if kernel=='no-local-memory' and (pack.get('execution_contract')!='raw_tensor_fp32_no_local_memory_v1' or index.get('execution_contract')!='raw_tensor_fp32_no_local_memory_v1'):
+        raise ValueError('No-local-memory index/pack/model execution contract mismatch')
     if kernel=='sgemm' and (pack.get('execution_contract')!='raw_tensor_fp32_sgemm_v1' or
                            index.get('execution_contract')!='raw_tensor_fp32_sgemm_v1'):
         raise ValueError('SGEMM index/pack/model execution contract mismatch')
@@ -131,8 +157,11 @@ def verify_runtime(root, size, kernel='default'):
         raise ValueError('Selected pack/profile hash contract mismatch')
     if len(pack['models']) != 1: raise ValueError('Expected one YOLO model')
     model = pack['models'][0]
+    if kernel=='no-local-memory' and (model.get('role')!='body' or model.get('format')!='ncnn'):
+        raise ValueError('No-local-memory requires the reviewed ncnn body model role')
     options = model['backend_options']
     expected_options={'use_packing_layout': True, 'use_subgroup_ops': False, 'use_fp16_packed': False, 'use_fp16_storage': False, 'use_fp16_arithmetic': False}
+    if kernel=='no-local-memory':expected_options.update(use_winograd_convolution=True,use_sgemm_convolution=True,use_shader_local_memory=False)
     if kernel=='sgemm':expected_options.update(use_winograd_convolution=False,use_sgemm_convolution=True)
     if options != expected_options or any(type(value) is not bool for value in options.values()):
         raise ValueError('Expected explicit FP32 backend options')
@@ -141,8 +170,8 @@ def verify_runtime(root, size, kernel='default'):
     if contract['width'] != size or contract['height'] != height or contract['tensor_dtype'] != 'fp32': raise ValueError('Input contract differs')
     if size in (512,640):
         anchors=3024 if size==512 else 5040
-        pack_id=f'yolov8n-pose-{shape_id(size)}-fp32'+('-sgemm' if kernel=='sgemm' else '')+'-local'
-        execution='raw_tensor_fp32_sgemm_v1' if kernel=='sgemm' else 'raw_tensor_fp32_v1'
+        pack_id=f'yolov8n-pose-{shape_id(size)}-fp32'+('-'+kernel if kernel!='default' else '')+'-local'
+        execution='raw_tensor_fp32_no_local_memory_v1' if kernel=='no-local-memory' else 'raw_tensor_fp32_sgemm_v1' if kernel=='sgemm' else 'raw_tensor_fp32_v1'
         if profile['body']['modelPack']!=pack_id or \
             model['decoder_id']!='yolov8_pose_dfl17_v1' or model['execution_contract']!=execution or \
             contract!={'image_format':'rgba8-unorm','color_order':'rgb','crop':'letterbox',
@@ -162,10 +191,11 @@ def stage(runtime, native, video, output, size, kernel='default'):
     runtime=runtime.resolve(); output=output.resolve()
     require_new_output(output)
     runtime_version(size,kernel)
-    index_sha=SGEMM_INDEX_SHA if kernel=='sgemm' else INDEX_SHA[size]
-    native_sha=SGEMM_NATIVE_SHA if kernel=='sgemm' else (RECTANGLE512_NATIVE_SHA if size==512 else NATIVE_SHA)
+    index_sha=NO_LOCAL_MEMORY_INDEX_SHA if kernel=='no-local-memory' else SGEMM_INDEX_SHA if kernel=='sgemm' else INDEX_SHA[size]
+    native_sha=NO_LOCAL_MEMORY_NATIVE_SHA if kernel=='no-local-memory' else SGEMM_NATIVE_SHA if kernel=='sgemm' else (RECTANGLE512_NATIVE_SHA if size==512 else NATIVE_SHA)
     if sha256(runtime/'index.json') != index_sha: raise ValueError('Reviewed runtime index hash differs')
     index, files = verify_runtime(runtime, size, kernel)
+    if kernel=='no-local-memory':verify_no_local_memory_identity(index,files)
     if kernel=='sgemm':verify_sgemm_identity(index,files)
     if size==512:verify_rectangle512_identity(index,files)
     if sha256(native) != native_sha: raise ValueError('Reviewed native hash differs')
@@ -189,7 +219,8 @@ def stage(runtime, native, video, output, size, kernel='default'):
             shutil.copy2(runtime/relative, target)
     generated=unity_index(index,files,size,kernel)
     (embedded/'index.json').write_text(json.dumps(generated, indent=2)+'\n', encoding='utf-8')
-    verify_runtime(embedded, size, kernel)
+    copied_index,copied_files=verify_runtime(embedded, size, kernel)
+    if kernel=='no-local-memory':verify_reviewed_no_local_memory_runtime(embedded,copied_index,copied_files)
     for relative, digest in files.items():
         if sha256(project/relative) != digest: raise ValueError('Copied root runtime hash differs: '+relative)
     legacy=ROOT/'out/c3-local-runtime/modelpacks/precision-t-26-ncnn-fp16'
@@ -199,7 +230,7 @@ def stage(runtime, native, video, output, size, kernel='default'):
     if sha256(diagnostic) != VIDEO_SHA: raise ValueError('Copied video hash differs')
     metadata={'size':size,'capacity':8,'interval_package_id':2,'source_runtime_index_sha256':sha256(runtime/'index.json'),
         'native_sha256':native_sha,'video_sha256':VIDEO_SHA,'video_start_seconds':37,'selected_files':files}
-    if kernel=='sgemm':metadata['convolution_kernel']=kernel
+    if kernel!='default':metadata['convolution_kernel']=kernel
     if size in (512,640):metadata.update(shape_id=shape_id(size),input_width=size,input_height=288 if size==512 else 384,source_aspect_ratio='16:9')
     (output/'stage-manifest.json').write_text(json.dumps(metadata,indent=2)+'\n',encoding='utf-8')
     return project
@@ -210,10 +241,11 @@ if __name__ == '__main__':
     parser.add_argument('--runtime',type=Path,required=True); parser.add_argument('--native',type=Path)
     parser.add_argument('--video',type=Path); parser.add_argument('--output',type=Path)
     parser.add_argument('--size',type=int,choices=(320,416,512,640),default=320); parser.add_argument('--verify-only',action='store_true')
-    parser.add_argument('--convolution-kernel',choices=('default','sgemm'),default='default')
+    parser.add_argument('--convolution-kernel',choices=('default','sgemm','no-local-memory'),default='default')
     args=parser.parse_args()
     if args.verify_only:
         index,files=verify_runtime(args.runtime.resolve(),args.size,args.convolution_kernel)
+        if args.convolution_kernel=='no-local-memory':verify_reviewed_no_local_memory_runtime(args.runtime.resolve(),index,files)
         if args.convolution_kernel=='sgemm':verify_sgemm_identity(index,files)
         if args.size==512:verify_rectangle512_identity(index,files)
         print('Runtime selection/hash closure PASS')

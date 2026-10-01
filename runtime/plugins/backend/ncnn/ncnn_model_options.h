@@ -12,6 +12,7 @@ struct BackendOptions {
     bool use_packing_layout = false;
     bool use_winograd_convolution = true;
     bool use_sgemm_convolution = true;
+    bool use_shader_local_memory = true;
 };
 
 // ModelPack role options are required and pinned by the local pack builder.
@@ -28,11 +29,12 @@ inline bool ParseBackendOptions(const nlohmann::json& model,
     const auto& value = model.at("backend_options");
     const auto execution_contract=model.value("execution_contract", std::string{});
     const bool sgemm=execution_contract=="raw_tensor_fp32_sgemm_v1";
-    if (execution_contract == "raw_tensor_fp32_v1" || sgemm) {
+    const bool no_local_memory=execution_contract=="raw_tensor_fp32_no_local_memory_v1";
+    if (execution_contract == "raw_tensor_fp32_v1" || sgemm || no_local_memory) {
         const char* fields[]={"use_subgroup_ops","use_fp16_arithmetic","use_fp16_packed","use_fp16_storage","use_packing_layout",
-                             "use_winograd_convolution","use_sgemm_convolution"};
-        const size_t count=sgemm?7:5;
-        if (value.size()!=count) {error=sgemm?"Raw tensor SGEMM execution requires all seven explicit backend options":"Raw tensor execution requires all five explicit backend options";return false;}
+                             "use_winograd_convolution","use_sgemm_convolution","use_shader_local_memory"};
+        const size_t count=no_local_memory?8:(sgemm?7:5);
+        if (value.size()!=count) {error=no_local_memory?"Raw tensor no-local-memory execution requires all eight explicit backend options":sgemm?"Raw tensor SGEMM execution requires all seven explicit backend options":"Raw tensor execution requires all five explicit backend options";return false;}
         for(size_t i=0;i<count;++i)if(!value.contains(fields[i])||!value.at(fields[i]).is_boolean()) {
             error="Raw tensor backend option missing or nonboolean";return false;
         }
@@ -44,7 +46,10 @@ inline bool ParseBackendOptions(const nlohmann::json& model,
         if(sgemm&&(value.at("use_winograd_convolution").get<bool>()||!value.at("use_sgemm_convolution").get<bool>())) {
             error="Raw tensor FP32 SGEMM contract disables Winograd and enables SGEMM";return false;
         }
-        result={false,false,true,true,!sgemm,true};error.clear();return true;
+        if(no_local_memory&&(!value.at("use_winograd_convolution").get<bool>()||!value.at("use_sgemm_convolution").get<bool>()||value.at("use_shader_local_memory").get<bool>())) {
+            error="Raw tensor FP32 no-local-memory enables Winograd and SGEMM and disables shader local memory";return false;
+        }
+        result={false,false,true,true,!sgemm,true,!no_local_memory};error.clear();return true;
     }
     if(model.contains("execution_contract")) {error="Unsupported execution_contract";return false;}
     if ((role != "body" && role != "detector") || value.size() != 2 ||
@@ -71,6 +76,7 @@ inline void ApplyBackendOptions(Option& option, const BackendOptions& model_opti
     option.use_fp16_arithmetic = model_options.use_fp16_arithmetic;
     option.use_winograd_convolution = model_options.use_winograd_convolution;
     option.use_sgemm_convolution = model_options.use_sgemm_convolution;
+    option.use_shader_local_memory = model_options.use_shader_local_memory;
 }
 
 } // namespace humanvision::runtime::ncnn_backend

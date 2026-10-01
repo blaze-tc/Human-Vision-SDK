@@ -62,9 +62,10 @@ HV_Result HV_CALL Create(const HV_PipelineConfigV1* c,const HV_HostServicesV3* h
         const auto options=nlohmann::json::parse(c->options_utf8);
         const auto execution_contract=manifest.at("execution_contract").get<std::string>();
         const bool sgemm=execution_contract=="raw_tensor_fp32_sgemm_v1";
+        const bool no_local_memory=execution_contract=="raw_tensor_fp32_no_local_memory_v1";
         if(manifest.at("schema_version")!=2||!manifest.at("local_evaluation_only").get<bool>()||
            !options.at("local_evaluation_only").get<bool>()||manifest.at("pipeline_id")!="pipeline.yolo.pose"||
-           (execution_contract!="raw_tensor_fp32_v1"&&!sgemm)||manifest.at("models").size()!=1||
+           (execution_contract!="raw_tensor_fp32_v1"&&!sgemm&&!no_local_memory)||manifest.at("models").size()!=1||
            manifest.at("max_people").get<int>()<c->max_bodies)
             throw std::runtime_error("YOLO requires a local evaluation schema-2 raw FP32 ModelPack/profile");
         const auto& model=manifest.at("models").at(0);
@@ -76,7 +77,7 @@ HV_Result HV_CALL Create(const HV_PipelineConfigV1* c,const HV_HostServicesV3* h
         ncnn_backend::InputContract contract;
         if(!ncnn_backend::ParseInputContract(input,contract,reason))throw std::runtime_error(reason);
         const int anchors=yolo::AnchorCount(contract.width,contract.height);
-        if(sgemm&&(contract.width!=640||contract.height!=384))
+        if((sgemm||no_local_memory)&&(contract.width!=640||contract.height!=384))
             throw std::runtime_error("YOLO FP32 SGEMM requires reviewed rectangle640x384 input geometry");
         if(!anchors||contract.output_type!=HV_GPU_TENSOR_FP32||
            contract.output_elempack!=1||contract.input_blob!="in0"||contract.crop_mode!=ncnn_backend::InputContract::CropMode::Letterbox||
