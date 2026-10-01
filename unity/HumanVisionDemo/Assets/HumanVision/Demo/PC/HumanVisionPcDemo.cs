@@ -34,6 +34,8 @@ namespace HumanVision.Demo.PC
         private Vector2 _panelScroll;
         private float _contentWidth;
         private GUILayoutOption[] _contentWidthOptions, _controlWidthOptions, _halfWidthOptions;
+        private GUILayoutOption[] _sourceChoiceOptions, _backendChoiceOptions, _sourceChoiceGroupOptions, _backendChoiceGroupOptions;
+        private int _sourceColumns, _backendColumns;
         private static readonly GUILayoutOption MinimumControlHeight = GUILayout.MinHeight(44);
 
         private readonly PcStartGeneration _startGeneration = new PcStartGeneration();
@@ -169,6 +171,7 @@ namespace HumanVision.Demo.PC
             }
             _guiSkin.label.fixedHeight = 0;
             _guiSkin.button.fixedHeight = 0;
+            _guiSkin.button.margin = new RectOffset(0, 0, 2, 2);
             _guiSkin.textField.fixedHeight = 42;
             _guiSkin.textField.wordWrap = false;
             // Preserve a visible selected state and a full-width click target.
@@ -188,7 +191,30 @@ namespace HumanVision.Demo.PC
             _contentWidth = width;
             _contentWidthOptions = new[] { GUILayout.Width(width) };
             _controlWidthOptions = new[] { GUILayout.Width(width), MinimumControlHeight };
-            _halfWidthOptions = new[] { GUILayout.Width(Mathf.Max(1, (width - 4) / 2)), MinimumControlHeight };
+            _halfWidthOptions = new[] { GUILayout.Width(PcGuiLayout.ChoiceCellWidth(width, 2)), MinimumControlHeight };
+            _sourceColumns = width >= 440 ? 3 : 1;
+            _backendColumns = width >= 340 ? 2 : 1;
+            _sourceChoiceOptions = new[] { GUILayout.Width(PcGuiLayout.ChoiceCellWidth(width, _sourceColumns)), MinimumControlHeight };
+            _backendChoiceOptions = new[] { GUILayout.Width(PcGuiLayout.ChoiceCellWidth(width, _backendColumns)), MinimumControlHeight };
+            _sourceChoiceGroupOptions = new[] { GUILayout.Width(width), GUILayout.MinHeight(PcGuiLayout.ChoiceMinimumHeight(SourceLabels.Length, _sourceColumns)) };
+            _backendChoiceGroupOptions = new[] { GUILayout.Width(width), GUILayout.MinHeight(PcGuiLayout.ChoiceMinimumHeight(BackendLabels.Length, _backendColumns)) };
+        }
+
+        private int Choices(int selected, string[] labels, int columns, GUILayoutOption[] groupOptions, GUILayoutOption[] cellOptions)
+        {
+            GUILayout.BeginVertical(groupOptions);
+            for (int first = 0; first < labels.Length; first += columns) {
+                GUILayout.BeginHorizontal(_contentWidthOptions);
+                for (int i = first; i < Mathf.Min(first + columns, labels.Length); i++) {
+                    if (i != first) GUILayout.Space(4);
+                    // Individual controls reserve their own height; wrapped captions
+                    // may grow beyond44units without compressing neighbouring rows.
+                    if (GUILayout.Toggle(selected == i, labels[i], GUI.skin.button, cellOptions)) selected = i;
+                }
+                GUILayout.EndHorizontal();
+            }
+            GUILayout.EndVertical();
+            return selected;
         }
 
         private void Label(string text) { GUILayout.Label(text, _contentWidthOptions); }
@@ -223,10 +249,8 @@ namespace HumanVision.Demo.PC
                         GUILayout.Height(PcGuiLayout.ScrollViewportHeight(panel.height, scale)));
                     GUILayout.BeginVertical(_contentWidthOptions);
                     // Narrow windows stack choices to keep every label readable.
-                    int sourceColumns = _contentWidth >= 440 ? 3 : 1;
-                    int backendColumns = _contentWidth >= 340 ? 2 : 1;
-                    source = (PcDemoSource)GUILayout.SelectionGrid((int)source, SourceLabels, sourceColumns, _controlWidthOptions);
-                    backend = (PcDemoBackend)GUILayout.SelectionGrid((int)backend, BackendLabels, backendColumns, _controlWidthOptions);
+                    source = (PcDemoSource)Choices((int)source, SourceLabels, _sourceColumns, _sourceChoiceGroupOptions, _sourceChoiceOptions);
+                    backend = (PcDemoBackend)Choices((int)backend, BackendLabels, _backendColumns, _backendChoiceGroupOptions, _backendChoiceOptions);
                     Label("Capacity: " + maxBodies + " people (1-8)");
                     maxBodies = Mathf.RoundToInt(GUILayout.HorizontalSlider(maxBodies, 1, 8, _contentWidthOptions));
                     if (source == PcDemoSource.LocalVideo) {
@@ -242,6 +266,7 @@ namespace HumanVision.Demo.PC
                             startSeconds = value; StartDemo();
                         } else _status = "Enter a numeric start time in seconds.";
                     }
+                    GUILayout.Space(4);
                     if (GUILayout.Button("Stop", _halfWidthOptions)) StopDemo();
                     GUILayout.EndHorizontal();
                     _showPreview = GUILayout.Toggle(_showPreview, "Show video preview", _controlWidthOptions);

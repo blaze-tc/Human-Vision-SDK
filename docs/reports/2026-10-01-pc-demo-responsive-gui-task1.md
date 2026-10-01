@@ -105,3 +105,40 @@ Root owns a fresh actual Player capture/interaction gate and independent review
 for this correction. No screenshot success or pointer acceptance is claimed by
 these policy tests. User project and root screenshot project were not operated;
 only the separate isolated EditMode project was used. No push or Release.
+
+
+## Round 2 actual stacked-choice height correction
+
+Root capture `out/pc-demo/gui-responsive/final-400x600/top.jpg` was viewed:
+source/backend SelectionGrid rows were compressed because44minimum height
+applied to the entire grid after button fixedHeight was changed to0 for wrapping.
+Static outer bounds and width budgets had not tested individual choice-row height.
+
+Replaced SelectionGrid with explicit rows of button-style toggles. Each choice
+reserves its own cached GUILayout.MinHeight44 option; current selection is passed
+as the toggle state and a selected click updates the same existing enum field.
+Clicking the already selected choice retains it. Button captions retain wordWrap
+and fixedHeight0, so long captions can grow beyond44units. Source/backend widths,
+column counts and group minimum height options refresh only when content width
+changes. Vertical3-source/2-backend rows reserve minimum132/88units; horizontal
+choices reserve44; partial final rows reserve another44units. Fixed content width
+and scrollbar budgets from round1 remain; zero horizontal button margins and
+explicit4unit cell gaps match the cached cell-width budget, including Start/Stop.
+No source/backend/inference lifecycle changes.
+
+Actual isolated Unity RED `choice-rows-red.xml`:23total,18passed,5expected
+failures for missing per-row height policy, covering vertical/horizontal/partial
+rows and each cell's width including gaps. GREEN `choice-rows-green.xml`:23/23PASS.
+`powershell -File tools/package/compile_managed.ps1`:PASS including Android
+conditional build; `out/pc-demo/gui-responsive/choice-rows-managed.log`.
+`py -3.13 tools/test/test_pc_demo_package.py`:11/11PASS.
+Architecture/documentation boundaries and frozen public-surface checks:PASS.
+`git diff --check`:PASS. Repeated pc.2 package regeneration byte-identical;
+all8nativeDLL provenance and every model/profile hash unchanged against preceding
+commit. Latest manifest SHA256:
+5d171e338408855f98916eea957b3f4bac006826c254e0cbed4d03273016474e.
+
+Root will rebuild its actual Player, select WebCamera/RTSP/CPU without starting
+inference, inspect selection state and capture small/large windows before independent
+review and delivery. This worker did not operate root screenshot project, user
+Unity project, Android or ADB. No actual GUI gate success claimed; no push/Release.

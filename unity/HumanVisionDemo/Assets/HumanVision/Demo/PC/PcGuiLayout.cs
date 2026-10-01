@@ -31,6 +31,10 @@ namespace HumanVision.Demo.PC
         //the natural width of a file path, diagnostic line or button caption.
         public static float ScrollContentWidth(float panelWidthPixels, float scale) => Mathf.Max(1, panelWidthPixels / scale - 44);
 
+        public static float ChoiceMinimumHeight(int count, int columns) => 44 * Mathf.CeilToInt(count / (float)Mathf.Max(1, columns));
+        public static float ChoiceCellWidth(float contentWidth, int columns) => Mathf.Max(1,
+            (contentWidth - 4 * (Mathf.Max(1, columns) - 1)) / Mathf.Max(1, columns));
+
         public static float ScrollViewportHeight(float panelHeightPixels, float scale) => Mathf.Max(1, panelHeightPixels / scale - 64);
     }
 }

@@ -279,16 +279,16 @@
       "packaged_sha256": "4410f401c74fea2f7cd3aea1954ceedf28a7ebdce6d2a925800fc0966f8c1837"
     },
     "unity/HumanVisionDemo/Assets/HumanVision/Demo/PC/HumanVisionPcDemo.cs": {
-      "sha256": "84b696ebe1f87ade0d60292a58d5a006ca295f7a590ac2f8289cee1eea4d2e2e",
-      "packaged_sha256": "cadc33e1f33dcd83b78e53cb4631ce16794eb662866c9ac1ebc7f9f54e929e11"
+      "sha256": "0178175c27f60341512c28133ee166af155b05050959476319b5e80dbb1057c4",
+      "packaged_sha256": "262fa9dde1fefb33132c1b898d88c4343e36183c37a435b3632691de12423fd4"
     },
     "unity/HumanVisionDemo/Assets/HumanVision/Demo/PC/PcDemoPolicies.cs": {
       "sha256": "f4ff9fc8fa89360b0ed1e21610189ef3b26e675a8f02293ca71e23c065e2b024",
       "packaged_sha256": "f4ff9fc8fa89360b0ed1e21610189ef3b26e675a8f02293ca71e23c065e2b024"
     },
     "unity/HumanVisionDemo/Assets/HumanVision/Demo/PC/PcGuiLayout.cs": {
-      "sha256": "9e83c595b44601b2545e1b5bc5c098b8bb35ed39b7e1a40e61db13e83bb76103",
-      "packaged_sha256": "b718c0cb93a0c29bab179e09f8bf5abe729ed085aea024c4e6c5be94483a449b"
+      "sha256": "3979a8fe4bfff16ea27ed9649b059000a9316d793bf6fe6e970d898f479623ab",
+      "packaged_sha256": "ed684d8d0c0c7c3ba81c108fea3680ef5c7a733358af18d7a0d292d2bca7938b"
     },
     "unity/HumanVisionDemo/Assets/HumanVision/Demo/Resources/HumanVisionCameraOrientation.shader": {
       "sha256": "e6ad4af04c31958b86f1734787619e575dec380b91fd335fd03d487810a0097a",

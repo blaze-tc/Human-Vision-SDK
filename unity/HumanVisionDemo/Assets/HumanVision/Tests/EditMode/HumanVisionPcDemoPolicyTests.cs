@@ -59,6 +59,22 @@ namespace HumanVision.Tests
             Assert.That(contentWidth, Is.LessThan(panel.width / scale));
         }
 
+        [TestCase(3, 1, 132)]
+        [TestCase(2, 1, 88)]
+        [TestCase(3, 3, 44)]
+        [TestCase(2, 2, 44)]
+        [TestCase(3, 2, 88)]
+        public void GuiChoiceRowsReserveFortyFourUnitsForEveryRow(int choices, int columns, int expected)
+        {
+            MethodInfo height = Policy("PcGuiLayout").GetMethod("ChoiceMinimumHeight");
+            Assert.That(height, Is.Not.Null, "Stacked choices need a per-row height budget.");
+            Assert.That(height.Invoke(null, new object[] { choices, columns }), Is.EqualTo((float)expected));
+            MethodInfo width = Policy("PcGuiLayout").GetMethod("ChoiceCellWidth");
+            Assert.That(width, Is.Not.Null);
+            float cell = (float)width.Invoke(null, new object[] { 260f, columns });
+            Assert.That(cell * columns + 4 * (columns - 1), Is.LessThanOrEqualTo(260.01f));
+        }
+
         [Test]
         public void GuiResolutionAndValidDpiIncreaseReadableScale()
         {
