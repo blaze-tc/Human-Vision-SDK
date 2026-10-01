@@ -49,6 +49,12 @@ HV_Result HV_CALL Create(void* context,const HV_GpuBackendConfigV1* config,const
     const HV_GpuBackendApiV2** api,void** out,HV_ErrorBufferV1*) {
     auto& self=*static_cast<Fake*>(context);++self.creates;
     const auto manifest=nlohmann::json::parse(config->model_manifest_utf8);
+    if(manifest.at("execution_contract")=="raw_tensor_fp32_sgemm_v1") {
+        EXPECT_EQ(manifest.at("models").at(0).at("execution_contract"),"raw_tensor_fp32_sgemm_v1");
+        const auto& options=manifest.at("models").at(0).at("backend_options");
+        EXPECT_EQ(options.size(),7u);EXPECT_EQ(options.at("use_winograd_convolution"),false);
+        EXPECT_EQ(options.at("use_sgemm_convolution"),true);
+    }
     EXPECT_EQ(manifest.at("active_role"),"body");*api=&backend;*out=context;return HV_OK;
 }
 void HV_CALL Release(void* context,const HV_GpuBackendApiV2*,void*){++static_cast<Fake*>(context)->releases;}
@@ -67,6 +73,41 @@ TEST(YoloContract, ExplicitGenericFp32OptionsRejectMissingOrIncompatibleFlags) {
         changed=model;changed["backend_options"][key]=!changed["backend_options"][key].get<bool>();
         EXPECT_FALSE(humanvision::runtime::ncnn_backend::ParseBackendOptions(changed,options,error));
     }
+}
+TEST(YoloContract, ExplicitSgemmContractAppliesConvolutionSelection) {
+    using namespace humanvision::runtime::ncnn_backend;
+    auto model=Load(Root()/"modelpacks/yolov8n-pose-square320-fp32-local/modelpack.json").at("models").at(0);
+    model["execution_contract"]="raw_tensor_fp32_sgemm_v1";
+    model["backend_options"]["use_winograd_convolution"]=false;
+    model["backend_options"]["use_sgemm_convolution"]=true;
+    BackendOptions options{};std::string error;
+    ASSERT_TRUE(ParseBackendOptions(model,options,error))<<error;
+    struct RecordingOption {
+        bool use_subgroup_ops=true,use_fp16_arithmetic=true;
+        bool use_winograd_convolution=true,use_sgemm_convolution=false;
+    } actual;
+    ApplyBackendOptions(actual,options);
+    EXPECT_FALSE(actual.use_subgroup_ops);EXPECT_FALSE(actual.use_fp16_arithmetic);
+    EXPECT_FALSE(actual.use_winograd_convolution);EXPECT_TRUE(actual.use_sgemm_convolution);
+    for(const char* key:{"use_packing_layout","use_subgroup_ops","use_fp16_packed","use_fp16_storage",
+                        "use_fp16_arithmetic","use_winograd_convolution","use_sgemm_convolution"}) {
+        auto changed=model;changed["backend_options"].erase(key);
+        EXPECT_FALSE(ParseBackendOptions(changed,options,error))<<key;
+        changed=model;changed["backend_options"][key]="false";
+        EXPECT_FALSE(ParseBackendOptions(changed,options,error))<<key;
+        changed=model;changed["backend_options"][key]=!model["backend_options"][key].get<bool>();
+        EXPECT_FALSE(ParseBackendOptions(changed,options,error))<<key;
+    }
+    auto extra=model;extra["backend_options"]["unknown"]=false;
+    EXPECT_FALSE(ParseBackendOptions(extra,options,error));
+    auto unknown=model;unknown["execution_contract"]="raw_tensor_fp32_sgemm_v2";
+    EXPECT_FALSE(ParseBackendOptions(unknown,options,error));
+    model["execution_contract"]="raw_tensor_fp32_v1";
+    EXPECT_FALSE(ParseBackendOptions(model,options,error));
+    model["backend_options"].erase("use_winograd_convolution");model["backend_options"].erase("use_sgemm_convolution");
+    ASSERT_TRUE(ParseBackendOptions(model,options,error))<<error;
+    ApplyBackendOptions(actual,options);
+    EXPECT_TRUE(actual.use_winograd_convolution);EXPECT_TRUE(actual.use_sgemm_convolution);
 }
 TEST(YoloContract, DataOnlyLocalPacksAndProfileResolveWithoutFp16Claims) {
     using namespace humanvision::runtime;
@@ -96,6 +137,51 @@ TEST(YoloContract, GenericRawBoundaryRejectsProductionHalfAndPackedInput) {
     input.output_type=HV_GPU_TENSOR_FP16;EXPECT_FALSE(ValidateRawTensorBoundary(options,input,true,error));
     input.output_type=HV_GPU_TENSOR_FP32;input.output_elempack=4;EXPECT_FALSE(ValidateRawTensorBoundary(options,input,true,error));
     input.output_elempack=1;input.cast_type_to=2;EXPECT_FALSE(ValidateRawTensorBoundary(options,input,true,error));
+}
+TEST(YoloContract, ExplicitSgemmLocalPackResolvesProfileWithoutFp16Claims) {
+    using namespace humanvision::runtime;
+    const auto root=std::filesystem::path(HV_TEST_PROJECT_ROOT)/"out/android-yolo/runtime-rectangle640x384-sgemm-verified";
+    ModelPackManager packs(root/"modelpacks");std::string error;
+    auto pack=packs.Resolve("yolov8n-pose-rectangle640x384-fp32-sgemm-local",error);ASSERT_TRUE(pack)<<error;
+    EXPECT_EQ(pack->capabilities&(HV_CAP_FP16_STORAGE|HV_CAP_FP16_ARITHMETIC),0u);
+    BackendFactory factory({},false);ASSERT_TRUE(factory.RegisterV3(HV_QueryNcnnVulkanPluginV3,error));
+    ASSERT_TRUE(factory.RegisterV3(HV_QueryYoloGpuPipelineV3,error));
+    PluginRegistry registry;auto profile=ProfileManager(root/"profiles").Resolve("android-ncnn-vulkan",8,registry,packs,error,&factory);
+    ASSERT_TRUE(profile)<<error;EXPECT_TRUE(profile->gpu_route);EXPECT_FALSE(profile->allow_backend_fallback);
+    EXPECT_STREQ(profile->gpu_body->api.v1.plugin_id,"pipeline.yolo.pose");
+}
+TEST(YoloGpuPipeline, ExplicitSgemmCreationRequiresMatchingContractsAndRectangle) {
+    const auto root=std::filesystem::path(HV_TEST_PROJECT_ROOT)/"out/android-yolo/runtime-rectangle640x384-sgemm-verified";
+    const auto original=Load(root/"modelpacks/yolov8n-pose-rectangle640x384-fp32-sgemm-local/modelpack.json");
+    const auto profile=Load(root/"profiles/android-ncnn-vulkan.json").dump();
+    Fake fake;auto api=Query();HV_HostServicesV3 host{};host.v2.v1.struct_size=sizeof(host);
+    host.v2.v1.api_version=HV_PLUGIN_API_V1;host.v2.v1.context=&fake;
+    host.create_gpu_backend_v3=Create;host.release_gpu_backend_v3=Release;
+    for(int mutation=0;mutation<6;++mutation) {
+        auto manifest=original;
+        if(mutation==1)manifest["execution_contract"]="raw_tensor_fp32_v1";
+        if(mutation==2)manifest["models"][0]["execution_contract"]="raw_tensor_fp32_v1";
+        if(mutation==3)manifest["models"][0]["backend_options"]["use_winograd_convolution"]=true;
+        if(mutation==4)manifest["models"][0]["backend_options"].erase("use_sgemm_convolution");
+        if(mutation==5) {
+            auto& model=manifest["models"][0];model["input_contract"]["width"]=320;model["input_contract"]["height"]=320;
+            model["output_contract"]["max_output_bytes"]["out0"]=2100*65*4;
+            model["output_contract"]["max_output_bytes"]["out1"]=2100*51*4;
+        }
+        const auto text=manifest.dump();HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,8,0,text.c_str(),"fixture",profile.c_str()};
+        void* instance=nullptr;const auto status=api.gpu_pipeline->create(&config,&host,&instance,nullptr);
+        EXPECT_EQ(status,mutation==0?HV_OK:HV_ERR_MODEL_LOAD)<<mutation;
+        if(mutation==0&&instance) {
+            fake.detection.assign(5040*65,-80);fake.points.assign(5040*51,0);
+            humanvision::gpu::ConsumerFrame lease{};
+            HV_GpuFrameRefV1 frame{sizeof(frame),HV_GPU_FRAME_API_V1,&lease,1024,576,10,10000,1,HV_GPU_IMAGE_RGBA8_UNORM,0};
+            HV_GpuObservationFrameV3 out{};out.v1.struct_size=sizeof(out);out.v1.api_version=HV_PLUGIN_API_V1;
+            EXPECT_EQ(api.gpu_pipeline->process_gpu(instance,&frame,&out.v1,nullptr),HV_OK);
+            EXPECT_EQ(fake.creates,1);EXPECT_EQ(fake.runs,1);EXPECT_EQ(fake.completions,1);
+        }
+        if(instance)api.gpu_pipeline->destroy(instance);
+        EXPECT_EQ(fake.creates,1);
+    }
 }
 TEST(YoloGpuPipeline, ExplicitRectangleRestoresPixelsAndRejectsUnreviewedSourceBeforeBackend) {
     const auto root=std::filesystem::path(HV_TEST_PROJECT_ROOT)/"out/android-yolo/runtime-rectangle640x384-arm-verified";

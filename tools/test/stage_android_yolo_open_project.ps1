@@ -22,7 +22,8 @@ if ($manifest.size -eq 640 -and ($manifest.shape_id -ne 'rectangle640x384' -or $
 $native = (Resolve-Path -LiteralPath $NativeLibrary).Path
 $nativeHash = (Get-FileHash -LiteralPath $native -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($nativeHash -ne $manifest.native_sha256 -or (Get-FileHash -LiteralPath (Join-Path $isolated 'Assets/Plugins/Android/arm64-v8a/libhumanvision.so') -Algorithm SHA256).Hash.ToLowerInvariant() -ne $nativeHash) { throw 'Explicit reviewed native identity differs' }
-& py -3 (Join-Path $PSScriptRoot 'stage_android_yolo_eval.py') --runtime (Join-Path $isolated 'Assets/StreamingAssets/HumanVision/Runtime') --size $manifest.size --verify-only
+$kernel=if($manifest.convolution_kernel){[string]$manifest.convolution_kernel}else{'default'}
+& py -3 (Join-Path $PSScriptRoot 'stage_android_yolo_eval.py') --runtime (Join-Path $isolated 'Assets/StreamingAssets/HumanVision/Runtime') --size $manifest.size --verify-only --convolution-kernel $kernel
 if ($LASTEXITCODE -ne 0) { throw 'Staged runtime selection/hash closure failed' }
 $audit = Get-Content -LiteralPath (Join-Path $isolated 'android-gpu-bridge-symbols.json') -Raw | ConvertFrom-Json
 if ($audit.native_sha256 -ne $nativeHash -or $audit.ncnn_vulkan_symbols_verified -ne $true) { throw 'Native audit metadata differs' }
@@ -96,6 +97,6 @@ foreach ($row in $rows) {
     Copy-Item -LiteralPath $row.source -Destination $target -Force
     if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant() -ne $row.staged_sha256) { throw 'Staged hash mismatch' }
 }
-& py -3 (Join-Path $PSScriptRoot 'stage_android_yolo_eval.py') --runtime (Join-Path $projectRoot 'Assets/StreamingAssets/HumanVision/Runtime') --size $manifest.size --verify-only
+& py -3 (Join-Path $PSScriptRoot 'stage_android_yolo_eval.py') --runtime (Join-Path $projectRoot 'Assets/StreamingAssets/HumanVision/Runtime') --size $manifest.size --verify-only --convolution-kernel $kernel
 if ($LASTEXITCODE -ne 0) { throw 'Open project runtime closure failed' }
 Write-Output "Staged $($rows.Count) files; verified backups/ProjectSettings: $backup"

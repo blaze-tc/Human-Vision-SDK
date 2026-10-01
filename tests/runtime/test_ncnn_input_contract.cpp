@@ -217,6 +217,8 @@ TEST(NcnnBackendOptions, AppliesSelectedRoleFlagsBeforeModelLoad) {
   struct RecordingOption {
     bool use_subgroup_ops = true;
     bool use_fp16_arithmetic = true;
+    bool use_winograd_convolution = true;
+    bool use_sgemm_convolution = true;
   } option;
   ApplyBackendOptions(option, BackendOptions{false, false});
   EXPECT_FALSE(option.use_subgroup_ops);

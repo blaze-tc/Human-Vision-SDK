@@ -60,20 +60,24 @@ HV_Result HV_CALL Create(const HV_PipelineConfigV1* c,const HV_HostServicesV3* h
     try {
         auto manifest=nlohmann::json::parse(c->model_manifest_utf8);
         const auto options=nlohmann::json::parse(c->options_utf8);
+        const auto execution_contract=manifest.at("execution_contract").get<std::string>();
+        const bool sgemm=execution_contract=="raw_tensor_fp32_sgemm_v1";
         if(manifest.at("schema_version")!=2||!manifest.at("local_evaluation_only").get<bool>()||
            !options.at("local_evaluation_only").get<bool>()||manifest.at("pipeline_id")!="pipeline.yolo.pose"||
-           manifest.at("execution_contract")!="raw_tensor_fp32_v1"||manifest.at("models").size()!=1||
+           (execution_contract!="raw_tensor_fp32_v1"&&!sgemm)||manifest.at("models").size()!=1||
            manifest.at("max_people").get<int>()<c->max_bodies)
             throw std::runtime_error("YOLO requires a local evaluation schema-2 raw FP32 ModelPack/profile");
         const auto& model=manifest.at("models").at(0);
         if(model.at("role")!="body"||model.at("format")!="ncnn"||model.at("decoder_id")!="yolov8_pose_dfl17_v1"||
-           model.at("execution_contract")!="raw_tensor_fp32_v1")throw std::runtime_error("YOLO body model decoder/execution contract mismatch");
+           model.at("execution_contract")!=execution_contract)throw std::runtime_error("YOLO body model decoder/execution contract mismatch");
         ncnn_backend::BackendOptions backend_options;std::string reason;
         if(!ncnn_backend::ParseBackendOptions(model,backend_options,reason))throw std::runtime_error(reason);
         const auto& output=model.at("output_contract");auto input=model.at("input_contract");input["output_blobs"]=output.at("output_blobs");
         ncnn_backend::InputContract contract;
         if(!ncnn_backend::ParseInputContract(input,contract,reason))throw std::runtime_error(reason);
         const int anchors=yolo::AnchorCount(contract.width,contract.height);
+        if(sgemm&&(contract.width!=640||contract.height!=384))
+            throw std::runtime_error("YOLO FP32 SGEMM requires reviewed rectangle640x384 input geometry");
         if(!anchors||contract.output_type!=HV_GPU_TENSOR_FP32||
            contract.output_elempack!=1||contract.input_blob!="in0"||contract.crop_mode!=ncnn_backend::InputContract::CropMode::Letterbox||
            contract.output_blobs!=std::vector<std::string>{"out0","out1"}||output.at("decoder")!="yolov8_pose_dfl17_v1"||

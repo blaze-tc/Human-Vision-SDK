@@ -1,3 +1,14 @@
+# Current YOLO-M3 update: explicit SGEMM integration (2026-10-01)
+
+SDK integration and staging passed independent spec/quality review, 154 native
+and 46 Python tests, and ARM64/API26 audit with 1,813 resolved imports. Native
+12cf4e1a and runtime index dd397a0e are frozen; see
+[exact commands and identities](reports/2026-10-01-yolo-sgemm-integration.md).
+The explicit FP32 SGEMM contract preserves legacy defaults, public API and GPU
+synchronization. Current Unity GPU-AHB device measurement is next. No FPS gain
+or physical acceptance is claimed yet; >=25 complete-observation FPS remains
+unmet and target30 remains. M3 is the sole active milestone. No main/Release.
+
 # Current milestone: YOLO-M3 Android integrated performance (2026-10-01)
 
 This current status supersedes the historical milestone entries below. User

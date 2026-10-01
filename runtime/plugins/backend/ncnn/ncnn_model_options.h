@@ -10,6 +10,8 @@ struct BackendOptions {
     bool use_fp16_arithmetic = true;
     bool raw_tensor = false;
     bool use_packing_layout = false;
+    bool use_winograd_convolution = true;
+    bool use_sgemm_convolution = true;
 };
 
 // ModelPack role options are required and pinned by the local pack builder.
@@ -24,10 +26,14 @@ inline bool ParseBackendOptions(const nlohmann::json& model,
     }
     const auto role = model.at("role").get<std::string>();
     const auto& value = model.at("backend_options");
-    if (model.value("execution_contract", std::string{}) == "raw_tensor_fp32_v1") {
-        const char* fields[]={"use_subgroup_ops","use_fp16_arithmetic","use_fp16_packed","use_fp16_storage","use_packing_layout"};
-        if (value.size()!=5) {error="Raw tensor execution requires all five explicit backend options";return false;}
-        for(const char* key:fields)if(!value.contains(key)||!value.at(key).is_boolean()) {
+    const auto execution_contract=model.value("execution_contract", std::string{});
+    const bool sgemm=execution_contract=="raw_tensor_fp32_sgemm_v1";
+    if (execution_contract == "raw_tensor_fp32_v1" || sgemm) {
+        const char* fields[]={"use_subgroup_ops","use_fp16_arithmetic","use_fp16_packed","use_fp16_storage","use_packing_layout",
+                             "use_winograd_convolution","use_sgemm_convolution"};
+        const size_t count=sgemm?7:5;
+        if (value.size()!=count) {error=sgemm?"Raw tensor SGEMM execution requires all seven explicit backend options":"Raw tensor execution requires all five explicit backend options";return false;}
+        for(size_t i=0;i<count;++i)if(!value.contains(fields[i])||!value.at(fields[i]).is_boolean()) {
             error="Raw tensor backend option missing or nonboolean";return false;
         }
         if (value.at("use_subgroup_ops").get<bool>() || value.at("use_fp16_arithmetic").get<bool>() ||
@@ -35,7 +41,10 @@ inline bool ParseBackendOptions(const nlohmann::json& model,
             !value.at("use_packing_layout").get<bool>()) {
             error="Raw tensor FP32 contract requires internal packing and disables FP16 and subgroup";return false;
         }
-        result={false,false,true,true};error.clear();return true;
+        if(sgemm&&(value.at("use_winograd_convolution").get<bool>()||!value.at("use_sgemm_convolution").get<bool>())) {
+            error="Raw tensor FP32 SGEMM contract disables Winograd and enables SGEMM";return false;
+        }
+        result={false,false,true,true,!sgemm,true};error.clear();return true;
     }
     if(model.contains("execution_contract")) {error="Unsupported execution_contract";return false;}
     if ((role != "body" && role != "detector") || value.size() != 2 ||
@@ -60,6 +69,8 @@ template <typename Option>
 inline void ApplyBackendOptions(Option& option, const BackendOptions& model_options) {
     option.use_subgroup_ops = model_options.use_subgroup_ops;
     option.use_fp16_arithmetic = model_options.use_fp16_arithmetic;
+    option.use_winograd_convolution = model_options.use_winograd_convolution;
+    option.use_sgemm_convolution = model_options.use_sgemm_convolution;
 }
 
 } // namespace humanvision::runtime::ncnn_backend
