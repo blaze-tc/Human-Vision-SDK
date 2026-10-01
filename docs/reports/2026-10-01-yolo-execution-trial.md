@@ -168,8 +168,8 @@ Derived values are in `task2-layer-distribution.json` beside the strict analysis
 |---|---:|---:|---:|
 | Sum of layer GPU intervals |39.888ms|43.914ms|50.893ms|
 | Sum of existing submission wall intervals |48.606ms|57.536ms|66.004ms|
-| Internal extraction phase1 wall intervals |41.876ms|¡ª|57.639ms|
-| Existing submissions per frame, all phases |7|¡ª|8|
+| Internal extraction phase1 wall intervals |41.876ms|-|57.639ms|
+| Existing submissions per frame, all phases |7|-|8|
 
 | Layer type | Mean summed GPU time/frame | Share of summed GPU time |
 |---|---:|---:|
