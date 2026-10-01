@@ -64,3 +64,71 @@ and continuous seven-person FPS/age/coverage are next; no hardware performance
 or default-promotion claim is made by these software checks. Offline eligibility
 uses the same converted ncnn CPU graph, not PyTorch. The25FPS video cannot prove
 30 fresh source frames/s. No main merge or Release is authorized.
+
+## Actual current Unity and device check
+
+After the first full PowerShell stage found Windows CRLF serialization, the new
+mode alone now writes the transformed Unity index with explicit LF. Its unchanged
+reviewed index hash is preserved rather than accepting the differing bytes.
+The zero-mock full-stage regression uses the actual frozen runtime/native/video
+and SDK files: RED before the fix, GREEN after it. All96 YOLO tests and
+architecture checks pass; independent spec/quality review confirms all239 original
+freeze files unchanged. The separate stage-only freeze SHA256 is
+`abba51e7b1a6c08c9a4e975913fbe069fd7aa690788dd583835abacff35d25f4`.
+Commit `6d7d8eb` contains only this writer correction and regression.
+
+The fresh `eval-rectangle640-20261001-m3-no-local-memory-v2` PowerShell stage
+passes native audit and strict source/transformed runtime closure. The authorized
+open project `E:/UnityProject/Human-Vision-SDK-Test` was idle, not compiling and
+had a saved clean scene. Twelve replacements, project settings and both diagnostic
+scenes were backed up before copying. Live refresh and post-build Console report
+zero errors. Editor.log records the exact new APK output and
+`HV_R4_EDITOR_SETTINGS_RESTORED`. The APK's four runtime files, explicit profile,
+640x384 shape and native identity match the reviewed pins.
+
+APK SHA256:
+`a7d4bffd737e2c77d0cf91d2e4a869749ecd278bfd1195136a5a3bc52f7ef1a3`.
+Installed base APK identity was checked on device `e7c07019`, Snapdragon888.
+The actual continuous VideoPlayer -> GPU AHB -> ncnn -> Canonical Skeleton
+run uses the unchanged hash-bound25FPS `video-1.mp4`, starting at37seconds,
+capacity8. It performs no full-frame CPU readback.
+
+PID24588, requested75-second capture, warmed observed window82.302000046s:
+
+| Metric | Actual result |
+| --- | ---: |
+| Unique fresh complete observation records |1408 |
+| Fresh observation FPS |17.107725 |
+| Records with exactly seven bodies |1397 |
+| Exactly-seven subset FPS |16.974071 |
+| Partial / empty records |0 /0 |
+| Eight-body records |11 |
+| Observed end-to-end age P50 / P95 |101.149478 /131.918611ms |
+| GPU worker errors |0 |
+| Copy / import errors |0 /0 |
+| Full-frame CPU readbacks |0 |
+
+Evidence: `out/android-yolo/eval-rectangle640-20261001-m3-no-local-memory-v2/device-yolo640-no-local-memory-seven-75s/`.
+The count-seven subset is not independently validated person identity or joint
+accuracy on every frame. The60-second screenshot displays seven upright skeletons
+on the seven people; this is one visual sample, not temporal physical acceptance.
+The panel was hidden after the30-second screenshot. No long prediction or altered
+acceptance limits were used.
+
+The previously repeated accepted640 baseline measured15.417513 fresh and
+15.289212 count-seven FPS, with age113.081697/135.164946ms. This candidate's
+measured run is approximately11% higher, but duration, panel/render/load and
+thermal conditions were not controlled as a causal benchmark. It is a modest
+observed difference, not proof of a repeatable11% optimization.
+The25FPS all-person gate remains FAIL and the25FPS source cannot establish30
+fresh results/s. This is an explicit local candidate, not a promoted production
+default or completed milestone. No main merge or Release has occurred.
+
+Independent spec/quality and device-facts review PASS: all metrics were recomputed
+from the raw PID-filtered log, APK runtime/native/index pins rechecked, and every
+current ProjectSettings file compared with the preflight backup. The phone was
+then restored to the accepted640 APK
+`9cc3b87f8b824fe9819b85d1163c15b0e4d1241e59e223d9dca099905710caae`,
+its installed hash verified and the app force-stopped for cooling. The open Unity
+project remains the explicit no-local-memory evaluation stage; public/default
+SDK behavior has not been promoted.

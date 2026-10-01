@@ -1,3 +1,21 @@
+## 2026-10-01 current: YOLO-M3 no-local-memory actual-device check
+
+Explicit640x384 FP32 no-local-memory candidate integration and full-stage
+serialization fix independently reviewed PASS (da31699 /6d7d8eb). Root actual
+current Unity build/settings restore, strict APK/runtime/native closure and
+Snapdragon888 continuous video capture pass. Native8a1ab8d2, APKa7d4bffd.
+Warmed82.302s:1408 unique observations17.107725FPS, count-seven1397
+16.974071FPS, zero partial/empty, eleven count-eight, ageP50/P95
+101.149478/131.918611ms, zero worker/copy/import errors/full-frame CPU readbacks.
+Independent facts review recomputed raw records and ZIP/runtime identities.
+The earlier640repeat15.4175FPS comparison is uncontrolled; no repeatable11%
+optimization claim, no default promotion or physical semantic acceptance.
+At-least25 fresh complete frames/s remains FAIL;25FPS source cannot prove30.
+Accepted640 APK9cc3b87f restored with installed SHA verified, force-stopped.
+Current Unity project remains explicit no-local-memory evaluation stage.
+Only YOLO-M3 is active; no main merge/Release, Hand/QNN/Windows/ORT/Renderer work.
+See docs/reports/2026-10-01-yolo-no-local-memory-integration.md.
+
 # Current YOLO-M3 update: no-local-memory SDK integration (2026-10-01)
 
 Explicit local-only eight-option FP32 contract passes independent spec/quality
