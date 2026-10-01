@@ -47,5 +47,50 @@ cached imports, external ownership release, quarantine and slot retirement.
 The separate API26 trace build passes and has SHA:
 `f82c67c8e771ab264dcf891ce44b8b540028dbb04ea524797b2ce5c79bb09989`.
 Model,640x384 input contract, frozen numerical limits and public skeleton API
-remain unchanged. Real Unity APK stage/installation and measured phase results
-are pending. No main merge, Release or physical acceptance is claimed.
+remain unchanged. No main merge, Release or physical acceptance is claimed.
+
+## Integrated measurement
+
+The authorized Unity2021.3.45f1 project was backed up and staged, refreshed with
+zero errors, built through `HumanVision/Evaluation/Build Continuous Video Diagnostic`,
+and restored its editor settings. APK runtime/model/native/video and installed
+APK hashes matched the reviewed stage. APK SHA:
+`5d185e33e655484a2e72f0184f4e4f4cfb20cbe8c205ef8903b67c597c1182a2`.
+Commit `c4d54869a8135b3729bb55d9cfc872262a95e193` records this diagnostic task;
+the built native includes preserved uncommitted R4 work as before.
+
+```powershell
+pwsh -NoProfile -File tools/test/collect_android_r4_video.ps1 -BuildDirectory out/android-yolo/eval-rectangle640-20261001-m3-safe-timing -RunLabel yolo640-stage-timing-75s -DurationSeconds 75
+py -3 out/android-yolo/unity-preflight/analyze_observations.py out/android-yolo/eval-rectangle640-20261001-m3-safe-timing/device-yolo640-stage-timing-75s
+py -3 out/android-yolo/unity-preflight/analyze_gpu_phases.py out/android-yolo/eval-rectangle640-20261001-m3-safe-timing/device-yolo640-stage-timing-75s
+```
+
+The warmed82.319s observation window includes collector overhead.1208 distinct
+results give14.67 fresh FPS;1201 count7 results give14.59 FPS, with no partial or
+empty observations and7 count8 observations. Observed age P50/P95 is
+116.07/135.81ms. GPU-worker errors, copy/import errors and full-frame input CPU
+readbacks are zero. Screen60 shows seven visible skeletons; this single image
+does not establish temporal accuracy. The diagnostic is not a speed improvement
+over the normal15.32 FPS baseline.
+The fixed25FPS source cannot certify30 fresh observation frames/s.
+
+19 warmed complete sparse phase samples give the following elapsed wall times:
+
+| Phase | Mean ms | P50 ms | P95 ms |
+| --- | ---: | ---: | ---: |
+| Import/preprocess recording | 0.063 | 0.062 | 0.090 |
+| Producer/preprocessing submit/wait | 2.764 | 2.340 | 4.550 |
+| Extraction/download, including internal waits | 56.019 | 56.149 | 61.926 |
+| Outer inference/download submit/wait | 4.835 | 4.747 | 5.700 |
+| Compact output copy | 0.642 | 0.527 | 1.569 |
+| External ownership release/wait | 0.895 | 0.722 | 1.734 |
+| Sum of recorded phases | 65.217 | 66.734 | 70.434 |
+
+Extraction dominates about86% of the recorded phase sum. These timings do not
+separate CPU recording from internal ncnn GPU waits; they do show that saving
+only the outer preprocessing wait cannot account for the improvement required
+to reach25-30 FPS. The next bounded candidate is the official FP32 ncnn SGEMM
+convolution route with Winograd disabled, unchanged model/geometry/precision.
+It requires a separate frozen numerical/semantic gate before SDK integration;
+speed must then be measured in this complete Unity GPU pipeline. No candidate
+eligibility or speed result is claimed yet.
