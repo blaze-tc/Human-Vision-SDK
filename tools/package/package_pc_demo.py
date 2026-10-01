@@ -14,7 +14,7 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 DEST = ROOT / 'upm/com.blazetc.humanvision.pc-demo'
-VERSION = '0.4.0-pc.1'
+VERSION = '0.4.0-pc.2'
 NAMESPACE = uuid.UUID('c468c538-ce2d-46f7-842d-ac4db618c953')
 NATIVE = {'humanvision.dll', 'humanvision_onnxruntime.dll', 'hv_dml.dll',
           'avformat-61.dll', 'avcodec-61.dll', 'avutil-59.dll', 'swscale-8.dll', 'swresample-5.dll'}

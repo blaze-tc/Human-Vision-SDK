@@ -14,6 +14,69 @@ namespace HumanVision.Tests
             return type;
         }
 
+        private static float GuiScale(float width, float height, float dpi = 0, float userScale = 1)
+        {
+            return (float)Policy("PcGuiLayout").GetMethod("Scale").Invoke(null,
+                new object[] { width, height, dpi, userScale });
+        }
+
+        [TestCase(1280, 720)]
+        [TestCase(1920, 1080)]
+        [TestCase(2560, 1440)]
+        [TestCase(3840, 2160)]
+        [TestCase(720, 1280)]
+        [TestCase(320, 240)]
+        public void GuiExpandedAndCollapsedPanelsFitInsetSafeArea(int width, int height)
+        {
+            var safe = new UnityEngine.Rect(12, 18, width - 30, height - 42);
+            foreach (bool expanded in new[] { true, false }) {
+                var panel = (UnityEngine.Rect)Policy("PcGuiLayout").GetMethod("PanelPixels").Invoke(null,
+                    new object[] { (float)width, (float)height, safe, 192f, 1.5f, expanded });
+                Assert.That(panel.width, Is.GreaterThan(0));
+                Assert.That(panel.height, Is.GreaterThan(0));
+                Assert.That(panel.xMin, Is.GreaterThanOrEqualTo(safe.xMin));
+                Assert.That(panel.yMin, Is.GreaterThanOrEqualTo(height - safe.yMax));
+                Assert.That(panel.xMax, Is.LessThanOrEqualTo(safe.xMax));
+                Assert.That(panel.yMax, Is.LessThanOrEqualTo(height - safe.yMin));
+            }
+        }
+
+        [Test]
+        public void GuiResolutionAndValidDpiIncreaseReadableScale()
+        {
+            Assert.That(GuiScale(1280, 720), Is.EqualTo(1));
+            Assert.That(GuiScale(1920, 1080), Is.EqualTo(1.5f));
+            Assert.That(GuiScale(2560, 1440), Is.EqualTo(2));
+            Assert.That(GuiScale(3840, 2160), Is.EqualTo(3));
+            Assert.That(GuiScale(1920, 1080, 192), Is.GreaterThan(GuiScale(1920, 1080, 96)));
+            Assert.That(GuiScale(1920, 1080, 96, 1.25f), Is.GreaterThan(GuiScale(1920, 1080)));
+        }
+
+        [Test]
+        public void GuiUnknownOrImplausibleDpiAndInvalidOverridesStayFinite()
+        {
+            foreach (float dpi in new[] { 0f, -1f, 20f, 9999f, float.NaN, float.PositiveInfinity })
+                Assert.That(GuiScale(1920, 1080, dpi), Is.EqualTo(1.5f));
+            foreach (float user in new[] { 0f, -1f, float.NaN, float.PositiveInfinity })
+                Assert.That(GuiScale(1920, 1080, 0, user), Is.EqualTo(1.5f));
+            Assert.That(GuiScale(1920, 1080, 0, 100), Is.EqualTo(3));
+            Assert.That(GuiScale(320, 240), Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void GuiSmallViewportKeepsAllContentReachableByScroll()
+        {
+            var panel = (UnityEngine.Rect)Policy("PcGuiLayout").GetMethod("PanelPixels").Invoke(null,
+                new object[] { 320f, 240f, new UnityEngine.Rect(0, 0, 320, 240), 0f, 1f, true });
+            float viewport = (float)Policy("PcGuiLayout").GetMethod("ScrollViewportHeight").Invoke(null,
+                new object[] { panel.height, GuiScale(320, 240) });
+            Assert.That(viewport, Is.GreaterThan(0));
+            Assert.That(viewport, Is.LessThan(panel.height));
+            Assert.That(viewport, Is.EqualTo(panel.height / GuiScale(320, 240) - 64).Within(.01f));
+            Assert.That(GuiScale(320, 240, 192, 2), Is.LessThanOrEqualTo(1));
+            Assert.That(GuiScale(720, 1280, 384, 2), Is.LessThanOrEqualTo(720f / 320));
+        }
+
         [Test]
         public void PcDiagnosticsNeverExposeAgeOrStateFromDifferentNativeClockEpoch()
         {

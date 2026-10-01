@@ -28,6 +28,10 @@ namespace HumanVision.Demo.PC
         [SerializeField] private string rtspUrl = "";
         [SerializeField] private bool startOnPlay = false;
         [SerializeField] private bool showPanel = true;
+        [SerializeField, Range(.75f, 2f)] private float uiScale = 1f;
+
+        private GUISkin _guiSkin;
+        private Vector2 _panelScroll;
 
         private readonly PcStartGeneration _startGeneration = new PcStartGeneration();
         private readonly PcObservationRate _rate = new PcObservationRate();
@@ -75,7 +79,7 @@ namespace HumanVision.Demo.PC
             StopDemo();
             if (_player != null) _player.prepareCompleted -= SeekPreparedVideo;
         }
-        private void OnDestroy() { StopDemo(); }
+        private void OnDestroy() { StopDemo(); if (_guiSkin != null) Destroy(_guiSkin); }
 
         public void StartDemo()
         {
@@ -149,51 +153,105 @@ namespace HumanVision.Demo.PC
                 player.time = Math.Min(_activeStartSeconds, Math.Max(0, player.length - .1));
         }
 
+        private void PrepareGuiSkin()
+        {
+            if (_guiSkin != null) return;
+            _guiSkin = Instantiate(GUI.skin);
+            _guiSkin.hideFlags = HideFlags.HideAndDontSave;
+            foreach (GUIStyle style in new[] { _guiSkin.label, _guiSkin.button, _guiSkin.toggle, _guiSkin.textField }) {
+                style.fontSize = 18;
+                style.wordWrap = true;
+                style.padding = new RectOffset(10, 10, 8, 8);
+                style.normal.textColor = Color.white;
+            }
+            _guiSkin.label.fixedHeight = 0;
+            _guiSkin.button.fixedHeight = 44;
+            _guiSkin.textField.fixedHeight = 42;
+            // Preserve a visible selected state and a full-width click target.
+            _guiSkin.toggle = new GUIStyle(_guiSkin.button) { fixedHeight = 44, alignment = TextAnchor.MiddleLeft };
+            _guiSkin.box.padding = new RectOffset(8, 8, 8, 8);
+            _guiSkin.horizontalSlider.fixedHeight = 36;
+            _guiSkin.horizontalSlider.padding = new RectOffset(12, 12, 12, 12);
+            _guiSkin.horizontalSliderThumb.fixedWidth = 26;
+            _guiSkin.horizontalSliderThumb.fixedHeight = 32;
+            _guiSkin.verticalScrollbar.fixedWidth = 22;
+            _guiSkin.verticalScrollbarThumb.fixedWidth = 22;
+        }
+
         private void OnGUI()
         {
-            float width = Mathf.Min(520, Screen.width - 20);
-            GUIStyle label = new GUIStyle(GUI.skin.label) { wordWrap = true, fontSize = 15 };
-            GUIStyle button = new GUIStyle(GUI.skin.button) { fontSize = 15 };
-            GUILayout.BeginArea(new Rect(10, 10, width, showPanel ? Mathf.Max(100, Screen.height - 20) : 195), GUI.skin.box);
-            if (GUILayout.Button(showPanel ? "HumanVision PC  -  Collapse" : "HumanVision PC  -  Settings", button)) showPanel = !showPanel;
-            if (showPanel) {
-                source = (PcDemoSource)GUILayout.SelectionGrid((int)source, SourceLabels, 3, button);
-                backend = (PcDemoBackend)GUILayout.SelectionGrid((int)backend, BackendLabels, 2, button);
-                GUILayout.Label("Capacity: " + maxBodies + " people (1-8)", label);
-                maxBodies = Mathf.RoundToInt(GUILayout.HorizontalSlider(maxBodies, 1, 8));
-                if (source == PcDemoSource.LocalVideo) {
-                    GUILayout.Label("Local video file path", label); videoPath = GUILayout.TextField(videoPath);
-                    GUILayout.Label("Start seconds (0 = beginning)", label); _startText = GUILayout.TextField(_startText);
-                } else if (source == PcDemoSource.WebCamera) {
-                    GUILayout.Label("Camera device name (empty = first device)", label); webcamName = GUILayout.TextField(webcamName);
-                } else { GUILayout.Label("RTSP URL (TCP)", label); rtspUrl = GUILayout.TextField(rtspUrl); }
-                GUILayout.Label("Changes apply on Start / Restart.", label);
-                GUILayout.BeginHorizontal();
-                if (GUILayout.Button(manager != null && manager.IsInitialized ? "Restart" : "Start", button)) {
-                    if (float.TryParse(_startText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float value)) {
-                        startSeconds = value; StartDemo();
-                    } else _status = "Enter a numeric start time in seconds.";
+            Matrix4x4 incomingMatrix = GUI.matrix;
+            GUISkin incomingSkin = GUI.skin;
+            Color incomingColor = GUI.color, incomingBackground = GUI.backgroundColor, incomingContent = GUI.contentColor;
+            bool incomingEnabled = GUI.enabled;
+            try {
+                PrepareGuiSkin();
+                GUI.skin = _guiSkin;
+                GUI.color = GUI.backgroundColor = GUI.contentColor = Color.white;
+                GUI.enabled = true;
+                float scale = PcGuiLayout.Scale(Screen.width, Screen.height, Screen.dpi, uiScale);
+                Rect panel = PcGuiLayout.PanelPixels(Screen.width, Screen.height, Screen.safeArea, Screen.dpi, uiScale, showPanel);
+                // Unity applies this matrix to IMGUI hit testing as well as drawing.
+                // Do not rescale Event.current.mousePosition a second time.
+                GUI.matrix = Matrix4x4.TRS(new Vector3(panel.x, panel.y, 0), Quaternion.identity, new Vector3(scale, scale, 1));
+                GUILayout.BeginArea(new Rect(0, 0, panel.width / scale, panel.height / scale), GUI.skin.box);
+                bool expanded = showPanel;
+                bool narrow = panel.width / scale < 340;
+                string title = narrow ? (expanded ? "PC  -  Collapse" : "PC  -  Settings")
+                    : (expanded ? "HumanVision PC  -  Collapse" : "HumanVision PC  -  Settings");
+                if (GUILayout.Button(title)) {
+                    showPanel = !showPanel;
                 }
-                if (GUILayout.Button("Stop", button)) StopDemo();
-                GUILayout.EndHorizontal();
-                _showPreview = GUILayout.Toggle(_showPreview, "Show video preview");
-                _showOverlay = GUILayout.Toggle(_showOverlay, "Show skeleton / boxes / IDs");
-                if (preview != null) preview.enabled = _showPreview;
-                if (overlay != null) overlay.enabled = _showOverlay;
+                if (expanded) {
+                    _panelScroll = GUILayout.BeginScrollView(_panelScroll, false, false,
+                        GUILayout.Height(PcGuiLayout.ScrollViewportHeight(panel.height, scale)));
+                    // Narrow windows stack choices to keep every label readable.
+                    int sourceColumns = panel.width / scale >= 440 ? 3 : 1;
+                    int backendColumns = panel.width / scale >= 340 ? 2 : 1;
+                    source = (PcDemoSource)GUILayout.SelectionGrid((int)source, SourceLabels, sourceColumns);
+                    backend = (PcDemoBackend)GUILayout.SelectionGrid((int)backend, BackendLabels, backendColumns);
+                    GUILayout.Label("Capacity: " + maxBodies + " people (1-8)");
+                    maxBodies = Mathf.RoundToInt(GUILayout.HorizontalSlider(maxBodies, 1, 8));
+                    if (source == PcDemoSource.LocalVideo) {
+                        GUILayout.Label("Local video file path"); videoPath = GUILayout.TextField(videoPath);
+                        GUILayout.Label("Start seconds (0 = beginning)"); _startText = GUILayout.TextField(_startText);
+                    } else if (source == PcDemoSource.WebCamera) {
+                        GUILayout.Label("Camera device name (empty = first device)"); webcamName = GUILayout.TextField(webcamName);
+                    } else { GUILayout.Label("RTSP URL (TCP)"); rtspUrl = GUILayout.TextField(rtspUrl); }
+                    GUILayout.Label("Changes apply on Start / Restart.");
+                    GUILayout.BeginHorizontal();
+                    if (GUILayout.Button(manager != null && manager.IsInitialized ? "Restart" : "Start")) {
+                        if (float.TryParse(_startText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float value)) {
+                            startSeconds = value; StartDemo();
+                        } else _status = "Enter a numeric start time in seconds.";
+                    }
+                    if (GUILayout.Button("Stop")) StopDemo();
+                    GUILayout.EndHorizontal();
+                    _showPreview = GUILayout.Toggle(_showPreview, "Show video preview");
+                    _showOverlay = GUILayout.Toggle(_showOverlay, "Show skeleton / boxes / IDs");
+                    if (preview != null) preview.enabled = _showPreview;
+                    if (overlay != null) overlay.enabled = _showOverlay;
+                    GUILayout.Label(_status);
+                    if (manager != null && manager.IsInitialized) {
+                        GUILayout.Label("Active profile: " + manager.ActiveRuntimeProfile);
+                        GUILayout.Label(string.Format("Fresh observations: {0:F2} FPS | bodies: {1}/{2}\nResult: {3} | source frame: {4}",
+                            FreshObservationFps, manager.BodyCount, manager.MaxBodies, manager.ResultSequence, manager.SourceFrameId));
+                        GUILayout.Label(manager.SourceTimestampUs <= 0 ? "Source age: N/A (no observation yet)"
+                            : "Source age: " + frameSource.ResultAgeMilliseconds.ToString("F1") + " ms");
+                        if (_activeSource != PcDemoSource.LocalVideo) GUILayout.Label(liveSource.Status);
+                        GUILayout.Label(_diagnostics);
+                        if (!string.IsNullOrEmpty(manager.LastError)) GUILayout.Label(manager.LastError);
+                        if (!string.IsNullOrEmpty(frameSource.LastError)) GUILayout.Label(frameSource.LastError);
+                    }
+                    GUILayout.EndScrollView();
+                }
+                GUILayout.EndArea();
+            } finally {
+                GUI.matrix = incomingMatrix;
+                GUI.skin = incomingSkin;
+                GUI.color = incomingColor; GUI.backgroundColor = incomingBackground; GUI.contentColor = incomingContent;
+                GUI.enabled = incomingEnabled;
             }
-            GUILayout.Label(_status, label);
-            if (manager != null && manager.IsInitialized) {
-                GUILayout.Label("Active profile: " + manager.ActiveRuntimeProfile, label);
-                GUILayout.Label(string.Format("Fresh observations: {0:F2} FPS | bodies: {1}/{2}\nResult: {3} | source frame: {4}",
-                    FreshObservationFps, manager.BodyCount, manager.MaxBodies, manager.ResultSequence, manager.SourceFrameId), label);
-                GUILayout.Label(manager.SourceTimestampUs <= 0 ? "Source age: N/A (no observation yet)"
-                    : "Source age: " + frameSource.ResultAgeMilliseconds.ToString("F1") + " ms", label);
-                if (_activeSource != PcDemoSource.LocalVideo) GUILayout.Label(liveSource.Status, label);
-                if (showPanel) GUILayout.Label(_diagnostics, label);
-                if (!string.IsNullOrEmpty(manager.LastError)) GUILayout.Label(manager.LastError, label);
-                if (!string.IsNullOrEmpty(frameSource.LastError)) GUILayout.Label(frameSource.LastError, label);
-            }
-            GUILayout.EndArea();
         }
     }
 }

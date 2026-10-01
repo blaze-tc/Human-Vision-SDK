@@ -1,5 +1,5 @@
 {
-  "version": "0.4.0-pc.1",
+  "version": "0.4.0-pc.2",
   "native_source_base": "0af0b10",
   "native_build_flags": {
     "HV_USE_DIRECTML": true,
@@ -279,12 +279,16 @@
       "packaged_sha256": "4410f401c74fea2f7cd3aea1954ceedf28a7ebdce6d2a925800fc0966f8c1837"
     },
     "unity/HumanVisionDemo/Assets/HumanVision/Demo/PC/HumanVisionPcDemo.cs": {
-      "sha256": "c892820f47b57c75afabf75f9812bfb3b5301a205540fcd1c13d1ef4fd4fc545",
-      "packaged_sha256": "c892820f47b57c75afabf75f9812bfb3b5301a205540fcd1c13d1ef4fd4fc545"
+      "sha256": "14212e0cc341ab852d1b0e02ddf31dc032c6a0a70d1d710a0121cd8a7caf326c",
+      "packaged_sha256": "7e8475d8d7cee598768c6801781f2ca03727b7c2efd850d9d53c6b15e9fbdb05"
     },
     "unity/HumanVisionDemo/Assets/HumanVision/Demo/PC/PcDemoPolicies.cs": {
       "sha256": "f4ff9fc8fa89360b0ed1e21610189ef3b26e675a8f02293ca71e23c065e2b024",
       "packaged_sha256": "f4ff9fc8fa89360b0ed1e21610189ef3b26e675a8f02293ca71e23c065e2b024"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/PC/PcGuiLayout.cs": {
+      "sha256": "155372731e752d90c71ce4d1fbd99ab857e7d03e43f282ca96e385c8e0040798",
+      "packaged_sha256": "d16f927d73b5b21d2de09d8145872580460dbd29fe67759c91dd60b504b53d48"
     },
     "unity/HumanVisionDemo/Assets/HumanVision/Demo/Resources/HumanVisionCameraOrientation.shader": {
       "sha256": "e6ad4af04c31958b86f1734787619e575dec380b91fd335fd03d487810a0097a",
@@ -367,11 +371,11 @@
       "packaged_sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
     },
     "docs/PC_DEMO_INSTALLATION.md": {
-      "sha256": "c251feb8bc1ca4b6ecda74b2ea77f5c5a2e673f0a4a4730602b57e7651386605",
-      "packaged_sha256": "c251feb8bc1ca4b6ecda74b2ea77f5c5a2e673f0a4a4730602b57e7651386605"
+      "sha256": "2e6f9b20785c9354a81d3fb400a727c79bda10fcd3731d4c836bb2f49b1ebf54",
+      "packaged_sha256": "18306bbd1afcbf9b58e171ff0691218d12327c197c896539c30623676704dae1"
     }
   },
-  "runtime_index_sha256": "0f8cc29e4c8ecf28cacea6d37682077420bff69720f071bbf5319334df02da33",
+  "runtime_index_sha256": "08b56de71b8525f38d7afe569ef8d2645c5ba93287dfad4f4c1e0a2670760116",
   "platform_dependencies": [
     "advapi32.dll",
     "bcrypt.dll",

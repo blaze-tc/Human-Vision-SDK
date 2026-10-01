@@ -54,7 +54,7 @@ public static class PcDemoAcceptance
     static void VerifyInstallation()
     {
         var package=UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/com.blazetc.humanvision/package.json");
-        if(package==null || package.version!="0.4.0-pc.1")throw new Exception("PC package not resolved");
+        if(package==null || package.version!="0.4.0-pc.2")throw new Exception("PC package not resolved");
         string root="Assets/StreamingAssets/HumanVision/Runtime/";
         var index=JsonUtility.FromJson<RuntimeIndex>(File.ReadAllText(root+"index.json"));
         if(index==null || index.files==null || index.files.Length!=7)throw new Exception("PC runtime closure must have seven indexed files");

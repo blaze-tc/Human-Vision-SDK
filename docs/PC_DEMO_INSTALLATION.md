@@ -1,6 +1,6 @@
 # Windows PC Unity Demo 安装与运行
 
-这是 `0.4.0-pc.1` Windows x64 评估包，支持 Unity 2021.3 及以上兼容版本。
+这是 `0.4.0-pc.2` Windows x64 评估包，支持 Unity 2021.3 及以上兼容版本。
 使用现有 Runtime Host、ONNX Runtime / DirectML、RTMO-t-416 人体图，人数容量可选 1–8。
 运行机器需安装 Microsoft Visual C++ 2015–2022 x64 Runtime；DirectML 需要支持 D3D12 的 Windows 环境。
 这是身体骨架 Demo，不包含真实 Hand、Handtip、Thumb 推理，也不提供 Android 插件。
@@ -67,5 +67,13 @@ py -3.13 tools/test/test_pc_demo_package.py
 py -3.13 tools/package/package_pc_demo.py --native-inputs out/pc-demo/native-inputs.json
 ```
 
-可选 `--tgz out/pc-demo/com.blazetc.humanvision-0.4.0-pc.1.tgz` 生成确定性本地包。
+可选 `--tgz out/pc-demo/com.blazetc.humanvision-0.4.0-pc.2.tgz` 生成确定性本地包。
 打包器不会构建原生代码、运行 Unity、访问网络或发布 Release；Unity 导入、视频和 Player 验证独立记录。
+
+## 高分辨率与小窗口控制面板
+
+pc.2 控制面板按 1280×720 参考尺寸与可信 DPI 自动缩放；4K 默认比例为 3。
+选择场景中的 HumanVision PC Demo 组件，调整 `Ui Scale`（0.75–2）可覆盖偏好。
+控件、文字及点击区域一起缩放。窄窗口的输入/后端选项自动竖排；
+展开面板可滚动查看所有设置、状态与诊断。Collapse 仅保留设置按钮，减少视频遮挡。
+窗口调整大小后即时重新布局；面板限制在当前安全区域内。
