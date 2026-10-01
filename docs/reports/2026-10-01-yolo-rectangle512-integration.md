@@ -34,7 +34,31 @@ Native SHA256:
 Runtime index SHA256:
 `d37a27c67b74ebbf29866a6cce252af8dabc1ae8bcedddd0c2c5fbada5efc317`.
 
-Actual Unity GPU-AHB continuous-video FPS and alignment are pending. Offline
-single-frame eligibility does not establish other gestures, production GPU input
-accuracy, or physical acceptance. The25FPS/30FPS performance goals remain unmet.
+## Snapdragon 888 continuous measurement: faster, still below acceptance
+
+The authorized open Unity project imported12 backed-up files, refreshed with no
+errors, built the APK and emitted the settings-restoration marker. The installed
+APK, embedded native, selected runtime files and source video identities match.
+APK SHA256: `6d1b4ab4c1caac7a9bdf6a90703f39a46ee5a961c358a8d631dfae50b1bce0b5`.
+Evidence: `out/android-yolo/eval-rectangle512-20261001-m3-armcheck/device-yolo512-arms-seven-75s/`.
+
+PID19026, excluding five seconds after active submission, has an82.295-second
+window with1,743 distinct source-frame/result-sequence pairs:21.1799 fresh
+observations/s. Exactly1,693 observations have body count7:20.5723/s. There are21
+count6 observations,29 count8 observations, and no empty observations. Observed
+result age P50/P95 is83.155/115.571ms. Reported full-frame CPU readbacks, worker,
+copy and import errors are zero.
+
+The fresh normal640 repeat has15.4175 observations/s, count7 subset15.2892 and
+age113.082/135.165ms over46.765 seconds. The observed fresh-rate difference is
+about37.4%; durations, orientation and device load were not fully controlled, so
+this is a diagnostic comparison rather than a controlled causal benchmark.
+
+The >=25FPS gate fails. Occasional missing-person results prevent treating this
+as an accuracy-equivalent default replacement. Preserve the explicit candidate
+for comparison; the accepted640 route remains available. Result counts do not
+certify stable identity or every joint in continuous motion. Single-frame offline
+eligibility does not establish other gestures or final physical acceptance.
+The source is25FPS and cannot prove30 fresh observations/s.
+The25FPS/30FPS performance goals remain unmet.
 No main merge or Release is authorized. See the [candidate evidence](2026-10-01-yolo-rectangle512-eligibility.md).

@@ -1,3 +1,16 @@
+# Current YOLO-M3 result:512 improves speed, acceptance still unmet (2026-10-01)
+
+Actual Unity GPU-AHB512 capture was independently reviewed:21.1799 fresh
+observations/s,count7 subset20.5723,age83.155/115.571ms,21 six-body frames,
+zero empty frames and GPU errors/readbacks. Normal640 repeat15.4175FPS is
+preserved. Diagnostic gain is about37.4%, but coverage prevents promotion to
+accuracy-equivalent default and >=25/target30 remain unmet. See
+[actual device evidence](reports/2026-10-01-yolo-rectangle512-integration.md).
+Accepted640 APK is restored;512 remains an explicit evaluation candidate.
+M3 remains active; next investigate bounded official FP16-packed input
+representation eligibility without changing frozen accuracy limits or the
+accepted runtime. No main merge/Release; existing R4 work remains preserved.
+
 # Current YOLO-M3 update: rectangle512 integration reviewed (2026-10-01)
 
 Explicit512x288 FP32 SDK integration passed independent spec/quality review,
