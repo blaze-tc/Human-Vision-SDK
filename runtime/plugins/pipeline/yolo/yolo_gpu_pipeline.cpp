@@ -28,7 +28,7 @@ struct Instance {
     uint64_t generation=0,executions=0;
     int64_t last_frame=-1;
     int capacity=0;
-    Instance(const HV_HostServicesV3& services,int limit,int target):host(services),decoder(target),capacity(limit){}
+    Instance(const HV_HostServicesV3& services,int limit,int width,int height):host(services),decoder(width,height),capacity(limit){}
     void Release() {if(session)host.release_gpu_backend_v3(host.v2.v1.context,backend,session);session=nullptr;backend=nullptr;}
     ~Instance(){Release();}
     bool Initialize(const HV_GpuFrameRefV1& frame,HV_ErrorBufferV1* error) {
@@ -73,15 +73,15 @@ HV_Result HV_CALL Create(const HV_PipelineConfigV1* c,const HV_HostServicesV3* h
         const auto& output=model.at("output_contract");auto input=model.at("input_contract");input["output_blobs"]=output.at("output_blobs");
         ncnn_backend::InputContract contract;
         if(!ncnn_backend::ParseInputContract(input,contract,reason))throw std::runtime_error(reason);
-        const int anchors=yolo::AnchorCount(contract.width);
-        if(!anchors||contract.width!=contract.height||contract.output_type!=HV_GPU_TENSOR_FP32||
+        const int anchors=yolo::AnchorCount(contract.width,contract.height);
+        if(!anchors||contract.output_type!=HV_GPU_TENSOR_FP32||
            contract.output_elempack!=1||contract.input_blob!="in0"||contract.crop_mode!=ncnn_backend::InputContract::CropMode::Letterbox||
            contract.output_blobs!=std::vector<std::string>{"out0","out1"}||output.at("decoder")!="yolov8_pose_dfl17_v1"||
            output.at("max_output_bytes").at("out0")!=anchors*65*4||output.at("max_output_bytes").at("out1")!=anchors*51*4)
-            throw std::runtime_error("YOLO requires square320/416 RGB FP32 pack1 and exact bounded out0/out1");
+            throw std::runtime_error("YOLO requires reviewed square320/416 or rectangle640x384 RGB FP32 pack1 and exact bounded out0/out1");
         for(int i=0;i<3;++i)if(contract.mean[i]!=0||contract.norm[i]!=1.f/255.f||contract.pad_rgb[i]!=114)
             throw std::runtime_error("YOLO requires RGB /255 and pad114");
-        auto self=std::make_unique<Instance>(*h,c->max_bodies,contract.width);
+        auto self=std::make_unique<Instance>(*h,c->max_bodies,contract.width,contract.height);
         manifest["active_role"]="body";self->manifest=manifest.dump();self->root=c->asset_root_utf8;self->contract=std::move(contract);
         if(!RegisterPipelineDiagnostics(self.get()))throw std::runtime_error("Pipeline diagnostics capacity exhausted");
         *out=self.release();return HV_OK;
@@ -97,15 +97,19 @@ HV_Result HV_CALL Process(void* p,const HV_GpuFrameRefV1* f,HV_ObservationFrameV
     out->preprocess_ms=out->inference_ms=out->postprocess_ms=0;
     out->source_frame_id=f->frame_id;out->source_timestamp_us=f->timestamp_us;out->width=f->width;out->height=f->height;
     try {
+        yolo::Geometry g{};
+        if(!yolo::BuildGeometry(f->width,f->height,self.contract.width,self.contract.height,g)) {
+            Error(e,"YOLO rectangle640x384 requires reviewed 16:9 landscape source geometry");return HV_ERR_INVALID_ARGUMENT;
+        }
         if(!self.Initialize(*f,e))return HV_ERR_NOT_INITIALIZED;
         if(f->frame_id<=self.last_frame){Error(e,"Duplicate or stale YOLO source frame");return HV_ERR_INVALID_ARGUMENT;}
         self.last_frame=f->frame_id;
-        yolo::Geometry g{};if(!yolo::BuildGeometry(f->width,f->height,self.contract.width,g))return HV_ERR_INVALID_ARGUMENT;
         HV_GpuImageTransformV1 transform{};transform.struct_size=sizeof(transform);transform.api_version=HV_GPU_FRAME_API_V1;
         transform.output_width=g.width;transform.output_height=g.height;transform.output_type=HV_GPU_TENSOR_FP32;
         transform.output_elempack=1;transform.channel_order=1;
         const double nominal=double(g.width)/std::max(f->width,f->height);
-        const int rw=f->width>f->height?g.width:int(f->width*nominal),rh=f->width>f->height?int(f->height*nominal):g.height;
+        const int rw=f->width>f->height?g.width:int(f->width*nominal);
+        const int rh=g.width==640&&g.height==384?360:(f->width>f->height?int(f->height*nominal):g.height);
         const float sx=float(rw)/f->width,sy=float(rh)/f->height;
         transform.source_rect_px={-g.left/sx,-g.top/sy,g.width/sx,g.height/sy};
         for(int i=0;i<3;++i)transform.norm[i]=self.contract.norm[i];

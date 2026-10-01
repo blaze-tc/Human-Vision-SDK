@@ -6,10 +6,15 @@ import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-NATIVE_SHA = 'f3ab016bbe1d5dda83142a0a8f07e1840fe6eecd8dd30bee5896ac5c25568289'
+NATIVE_SHA = 'f759368c26cf9cc621a00113a50d9de439b259b74f2c045cecda91620ba479f0'
 VIDEO_SHA = 'e3620101d8218e7e9f2736cf5dab7a497bfcfc23e33a40244b63ae317c1bb0c8'
 INDEX_SHA = {320: '9119eb49528758d2b4d9237406fd98643e2d0c5d624804ee16769bff9d81ba69',
-             416: '10454b1a73e4c86e1d6396e3de251ac398176ed24d31a0d09f7dd8969d7f6629'}
+             416: '10454b1a73e4c86e1d6396e3de251ac398176ed24d31a0d09f7dd8969d7f6629',
+             640: '954b0fb5a152672b2242ccc14d49588be74e488000a110bbe7c91a022b143f00'}
+
+def shape_id(size):
+    if size not in INDEX_SHA: raise ValueError('Unreviewed YOLO input shape')
+    return 'rectangle640x384' if size==640 else f'square{size}'
 
 
 def sha256(path):
@@ -31,7 +36,7 @@ def bound(root, relative):
 
 def unity_index(index, files, size):
     generated=dict(index)
-    generated['version']=f'yolo-local-fp32-square{size}'
+    generated['version']=f'yolo-local-fp32-{shape_id(size)}'
     generated['files']=[{'path': p, 'sha256': h} for p,h in sorted(files.items())]
     return generated
 
@@ -40,9 +45,13 @@ def verify_runtime(root, size):
     index = json.loads((root/'index.json').read_text(encoding='utf-8-sig'))
     if index.get('size') != size or index.get('precision') != 'fp32' or index.get('local_evaluation_only') is not True:
         raise ValueError('Runtime eligibility metadata mismatch')
+    if size==640 and (index.get('shape_id')!='rectangle640x384' or index.get('input_width')!=640 or
+        index.get('input_height')!=384 or index.get('source_aspect_ratio')!='16:9' or
+        index.get('fixture')!='android-yolo/device-runs/seven-640/gpu-fp32-866e333068bf4b058ca0c40176faf897'):
+        raise ValueError('Frozen rectangle640x384 source/eligibility identity differs')
     files = index['files']
     if isinstance(files, list):
-        if index.get('version') != f'yolo-local-fp32-square{size}': raise ValueError('Unity index version missing or invalid')
+        if index.get('version') != f'yolo-local-fp32-{shape_id(size)}': raise ValueError('Unity index version missing or invalid')
         paths=[row['path'] for row in files]
         if len(set(paths)) != len(paths): raise ValueError('Duplicate Unity index entry')
         for row in files:
@@ -70,7 +79,18 @@ def verify_runtime(root, size):
     if options != {'use_packing_layout': True, 'use_subgroup_ops': False, 'use_fp16_packed': False, 'use_fp16_storage': False, 'use_fp16_arithmetic': False}:
         raise ValueError('Expected explicit FP32 backend options')
     contract = model['input_contract']
-    if contract['width'] != size or contract['height'] != size or contract['tensor_dtype'] != 'fp32': raise ValueError('Input contract differs')
+    height=384 if size==640 else size
+    if contract['width'] != size or contract['height'] != height or contract['tensor_dtype'] != 'fp32': raise ValueError('Input contract differs')
+    if size==640:
+        anchors=5040
+        if profile['body']['modelPack']!='yolov8n-pose-rectangle640x384-fp32-local' or \
+            model['decoder_id']!='yolov8_pose_dfl17_v1' or model['execution_contract']!='raw_tensor_fp32_v1' or \
+            contract!={'image_format':'rgba8-unorm','color_order':'rgb','crop':'letterbox',
+                'resize_interpolation':'bilinear','pad_rgb':[114,114,114],'normalization':{'mean':[0,0,0],'norm':[1/255]*3},
+                'width':640,'height':384,'tensor_dtype':'fp32','elempack':1,'input_blob':'in0'} or \
+            model['output_contract']!={'decoder':'yolov8_pose_dfl17_v1','output_blobs':['out0','out1'],
+                'max_output_bytes':{'out0':anchors*65*4,'out1':anchors*51*4}}:
+            raise ValueError('Exact rectangle FP32 tensor contract differs')
     for kind in ('param', 'bin'):
         path = bound(pack_root, model[kind+'_path'])
         relative = path.relative_to(root.resolve()).as_posix()
@@ -114,6 +134,7 @@ def stage(runtime, native, video, output, size):
     if sha256(diagnostic) != VIDEO_SHA: raise ValueError('Copied video hash differs')
     metadata={'size':size,'capacity':8,'interval_package_id':2,'source_runtime_index_sha256':sha256(runtime/'index.json'),
         'native_sha256':NATIVE_SHA,'video_sha256':VIDEO_SHA,'video_start_seconds':37,'selected_files':files}
+    if size==640:metadata.update(shape_id='rectangle640x384',input_width=640,input_height=384,source_aspect_ratio='16:9')
     (output/'stage-manifest.json').write_text(json.dumps(metadata,indent=2)+'\n',encoding='utf-8')
     return project
 
@@ -122,7 +143,7 @@ if __name__ == '__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime',type=Path,required=True); parser.add_argument('--native',type=Path)
     parser.add_argument('--video',type=Path); parser.add_argument('--output',type=Path)
-    parser.add_argument('--size',type=int,choices=(320,416),default=320); parser.add_argument('--verify-only',action='store_true')
+    parser.add_argument('--size',type=int,choices=(320,416,640),default=320); parser.add_argument('--verify-only',action='store_true')
     args=parser.parse_args()
     if args.verify_only: verify_runtime(args.runtime.resolve(),args.size); print('Runtime selection/hash closure PASS')
     else:

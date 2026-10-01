@@ -35,7 +35,7 @@ HV_Result HV_CALL Run(void* opaque,const HV_GpuFrameRefV1* frame,const HV_GpuIma
     auto& self=*static_cast<Fake*>(opaque);++self.runs;self.transform=*transform;
     if(self.fail)return HV_ERR_INTERNAL;if(capacity<2)return HV_ERR_INVALID_ARGUMENT;
     for(int i=0;i<2;++i){auto& v=views[i];v={};v.struct_size=sizeof(v);v.api_version=HV_PLUGIN_API_V1;
-        v.name=i?"out1":"out0";v.element_type=1;v.rank=2;v.dimensions[0]=2100;v.dimensions[1]=i?51:65;
+        v.name=i?"out1":"out0";v.element_type=1;v.rank=2;v.dimensions[0]=self.detection.size()/65;v.dimensions[1]=i?51:65;
         const auto& data=i?self.points:self.detection;v.data=data.data();v.byte_count=data.size()*4;}
     auto& lease=*static_cast<humanvision::gpu::ConsumerFrame*>(frame->opaque_slot);
     lease.claimed=true;lease.ncnn_role_complete=false;
@@ -81,6 +81,11 @@ TEST(YoloContract, DataOnlyLocalPacksAndProfileResolveWithoutFp16Claims) {
         ASSERT_TRUE(profile)<<error;EXPECT_TRUE(profile->gpu_route);EXPECT_FALSE(profile->allow_backend_fallback);
         EXPECT_STREQ(profile->gpu_body->api.v1.plugin_id,"pipeline.yolo.pose");
     }
+    const auto root=std::filesystem::path(HV_TEST_PROJECT_ROOT)/"out/android-yolo/runtime-rectangle640x384-arm-verified";
+    ModelPackManager packs(root/"modelpacks");BackendFactory factory({},false);std::string error;
+    ASSERT_TRUE(factory.RegisterV3(HV_QueryNcnnVulkanPluginV3,error));ASSERT_TRUE(factory.RegisterV3(HV_QueryYoloGpuPipelineV3,error));
+    PluginRegistry registry;auto profile=ProfileManager(root/"profiles").Resolve("android-ncnn-vulkan",8,registry,packs,error,&factory);
+    ASSERT_TRUE(profile)<<error;EXPECT_TRUE(profile->gpu_route);EXPECT_FALSE(profile->allow_backend_fallback);
 }
 TEST(YoloContract, GenericRawBoundaryRejectsProductionHalfAndPackedInput) {
     using namespace humanvision::runtime::ncnn_backend;
@@ -91,6 +96,45 @@ TEST(YoloContract, GenericRawBoundaryRejectsProductionHalfAndPackedInput) {
     input.output_type=HV_GPU_TENSOR_FP16;EXPECT_FALSE(ValidateRawTensorBoundary(options,input,true,error));
     input.output_type=HV_GPU_TENSOR_FP32;input.output_elempack=4;EXPECT_FALSE(ValidateRawTensorBoundary(options,input,true,error));
     input.output_elempack=1;input.cast_type_to=2;EXPECT_FALSE(ValidateRawTensorBoundary(options,input,true,error));
+}
+TEST(YoloGpuPipeline, ExplicitRectangleRestoresPixelsAndRejectsUnreviewedSourceBeforeBackend) {
+    const auto root=std::filesystem::path(HV_TEST_PROJECT_ROOT)/"out/android-yolo/runtime-rectangle640x384-arm-verified";
+    auto manifest=Load(root/"modelpacks/yolov8n-pose-rectangle640x384-fp32-local/modelpack.json");
+    const auto profile=Load(root/"profiles/android-ncnn-vulkan.json").dump();
+    Fake fake;fake.detection.assign(5040*65,-80);fake.points.assign(5040*51,0);
+    // Last cell of each rectangular stride proves offsets use width*height.
+    const int anchors[]={80*48-1,80*48+40*24-1,5040-1};
+    for(int anchor:anchors)fake.detection[anchor*65+64]=8;
+    auto api=Query();HV_HostServicesV3 host{};host.v2.v1.struct_size=sizeof(host);
+    host.v2.v1.api_version=HV_PLUGIN_API_V1;host.v2.v1.context=&fake;
+    host.create_gpu_backend_v3=Create;host.release_gpu_backend_v3=Release;
+    const auto text=manifest.dump();HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,8,0,text.c_str(),"fixture",profile.c_str()};
+    void* instance=nullptr;ASSERT_EQ(api.gpu_pipeline->create(&config,&host,&instance,nullptr),HV_OK);
+    struct Cleanup{const HV_GpuPipelineApiV2* api;void* instance;~Cleanup(){api->destroy(instance);}}cleanup{api.gpu_pipeline,instance};
+    humanvision::gpu::ConsumerFrame lease{};
+    HV_GpuFrameRefV1 frame{sizeof(frame),HV_GPU_FRAME_API_V1,&lease,1024,768,10,10000,1,HV_GPU_IMAGE_RGBA8_UNORM,0};
+    HV_GpuObservationFrameV3 out{};out.v1.struct_size=sizeof(out);out.v1.api_version=HV_PLUGIN_API_V1;
+    char message[256]{};HV_ErrorBufferV1 error{sizeof(error),HV_PLUGIN_API_V1,message,sizeof(message)};
+    EXPECT_EQ(api.gpu_pipeline->process_gpu(instance,&frame,&out.v1,&error),HV_ERR_INVALID_ARGUMENT);
+    EXPECT_EQ(fake.creates,0);EXPECT_EQ(fake.runs,0);EXPECT_NE(std::string(message).find("16:9"),std::string::npos);
+    frame.height=576;ASSERT_EQ(api.gpu_pipeline->process_gpu(instance,&frame,&out.v1,&error),HV_OK)<<message;
+    EXPECT_EQ(fake.transform.output_width,640u);EXPECT_EQ(fake.transform.output_height,384u);
+    EXPECT_FLOAT_EQ(fake.transform.source_rect_px.x,0);EXPECT_FLOAT_EQ(fake.transform.source_rect_px.y,-19.2f);
+    EXPECT_FLOAT_EQ(fake.transform.source_rect_px.width,1024);EXPECT_FLOAT_EQ(fake.transform.source_rect_px.height,614.4f);
+    EXPECT_EQ(fake.completions,1);EXPECT_FALSE(lease.claimed);EXPECT_TRUE(lease.ncnn_role_complete);
+    EXPECT_GT(out.v1.body_count,0u);EXPECT_EQ(out.v1.source_frame_id,10);
+    for(const int width:{624,1072,1232,1920}) {
+        SCOPED_TRACE(width);frame.width=width;frame.height=width/16*9;++frame.frame_id;
+        ASSERT_EQ(api.gpu_pipeline->process_gpu(instance,&frame,&out.v1,&error),HV_OK)<<message;
+        const float scale=640.f/width;
+        EXPECT_FLOAT_EQ(fake.transform.source_rect_px.y,-12/scale);
+        EXPECT_FLOAT_EQ(fake.transform.source_rect_px.width,float(width));
+        EXPECT_FLOAT_EQ(fake.transform.source_rect_px.height,384/scale);
+    }
+    // Explicit rectangular dimensions cannot be replaced by square640.
+    manifest["models"][0]["input_contract"]["height"]=640;
+    const auto invalid=manifest.dump();config.model_manifest_utf8=invalid.c_str();void* rejected=nullptr;
+    EXPECT_EQ(api.gpu_pipeline->create(&config,&host,&rejected,&error),HV_ERR_MODEL_LOAD);EXPECT_EQ(rejected,nullptr);
 }
 TEST(YoloGpuPipeline, OneNetworkPerSourceFrameProvenanceAndInvalidHands) {
     const auto manifest=Load(Root()/"modelpacks/yolov8n-pose-square320-fp32-local/modelpack.json").dump();

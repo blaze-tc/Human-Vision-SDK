@@ -1,5 +1,5 @@
 param(
-    [ValidateSet(320,416)][int]$Size = 320,
+    [ValidateSet(320,416,640)][int]$Size = 320,
     [Parameter(Mandatory)][string]$NativeLibrary,
     [Parameter(Mandatory)][string]$OutputDirectory,
     [string]$RuntimeDirectory = '',
@@ -7,7 +7,10 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path "$PSScriptRoot/../..").Path
-if (!$RuntimeDirectory) { $RuntimeDirectory = Join-Path $root "out/android-yolo/runtime-square$Size-verified" }
+if (!$RuntimeDirectory) {
+    $runtimeShape = if ($Size -eq 640) { 'rectangle640x384-arm' } else { "square$Size" }
+    $RuntimeDirectory = Join-Path $root "out/android-yolo/runtime-$runtimeShape-verified"
+}
 $native = (Resolve-Path -LiteralPath $NativeLibrary).Path
 if (Test-Path -LiteralPath $OutputDirectory) { throw 'OutputDirectory must be new' }
 # Audit the actual explicit artifact before writing any successful audit metadata.
