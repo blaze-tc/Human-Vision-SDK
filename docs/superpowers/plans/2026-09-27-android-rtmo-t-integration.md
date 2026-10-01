@@ -17,7 +17,7 @@ Body17 measurements retain canonical semantics; unavailable joints stay invalid.
 
 ## Sequential execution and review
 
-1. **RTMO-M1 model eligibility (failed eligibility; closure review pending):** inspect pinned official416 model;
+1. **RTMO-M1 model eligibility (failed eligibility; closure reviewed and committed d47b7f9):** inspect pinned official416 model;
    select bounded raw-output export if embedded ONNX postprocess is unsuitable;
    pin hashes/contracts; prove conversion and golden outputs using existing
    reference/ncnn tooling. 45-minute initial feasibility timebox, one primary
@@ -67,3 +67,19 @@ bounded model eligibility task under the user's approval to continue toward
 >=25 fresh complete multiplayer observations/s. This is a development candidate
 selection, never a runtime fallback. Keep licensing/provenance explicit and do
 not distribute new third-party artifacts as part of this evaluation.
+
+## Resumed candidate task (2026-10-01)
+
+YOLO-M1 is the sole new implementation task. Reuse the pinned upstream Android
+ncnn YOLOv8n-pose model rather than starting another converter repair effort.
+The fresh implementer owns offline fixture preparation, bounded output decoding,
+the diagnostic runner, provenance, and focused tests only. Root owns device runs.
+The initial feasibility timebox is30minutes; no production integration before
+independent spec/quality review of numerical and actual-person evidence. A finite
+tensor alone is insufficient. Record source hashes and exact input/output shapes.
+
+After eligibility, use the same M2 then M3 sequence with an explicitly named
+pipeline/model pack; do not mislabel it RTMO or SimCC. Model geometry belongs in
+the pipeline, inference remains in the generic backend. Any commercial license
+decision remains separate from this local evaluation; no new model redistribution
+or release is authorized. Existing incomplete R4 changes remain preserved.
