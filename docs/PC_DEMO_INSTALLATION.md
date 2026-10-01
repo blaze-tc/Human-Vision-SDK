@@ -10,6 +10,7 @@
 
 1. 新建或使用已清理的 Unity 项目。移除旧的 HumanVision UPM 或 `Assets/HumanVision`
    与旧 HumanVision 原生插件；避免两个 SDK 同时定义程序集。保留自己的视频文件。
+   若曾运行旧 SDK，请停止 Play 并关闭 Unity，清理后重新打开，让旧原生 DLL 完整卸载。
 2. 打开 **Window → Package Manager → + → Add package from git URL**，输入：
 
    ```text
@@ -24,6 +25,8 @@
 4. 确认 Console 无编译或安装错误。若报模型哈希不匹配，重新安装完整包；不要跳过校验。
 
 ## 创建场景并播放
+
+先在 Build Settings 选择 PC, Mac & Linux Standalone → Windows → x86_64，切换平台后再运行。
 
 1. 运行 **HumanVision → Create PC Demo**。菜单生成并保存独立场景，加入 Build Settings，
    并以叠加方式打开。保存自己的场景后，双击新生成的 `Assets/Scenes/HumanVisionPcDemo*.unity`

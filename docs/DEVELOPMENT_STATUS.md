@@ -6,7 +6,10 @@ fresh independent review, 5/5 real Unity EditMode tests and managed compilation.
 See [Task 1 evidence](reports/2026-10-01-pc-demo-task1.md).
 Task 2 dedicated PC UPM passes independent review and 11/11 real-payload package tests.
 See [Task 2 evidence](reports/2026-10-01-pc-demo-task2.md).
-Next is actual clean Unity video, Win64 build and pinned remote import.
+Task 3 local import, real seven-person video overlay, explicit CPU restart and Win64 build pass.
+Independent review PASS; 6/6 Unity tests, 11/11 package tests and managed/architecture checks pass.
+Observed positive-result arrivals20.7474FPS, ageP50/P95104.13/176.44ms on25FPS input.
+See [Task 3 evidence](reports/2026-10-01-pc-demo-task3.md). Pinned remote Git import is next.
 This request authorizes this bounded Windows demo only; Android acceptance remains
 incomplete and independent. No main merge/Release. Existing Android work and caches
 are retained; the user's original Unity project is untouched during their cleanup.

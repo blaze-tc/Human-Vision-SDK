@@ -1,7 +1,30 @@
 using System;
+using System.Text;
 
 namespace HumanVision.Demo.PC
 {
+    internal static class PcDiagnostics
+    {
+        // Native sampling ages use steady_clock's epoch. PC captures use Unity's
+        // acquisition clock; the frame source supplies the valid age in this HUD.
+        public static string Format(string diagnostics)
+        {
+            if (string.IsNullOrEmpty(diagnostics)) return "";
+            var text = new StringBuilder(diagnostics.Length);
+            foreach (string line in diagnostics.Split('\n')) {
+                if (line.StartsWith("Result age", StringComparison.Ordinal) ||
+                    line.StartsWith("Sample age", StringComparison.Ordinal) ||
+                    line.StartsWith("Sample state", StringComparison.Ordinal) ||
+                    line.StartsWith("Tracked bodies", StringComparison.Ordinal) ||
+                    line.StartsWith("Sampled bodies", StringComparison.Ordinal) ||
+                    line.StartsWith("Raw body FPS", StringComparison.Ordinal)) continue;
+                if (text.Length > 0) text.Append('\n');
+                text.Append(line.Replace("Android mode:", "Runtime profile:"));
+            }
+            return text.ToString();
+        }
+    }
+
     internal static class PcDemoConfiguration
     {
         public static string ProfileId(bool cpu, int capacity)

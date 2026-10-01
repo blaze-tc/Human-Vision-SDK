@@ -179,7 +179,7 @@ def build(receipt_path, destination=DEST):
     for section in ('Runtime', 'Demo'):
         for source in sorted((unity / section).rglob('*')):
             if source.is_file() and source.suffix in {'.cs', '.asmdef', '.shader'}:
-                if source.name in {'HumanVisionDemoBootstrap.cs', 'HumanVisionHud.cs', 'HumanVisionAndroidGpuGate.cs'}: continue
+                if source.name in {'HumanVisionDemoBootstrap.cs', 'HumanVisionAndroidGpuGate.cs'}: continue
                 relative = source.relative_to(unity).as_posix()
                 if section == 'Demo': relative = 'Runtime/' + relative
                 add(source, relative)

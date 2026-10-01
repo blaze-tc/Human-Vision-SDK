@@ -15,6 +15,23 @@ namespace HumanVision.Tests
         }
 
         [Test]
+        public void PcDiagnosticsNeverExposeAgeOrStateFromDifferentNativeClockEpoch()
+        {
+            Type type = Policy("PcDiagnostics");
+            string text = "Android mode: windows-pc-directml; input: CPU\nActual backend=backend.ort.directml\nPipeline=pipeline.rtmo\nBody pre/infer/post ms=1 / 12 / 2\nResult age ms=999999\nSample age ms=999999\nSample state=Stale\nTracked bodies=0\nSampled bodies=0\nRaw body FPS=99";
+            string formatted = (string)type.GetMethod("Format").Invoke(null, new object[] { text });
+            Assert.That(formatted, Does.Contain("backend.ort.directml"));
+            Assert.That(formatted, Does.Contain("pipeline.rtmo"));
+            Assert.That(formatted, Does.Contain("1 / 12 / 2"));
+            Assert.That(formatted, Does.Not.Contain("999999"));
+            Assert.That(formatted, Does.Not.Contain("Stale"));
+            Assert.That(formatted, Does.Not.Contain("Tracked bodies="));
+            Assert.That(formatted, Does.Not.Contain("Sampled bodies="));
+            Assert.That(formatted, Does.Not.Contain("Raw body FPS="));
+            Assert.That(formatted, Does.Not.Contain("Android mode:"));
+        }
+
+        [Test]
         public void CapacityOneAndEightSelectSameExplicitBodyOnlyProfile()
         {
             Type policy = Policy("PcDemoConfiguration");

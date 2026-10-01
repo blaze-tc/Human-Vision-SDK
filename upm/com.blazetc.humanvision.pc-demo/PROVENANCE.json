@@ -230,6 +230,10 @@
       "sha256": "d37c3ef4e9e7b0ec6d411626d6de41d27d047faaa43f7fe33716e2cb15215e8c",
       "packaged_sha256": "d37c3ef4e9e7b0ec6d411626d6de41d27d047faaa43f7fe33716e2cb15215e8c"
     },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/HumanVisionHud.cs": {
+      "sha256": "594db8e819355543039dca8feed48483467c6db65cc140aba232ca974c0dd3c6",
+      "packaged_sha256": "594db8e819355543039dca8feed48483467c6db65cc140aba232ca974c0dd3c6"
+    },
     "unity/HumanVisionDemo/Assets/HumanVision/Demo/HumanVisionOverlay.cs": {
       "sha256": "aa62639e71b7425786e0152288936713174dda7ed137223ccfdb893929b87e1b",
       "packaged_sha256": "aa62639e71b7425786e0152288936713174dda7ed137223ccfdb893929b87e1b"
@@ -275,12 +279,12 @@
       "packaged_sha256": "4410f401c74fea2f7cd3aea1954ceedf28a7ebdce6d2a925800fc0966f8c1837"
     },
     "unity/HumanVisionDemo/Assets/HumanVision/Demo/PC/HumanVisionPcDemo.cs": {
-      "sha256": "902f0c5fbeb9c86c3481df0e50ca24f2d0be985028377ffa4557efd81e98bb83",
-      "packaged_sha256": "902f0c5fbeb9c86c3481df0e50ca24f2d0be985028377ffa4557efd81e98bb83"
+      "sha256": "c892820f47b57c75afabf75f9812bfb3b5301a205540fcd1c13d1ef4fd4fc545",
+      "packaged_sha256": "c892820f47b57c75afabf75f9812bfb3b5301a205540fcd1c13d1ef4fd4fc545"
     },
     "unity/HumanVisionDemo/Assets/HumanVision/Demo/PC/PcDemoPolicies.cs": {
-      "sha256": "5fff16bf185c8ea7cf4cd4a94165afa1149d2ceeecf8e130f0dd4313af9ff36f",
-      "packaged_sha256": "5fff16bf185c8ea7cf4cd4a94165afa1149d2ceeecf8e130f0dd4313af9ff36f"
+      "sha256": "f4ff9fc8fa89360b0ed1e21610189ef3b26e675a8f02293ca71e23c065e2b024",
+      "packaged_sha256": "f4ff9fc8fa89360b0ed1e21610189ef3b26e675a8f02293ca71e23c065e2b024"
     },
     "unity/HumanVisionDemo/Assets/HumanVision/Demo/Resources/HumanVisionCameraOrientation.shader": {
       "sha256": "e6ad4af04c31958b86f1734787619e575dec380b91fd335fd03d487810a0097a",
@@ -363,8 +367,8 @@
       "packaged_sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
     },
     "docs/PC_DEMO_INSTALLATION.md": {
-      "sha256": "78907c7988b167cf7dd0f380ce0408c0bf70efc2287625e48db856a91038ebe2",
-      "packaged_sha256": "78907c7988b167cf7dd0f380ce0408c0bf70efc2287625e48db856a91038ebe2"
+      "sha256": "c251feb8bc1ca4b6ecda74b2ea77f5c5a2e673f0a4a4730602b57e7651386605",
+      "packaged_sha256": "c251feb8bc1ca4b6ecda74b2ea77f5c5a2e673f0a4a4730602b57e7651386605"
     }
   },
   "runtime_index_sha256": "0f8cc29e4c8ecf28cacea6d37682077420bff69720f071bbf5319334df02da33",

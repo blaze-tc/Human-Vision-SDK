@@ -41,6 +41,8 @@ class PcPackageTests(unittest.TestCase):
         self.assertEqual({'HumanVision.Editor.asmdef', 'HumanVisionPcDemoBuilder.cs', 'HumanVisionModelInstaller.cs'},
                          {p.name for p in (self.destination / 'Editor').iterdir() if p.is_file() and p.suffix != '.meta'})
         self.assertFalse(list(self.destination.rglob('*GpuGate*')))
+        # SceneControls references the shared diagnostics helper declared in Hud.
+        self.assertIn('HumanVisionDiagnosticsText', (self.destination / 'Runtime/Demo/HumanVisionHud.cs').read_text())
 
     def test_actual_model_tamper_rejected(self):
         self.build()

@@ -66,7 +66,7 @@ namespace HumanVision.Demo.PC
             _rate.Observe(manager != null && manager.IsInitialized ? manager.ResultSequence : 0,
                 Time.realtimeSinceStartupAsDouble);
             if (manager != null && manager.IsInitialized && Time.realtimeSinceStartupAsDouble >= _nextDiagnostics) {
-                _diagnostics = manager.RuntimeDiagnostics.Replace("Android mode:", "Runtime profile:");
+                _diagnostics = PcDiagnostics.Format(manager.RuntimeDiagnostics);
                 _nextDiagnostics = Time.realtimeSinceStartupAsDouble + .25;
             }
         }
@@ -154,7 +154,7 @@ namespace HumanVision.Demo.PC
             float width = Mathf.Min(520, Screen.width - 20);
             GUIStyle label = new GUIStyle(GUI.skin.label) { wordWrap = true, fontSize = 15 };
             GUIStyle button = new GUIStyle(GUI.skin.button) { fontSize = 15 };
-            GUILayout.BeginArea(new Rect(10, 10, width, Mathf.Max(100, Screen.height - 20)), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(10, 10, width, showPanel ? Mathf.Max(100, Screen.height - 20) : 195), GUI.skin.box);
             if (GUILayout.Button(showPanel ? "HumanVision PC  -  Collapse" : "HumanVision PC  -  Settings", button)) showPanel = !showPanel;
             if (showPanel) {
                 source = (PcDemoSource)GUILayout.SelectionGrid((int)source, SourceLabels, 3, button);
@@ -189,7 +189,7 @@ namespace HumanVision.Demo.PC
                 GUILayout.Label(manager.SourceTimestampUs <= 0 ? "Source age: N/A (no observation yet)"
                     : "Source age: " + frameSource.ResultAgeMilliseconds.ToString("F1") + " ms", label);
                 if (_activeSource != PcDemoSource.LocalVideo) GUILayout.Label(liveSource.Status, label);
-                GUILayout.Label(_diagnostics, label);
+                if (showPanel) GUILayout.Label(_diagnostics, label);
                 if (!string.IsNullOrEmpty(manager.LastError)) GUILayout.Label(manager.LastError, label);
                 if (!string.IsNullOrEmpty(frameSource.LastError)) GUILayout.Label(frameSource.LastError, label);
             }
