@@ -1,0 +1,23 @@
+{
+  "name": "com.blazetc.humanvision",
+  "version": "0.4.0-pc.1",
+  "displayName": "Human Vision SDK - Windows PC Evaluation Demo",
+  "unity": "2021.3",
+  "description": "Windows x64 RTMO-t-416 body-only PC evaluation. Explicit DirectML or CPU, capacity 1-8. Exclusive SDK install; no Android or hands.",
+  "dependencies": {
+    "com.unity.ugui": "1.0.0",
+    "com.unity.modules.physics": "1.0.0",
+    "com.unity.modules.imageconversion": "1.0.0",
+    "com.unity.modules.imgui": "1.0.0",
+    "com.unity.modules.jsonserialize": "1.0.0",
+    "com.unity.modules.unitywebrequest": "1.0.0",
+    "com.unity.modules.video": "1.0.0"
+  },
+  "author": {
+    "name": "blaze-tc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/blaze-tc/Human-Vision-SDK.git"
+  }
+}

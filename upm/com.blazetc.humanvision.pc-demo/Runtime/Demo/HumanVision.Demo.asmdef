@@ -1,0 +1,17 @@
+{
+  "name": "HumanVision.Demo",
+  "rootNamespace": "HumanVision.Demo",
+  "references": [
+    "HumanVision.Runtime",
+    "UnityEngine.UI"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": true,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

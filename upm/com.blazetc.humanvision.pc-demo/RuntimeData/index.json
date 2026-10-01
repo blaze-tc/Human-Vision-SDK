@@ -1,0 +1,33 @@
+{
+  "version": "0.4.0-pc.1",
+  "files": [
+    {
+      "path": "modelpacks/rtmo-t-416/body.onnx",
+      "sha256": "20aad6e2e42359cac1c5b4a0b2da00e29bfe91a72a782fdcf287d273a04c1b24"
+    },
+    {
+      "path": "modelpacks/rtmo-t-416/component.json",
+      "sha256": "b77e9cfe6cd2399f6536a2bc4497f11f89344bc33e70402e682c7e25778e5ff0"
+    },
+    {
+      "path": "modelpacks/rtmo-t-416/manifest.json",
+      "sha256": "6ed2a7166bec589bb7aa5322b26c01cec2a5db3a0b691e92f503ecf6a3de0f90"
+    },
+    {
+      "path": "modelpacks/rtmo-t-416/README.md",
+      "sha256": "848ac0ab68f7783cbf8b09fefb685426c64c65ddcfa02a9ba4e94a7136502f89"
+    },
+    {
+      "path": "modelpacks/rtmo-t-416/SOURCES.md",
+      "sha256": "65cab3acfad55148d551cfebd4f2ba8c43dd8e151c77ac30a1073f9fac7ab9f3"
+    },
+    {
+      "path": "profiles/windows-pc-cpu.json",
+      "sha256": "41dc0b0156bf6b3ddf44c0232527d066c23b2d2ca640db006aadeee2d34082f4"
+    },
+    {
+      "path": "profiles/windows-pc-directml.json",
+      "sha256": "1185fe744196637eec468fecbd20ee97b83cb58fdb02dfd17685d1e30473331d"
+    }
+  ]
+}

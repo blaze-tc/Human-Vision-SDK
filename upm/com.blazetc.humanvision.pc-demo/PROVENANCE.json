@@ -1,0 +1,392 @@
+{
+  "version": "0.4.0-pc.1",
+  "native_source_base": "0af0b10",
+  "native_build_flags": {
+    "HV_USE_DIRECTML": true,
+    "HV_ENABLE_RTSP": true,
+    "BUILD_TESTING": false
+  },
+  "native_load_and_exports": "PASS",
+  "native": {
+    "avcodec-61.dll": {
+      "sha256": "f0c5373f00734d0090471c75a49caf282912e6b085c4c29976ec36df3c9c586e",
+      "bytes": 36164096,
+      "imports": [
+        "advapi32.dll",
+        "avutil-59.dll",
+        "kernel32.dll",
+        "msvcrt.dll",
+        "ole32.dll",
+        "swresample-5.dll"
+      ]
+    },
+    "avformat-61.dll": {
+      "sha256": "e83cbe9d42a18a1b5876df63ac1fb76aecac80171d203d77f701229cdcac1178",
+      "bytes": 11139072,
+      "imports": [
+        "advapi32.dll",
+        "avcodec-61.dll",
+        "avutil-59.dll",
+        "crypt32.dll",
+        "kernel32.dll",
+        "msvcrt.dll",
+        "user32.dll",
+        "ws2_32.dll"
+      ]
+    },
+    "avutil-59.dll": {
+      "sha256": "347bbd018541f9ac48e7b1a60edeebba15d67702b9ffa5e213ae19b2ee5855a3",
+      "bytes": 5701120,
+      "imports": [
+        "advapi32.dll",
+        "bcrypt.dll",
+        "crypt32.dll",
+        "kernel32.dll",
+        "msvcrt.dll",
+        "ole32.dll",
+        "user32.dll",
+        "ws2_32.dll"
+      ]
+    },
+    "humanvision.dll": {
+      "sha256": "8c5b9bb56f6bae8f0dc99d9d6d5cf172ab1b2edc62e8f54cc12b1383c2509180",
+      "bytes": 650240,
+      "imports": [
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-filesystem-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-locale-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "avcodec-61.dll",
+        "avformat-61.dll",
+        "avutil-59.dll",
+        "humanvision_onnxruntime.dll",
+        "kernel32.dll",
+        "msvcp140.dll",
+        "swscale-8.dll",
+        "vcruntime140.dll",
+        "vcruntime140_1.dll"
+      ]
+    },
+    "humanvision_onnxruntime.dll": {
+      "sha256": "9a50320dc14df2321b8a51c5d5fb72d00b888506c70704dc5cce5584cbf5fe42",
+      "bytes": 17201208,
+      "imports": [
+        "advapi32.dll",
+        "api-ms-win-core-path-l1-1-0.dll",
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-filesystem-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-locale-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-time-l1-1-0.dll",
+        "d3d12.dll",
+        "dbghelp.dll",
+        "dxgi.dll",
+        "hv_dml.dll",
+        "kernel32.dll",
+        "msvcp140.dll",
+        "msvcp140_1.dll",
+        "setupapi.dll",
+        "vcruntime140.dll",
+        "vcruntime140_1.dll"
+      ]
+    },
+    "hv_dml.dll": {
+      "sha256": "9c9e6d822561c6c41b90e6994b3e8857cf1d66dbfb1e0c4c799c7c89b4e92da1",
+      "bytes": 18527776,
+      "imports": [
+        "api-ms-win-appmodel-runtime-l1-1-0.dll",
+        "api-ms-win-core-console-l1-1-0.dll",
+        "api-ms-win-core-datetime-l1-1-0.dll",
+        "api-ms-win-core-debug-l1-1-0.dll",
+        "api-ms-win-core-errorhandling-l1-1-0.dll",
+        "api-ms-win-core-fibers-l1-1-0.dll",
+        "api-ms-win-core-file-l1-1-0.dll",
+        "api-ms-win-core-handle-l1-1-0.dll",
+        "api-ms-win-core-heap-l1-1-0.dll",
+        "api-ms-win-core-interlocked-l1-1-0.dll",
+        "api-ms-win-core-libraryloader-l1-2-0.dll",
+        "api-ms-win-core-libraryloader-l1-2-1.dll",
+        "api-ms-win-core-localization-l1-2-0.dll",
+        "api-ms-win-core-memory-l1-1-0.dll",
+        "api-ms-win-core-processenvironment-l1-1-0.dll",
+        "api-ms-win-core-processthreads-l1-1-0.dll",
+        "api-ms-win-core-processthreads-l1-1-1.dll",
+        "api-ms-win-core-profile-l1-1-0.dll",
+        "api-ms-win-core-rtlsupport-l1-1-0.dll",
+        "api-ms-win-core-string-l1-1-0.dll",
+        "api-ms-win-core-synch-l1-1-0.dll",
+        "api-ms-win-core-sysinfo-l1-1-0.dll",
+        "api-ms-win-core-timezone-l1-1-0.dll",
+        "api-ms-win-core-util-l1-1-0.dll",
+        "api-ms-win-eventing-provider-l1-1-0.dll",
+        "d3d12.dll"
+      ]
+    },
+    "swresample-5.dll": {
+      "sha256": "a70c2133966a8f454b093e446d0e3d6a3ab4b5deec9e2ba6e6997e53061b7e36",
+      "bytes": 123904,
+      "imports": [
+        "avutil-59.dll",
+        "kernel32.dll",
+        "msvcrt.dll"
+      ]
+    },
+    "swscale-8.dll": {
+      "sha256": "f5b62dc7555a163dd76cf60a59845d3a16f21d7f981ea643282fda1aa6c29e8c",
+      "bytes": 651776,
+      "imports": [
+        "avutil-59.dll",
+        "kernel32.dll",
+        "msvcrt.dll"
+      ]
+    }
+  },
+  "unity_and_data_sources": {
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/Android/HumanVisionAndroidGpuFrameBridge.cs": {
+      "sha256": "9af66f210d88e40173c02bb6ddae6d24042ef2cfcc2761e37d3242ad3e960c00",
+      "packaged_sha256": "9af66f210d88e40173c02bb6ddae6d24042ef2cfcc2761e37d3242ad3e960c00"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/Android/HumanVisionAndroidRuntimeSelection.cs": {
+      "sha256": "34640465d5022fb1badc326e6c3e13be1d12f40519227c0764fa9c6f976aa0a4",
+      "packaged_sha256": "34640465d5022fb1badc326e6c3e13be1d12f40519227c0764fa9c6f976aa0a4"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/AssemblyInfo.cs": {
+      "sha256": "a657b392bd4ecf6312b20ea63946c09983c4bc6ac39211d83d7beddde9b91bf0",
+      "packaged_sha256": "a657b392bd4ecf6312b20ea63946c09983c4bc6ac39211d83d7beddde9b91bf0"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/HumanVision.Runtime.asmdef": {
+      "sha256": "7afb81007817925e3fc535adbef7f5f8b6b87f60dac0d759a01f920cfe2dfa5f",
+      "packaged_sha256": "7afb81007817925e3fc535adbef7f5f8b6b87f60dac0d759a01f920cfe2dfa5f"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/HumanVisionBody.cs": {
+      "sha256": "0e56cae287bff2d2817963bdfb1d0933975ae96ce4518f4f882de0aa7b64c033",
+      "packaged_sha256": "0e56cae287bff2d2817963bdfb1d0933975ae96ce4518f4f882de0aa7b64c033"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/HumanVisionCanonicalJoint.cs": {
+      "sha256": "269666bd2374def76cd66df73285e659f1a0d3a37ed903ed87ad7bbfc3cf666e",
+      "packaged_sha256": "269666bd2374def76cd66df73285e659f1a0d3a37ed903ed87ad7bbfc3cf666e"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/HumanVisionConfig.cs": {
+      "sha256": "67a6f4eb4c5524567c60793a23f23fbd45588afc75bef587b3cba8a3cd961a2d",
+      "packaged_sha256": "67a6f4eb4c5524567c60793a23f23fbd45588afc75bef587b3cba8a3cd961a2d"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/HumanVisionException.cs": {
+      "sha256": "36fb09ac6fe346c55be389294a5badd870b48ef1aa53476ee3c61eb79b9c12ed",
+      "packaged_sha256": "36fb09ac6fe346c55be389294a5badd870b48ef1aa53476ee3c61eb79b9c12ed"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/HumanVisionManager.cs": {
+      "sha256": "f5222465b49cf0cfebfd7f7029a43eb559e2894c898ce662227811a4c5bb1df2",
+      "packaged_sha256": "f5222465b49cf0cfebfd7f7029a43eb559e2894c898ce662227811a4c5bb1df2"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/HumanVisionNativeApi.cs": {
+      "sha256": "de6b5e864d2754b83cf2c8b5a4ca49b122acd50a6406bd6833be6826d0a65c6b",
+      "packaged_sha256": "de6b5e864d2754b83cf2c8b5a4ca49b122acd50a6406bd6833be6826d0a65c6b"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/HumanVisionResultBuffer.cs": {
+      "sha256": "080c1b9bd4fe41f4f08dc7b3a573d9432d6d1ed0345583e3a605dc8a77c3374f",
+      "packaged_sha256": "080c1b9bd4fe41f4f08dc7b3a573d9432d6d1ed0345583e3a605dc8a77c3374f"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/HumanVisionRuntimeData.cs": {
+      "sha256": "3cb35dff39044b34d0457250cde0dfc08e9013a2a1a11864f361a67a46a05615",
+      "packaged_sha256": "3cb35dff39044b34d0457250cde0dfc08e9013a2a1a11864f361a67a46a05615"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/HumanVisionRuntimeSession.cs": {
+      "sha256": "fdec131bb601546b4478e8943d246981ad76d6dfbf3873a56c9508ac84e33c32",
+      "packaged_sha256": "fdec131bb601546b4478e8943d246981ad76d6dfbf3873a56c9508ac84e33c32"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/HumanVisionSession.cs": {
+      "sha256": "9f378ad3d19e184bc18213ba87c1fc367c14b5983eb12834d48c300219e4b612",
+      "packaged_sha256": "9f378ad3d19e184bc18213ba87c1fc367c14b5983eb12834d48c300219e4b612"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/HumanVisionStats.cs": {
+      "sha256": "75e10289ae59e230e0a2534f79af2ec168467ae79ec4e2587970309954e6d21d",
+      "packaged_sha256": "75e10289ae59e230e0a2534f79af2ec168467ae79ec4e2587970309954e6d21d"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/IHumanVisionSession.cs": {
+      "sha256": "91aee1f7edaff496fd942de7f357844a301c420456b7784a59ae5c820be8ec51",
+      "packaged_sha256": "91aee1f7edaff496fd942de7f357844a301c420456b7784a59ae5c820be8ec51"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/NativeBindings.cs": {
+      "sha256": "45dff79c30417b0c3e2a962e0c56218c5fea4b2da74c6f8f5a0b31b57f89c75d",
+      "packaged_sha256": "45dff79c30417b0c3e2a962e0c56218c5fea4b2da74c6f8f5a0b31b57f89c75d"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Runtime/RuntimeBindings.cs": {
+      "sha256": "4fbd442326d55eac6c80e1e51a8a5e1924195a34daf9617f89f03fac02db90b0",
+      "packaged_sha256": "4fbd442326d55eac6c80e1e51a8a5e1924195a34daf9617f89f03fac02db90b0"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/AssemblyInfo.cs": {
+      "sha256": "76aa2148d212275b9f8726c42d3da7cf3d38dd2fc5cb4af783b2fbc720a51384",
+      "packaged_sha256": "76aa2148d212275b9f8726c42d3da7cf3d38dd2fc5cb4af783b2fbc720a51384"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/HumanVision.Demo.asmdef": {
+      "sha256": "d37c3ef4e9e7b0ec6d411626d6de41d27d047faaa43f7fe33716e2cb15215e8c",
+      "packaged_sha256": "d37c3ef4e9e7b0ec6d411626d6de41d27d047faaa43f7fe33716e2cb15215e8c"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/HumanVisionOverlay.cs": {
+      "sha256": "aa62639e71b7425786e0152288936713174dda7ed137223ccfdb893929b87e1b",
+      "packaged_sha256": "aa62639e71b7425786e0152288936713174dda7ed137223ccfdb893929b87e1b"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/Live/HumanVisionCameraManager.cs": {
+      "sha256": "0869be3065f108570d108c6ffa0c52ea14a9b12e7f118184494eb073e3618706",
+      "packaged_sha256": "0869be3065f108570d108c6ffa0c52ea14a9b12e7f118184494eb073e3618706"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/Live/HumanVisionCameraSettings.cs": {
+      "sha256": "b756384d209bdec1588057fef43952b6a9efc40fb9129c2ae105b01d3549b8fe",
+      "packaged_sha256": "b756384d209bdec1588057fef43952b6a9efc40fb9129c2ae105b01d3549b8fe"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/Live/HumanVisionLiveSource.cs": {
+      "sha256": "35837460118896981f87116b72f570275891d7f315a9d45e2ddc11eba02051bf",
+      "packaged_sha256": "35837460118896981f87116b72f570275891d7f315a9d45e2ddc11eba02051bf"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/Live/HumanVisionMobileGui.cs": {
+      "sha256": "75fd36b70dac6146949f860eb751562a607321604ebc12bc0925c0e7e5b85ccd",
+      "packaged_sha256": "75fd36b70dac6146949f860eb751562a607321604ebc12bc0925c0e7e5b85ccd"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/Live/HumanVisionRaisedHandDetector.cs": {
+      "sha256": "a386089233d3e590e5b250ab59ac7b66385efa830e5c40b3fc118d1c829d173f",
+      "packaged_sha256": "a386089233d3e590e5b250ab59ac7b66385efa830e5c40b3fc118d1c829d173f"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/Live/HumanVisionRegionSettingsUI.cs": {
+      "sha256": "7221342fe917b5ac21a67617d3c09efe7bdccb31b0ed170252a46656b18a7ca3",
+      "packaged_sha256": "7221342fe917b5ac21a67617d3c09efe7bdccb31b0ed170252a46656b18a7ca3"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/Live/HumanVisionSceneControls.cs": {
+      "sha256": "7041ce9c6599a5b0a5c7740f6efb52acc75e7f9cedabe7e8fd88a4b939f38530",
+      "packaged_sha256": "7041ce9c6599a5b0a5c7740f6efb52acc75e7f9cedabe7e8fd88a4b939f38530"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/Live/HumanVisionSkeletonGraphic.cs": {
+      "sha256": "1f30884de42c628e273134b10e591cfaf13056faf4f3afd0f5438aea489f28fc",
+      "packaged_sha256": "1f30884de42c628e273134b10e591cfaf13056faf4f3afd0f5438aea489f28fc"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/Live/HumanVisionSkeletonOverlayer.cs": {
+      "sha256": "03bf71f0e14068475285de731836782edb4128193b65fef4c93b1defecb645af",
+      "packaged_sha256": "03bf71f0e14068475285de731836782edb4128193b65fef4c93b1defecb645af"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/OverlayGeometry.cs": {
+      "sha256": "4410f401c74fea2f7cd3aea1954ceedf28a7ebdce6d2a925800fc0966f8c1837",
+      "packaged_sha256": "4410f401c74fea2f7cd3aea1954ceedf28a7ebdce6d2a925800fc0966f8c1837"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/PC/HumanVisionPcDemo.cs": {
+      "sha256": "902f0c5fbeb9c86c3481df0e50ca24f2d0be985028377ffa4557efd81e98bb83",
+      "packaged_sha256": "902f0c5fbeb9c86c3481df0e50ca24f2d0be985028377ffa4557efd81e98bb83"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/PC/PcDemoPolicies.cs": {
+      "sha256": "5fff16bf185c8ea7cf4cd4a94165afa1149d2ceeecf8e130f0dd4313af9ff36f",
+      "packaged_sha256": "5fff16bf185c8ea7cf4cd4a94165afa1149d2ceeecf8e130f0dd4313af9ff36f"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/Resources/HumanVisionCameraOrientation.shader": {
+      "sha256": "e6ad4af04c31958b86f1734787619e575dec380b91fd335fd03d487810a0097a",
+      "packaged_sha256": "e6ad4af04c31958b86f1734787619e575dec380b91fd335fd03d487810a0097a"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/Resources/HumanVisionSkeleton.shader": {
+      "sha256": "68e8d57e41253380f230a0dfe9d99bdd8677f68795bb6e715d766c42c1fbfe47",
+      "packaged_sha256": "68e8d57e41253380f230a0dfe9d99bdd8677f68795bb6e715d766c42c1fbfe47"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Demo/VideoPlayerFrameSource.cs": {
+      "sha256": "b31ed75fbd55a281ae38557fdc76f129d8f8583aeecc6799358e6da9998b5988",
+      "packaged_sha256": "b31ed75fbd55a281ae38557fdc76f129d8f8583aeecc6799358e6da9998b5988"
+    },
+    "unity/HumanVisionDemo/Assets/HumanVision/Editor/HumanVisionPcDemoBuilder.cs": {
+      "sha256": "e5b65db7f3293ce77624f3a58817fcd729336d6e6d3a95ed5893838efa8ec124",
+      "packaged_sha256": "e5b65db7f3293ce77624f3a58817fcd729336d6e6d3a95ed5893838efa8ec124"
+    },
+    "tools/package/HumanVisionModelInstaller.cs": {
+      "sha256": "b332315317cd77d2f4b1e40fa8c57de36998de11f160f985465e815b47e04dc4",
+      "packaged_sha256": "b332315317cd77d2f4b1e40fa8c57de36998de11f160f985465e815b47e04dc4"
+    },
+    "modelpacks/rtmo-t-416/body.onnx": {
+      "sha256": "20aad6e2e42359cac1c5b4a0b2da00e29bfe91a72a782fdcf287d273a04c1b24",
+      "packaged_sha256": "20aad6e2e42359cac1c5b4a0b2da00e29bfe91a72a782fdcf287d273a04c1b24"
+    },
+    "modelpacks/rtmo-t-416/component.json": {
+      "sha256": "b77e9cfe6cd2399f6536a2bc4497f11f89344bc33e70402e682c7e25778e5ff0",
+      "packaged_sha256": "b77e9cfe6cd2399f6536a2bc4497f11f89344bc33e70402e682c7e25778e5ff0"
+    },
+    "modelpacks/rtmo-t-416/manifest.json": {
+      "sha256": "6ed2a7166bec589bb7aa5322b26c01cec2a5db3a0b691e92f503ecf6a3de0f90",
+      "packaged_sha256": "6ed2a7166bec589bb7aa5322b26c01cec2a5db3a0b691e92f503ecf6a3de0f90"
+    },
+    "modelpacks/rtmo-t-416/README.md": {
+      "sha256": "848ac0ab68f7783cbf8b09fefb685426c64c65ddcfa02a9ba4e94a7136502f89",
+      "packaged_sha256": "848ac0ab68f7783cbf8b09fefb685426c64c65ddcfa02a9ba4e94a7136502f89"
+    },
+    "modelpacks/rtmo-t-416/SOURCES.md": {
+      "sha256": "65cab3acfad55148d551cfebd4f2ba8c43dd8e151c77ac30a1073f9fac7ab9f3",
+      "packaged_sha256": "65cab3acfad55148d551cfebd4f2ba8c43dd8e151c77ac30a1073f9fac7ab9f3"
+    },
+    "profiles/windows-pc-cpu.json": {
+      "sha256": "41dc0b0156bf6b3ddf44c0232527d066c23b2d2ca640db006aadeee2d34082f4",
+      "packaged_sha256": "41dc0b0156bf6b3ddf44c0232527d066c23b2d2ca640db006aadeee2d34082f4"
+    },
+    "profiles/windows-pc-directml.json": {
+      "sha256": "1185fe744196637eec468fecbd20ee97b83cb58fdb02dfd17685d1e30473331d",
+      "packaged_sha256": "1185fe744196637eec468fecbd20ee97b83cb58fdb02dfd17685d1e30473331d"
+    },
+    "upm/com.blazetc.humanvision/Licenses/DEPENDENCIES.md": {
+      "sha256": "7eba1a0f335b9afe3acaaa4ea40bcbd5c56d9526cc8d66a4f2d62476c9caaf17",
+      "packaged_sha256": "7eba1a0f335b9afe3acaaa4ea40bcbd5c56d9526cc8d66a4f2d62476c9caaf17"
+    },
+    "upm/com.blazetc.humanvision/Licenses/DirectML-LICENSE-CODE.txt": {
+      "sha256": "903df5512f7d02609fed0c780a9b704f5a3eeb6e4d84ebe42a29845c81899a3c",
+      "packaged_sha256": "fd532481d828e13a0b13ccb598e02338a3617740675a862ee6bdc1541b68e93d"
+    },
+    "upm/com.blazetc.humanvision/Licenses/DirectML-LICENSE.txt": {
+      "sha256": "a05138e3a085ff60a44881eedfa58dccb03ecc1d7b1f6ae888418e8c2fec4b8d",
+      "packaged_sha256": "47cd08c9e376d674c1b4935d1ba846babf9a8470467d91be8b793260238ce2d1"
+    },
+    "upm/com.blazetc.humanvision/Licenses/DirectML-ThirdPartyNotices.txt": {
+      "sha256": "2c95795c13ff48a58b6ed916f37901c23d964b5d9d601af422f17ad2172e7950",
+      "packaged_sha256": "93fa06040ce5557126783ac6f3481a5472043f76dbfe213e1c6d17be3db643da"
+    },
+    "upm/com.blazetc.humanvision/Licenses/FFmpeg-LGPL-2.1.txt": {
+      "sha256": "b634ab5640e258563c536e658cad87080553df6f34f62269a21d554844e58bfe",
+      "packaged_sha256": "b634ab5640e258563c536e658cad87080553df6f34f62269a21d554844e58bfe"
+    },
+    "upm/com.blazetc.humanvision/Licenses/mmdetection.txt": {
+      "sha256": "91547c0441a35c69750628b834b9caf65e881a05d0b02e11d79250a4f9eed8a7",
+      "packaged_sha256": "874b8b2e6f12306a1ff7812c068a0dbf880418b8ac1f7190382bd6c6da9f23a1"
+    },
+    "upm/com.blazetc.humanvision/Licenses/mmpose.txt": {
+      "sha256": "d125421b289cd79bf03e8590858fa81c22dc95e2753b20bf80e6a3cc80a893f9",
+      "packaged_sha256": "aa2c6f3408169b96e5547c875deb481c91502514c1885fa0acb4b596c8909cb9"
+    },
+    "upm/com.blazetc.humanvision/Licenses/ONNXRuntime.txt": {
+      "sha256": "c250d6278f0b47a6439fb7592b08b58a55eb9f535aa49a1db63211c3f982b674",
+      "packaged_sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+    },
+    "docs/PC_DEMO_INSTALLATION.md": {
+      "sha256": "78907c7988b167cf7dd0f380ce0408c0bf70efc2287625e48db856a91038ebe2",
+      "packaged_sha256": "78907c7988b167cf7dd0f380ce0408c0bf70efc2287625e48db856a91038ebe2"
+    }
+  },
+  "runtime_index_sha256": "0f8cc29e4c8ecf28cacea6d37682077420bff69720f071bbf5319334df02da33",
+  "platform_dependencies": [
+    "advapi32.dll",
+    "bcrypt.dll",
+    "crypt32.dll",
+    "d3d12.dll",
+    "dbghelp.dll",
+    "dxgi.dll",
+    "kernel32.dll",
+    "msvcp140.dll",
+    "msvcp140_1.dll",
+    "msvcrt.dll",
+    "ole32.dll",
+    "setupapi.dll",
+    "user32.dll",
+    "vcruntime140.dll",
+    "vcruntime140_1.dll",
+    "ws2_32.dll"
+  ],
+  "task1_source_commit": "44ebb094",
+  "task_contract": "out/pc-demo/PLAN.md; Task1 PC source + Task2 isolated UPM; Task3 Unity/player/Git acceptance recorded separately",
+  "license_scope": "Upstream notices and model SOURCES are included. No model redistribution clearance or hardware performance acceptance is asserted."
+}

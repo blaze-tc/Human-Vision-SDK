@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "pack_id": "rtmo-t-416",
+  "pack_version": "1.0.0",
+  "pipeline_id": "pipeline.rtmo",
+  "capabilities": [
+    "body_pose",
+    "multi_person"
+  ],
+  "max_people": 8,
+  "models": [
+    {
+      "role": "body",
+      "format": "onnx",
+      "decoder_id": "rtmo17",
+      "asset_path": "body.onnx",
+      "sha256": "20aad6e2e42359cac1c5b4a0b2da00e29bfe91a72a782fdcf287d273a04c1b24",
+      "input_contract": {
+        "width": 416,
+        "height": 416
+      },
+      "output_contract": {
+        "decoder": "rtmo17"
+      },
+      "source": "OpenMMLab MMPose official models; see SOURCES.md",
+      "license": "Upstream Apache-2.0 code; consult linked model and dataset terms"
+    }
+  ]
+}

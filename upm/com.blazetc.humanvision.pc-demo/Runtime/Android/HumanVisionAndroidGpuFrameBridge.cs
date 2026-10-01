@@ -1,0 +1,224 @@
+using System;
+using System.Runtime.InteropServices;
+using UnityEngine;
+using UnityEngine.Rendering;
+using HumanVision.Interop;
+
+namespace HumanVision
+{
+    internal interface IAndroidFrameSubmission
+    {
+        bool SubmitGpuFrame(Texture texture, long timestampUs, int rotationDegrees, bool mirrored);
+        bool SubmitCpuFrame(Texture texture, long timestampUs);
+    }
+
+    internal static class HumanVisionAndroidFrameRoute
+    {
+        internal enum FramePath { Gpu, Cpu }
+        internal static bool UsesGpu(string profile) => profile == "android-ncnn-vulkan";
+
+        internal static FramePath Select(string profile)
+        {
+            if (UsesGpu(profile)) return FramePath.Gpu;
+            if (profile == "android-ort-xnnpack" || profile == "android-ort-cpu") return FramePath.Cpu;
+            throw new InvalidOperationException("Unsupported Android runtime profile '" + profile + "'. Select a mode in Project Settings > Human Vision > Android Runtime.");
+        }
+
+        internal static bool Submit(string profile, IAndroidFrameSubmission target, Texture texture,
+            long timestampUs, int rotationDegrees, bool mirrored)
+        {
+            if (target == null) throw new ArgumentNullException(nameof(target));
+            return Select(profile) == FramePath.Gpu
+                ? target.SubmitGpuFrame(texture, timestampUs, rotationDegrees, mirrored)
+                : target.SubmitCpuFrame(texture, timestampUs);
+        }
+
+    }
+
+    internal static class HumanVisionAndroidGpuResult
+    {
+        internal const int NoNewResult = 1;
+        internal static bool IsPressureDrop(int result) => result == NoNewResult;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 8)]
+    internal struct AndroidGpuSubmissionNative
+    {
+        internal uint Size, Version;
+        internal IntPtr Texture;
+        internal int Width, Height;
+        internal long FrameId, TimestampUs;
+        internal uint RotationDegrees, Mirrored;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 8)]
+    internal struct AndroidGpuSubmissionClockNative
+    {
+        internal uint Size, Version;
+        internal IntPtr Texture;
+        internal int Width, Height;
+        internal long FrameId, TimestampUs;
+        internal uint RotationDegrees, Mirrored;
+        internal long CaptureSteadyUs;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 8)]
+    internal unsafe struct AndroidGpuBridgeStatusNative
+    {
+        internal uint Size, Version, CopyPath, AhbFormat;
+        internal ulong AhbUsage, AhbFormatFeatures;
+        internal ulong SubmittedFrames, ImportedFrames, DroppedNoSlot, DroppedGeneration;
+        internal fixed byte UnityDeviceUuid[16], NcnnDeviceUuid[16], UnityDriverUuid[16], NcnnDriverUuid[16];
+
+        internal bool DeviceMatches
+        {
+            get
+            {
+                fixed (byte* unity = UnityDeviceUuid, ncnn = NcnnDeviceUuid)
+                {
+                    bool nonzero = false;
+                    for (int i = 0; i < 16; i++) { if (unity[i] != ncnn[i]) return false; nonzero |= unity[i] != 0; }
+                    return nonzero;
+                }
+            }
+        }
+        internal bool DriverMatches
+        {
+            get
+            {
+                fixed (byte* unity = UnityDriverUuid, ncnn = NcnnDriverUuid)
+                {
+                    bool nonzero = false;
+                    for (int i = 0; i < 16; i++) { if (unity[i] != ncnn[i]) return false; nonzero |= unity[i] != 0; }
+                    return nonzero;
+                }
+            }
+        }
+    }
+
+    internal sealed class HumanVisionAndroidGpuFrameBridge
+    {
+        private const uint Version = 1;
+        private readonly IntPtr _runtime;
+        private readonly IntPtr _renderEvent;
+        private readonly CommandBuffer _commands;
+        private IntPtr _leasedTexture;
+        private RenderTexture _leasedSource;
+        internal HumanVisionAndroidGpuFrameBridge(IntPtr runtime)
+        {
+            _runtime = runtime;
+            if (Application.platform == RuntimePlatform.Android && SystemInfo.graphicsDeviceType != GraphicsDeviceType.Vulkan)
+                throw new InvalidOperationException("android-ncnn-vulkan requires Vulkan. Rebuild with Vulkan first in Project Settings.");
+            _renderEvent = RuntimeBindings.HV_GetAndroidGpuRenderEventAndDataFunction();
+            if (_renderEvent == IntPtr.Zero)
+                throw new InvalidOperationException("android-ncnn-vulkan GPU render bridge is unavailable. Rebuild the Android ARM64 native plugin with Vulkan support.");
+            if (Marshal.SizeOf<AndroidGpuSubmissionNative>() != 48 ||
+                Marshal.SizeOf<AndroidGpuSubmissionClockNative>() != 56 ||
+                Marshal.SizeOf<AndroidGpuBridgeStatusNative>() != 128)
+                throw new InvalidOperationException("Android GPU bridge ABI layout mismatch.");
+            _commands = new CommandBuffer { name = "HumanVision Android GPU frame" };
+        }
+
+        internal void Begin(RenderTexture texture)
+        {
+            if (texture == null || !texture.IsCreated()) throw new ArgumentException("GPU source texture must be created.");
+            IntPtr pointer = texture.GetNativeTexturePtr();
+            if (pointer == IntPtr.Zero) throw new InvalidOperationException("Unity returned a null Vulkan texture pointer.");
+            if (_leasedTexture == pointer && ReferenceEquals(_leasedSource, texture)) return;
+            End();
+            Check(RuntimeBindings.HV_RuntimeBeginAndroidGpuSourceLease(_runtime, pointer), "begin GPU source lease");
+            _leasedTexture = pointer;
+            _leasedSource = texture;
+        }
+
+        internal void End()
+        {
+            if (_leasedTexture == IntPtr.Zero) return;
+            Check(RuntimeBindings.HV_RuntimeEndAndroidGpuSourceLease(_runtime), "end GPU source lease and drain");
+            _leasedTexture = IntPtr.Zero;
+            _leasedSource = null;
+        }
+
+        internal static void ValidateSource(RenderTexture leased, RenderTexture submitted)
+        {
+            if (!ReferenceEquals(leased, submitted) || submitted == null)
+                throw new InvalidOperationException("GPU frame texture differs from the active source lease.");
+        }
+
+        internal bool Submit(RenderTexture texture, int rotationDegrees, bool mirrored, long frameId, long timestampUs)
+        {
+            if (texture == null || _leasedTexture == IntPtr.Zero) throw new InvalidOperationException("GPU source lease is not active.");
+            ValidateSource(_leasedSource, texture);
+            if (!texture.IsCreated()) throw new InvalidOperationException("GPU source texture is no longer created.");
+            long unityNowUs = (long)(Time.realtimeSinceStartupAsDouble * 1000000.0);
+            long nativeNowUs = RuntimeBindings.HV_RuntimeClockUs();
+            long captureSteadyUs = nativeNowUs - Math.Max(0, unityNowUs - timestampUs);
+            var submission = new AndroidGpuSubmissionClockNative {
+                Size = 56, Version = Version, Texture = _leasedTexture,
+                Width = texture.width, Height = texture.height,
+                FrameId = frameId, TimestampUs = timestampUs,
+                RotationDegrees = (uint)rotationDegrees, Mirrored = mirrored ? 1u : 0u,
+                CaptureSteadyUs = captureSteadyUs
+            };
+            int result = RuntimeBindings.HV_RuntimePrepareAndroidGpuFrameClock(_runtime, ref submission, out IntPtr eventData);
+            if (HumanVisionAndroidGpuResult.IsPressureDrop(result))
+            {
+                // A first-frame control event samples the actual Vulkan image on
+                // Unity's render thread. The native control worker then probes
+                // AHB candidates before ordinary frame events are admitted.
+                if (eventData != IntPtr.Zero)
+                {
+                    _commands.Clear();
+                    _commands.IssuePluginEventAndData(_renderEvent, 1, eventData);
+                    Graphics.ExecuteCommandBuffer(_commands);
+                }
+                return false;
+            }
+            Check(result, "prepare GPU camera frame");
+            if (eventData == IntPtr.Zero) throw new InvalidOperationException("GPU frame prepare returned no render event data.");
+            _commands.Clear();
+            _commands.IssuePluginEventAndData(_renderEvent, 0, eventData);
+            Graphics.ExecuteCommandBuffer(_commands);
+            return true;
+        }
+
+        internal string Diagnostics
+        {
+            get
+            {
+                var status = new AndroidGpuBridgeStatusNative { Size = 128, Version = Version };
+                int result = RuntimeBindings.HV_RuntimeGetAndroidGpuBridgeStatus(_runtime, ref status);
+                string error = string.Empty;
+                if (result != 0) {
+                    var nativeError = new System.Text.StringBuilder(1024);
+                    RuntimeBindings.HV_RuntimeGetError(_runtime, nativeError, 1024);
+                    error = nativeError.ToString();
+                }
+                return FormatDiagnostics(result, status, error);
+            }
+        }
+
+        internal static string FormatDiagnostics(int result, AndroidGpuBridgeStatusNative status, string error)
+        {
+            if (result != 0)
+                return "Android mode: android-ncnn-vulkan; GPU bridge status " + result + ": " +
+                    (string.IsNullOrEmpty(error) ? "unavailable" : error);
+            string path = status.CopyPath == 1 ? "blit" : status.CopyPath == 2 ? "color attachment" : "unavailable";
+            return "Android mode: android-ncnn-vulkan; GPU copy path: " + path +
+                "; AHB format: " + status.AhbFormat + "; usage: 0x" + status.AhbUsage.ToString("X") +
+                "; features: 0x" + status.AhbFormatFeatures.ToString("X") +
+                "; bridge submitted/imported: " + status.SubmittedFrames + "/" + status.ImportedFrames +
+                "; no-slot/generation drops: " + status.DroppedNoSlot + "/" + status.DroppedGeneration +
+                "; device/driver UUID match: " + status.DeviceMatches + "/" + status.DriverMatches;
+        }
+
+        private void Check(int result, string operation)
+        {
+            if (result == 0) return;
+            var error = new System.Text.StringBuilder(1024);
+            RuntimeBindings.HV_RuntimeGetError(_runtime, error, 1024);
+            throw new HumanVisionException(operation, result, error.Length == 0 ? "Android GPU bridge failed." : error.ToString());
+        }
+        internal void Dispose() { End(); _commands.Release(); }
+    }
+}
