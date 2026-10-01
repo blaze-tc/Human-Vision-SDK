@@ -29,19 +29,18 @@ int AnchorCount(int target) noexcept {
 }
 int AnchorCount(int width,int height) noexcept {
     if(width==height)return AnchorCount(width);
-    if(width!=640||height!=384)return 0;
+    if(!((width==640&&height==384)||(width==512&&height==288)))return 0;
     return (width/8)*(height/8)+(width/16)*(height/16)+(width/32)*(height/32);
 }
 bool BuildGeometry(int sw,int sh,int width,int height,Geometry& out) noexcept {
     if(width==height)return BuildGeometry(sw,sh,width,out);
     out={};
-    // The only eligible rectangular route is the pinned 16:9 landscape source.
+    // Eligible rectangular routes require the pinned 16:9 landscape source.
     // Do not silently stretch/crop or admit an unreviewed source aspect ratio.
-    if(sw<=0||sh<=0||width!=640||height!=384||int64_t(sw)*9!=int64_t(sh)*16)return false;
+    if(sw<=0||sh<=0||!AnchorCount(width,height)||int64_t(sw)*9!=int64_t(sh)*16)return false;
     const double scale=double(width)/sw;
-    // The integer aspect proof above guarantees a 640x360 resized image.
-    // Floating-point multiplication can otherwise truncate 360 to 359.
-    constexpr int rh=360;
+    // Integer aspect proof gives exact resized height, avoiding float truncation.
+    const int rh=width*9/16;
     out={width,height,0,(height-rh)/2,sw,sh,float(scale)};return true;
 }
 bool BuildGeometry(int sw,int sh,int target,Geometry& out) noexcept {

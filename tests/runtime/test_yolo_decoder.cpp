@@ -37,6 +37,34 @@ TEST(YoloDecoder, EmptyMalformedNonfiniteAndCapacity) {
     EXPECT_FALSE(decoder.Decode(views,2,g,123,bodies.data(),scores.data(),8,count));kp.back()=0;
     EXPECT_FALSE(decoder.Decode(views,2,g,123,bodies.data(),scores.data(),0,count));
 }
+TEST(YoloDecoder, Rectangle512ExactLandscapeGeometryAndRealArms) {
+    EXPECT_EQ(AnchorCount(512,288),3024);EXPECT_EQ(AnchorCount(512),0);
+    Geometry g{};
+    for(int width:{624,1024,1072,1232,1920}) {
+        ASSERT_TRUE(BuildGeometry(width,width/16*9,512,288,g));
+        EXPECT_EQ(g.left,0);EXPECT_EQ(g.top,0);EXPECT_FLOAT_EQ(g.scale,512.f/width);
+    }
+    for(auto shape:{std::pair<int,int>{512,512},{288,512},{352,512},{512,320}})
+        EXPECT_FALSE(BuildGeometry(1024,576,shape.first,shape.second,g));
+    EXPECT_FALSE(BuildGeometry(1024,768,512,288,g));
+    const auto project=std::filesystem::path(HV_TEST_PROJECT_ROOT);
+    std::ifstream f(project/"tools/models/ncnn/yolo_rectangle512_gate_evidence.json");
+    nlohmann::json evidence;f>>evidence;const auto record=evidence.at("fixtures").at(0);
+    const auto root=project/evidence.at("archive_base").get<std::string>()/record.at("archive").get<std::string>();
+    ASSERT_TRUE(BuildGeometry(1024,576,512,288,g));
+    for(const char* mode:{"cpu","gpu-fp32"}) {
+        const auto d=std::string("ncnn-")+mode+"-out0.fp32",k=std::string("ncnn-")+mode+"-out1.fp32";
+        ASSERT_EQ(Hash(root/d),record.at("output_sha256").at(d));ASSERT_EQ(Hash(root/k),record.at("output_sha256").at(k));
+        auto det=Read(root/d),kp=Read(root/k);HV_TensorViewV1 views[]={View("out0",det,3024,65),View("out1",kp,3024,51)};
+        Decoder decoder(512,288);HV_BodyObservationV1 bodies[8]{};float scores[8]{};uint32_t count=0;
+        ASSERT_TRUE(decoder.Decode(views,2,g,123,bodies,scores,8,count));ASSERT_EQ(count,7u);
+        for(uint32_t i=0;i<count;++i) {
+            const auto& s=bodies[i].joints[HV_CANONICAL_SHOULDER_LEFT];const auto& w=bodies[i].joints[HV_CANONICAL_WRIST_LEFT];
+            EXPECT_TRUE(s.valid);EXPECT_TRUE(w.valid);EXPECT_GE(s.confidence,.2f);EXPECT_GE(w.confidence,.2f);EXPECT_LT(w.y_px,s.y_px);
+        }
+        views[0].dimensions[0]=5040;EXPECT_FALSE(decoder.Decode(views,2,g,123,bodies,scores,8,count));
+    }
+}
 TEST(YoloDecoder, RealFrame1500LeftRaisedArmSemanticTruth) {
     // Independent visual annotation from source frame 1500: all seven people
     // raise their anatomical LEFT wrist above their LEFT shoulder. This tests

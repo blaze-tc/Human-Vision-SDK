@@ -82,7 +82,7 @@ HV_Result HV_CALL Create(const HV_PipelineConfigV1* c,const HV_HostServicesV3* h
            contract.output_elempack!=1||contract.input_blob!="in0"||contract.crop_mode!=ncnn_backend::InputContract::CropMode::Letterbox||
            contract.output_blobs!=std::vector<std::string>{"out0","out1"}||output.at("decoder")!="yolov8_pose_dfl17_v1"||
            output.at("max_output_bytes").at("out0")!=anchors*65*4||output.at("max_output_bytes").at("out1")!=anchors*51*4)
-            throw std::runtime_error("YOLO requires reviewed square320/416 or rectangle640x384 RGB FP32 pack1 and exact bounded out0/out1");
+            throw std::runtime_error("YOLO requires reviewed square320/416 or rectangle512x288/640x384 RGB FP32 pack1 and exact bounded out0/out1");
         for(int i=0;i<3;++i)if(contract.mean[i]!=0||contract.norm[i]!=1.f/255.f||contract.pad_rgb[i]!=114)
             throw std::runtime_error("YOLO requires RGB /255 and pad114");
         auto self=std::make_unique<Instance>(*h,c->max_bodies,contract.width,contract.height);
@@ -103,7 +103,7 @@ HV_Result HV_CALL Process(void* p,const HV_GpuFrameRefV1* f,HV_ObservationFrameV
     try {
         yolo::Geometry g{};
         if(!yolo::BuildGeometry(f->width,f->height,self.contract.width,self.contract.height,g)) {
-            Error(e,"YOLO rectangle640x384 requires reviewed 16:9 landscape source geometry");return HV_ERR_INVALID_ARGUMENT;
+            Error(e,"YOLO rectangular input requires reviewed 16:9 landscape source geometry");return HV_ERR_INVALID_ARGUMENT;
         }
         if(!self.Initialize(*f,e))return HV_ERR_NOT_INITIALIZED;
         if(f->frame_id<=self.last_frame){Error(e,"Duplicate or stale YOLO source frame");return HV_ERR_INVALID_ARGUMENT;}
@@ -113,7 +113,7 @@ HV_Result HV_CALL Process(void* p,const HV_GpuFrameRefV1* f,HV_ObservationFrameV
         transform.output_elempack=1;transform.channel_order=1;
         const double nominal=double(g.width)/std::max(f->width,f->height);
         const int rw=f->width>f->height?g.width:int(f->width*nominal);
-        const int rh=g.width==640&&g.height==384?360:(f->width>f->height?int(f->height*nominal):g.height);
+        const int rh=g.width!=g.height?g.width*9/16:(f->width>f->height?int(f->height*nominal):g.height);
         const float sx=float(rw)/f->width,sy=float(rh)/f->height;
         transform.source_rect_px={-g.left/sx,-g.top/sy,g.width/sx,g.height/sy};
         for(int i=0;i<3;++i)transform.norm[i]=self.contract.norm[i];

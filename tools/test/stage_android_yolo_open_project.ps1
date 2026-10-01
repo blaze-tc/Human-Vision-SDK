@@ -19,6 +19,7 @@ $build = (Resolve-Path -LiteralPath $BuildDirectory).Path
 $isolated = Join-Path $build 'UnityProject'
 $manifest = Get-Content -LiteralPath (Join-Path $build 'stage-manifest.json') -Raw | ConvertFrom-Json
 if ($manifest.size -eq 640 -and ($manifest.shape_id -ne 'rectangle640x384' -or $manifest.input_width -ne 640 -or $manifest.input_height -ne 384 -or $manifest.source_aspect_ratio -ne '16:9')) { throw 'Reviewed rectangle640x384 stage shape/source identity differs' }
+if ($manifest.size -eq 512 -and ($manifest.shape_id -ne 'rectangle512x288' -or $manifest.input_width -ne 512 -or $manifest.input_height -ne 288 -or $manifest.source_aspect_ratio -ne '16:9')) { throw 'Reviewed rectangle512x288 stage shape/source identity differs' }
 $native = (Resolve-Path -LiteralPath $NativeLibrary).Path
 $nativeHash = (Get-FileHash -LiteralPath $native -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($nativeHash -ne $manifest.native_sha256 -or (Get-FileHash -LiteralPath (Join-Path $isolated 'Assets/Plugins/Android/arm64-v8a/libhumanvision.so') -Algorithm SHA256).Hash.ToLowerInvariant() -ne $nativeHash) { throw 'Explicit reviewed native identity differs' }

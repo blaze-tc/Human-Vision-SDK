@@ -1,3 +1,14 @@
+# Current YOLO-M3 update: rectangle512 integration reviewed (2026-10-01)
+
+Explicit512x288 FP32 SDK integration passed independent spec/quality review,
+156 native tests,56 YOLO Python tests and ARM64/API26 audit(1,813 imports).
+Nativef8a34538 and runtimeindexd37a27c6 are frozen. Exact16:9 source geometry,
+original640/320/416 contracts and GPU synchronization remain preserved. See
+[commands and identities](reports/2026-10-01-yolo-rectangle512-integration.md).
+Current Unity GPU-AHB APK construction and seven-person measurement are next.
+No FPS improvement or physical acceptance is claimed yet. >=25/target30 remain
+unmet; M3 is still active. No main merge or Release. Existing R4 work preserved.
+
 # Current YOLO-M3 result: SGEMM throughput not accepted (2026-10-01)
 
 The integrated seven-person SGEMM APK was measured and independently reviewed:
