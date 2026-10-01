@@ -9,6 +9,47 @@ using UnityEngine.Video;
 
 namespace HumanVision.Demo
 {
+    // A bounded credit pool absorbs decoder/Unity timing jitter without accumulating
+    // an unbounded backlog. Only a successful backend submission spends credit.
+    internal struct GpuFrameAdmissionPolicy
+    {
+        private const double FramesPerSecond = 30.0;
+        private const double MaximumCredit = 2.0;
+        private const double ClockTolerance = 1e-9;
+        private bool _initialized;
+        private double _lastTime;
+        private double _credit;
+
+        internal bool CanSubmit(double now)
+        {
+            if (double.IsNaN(now) || double.IsInfinity(now) || now < 0)
+                return false;
+
+            if (!_initialized || now < _lastTime)
+            {
+                _initialized = true;
+                _lastTime = now;
+                _credit = 1.0;
+            }
+            else
+            {
+                _credit = Math.Min(MaximumCredit, _credit + (now - _lastTime) * FramesPerSecond);
+                _lastTime = now;
+            }
+            return _credit + ClockTolerance >= 1.0;
+        }
+
+        internal void RecordAccepted()
+        {
+            _credit = Math.Max(0, _credit - 1.0);
+        }
+
+        internal void Reset()
+        {
+            this = default(GpuFrameAdmissionPolicy);
+        }
+    }
+
     internal static class AnalysisRenderTextureGeometry
     {
         internal static Vector2Int CalculateTargetSize(
@@ -187,6 +228,7 @@ namespace HumanVision.Demo
         private bool _externalRowsBottomUp;
         private Texture _liveTexture;
         private double _nextLiveSubmitTime;
+        private GpuFrameAdmissionPolicy _gpuAdmission;
         private long _livePendingFrameId = -1;
         private double _livePendingTime;
         public bool LivePreview => _livePreview;
@@ -325,7 +367,8 @@ namespace HumanVision.Demo
             _livePreview = true;
             PresentLiveTexture(texture);
             double now = Time.realtimeSinceStartupAsDouble;
-            if (now < _nextLiveSubmitTime) { manager.RecordSourceArrival(true); return false; }
+            if (SourceWidth != texture.width || SourceHeight != texture.height) _gpuAdmission.Reset();
+            if (!_gpuAdmission.CanSubmit(now)) { manager.RecordSourceArrival(true); return false; }
             manager.RecordSourceArrival(false);
             if (SourceWidth != texture.width || SourceHeight != texture.height) {
                 SourceWidth = texture.width; SourceHeight = texture.height;
@@ -334,9 +377,9 @@ namespace HumanVision.Demo
             long frameId = ++_nextSubmissionFrameId;
             bool accepted = manager.SubmitAndroidGpuFrame(texture, rotationDegrees, mirrored, frameId, timestampUs);
             if (!accepted) { if (!string.IsNullOrEmpty(manager.LastError)) SetError(manager.LastError); return false; }
+            _gpuAdmission.RecordAccepted();
             _acceptReadbacks = true;
             _latestSubmittedFrameId = _presentationFrameId = frameId;
-            _nextLiveSubmitTime = now + 1.0 / 30.0;
             PresentationFrameChanged?.Invoke();
             return true;
         }
@@ -816,6 +859,7 @@ namespace HumanVision.Demo
 
         private void StopCurrentVideo()
         {
+            _gpuAdmission.Reset();
             _acceptReadbacks = false;
             if (_videoPlayer != null)
             {

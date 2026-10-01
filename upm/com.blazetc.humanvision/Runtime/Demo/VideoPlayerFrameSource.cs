@@ -9,6 +9,47 @@ using UnityEngine.Video;
 
 namespace HumanVision.Demo
 {
+    // A bounded credit pool absorbs decoder/Unity timing jitter without accumulating
+    // an unbounded backlog. Only a successful backend submission spends credit.
+    internal struct GpuFrameAdmissionPolicy
+    {
+        private const double FramesPerSecond = 30.0;
+        private const double MaximumCredit = 2.0;
+        private const double ClockTolerance = 1e-9;
+        private bool _initialized;
+        private double _lastTime;
+        private double _credit;
+
+        internal bool CanSubmit(double now)
+        {
+            if (double.IsNaN(now) || double.IsInfinity(now) || now < 0)
+                return false;
+
+            if (!_initialized || now < _lastTime)
+            {
+                _initialized = true;
+                _lastTime = now;
+                _credit = 1.0;
+            }
+            else
+            {
+                _credit = Math.Min(MaximumCredit, _credit + (now - _lastTime) * FramesPerSecond);
+                _lastTime = now;
+            }
+            return _credit + ClockTolerance >= 1.0;
+        }
+
+        internal void RecordAccepted()
+        {
+            _credit = Math.Max(0, _credit - 1.0);
+        }
+
+        internal void Reset()
+        {
+            this = default(GpuFrameAdmissionPolicy);
+        }
+    }
+
     internal static class AnalysisRenderTextureGeometry
     {
         internal static Vector2Int CalculateTargetSize(
