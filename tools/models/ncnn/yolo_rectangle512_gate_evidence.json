@@ -1,0 +1,380 @@
+{
+  "schema_version": 1,
+  "status": "ELIGIBLE_FP32_RECTANGLE512_OFFLINE_SINGLE_FRAME_ONLY_PENDING_INDEPENDENT_REVIEW",
+  "archive_base": "out/android-yolo/resolution-feasibility",
+  "archive_path_convention": "fixtures[].archive relative to archive_base",
+  "precision_mode": "gpu-fp32",
+  "target_long_side": 512,
+  "seven_input_geometry": {
+    "width": 512,
+    "height": 288,
+    "scale": 0.5,
+    "left": 0,
+    "top": 0,
+    "anchors": 3024
+  },
+  "hardware_fps_acceptance": false,
+  "production_gpu_ahb_input_acceptance": false,
+  "integration_completed": false,
+  "runner_sha256": "87b20ad8289eb0b5b449683bb6b096297221195307b1d66b59502cf49b96a14d",
+  "runner_source_sha256": "5d9a2b3ae19239d22f66d77fe6bba52206c700c522fed93810ede4a839d37814",
+  "runner_cmake_sha256": "531f7fa450bbc2edc4108b9e92a61e49d58a49a8ced03465c554fd19afae0a46",
+  "runner_original": "out/android-yolo/runner-android/yolo_golden_runner",
+  "options": {
+    "vulkan": true,
+    "fp16_storage": false,
+    "fp16_packed": false,
+    "fp16_arithmetic": false,
+    "subgroup": false,
+    "use_packing_layout": true,
+    "input_elempack": 1,
+    "input_bits": 32,
+    "output_elempack": 1,
+    "output_bits": 32,
+    "num_threads": 2
+  },
+  "limits": {
+    "raw_max": 0.2,
+    "raw_mean": 0.01,
+    "box_iou": 0.95,
+    "score": 0.01,
+    "joint_xy": 3.0,
+    "joint_score": 0.01
+  },
+  "upstream_revision": "f1ac75ec54ccb3817a9eba620fe51da8bdcf87ca",
+  "model_hashes": {
+    "yolov8n_pose.ncnn.param": "908ace8e8d5b99622e0b492ebb18a6b287e647d2df7dff81205e8322752e0905",
+    "yolov8n_pose.ncnn.bin": "6128010de189605795a496f3d3f6baa6435a493b31796ceaf400cced07038da9"
+  },
+  "fixtures": [
+    {
+      "fixture": "seven-512",
+      "archive": "device-runs/seven-512/gpu-fp32-b39ee1b984a045e0a5d7c2b770191abc",
+      "passed": true,
+      "run_id": "gpu-fp32-b39ee1b984a045e0a5d7c2b770191abc",
+      "device_serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "geometry": {
+        "width": 512,
+        "height": 288,
+        "resized_width": 512,
+        "resized_height": 288,
+        "left": 0,
+        "top": 0,
+        "scale": 0.5,
+        "source_width": 1024,
+        "source_height": 576
+      },
+      "expected_people": 7,
+      "reference_people": 7,
+      "gpu_people": 7,
+      "fixture_sha256": "71c82b35dc7e480f60c7f3d3598fc117ca2bf2872d0eaa46f55ee2f64a540b71",
+      "comparison_sha256": "cb00ba3cd9c6b7fe0f3eec6fe1b735d5d03816ad2451a2a1da6a7997ddd0287b",
+      "execution_sha256": "f7af6555040a5902b709a3fdc0f2d41cbb2113fe6039eaaaf7e478b2768518a3",
+      "source_png_sha256": "017ac2921ed78faff17d125165430bf45eb350861ff80ef5408c3a4b873dad04",
+      "source_video_sha256": "e3620101d8218e7e9f2736cf5dab7a497bfcfc23e33a40244b63ae317c1bb0c8",
+      "input_sha256": "4ffbac9bbd759d11c9316a90266e7e55d7a8e2506db1e4786fa16205908785f4",
+      "runner_sha256": "87b20ad8289eb0b5b449683bb6b096297221195307b1d66b59502cf49b96a14d",
+      "output_sha256": {
+        "ncnn-cpu-out0.fp32": "1103d460aca3a1f1e51d564cb6aea7d70cebeb91e3ad80c3fed4ddcb5cff1f7a",
+        "ncnn-cpu-out1.fp32": "675243613c28d8c8011b1f93858d41b9c282d3c70a1dfcc483289e0ced638e53",
+        "ncnn-gpu-fp32-out0.fp32": "a31299e1691c47e6db76d962428458da64398dadc8790f61d0688f03637d1cfd",
+        "ncnn-gpu-fp32-out1.fp32": "d02d19d4d99fad55a247ac0530a986b95474b000a1538972f36a76cca82a8d59"
+      },
+      "log_sha256": {
+        "android-cpu.log": "59d91883d38b14476328adf21f7e15b04a154807f341e8458e3f38bc60fa3f90",
+        "android-gpu-fp32.log": "c906adb3fed7aa21599ac50636f43911c01aa0eed6956a67079aa662431d6cc4"
+      },
+      "raw": {
+        "out0": {
+          "max_abs": 0.0001049041748046875,
+          "mean_abs": 2.0090874854951507e-06
+        },
+        "out1": {
+          "max_abs": 2.205371856689453e-05,
+          "mean_abs": 1.313419160118762e-06
+        }
+      },
+      "associations": [
+        {
+          "iou": 0.9999991360529882,
+          "score_error": 1.7881393432617188e-07,
+          "joint_xy_max": 0.00012969970703125,
+          "joint_score_max": 1.913500118411182e-06
+        },
+        {
+          "iou": 0.9999998148161203,
+          "score_error": 1.7881393432617188e-07,
+          "joint_xy_max": 0.0001068115234375,
+          "joint_score_max": 7.471350015331168e-07
+        },
+        {
+          "iou": 0.9999997105505909,
+          "score_error": 1.7881393432617188e-07,
+          "joint_xy_max": 8.58306884765625e-05,
+          "joint_score_max": 2.078953960316099e-06
+        },
+        {
+          "iou": 0.9999994340103061,
+          "score_error": 1.1920928955078125e-07,
+          "joint_xy_max": 0.0006044209003448486,
+          "joint_score_max": 1.8356631815708013e-06
+        },
+        {
+          "iou": 0.9999990843936497,
+          "score_error": 1.1920928955078125e-07,
+          "joint_xy_max": 9.918212890625e-05,
+          "joint_score_max": 2.649457023440327e-06
+        },
+        {
+          "iou": 0.9999999035215305,
+          "score_error": 3.5762786865234375e-07,
+          "joint_xy_max": 0.0001373291015625,
+          "joint_score_max": 1.3599978205824925e-06
+        },
+        {
+          "iou": 0.9999994177538555,
+          "score_error": 1.1920928955078125e-07,
+          "joint_xy_max": 0.00016307830810546875,
+          "joint_score_max": 1.739727104821398e-06
+        }
+      ],
+      "source_rgba_sha256": "83db08727c2db6aafe2369e71f689428c3e9197176f2d10933a839b141ab9b67",
+      "r4_manifest_sha256": "7787f25a914b6507ce9a9b4ac1b635800088d2f71887c31534b99b28b199f193",
+      "sequential_frame_index": 1500,
+      "annotations": [
+        {
+          "bbox_xyxy": [
+            155,
+            182,
+            236,
+            387
+          ],
+          "id": "left-rear",
+          "visibility": "full"
+        },
+        {
+          "bbox_xyxy": [
+            263,
+            189,
+            360,
+            434
+          ],
+          "id": "left-front",
+          "visibility": "full"
+        },
+        {
+          "bbox_xyxy": [
+            387,
+            177,
+            463,
+            393
+          ],
+          "id": "middle-left-rear",
+          "visibility": "full"
+        },
+        {
+          "bbox_xyxy": [
+            491,
+            161,
+            625,
+            456
+          ],
+          "id": "center-front",
+          "visibility": "full"
+        },
+        {
+          "bbox_xyxy": [
+            608,
+            181,
+            681,
+            391
+          ],
+          "id": "middle-right-rear",
+          "visibility": "full"
+        },
+        {
+          "bbox_xyxy": [
+            731,
+            160,
+            826,
+            431
+          ],
+          "id": "right-front",
+          "visibility": "full"
+        },
+        {
+          "bbox_xyxy": [
+            846,
+            167,
+            936,
+            388
+          ],
+          "id": "right-rear",
+          "visibility": "full"
+        }
+      ],
+      "annotation_reference": {
+        "passed": true,
+        "minimum_iou": 0.3,
+        "matches": [
+          {
+            "person": "left-rear",
+            "body": 5,
+            "iou": 0.8537803596511754
+          },
+          {
+            "person": "left-front",
+            "body": 3,
+            "iou": 0.8175652326188477
+          },
+          {
+            "person": "middle-left-rear",
+            "body": 6,
+            "iou": 0.9062652019497686
+          },
+          {
+            "person": "center-front",
+            "body": 0,
+            "iou": 0.6107676769285447
+          },
+          {
+            "person": "middle-right-rear",
+            "body": 4,
+            "iou": 0.8487941579336846
+          },
+          {
+            "person": "right-front",
+            "body": 1,
+            "iou": 0.8827976660502892
+          },
+          {
+            "person": "right-rear",
+            "body": 2,
+            "iou": 0.9174154005213065
+          }
+        ]
+      },
+      "annotation_actual": {
+        "passed": true,
+        "minimum_iou": 0.3,
+        "matches": [
+          {
+            "person": "left-rear",
+            "body": 5,
+            "iou": 0.8537803113837957
+          },
+          {
+            "person": "left-front",
+            "body": 3,
+            "iou": 0.8175655383022506
+          },
+          {
+            "person": "middle-left-rear",
+            "body": 6,
+            "iou": 0.9062648085189167
+          },
+          {
+            "person": "center-front",
+            "body": 0,
+            "iou": 0.6107672459281781
+          },
+          {
+            "person": "middle-right-rear",
+            "body": 4,
+            "iou": 0.8487940995761357
+          },
+          {
+            "person": "right-front",
+            "body": 1,
+            "iou": 0.8827975177154914
+          },
+          {
+            "person": "right-rear",
+            "body": 2,
+            "iou": 0.9174155939237683
+          }
+        ]
+      },
+      "arm_semantics": {
+        "report": "arm-semantic-gate.json",
+        "report_sha256": "28b9ca6062e6b3f4465e5cc6aaebb13a7d5c907e9b22a955333a82cb4716f4ac",
+        "passed": true,
+        "reference_raised_arms": 7,
+        "actual_raised_arms": 7,
+        "predicate": {
+          "people": 7,
+          "source_frame": 1500,
+          "left_shoulder": 5,
+          "left_wrist": 9,
+          "joint_confidence_minimum": 0.2,
+          "all_seven_left_wrists_above_shoulders": true,
+          "require_joint_inside_source": true
+        }
+      }
+    },
+    {
+      "fixture": "one-512",
+      "archive": "device-runs/one-512/gpu-fp32-5642dfcc62ad4de182bd8dee560ba818",
+      "passed": true,
+      "run_id": "gpu-fp32-5642dfcc62ad4de182bd8dee560ba818",
+      "device_serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "geometry": {
+        "width": 352,
+        "height": 512,
+        "resized_width": 322,
+        "resized_height": 512,
+        "left": 15,
+        "top": 0,
+        "scale": 1.4797687861271676,
+        "source_width": 218,
+        "source_height": 346
+      },
+      "expected_people": 1,
+      "reference_people": 1,
+      "gpu_people": 1,
+      "fixture_sha256": "52e160c7df74b259775695b51f744c7d30321d913f89958d74f13d9dd4bf77ff",
+      "comparison_sha256": "2d28b46a7ad3e8ef9cda06f71009b7f1d06561aaf42e0cbbc2d4991963950e57",
+      "execution_sha256": "be557db8d2d18913f2dceb1179065106ff62dd70a1155929d896d4b4a4039d72",
+      "source_png_sha256": "cce59593686244632e5f1fd2e23da9c72f8c52c3948f28c16b9ba8299b668ad7",
+      "source_video_sha256": "20806434a5620aca9e6198782d6882beb6fc53f1e5a0725e48abf128b46f2f94",
+      "input_sha256": "5a788064aea2bb27507f944ac3859668ef2b4e50aebf30c9f6e9a500c5b5ff55",
+      "runner_sha256": "87b20ad8289eb0b5b449683bb6b096297221195307b1d66b59502cf49b96a14d",
+      "output_sha256": {
+        "ncnn-cpu-out0.fp32": "88fc10dded73e92acc775e5171833bfb7b98d052d4ff224780445cdd5891a48b",
+        "ncnn-cpu-out1.fp32": "468c19808d09b764429f0738bc0121360975e2ea14fce58d1592b903beac277f",
+        "ncnn-gpu-fp32-out0.fp32": "295a4d0fd8d6045a860aec3d9bfebd07de55e3b980a0f1b3a6cd1501652dae7c",
+        "ncnn-gpu-fp32-out1.fp32": "39cda37e550426dc00f2ad32d5fac0bccccde5f3fb0ab719b55205aa70a56e9e"
+      },
+      "log_sha256": {
+        "android-cpu.log": "596c6ae1a3b3661e773b273449540af26bc9c644be7328da245751682477d659",
+        "android-gpu-fp32.log": "a1d0ae7f869771f075d00f8ed2477b1dd0b7394488649488d35a8b0ac0937a5e"
+      },
+      "raw": {
+        "out0": {
+          "max_abs": 9.679794311523438e-05,
+          "mean_abs": 1.5212458033474203e-06
+        },
+        "out1": {
+          "max_abs": 3.447383642196655e-05,
+          "mean_abs": 1.3743728199968855e-06
+        }
+      },
+      "associations": [
+        {
+          "iou": 0.9999997179381178,
+          "score_error": 1.7881393432617188e-07,
+          "joint_xy_max": 0.00011342763900756836,
+          "joint_score_max": 5.586521637512831e-07
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Numerical reference is device CPU running the same graph; parity alone does not establish pose accuracy.",
+    "Seven raised-left-arm semantics apply only to actual sequential frame1500 and frozen predicate.",
+    "Offline shared OpenCV tensor route does not exercise production GPU-AHB preprocessing.",
+    "No FPS acceptance, production profile acceptance, model conversion or precision/provider fallback is claimed."
+  ]
+}
