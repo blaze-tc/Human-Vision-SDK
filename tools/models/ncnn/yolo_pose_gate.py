@@ -19,15 +19,19 @@ LIMITS = dict(raw_max=.2,raw_mean=.01,box_iou=.95,score=.01,joint_xy=3.,joint_sc
 
 
 def execution_options(mode):
-    if mode not in ('cpu','gpu','gpu-fp32','gpu-fp32-packed16','gpu-fp32-sgemm'): raise ValueError('unknown execution mode')
+    if mode not in ('cpu','gpu','gpu-fp32','gpu-fp32-packed16','gpu-fp32-sgemm','gpu-fp16packed-input16'): raise ValueError('unknown execution mode')
     half=mode=='gpu'
-    options=dict(vulkan=mode!='cpu',fp16_storage=half,fp16_packed=half or mode=='gpu-fp32-packed16',fp16_arithmetic=False,subgroup=False,use_packing_layout=True,input_elempack=1,input_bits=16 if half else 32,output_elempack=1,output_bits=32,num_threads=2)
+    input16=mode=='gpu-fp16packed-input16'
+    options=dict(vulkan=mode!='cpu',fp16_storage=half,fp16_packed=half or mode=='gpu-fp32-packed16' or input16,fp16_arithmetic=False,subgroup=False,use_packing_layout=True,input_elempack=1,input_bits=16 if half or input16 else 32,output_elempack=1,output_bits=32,num_threads=2)
     if mode=='gpu-fp32-sgemm': options.update(use_winograd_convolution=False,use_sgemm_convolution=True)
+    if input16: options.update(input_conversion="gpu-fp32-to-fp16-pack1",use_winograd_convolution=True,use_sgemm_convolution=True)
     return options
 
 
 def runner_recipe(gpu_mode):
     base=Path(__file__).resolve().parent
+    if gpu_mode=="gpu-fp16packed-input16":
+        return base/"yolo_fp16_input_golden_runner.cpp",base/"yolo_fp16_input_runner/CMakeLists.txt"
     if gpu_mode=='gpu-fp32-sgemm':
         return base/'yolo_sgemm_golden_runner.cpp',base/'yolo_sgemm_runner/CMakeLists.txt'
     if gpu_mode=='gpu-fp32-packed16':
@@ -69,6 +73,25 @@ def validate_sgemm_log(path,g):
     if actual!=expected: raise ValueError('actual FP32 pack1 input/output contract mismatch')
 
 
+def validate_fp16_input_log(path,g):
+    """Bind GPU FP32 transfer -> FP16 pack1 input and FP32 output to actual logs."""
+    lines=path.read_text(encoding='utf-8').splitlines()
+    suffix='mode=gpu-fp16packed-input16 vulkan=1 storage16=0 packed16=1 arithmetic16=0 subgroup=0 packing=1 threads=2 winograd=1 sgemm=1'
+    actual=[line for line in lines if line.startswith(('configured ','effective '))]
+    if actual!=['configured '+suffix,'effective '+suffix]: raise ValueError('configured/effective FP16 input options mismatch')
+    caps=[line for line in lines if line.startswith('capabilities ')]
+    if len(caps)!=1 or not re.fullmatch(r'capabilities fp16_packed=1 fp16_storage=[01] fp16_arithmetic=[01]',caps[0]): raise ValueError('missing actual supported FP16 packed capability')
+    layer_lines=[line for line in lines if line.startswith('layers=')]
+    if len(layer_lines)!=1 or not re.fullmatch(r'layers=[1-9][0-9]* unsupported=0 storage16=0 arithmetic16=0',layer_lines[0]): raise ValueError('unsupported or wrong precision Vulkan execution')
+    n=sum((g['width']//s)*(g['height']//s) for s in (8,16,32))
+    expected=[f"transfer in0 dims=3 w={g['width']} h={g['height']} c=3 pack=1 bits=32",
+              f"input in0 dims=3 w={g['width']} h={g['height']} c=3 pack=1 bits=16",
+              f'output out0 dims=2 w=65 h={n} c=1 pack=1 bits=32',
+              f'output out1 dims=2 w=51 h={n} c=1 pack=1 bits=32']
+    actual=[line for line in lines if line.startswith(('transfer ','input ','output '))]
+    if actual!=expected: raise ValueError('actual FP32 transfer/FP16 input/FP32 output contract mismatch')
+
+
 def validate_execution(directory,gpu_mode,fixture):
     evidence=json.loads((directory/'execution.json').read_text())
     if not isinstance(evidence,dict): raise ValueError('execution metadata must be an object')
@@ -91,6 +114,7 @@ def validate_execution(directory,gpu_mode,fixture):
         if stage.get('options')!=execution_options(mode): raise ValueError('precision/options mismatch')
         expected_log=f'android-{mode}.log'
         if stage.get('log_file')!=expected_log or stage.get('log_sha256')!=sha(directory/expected_log): raise ValueError('execution log hash mismatch')
+        if mode=='gpu-fp16packed-input16': validate_fp16_input_log(directory/expected_log,fixture['geometry'])
         if mode=='gpu-fp32-sgemm': validate_sgemm_log(directory/expected_log,fixture['geometry'])
         if mode=='gpu-fp32-packed16': validate_packed16_log(directory/expected_log,fixture['geometry'])
         expected_names={f'ncnn-{mode}-{blob}.fp32' for blob in ('out0','out1')}
@@ -201,7 +225,7 @@ def associate_annotations(bodies,annotations,min_iou=.3):
 
 def main():
     p=argparse.ArgumentParser(); p.add_argument('directory',type=Path)
-    p.add_argument('--gpu-mode',choices=('gpu','gpu-fp32','gpu-fp32-packed16','gpu-fp32-sgemm'),default='gpu'); a=p.parse_args()
+    p.add_argument('--gpu-mode',choices=('gpu','gpu-fp32','gpu-fp32-packed16','gpu-fp32-sgemm','gpu-fp16packed-input16'),default='gpu'); a=p.parse_args()
     report=compare_directory(a.directory,a.gpu_mode)
     filename='comparison.json' if a.gpu_mode=='gpu' else f'comparison-{a.gpu_mode}.json'
     (a.directory/filename).write_text(json.dumps(report,indent=2,allow_nan=False)+'\n')
@@ -212,7 +236,7 @@ def main():
 def compare_directory(directory,gpu_mode='gpu'):
     """Always produce a failure result for malformed/missing evidence."""
     try:
-        if gpu_mode not in ('gpu','gpu-fp32','gpu-fp32-packed16','gpu-fp32-sgemm'): raise ValueError('unknown precision candidate')
+        if gpu_mode not in ('gpu','gpu-fp32','gpu-fp32-packed16','gpu-fp32-sgemm','gpu-fp16packed-input16'): raise ValueError('unknown precision candidate')
         record=json.loads((directory/'fixture.json').read_text())
         if not isinstance(record,dict) or not isinstance(record.get('geometry'),dict): raise ValueError('fixture metadata and geometry must be objects')
         g=record['geometry']

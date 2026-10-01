@@ -1,0 +1,2014 @@
+{
+  "status": "CLOSED_FAILED_FROZEN_NUMERICAL_GATE",
+  "precision_mode": "gpu-fp16packed-input16",
+  "numerical_eligibility": false,
+  "hardware_fps_acceptance": false,
+  "integration_completed": false,
+  "performance_claim": false,
+  "runner_sha256": "7b7d84a13173d00f21ce76f9a45321b0d3333bd95929b44fb64d2211ee2fbb06",
+  "runner_source_sha256": "376dcbfec71c0ff58c39701862fef9520fb8af043b03deb439e74edc766821ab",
+  "runner_cmake_sha256": "f7c44417682c78de246b0b74d6016cbd4c38809962fd0523a87897af1d814346",
+  "freeze_sha256": "cd569d63b82f1453bc1b5b49d7948a9193e32684c40e1bff62aebe860db2e680",
+  "historical_cpu_index_sha256": "d0a645d99c401fa18e1b75a75146f6699418c7c1c9214d303171cb517ce8cfb6",
+  "options": {
+    "vulkan": true,
+    "fp16_storage": false,
+    "fp16_packed": true,
+    "fp16_arithmetic": false,
+    "subgroup": false,
+    "use_packing_layout": true,
+    "input_elempack": 1,
+    "input_bits": 16,
+    "output_elempack": 1,
+    "output_bits": 32,
+    "num_threads": 2,
+    "input_conversion": "gpu-fp32-to-fp16-pack1",
+    "use_winograd_convolution": true,
+    "use_sgemm_convolution": true
+  },
+  "cpu_options": {
+    "vulkan": false,
+    "fp16_storage": false,
+    "fp16_packed": false,
+    "fp16_arithmetic": false,
+    "subgroup": false,
+    "use_packing_layout": true,
+    "input_elempack": 1,
+    "input_bits": 32,
+    "output_elempack": 1,
+    "output_bits": 32,
+    "num_threads": 2
+  },
+  "limits": {
+    "raw_max": 0.2,
+    "raw_mean": 0.01,
+    "box_iou": 0.95,
+    "score": 0.01,
+    "joint_xy": 3.0,
+    "joint_score": 0.01
+  },
+  "summary": {
+    "fixtures": 11,
+    "execution_successes": 11,
+    "comparisons_failed": 11,
+    "finite_output_files": 44,
+    "historical_cpu_oracle_hashes_verified": 22,
+    "raw_gates_failed": 11,
+    "decoded_semantic_gates_passed": 9,
+    "raw_max_failed_by_blob": {
+      "out0": 11,
+      "out1": 1
+    },
+    "raw_mean_failed_by_blob": {
+      "out0": 0,
+      "out1": 1
+    },
+    "maximum_raw_absolute_error": 0.9630889892578125,
+    "maximum_raw_mean_error": 0.011541814914286233
+  },
+  "fixtures": [
+    {
+      "fixture": "seven-416",
+      "archive": "android-yolo/device-runs/seven-416/gpu-fp16packed-input16-d0b7e39661514be391db26d6439363ad",
+      "run_id": "gpu-fp16packed-input16-d0b7e39661514be391db26d6439363ad",
+      "serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "passed": false,
+      "comparison_recomputed_identical": true,
+      "execution_hashes_and_typed_log_validated": true,
+      "fixture_sha256": "e04a51fa96304850efd7fbeffa5ee3f039e9cce8aa1a83108a840945104745ae",
+      "comparison_sha256": "b87387a192bd1222682c88d7208bbaf5a6a01149b65a973a0b00e6bae7646a0f",
+      "execution_sha256": "beb4dddcfba9990c51d5248a9933490817d6a2d63e26210b4396af5d5d5ae99b",
+      "input_sha256": "377e6cac23559bbef87e06dfc95dcd71f0fa91de78703a4ed16bfd7c863d1c39",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "f858f2f70c22edabc70b35348d904d249c9de44be6773fd46891201b04e7c207",
+        "ncnn-cpu-out1.fp32": "0d6c7d94c2f4728dd6c88b8d12458dc6f90551ea9b95903c12b886b2c1b0fe5f"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp16packed-input16-out0.fp32": "667f82ba479af9ebc36103173f6413e534ca0889d153c1b502538af9a267afc0",
+        "ncnn-gpu-fp16packed-input16-out1.fp32": "9a29620608acdc626032583e3f4d126e152a1d520dcd956001f496716ac951e1"
+      },
+      "log_sha256": {
+        "cpu": "17fb6fe210ed49b5b4b4168c00013fcca44e7f74895a0f5ee8e60f45a6d45e60",
+        "gpu-fp16packed-input16": "b3d810f14714cf6749cb5f87ef7c6902c061fd00f033cac2947db14557e02709"
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/seven-416/gpu-fp32-f786820ea0284e598a3411810c1ce8a5",
+      "historical_cpu_oracle_byte_identical": true,
+      "output_finite": {
+        "ncnn-cpu-out0.fp32": true,
+        "ncnn-cpu-out1.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out0.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out1.fp32": true
+      },
+      "raw_gates_passed": false,
+      "raw_gates": {
+        "out0": {
+          "max_abs": 0.2607879638671875,
+          "mean_abs": 0.008251495521119943,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": false,
+          "mean_passed": true
+        },
+        "out1": {
+          "max_abs": 0.06525015830993652,
+          "mean_abs": 0.005480075151934485,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": true,
+          "mean_passed": true
+        }
+      },
+      "decoded_count_gate": {
+        "expected": 7,
+        "reference": 7,
+        "actual": 7,
+        "passed": true
+      },
+      "decoded_association_gate": {
+        "expected": 7,
+        "matched": 7,
+        "passed": true,
+        "matches": [
+          {
+            "index": 0,
+            "values": {
+              "iou": 0.998879219271922,
+              "score_error": 0.003847956657409668,
+              "joint_xy_max": 0.24264761117785838,
+              "joint_score_max": 0.002448618481380893
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 1,
+            "values": {
+              "iou": 0.9986180568099134,
+              "score_error": 0.004366099834442139,
+              "joint_xy_max": 0.4208890474759528,
+              "joint_score_max": 0.0044031019382175796
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 2,
+            "values": {
+              "iou": 0.9984593645497186,
+              "score_error": 0.00525587797164917,
+              "joint_xy_max": 0.4002028245192264,
+              "joint_score_max": 0.004833226382986777
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 3,
+            "values": {
+              "iou": 0.9985666570828787,
+              "score_error": 0.006453096866607666,
+              "joint_xy_max": 0.491351787860566,
+              "joint_score_max": 0.006265998820779828
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 4,
+            "values": {
+              "iou": 0.9984512983511739,
+              "score_error": 0.0008125901222229004,
+              "joint_xy_max": 0.1720721905048208,
+              "joint_score_max": 0.003204114522703083
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 5,
+            "values": {
+              "iou": 0.9988702260611013,
+              "score_error": 0.008503437042236328,
+              "joint_xy_max": 0.2569345327524388,
+              "joint_score_max": 0.008466669216858569
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 6,
+            "values": {
+              "iou": 0.999205953086036,
+              "score_error": 0.006453067064285278,
+              "joint_xy_max": 0.09885817307693401,
+              "joint_score_max": 0.0033449252840035415
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          }
+        ]
+      },
+      "annotation_gates": {
+        "annotation_reference": {
+          "passed": true,
+          "minimum_iou": 0.3,
+          "matches": [
+            {
+              "person": "left-rear",
+              "body": 3,
+              "iou": 0.762387995080428
+            },
+            {
+              "person": "left-front",
+              "body": 2,
+              "iou": 0.62610882315713
+            },
+            {
+              "person": "middle-left-rear",
+              "body": 5,
+              "iou": 0.6232756524237939
+            },
+            {
+              "person": "center-front",
+              "body": 1,
+              "iou": 0.3831431156542818
+            },
+            {
+              "person": "middle-right-rear",
+              "body": 6,
+              "iou": 0.6328999295558257
+            },
+            {
+              "person": "right-front",
+              "body": 0,
+              "iou": 0.6365957258435782
+            },
+            {
+              "person": "right-rear",
+              "body": 4,
+              "iou": 0.5588941634139555
+            }
+          ]
+        },
+        "annotation_actual": {
+          "passed": true,
+          "minimum_iou": 0.3,
+          "matches": [
+            {
+              "person": "left-rear",
+              "body": 3,
+              "iou": 0.7615514611805164
+            },
+            {
+              "person": "left-front",
+              "body": 2,
+              "iou": 0.6251442177084401
+            },
+            {
+              "person": "middle-left-rear",
+              "body": 5,
+              "iou": 0.6232874204517996
+            },
+            {
+              "person": "center-front",
+              "body": 1,
+              "iou": 0.3834647997721503
+            },
+            {
+              "person": "middle-right-rear",
+              "body": 6,
+              "iou": 0.633340992122846
+            },
+            {
+              "person": "right-front",
+              "body": 0,
+              "iou": 0.6359307287989439
+            },
+            {
+              "person": "right-rear",
+              "body": 4,
+              "iou": 0.5583791470678574
+            }
+          ]
+        }
+      },
+      "decoded_semantic_gates_passed": true
+    },
+    {
+      "fixture": "one-416",
+      "archive": "android-yolo/device-runs/one-416/gpu-fp16packed-input16-975b5b87303743d09416cd706ca61561",
+      "run_id": "gpu-fp16packed-input16-975b5b87303743d09416cd706ca61561",
+      "serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "passed": false,
+      "comparison_recomputed_identical": true,
+      "execution_hashes_and_typed_log_validated": true,
+      "fixture_sha256": "27a7153ed7446175b3d9799a9dbe5b0bfd7e69e87ca9bcd56fbbc603a61a1022",
+      "comparison_sha256": "e172c412925b6a3e2bbfba827aadd04791347c286f72c3ef4d39e77f93024c67",
+      "execution_sha256": "d4d987704c778b042a888cb9c0850b239b0789c092e3917b8f72bf0da269a45d",
+      "input_sha256": "c174a3e1342af9c244485c0e5ce57dce0858cf2133161971470b3f7eb1da8044",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "59eff021675a14cc9a1d552cccc01bc55dfc97123c3e10238e4d02c07cc9d8f0",
+        "ncnn-cpu-out1.fp32": "155f6cdbbdd562a472a8d8381c3030a9207a4d6be04fa8c8d806f4ebe94e7118"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp16packed-input16-out0.fp32": "22cf2129f04b6a82fb5fedcd3207080fee8479652e02ca80fbdc03547e36056d",
+        "ncnn-gpu-fp16packed-input16-out1.fp32": "6020eb54d2c238d519315a0d69f8257f7857c803661115f1dbba2f8607dfa225"
+      },
+      "log_sha256": {
+        "cpu": "380ac49d0a8dc2e0bac9fcbc3876fa1515d38db59053956a4bad269fad75f7bd",
+        "gpu-fp16packed-input16": "f76be42938c0e2419fe7c06c34646c7e7e68b768ab72f4f8372ea38da40c2e71"
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/one-416/gpu-fp32-c8352498684a4e9b9f966c45fca54f80",
+      "historical_cpu_oracle_byte_identical": true,
+      "output_finite": {
+        "ncnn-cpu-out0.fp32": true,
+        "ncnn-cpu-out1.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out0.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out1.fp32": true
+      },
+      "raw_gates_passed": false,
+      "raw_gates": {
+        "out0": {
+          "max_abs": 0.2289714813232422,
+          "mean_abs": 0.00680895497290932,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": false,
+          "mean_passed": true
+        },
+        "out1": {
+          "max_abs": 0.06480896472930908,
+          "mean_abs": 0.005422360321778785,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": true,
+          "mean_passed": true
+        }
+      },
+      "decoded_count_gate": {
+        "expected": 1,
+        "reference": 1,
+        "actual": 1,
+        "passed": true
+      },
+      "decoded_association_gate": {
+        "expected": 1,
+        "matched": 1,
+        "passed": true,
+        "matches": [
+          {
+            "index": 0,
+            "values": {
+              "iou": 0.9991105195562641,
+              "score_error": 0.0016378164291381836,
+              "joint_xy_max": 0.4026284584632265,
+              "joint_score_max": 0.0033183191748514806
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          }
+        ]
+      },
+      "annotation_gates": {},
+      "decoded_semantic_gates_passed": true
+    },
+    {
+      "fixture": "seven-320",
+      "archive": "android-yolo/device-runs/seven-320/gpu-fp16packed-input16-0453cef5585048028d3a55ffad23aaa2",
+      "run_id": "gpu-fp16packed-input16-0453cef5585048028d3a55ffad23aaa2",
+      "serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "passed": false,
+      "comparison_recomputed_identical": true,
+      "execution_hashes_and_typed_log_validated": true,
+      "fixture_sha256": "b0a8d73bf80e4e3b05ea510d57454863d55361f10c8491fc978359e9c1de6a09",
+      "comparison_sha256": "59ae4598f66c11fc28c5e8484cc0880239fb30de915ad513dd33e4eb83f2f59a",
+      "execution_sha256": "6a2c0b5bb52b0330793253486812293505e332382321417e4daefb093398b55c",
+      "input_sha256": "6d136e0a5278671dffa08ac29e4d8b0feeb0ab173edfff09718e65ec6b2a31dc",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "d23e3667aa98aabf4bc296d2025d94e0e4ddd5cfbadcc1af0ce248c94ffbdce2",
+        "ncnn-cpu-out1.fp32": "f856c90c4ebf28298e7540516577d8ac9b5aee1786360d915ac230ef032ed45e"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp16packed-input16-out0.fp32": "e59d806fb264619dfac11e47c8ce7e84c9cd082b9bc1c3522903cd03c34f5cc2",
+        "ncnn-gpu-fp16packed-input16-out1.fp32": "cef964fe2ff3ef85bafc4bd52509792140cc2b7251fd0e1c48f5488625eafb82"
+      },
+      "log_sha256": {
+        "cpu": "cd3166d7f3f589a48e4838981a6d38e9965d545f14a9c541d23512215f0fc70c",
+        "gpu-fp16packed-input16": "c7d2cf3d45fb17f0d2c7947217b24bfc9071f62e12a3f4ed38f01b6b71a58251"
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/seven-320/gpu-fp32-f4423d071999463ca76635d11dedc68f",
+      "historical_cpu_oracle_byte_identical": true,
+      "output_finite": {
+        "ncnn-cpu-out0.fp32": true,
+        "ncnn-cpu-out1.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out0.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out1.fp32": true
+      },
+      "raw_gates_passed": false,
+      "raw_gates": {
+        "out0": {
+          "max_abs": 0.29031944274902344,
+          "mean_abs": 0.009494946062990409,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": false,
+          "mean_passed": true
+        },
+        "out1": {
+          "max_abs": 0.05453532934188843,
+          "mean_abs": 0.005450164199389491,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": true,
+          "mean_passed": true
+        }
+      },
+      "decoded_count_gate": {
+        "expected": 7,
+        "reference": 7,
+        "actual": 6,
+        "passed": false
+      },
+      "decoded_association_gate": {
+        "expected": 7,
+        "matched": 6,
+        "passed": false,
+        "matches": [
+          {
+            "index": 0,
+            "values": {
+              "iou": 0.9996088727939985,
+              "score_error": 0.0077855587005615234,
+              "joint_xy_max": 0.15493164062502274,
+              "joint_score_max": 0.0030817995059222447
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 1,
+            "values": {
+              "iou": 0.999166329467959,
+              "score_error": 0.0066342949867248535,
+              "joint_xy_max": 0.14680023193352554,
+              "joint_score_max": 0.004646302227612642
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 2,
+            "values": {
+              "iou": 0.9983591022223534,
+              "score_error": 0.009535670280456543,
+              "joint_xy_max": 0.10354309082032387,
+              "joint_score_max": 0.005855122835541349
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 3,
+            "values": {
+              "iou": 0.0,
+              "score_error": 0.11031827330589294,
+              "joint_xy_max": 257.5954292297363,
+              "joint_score_max": 0.24616069601267082
+            },
+            "threshold_checks": {
+              "box_iou": false,
+              "score": false,
+              "joint_xy": false,
+              "joint_score": false
+            },
+            "passed": false
+          },
+          {
+            "index": 4,
+            "values": {
+              "iou": 0.0,
+              "score_error": 0.11131864786148071,
+              "joint_xy_max": 701.0325439453125,
+              "joint_score_max": 0.22574391635055424
+            },
+            "threshold_checks": {
+              "box_iou": false,
+              "score": false,
+              "joint_xy": false,
+              "joint_score": false
+            },
+            "passed": false
+          },
+          {
+            "index": 5,
+            "values": {
+              "iou": 0.0,
+              "score_error": 0.11120212078094482,
+              "joint_xy_max": 250.20152130126957,
+              "joint_score_max": 0.3220847937649748
+            },
+            "threshold_checks": {
+              "box_iou": false,
+              "score": false,
+              "joint_xy": false,
+              "joint_score": false
+            },
+            "passed": false
+          }
+        ]
+      },
+      "annotation_gates": {
+        "annotation_reference": {
+          "passed": true,
+          "minimum_iou": 0.3,
+          "matches": [
+            {
+              "person": "left-rear",
+              "body": 5,
+              "iou": 0.673848648369568
+            },
+            {
+              "person": "left-front",
+              "body": 2,
+              "iou": 0.6460991545197262
+            },
+            {
+              "person": "middle-left-rear",
+              "body": 6,
+              "iou": 0.638126568652828
+            },
+            {
+              "person": "center-front",
+              "body": 1,
+              "iou": 0.41207161037800655
+            },
+            {
+              "person": "middle-right-rear",
+              "body": 3,
+              "iou": 0.6041351667795197
+            },
+            {
+              "person": "right-front",
+              "body": 0,
+              "iou": 0.6428311917744391
+            },
+            {
+              "person": "right-rear",
+              "body": 4,
+              "iou": 0.5636659514108878
+            }
+          ]
+        },
+        "annotation_actual": {
+          "passed": false,
+          "minimum_iou": 0.3,
+          "matches": [
+            {
+              "person": "left-rear",
+              "body": 4,
+              "iou": 0.6733702693322295
+            },
+            {
+              "person": "left-front",
+              "body": 2,
+              "iou": 0.6468614512032167
+            },
+            {
+              "person": "middle-left-rear",
+              "body": 5,
+              "iou": 0.6379848414834935
+            },
+            {
+              "person": "center-front",
+              "body": 1,
+              "iou": 0.4123704266805901
+            },
+            {
+              "person": "middle-right-rear",
+              "body": 0,
+              "iou": 0.0
+            },
+            {
+              "person": "right-front",
+              "body": 3,
+              "iou": 0.0
+            }
+          ]
+        }
+      },
+      "decoded_semantic_gates_passed": false
+    },
+    {
+      "fixture": "one-320",
+      "archive": "android-yolo/device-runs/one-320/gpu-fp16packed-input16-fae416a145b24589a6521fbf428d285c",
+      "run_id": "gpu-fp16packed-input16-fae416a145b24589a6521fbf428d285c",
+      "serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "passed": false,
+      "comparison_recomputed_identical": true,
+      "execution_hashes_and_typed_log_validated": true,
+      "fixture_sha256": "622b5b2eb006767c9d5e9028e7ebb46b402b33cfc03458044fa5a74686dca361",
+      "comparison_sha256": "e8cdb80e669035a638ba36accfe39a35036c26331097767f5641af69288afadb",
+      "execution_sha256": "a7369205cd139ad330f2f5e5d2f5e1e872725a4f9553ffb9ba53afead1f81203",
+      "input_sha256": "69f5ee21c368ed2449b5735db9ffe5898b378941bab8a21ff2f07b33afa50cc2",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "a8ffa19132d8267b2efbab496207b594524f4919d6cbac3bea36226cb623acaf",
+        "ncnn-cpu-out1.fp32": "3f95c82c4644aac553960a21c93dc7b3b8367e89558baf8d5949e746089cf7a7"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp16packed-input16-out0.fp32": "856931adccafd9caefef434fe483b66396218b2d3ab2885a585a3b0fc6455a14",
+        "ncnn-gpu-fp16packed-input16-out1.fp32": "e255b8dd809c5e8fd196a27007f1c15dcba2fc6afe84da197b1843bce7c5cb07"
+      },
+      "log_sha256": {
+        "cpu": "86bb507fdd6b2f23cfa1c3c04768d0f79bf48cb176152cfb26f5a016174ee77d",
+        "gpu-fp16packed-input16": "28a009ee9a8f09b6defe4d9ca62d77856bf20c520bec6c8c4e0842fd0d418994"
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/one-320/gpu-fp32-f91dc295572342adbe6c17e04cb0490d",
+      "historical_cpu_oracle_byte_identical": true,
+      "output_finite": {
+        "ncnn-cpu-out0.fp32": true,
+        "ncnn-cpu-out1.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out0.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out1.fp32": true
+      },
+      "raw_gates_passed": false,
+      "raw_gates": {
+        "out0": {
+          "max_abs": 0.4237861633300781,
+          "mean_abs": 0.007540794871863651,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": false,
+          "mean_passed": true
+        },
+        "out1": {
+          "max_abs": 0.06673932075500488,
+          "mean_abs": 0.004862388026937628,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": true,
+          "mean_passed": true
+        }
+      },
+      "decoded_count_gate": {
+        "expected": 1,
+        "reference": 1,
+        "actual": 1,
+        "passed": true
+      },
+      "decoded_association_gate": {
+        "expected": 1,
+        "matched": 1,
+        "passed": true,
+        "matches": [
+          {
+            "index": 0,
+            "values": {
+              "iou": 0.9997946643558565,
+              "score_error": 0.001039266586303711,
+              "joint_xy_max": 0.2241082668304557,
+              "joint_score_max": 0.00108057148476004
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          }
+        ]
+      },
+      "annotation_gates": {},
+      "decoded_semantic_gates_passed": true
+    },
+    {
+      "fixture": "seven-640",
+      "archive": "android-yolo/device-runs/seven-640/gpu-fp16packed-input16-77898f901aaa479588fef0b60ebda981",
+      "run_id": "gpu-fp16packed-input16-77898f901aaa479588fef0b60ebda981",
+      "serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "passed": false,
+      "comparison_recomputed_identical": true,
+      "execution_hashes_and_typed_log_validated": true,
+      "fixture_sha256": "4606dcec0ad97a0f3b41097aa775cfacb6e045647bd972b7c834a1e37f885030",
+      "comparison_sha256": "349a8131b5364e9204b11f5c5e61a4ed43fa47499f6a6a1769cbdd34e2c83e67",
+      "execution_sha256": "9759cee5e772a44787800dd180625b69546f6980b80217ec8249fe0edfc77fd4",
+      "input_sha256": "9c2f9fde0c5eb2ae4e53c96c9ecfd34c7c1fc9c624191ce6559a1461751ba939",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "f822c5a8c60929d6311ed29f181652609f08b4c95b046f73b3ed4f4b5f35186c",
+        "ncnn-cpu-out1.fp32": "1f26d3e41e93a0096432ef8062ccf70db5787a14abe826b414de6bb1f1c6125b"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp16packed-input16-out0.fp32": "0588bb5552ab95c09123290bc2cb99aedc752a5afe94a18341080e3f61987382",
+        "ncnn-gpu-fp16packed-input16-out1.fp32": "b3e8c714f53a83fe9ffd49cd7848b80d4ca53a1cfc0ca646d6c0c1c86c4d58e0"
+      },
+      "log_sha256": {
+        "cpu": "2756563b06a0b6f65d2e912d21b20cf8c340122d90a907742b0a311436c99ad7",
+        "gpu-fp16packed-input16": "fc9efcf17629de63a92b134c0499fe1f76a0d8b88bb9ddede51a0871ecffb6bf"
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/seven-640/gpu-fp32-866e333068bf4b058ca0c40176faf897",
+      "historical_cpu_oracle_byte_identical": true,
+      "output_finite": {
+        "ncnn-cpu-out0.fp32": true,
+        "ncnn-cpu-out1.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out0.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out1.fp32": true
+      },
+      "raw_gates_passed": false,
+      "raw_gates": {
+        "out0": {
+          "max_abs": 0.39521026611328125,
+          "mean_abs": 0.007341429380262695,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": false,
+          "mean_passed": true
+        },
+        "out1": {
+          "max_abs": 0.07147693634033203,
+          "mean_abs": 0.005999806137417684,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": true,
+          "mean_passed": true
+        }
+      },
+      "decoded_count_gate": {
+        "expected": 7,
+        "reference": 7,
+        "actual": 7,
+        "passed": true
+      },
+      "decoded_association_gate": {
+        "expected": 7,
+        "matched": 7,
+        "passed": true,
+        "matches": [
+          {
+            "index": 0,
+            "values": {
+              "iou": 0.9993616341085652,
+              "score_error": 0.004877150058746338,
+              "joint_xy_max": 0.31776733398436363,
+              "joint_score_max": 0.004280162247579433
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 1,
+            "values": {
+              "iou": 0.9987972114027727,
+              "score_error": 0.0031662583351135254,
+              "joint_xy_max": 0.30396728515623295,
+              "joint_score_max": 0.0019183832182868565
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 2,
+            "values": {
+              "iou": 0.9993248944431169,
+              "score_error": 0.003664374351501465,
+              "joint_xy_max": 0.4111572265624943,
+              "joint_score_max": 0.004856265221927503
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 3,
+            "values": {
+              "iou": 0.9992022574734509,
+              "score_error": 0.0031479597091674805,
+              "joint_xy_max": 0.3201049804687557,
+              "joint_score_max": 0.0043707395626695345
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 4,
+            "values": {
+              "iou": 0.9987460354355963,
+              "score_error": 0.00450211763381958,
+              "joint_xy_max": 0.2430419921875,
+              "joint_score_max": 0.005183483993222993
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 5,
+            "values": {
+              "iou": 0.9996644017069366,
+              "score_error": 0.0026001334190368652,
+              "joint_xy_max": 0.6092895507812557,
+              "joint_score_max": 0.005491000033910676
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 6,
+            "values": {
+              "iou": 0.99916592761157,
+              "score_error": 0.0027835965156555176,
+              "joint_xy_max": 0.23350219726563637,
+              "joint_score_max": 0.005832671810185541
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          }
+        ]
+      },
+      "annotation_gates": {
+        "annotation_reference": {
+          "passed": true,
+          "minimum_iou": 0.3,
+          "matches": [
+            {
+              "person": "left-rear",
+              "body": 5,
+              "iou": 0.8585699715421086
+            },
+            {
+              "person": "left-front",
+              "body": 2,
+              "iou": 0.8407638991086968
+            },
+            {
+              "person": "middle-left-rear",
+              "body": 6,
+              "iou": 0.889659753031266
+            },
+            {
+              "person": "center-front",
+              "body": 0,
+              "iou": 0.5972225755284087
+            },
+            {
+              "person": "middle-right-rear",
+              "body": 4,
+              "iou": 0.9565336574171979
+            },
+            {
+              "person": "right-front",
+              "body": 1,
+              "iou": 0.908357700832074
+            },
+            {
+              "person": "right-rear",
+              "body": 3,
+              "iou": 0.8905370050997405
+            }
+          ]
+        },
+        "annotation_actual": {
+          "passed": true,
+          "minimum_iou": 0.3,
+          "matches": [
+            {
+              "person": "left-rear",
+              "body": 5,
+              "iou": 0.8584230976922488
+            },
+            {
+              "person": "left-front",
+              "body": 2,
+              "iou": 0.8406732298661183
+            },
+            {
+              "person": "middle-left-rear",
+              "body": 6,
+              "iou": 0.889204095705408
+            },
+            {
+              "person": "center-front",
+              "body": 0,
+              "iou": 0.597586804750431
+            },
+            {
+              "person": "middle-right-rear",
+              "body": 4,
+              "iou": 0.9569298902364927
+            },
+            {
+              "person": "right-front",
+              "body": 1,
+              "iou": 0.9094515788208101
+            },
+            {
+              "person": "right-rear",
+              "body": 3,
+              "iou": 0.8902029310860429
+            }
+          ]
+        }
+      },
+      "decoded_semantic_gates_passed": true
+    },
+    {
+      "fixture": "one-640",
+      "archive": "android-yolo/device-runs/one-640/gpu-fp16packed-input16-ea90cde739ff4862bfc786254e19b8ee",
+      "run_id": "gpu-fp16packed-input16-ea90cde739ff4862bfc786254e19b8ee",
+      "serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "passed": false,
+      "comparison_recomputed_identical": true,
+      "execution_hashes_and_typed_log_validated": true,
+      "fixture_sha256": "5c730a7446cdb11b583cecd52dbc0e75a2910ce7cdf38af79d5541863175768f",
+      "comparison_sha256": "05c484d3d1ff58aea52f3a234cbb4f7674601fe9e8b75b5b19e2c402b3bed3c2",
+      "execution_sha256": "46486df5759ba51f2804d9cb301bf87bab89970418a35a7b40640a1a3bf4816b",
+      "input_sha256": "edf10fbf8761ff4c4e7191d2a7dca023a71493bd8bcc93d4c8e1221136a6d20a",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "c488f42f82c44d58a15e84feaa165637a092e2db3f5e42b2eefa45fb933f3519",
+        "ncnn-cpu-out1.fp32": "c543ae237d78b2afe7390afee3c0440fbb01615fc045d8b30b0c94bdf87e05ea"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp16packed-input16-out0.fp32": "44f7cdf0cf4176d00a40e70eaf2548ae42c108bcb24b9fa8611c13328f891abc",
+        "ncnn-gpu-fp16packed-input16-out1.fp32": "7cd34f0b17383ffd800809523d5db449361d3cec891700b903a4a6849aa91796"
+      },
+      "log_sha256": {
+        "cpu": "e1a29e084c1d45af4347bce5c0351b2355c137ebb44a7880026822fe0870eb16",
+        "gpu-fp16packed-input16": "fa0901aae0944bfa258c7a2f4ccd45226ff866ad2c63e37133884396fa4ebfb4"
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/one-640/gpu-fp32-73b77b3347814c928dbb033082ea0dfc",
+      "historical_cpu_oracle_byte_identical": true,
+      "output_finite": {
+        "ncnn-cpu-out0.fp32": true,
+        "ncnn-cpu-out1.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out0.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out1.fp32": true
+      },
+      "raw_gates_passed": false,
+      "raw_gates": {
+        "out0": {
+          "max_abs": 0.39204978942871094,
+          "mean_abs": 0.006249242015227701,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": false,
+          "mean_passed": true
+        },
+        "out1": {
+          "max_abs": 0.0695030689239502,
+          "mean_abs": 0.0057218416181148025,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": true,
+          "mean_passed": true
+        }
+      },
+      "decoded_count_gate": {
+        "expected": 1,
+        "reference": 1,
+        "actual": 1,
+        "passed": true
+      },
+      "decoded_association_gate": {
+        "expected": 1,
+        "matched": 1,
+        "passed": true,
+        "matches": [
+          {
+            "index": 0,
+            "values": {
+              "iou": 0.999511568995724,
+              "score_error": 0.0018558502197265625,
+              "joint_xy_max": 0.4619268417358171,
+              "joint_score_max": 0.002022276541384649
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          }
+        ]
+      },
+      "annotation_gates": {},
+      "decoded_semantic_gates_passed": true
+    },
+    {
+      "fixture": "empty-416",
+      "archive": "android-yolo/device-runs/empty-416/gpu-fp16packed-input16-03b4df6125ee470dbf5502306bd2f38a",
+      "run_id": "gpu-fp16packed-input16-03b4df6125ee470dbf5502306bd2f38a",
+      "serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "passed": false,
+      "comparison_recomputed_identical": true,
+      "execution_hashes_and_typed_log_validated": true,
+      "fixture_sha256": "160f639cc8525a116516232e5a1605a09107372f2e0ef16e5b72ae1eaf200ef5",
+      "comparison_sha256": "00465a58c519e245ef5c264869f0148ade58a3022e5287fc0464f46881c6c138",
+      "execution_sha256": "59c8278f9d028991ae2426cbf84f3bb12d1efd14f2ddb8a9f715fa2c25f1b36d",
+      "input_sha256": "601c9f830e84b707168648d79bc531f85bb324181cb57729dd6baba80682d298",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "5296dc4759a9e185928882931925413f6723579b2c99b8fa389b497c3ea42eb3",
+        "ncnn-cpu-out1.fp32": "d413095e12cf48a6c64f50faa7a310d7e7c2819180f98bc850cb75ff3713f41f"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp16packed-input16-out0.fp32": "f86c8826dec5e698eb6644205cbbbe4c774214011adea4baf2875e85948d6922",
+        "ncnn-gpu-fp16packed-input16-out1.fp32": "5f371c97233e524e442e5e52065ac729d8e5f1e7c24928aeab9dcb702fd3ca97"
+      },
+      "log_sha256": {
+        "cpu": "17fb6fe210ed49b5b4b4168c00013fcca44e7f74895a0f5ee8e60f45a6d45e60",
+        "gpu-fp16packed-input16": "b3d810f14714cf6749cb5f87ef7c6902c061fd00f033cac2947db14557e02709"
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/empty-416/gpu-fp32-0b271831ccca4a55be85f35f678975db",
+      "historical_cpu_oracle_byte_identical": true,
+      "output_finite": {
+        "ncnn-cpu-out0.fp32": true,
+        "ncnn-cpu-out1.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out0.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out1.fp32": true
+      },
+      "raw_gates_passed": false,
+      "raw_gates": {
+        "out0": {
+          "max_abs": 0.9630889892578125,
+          "mean_abs": 0.008738714803249458,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": false,
+          "mean_passed": true
+        },
+        "out1": {
+          "max_abs": 0.20549368858337402,
+          "mean_abs": 0.011541814914286233,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": false,
+          "mean_passed": false
+        }
+      },
+      "decoded_count_gate": {
+        "expected": 0,
+        "reference": 0,
+        "actual": 0,
+        "passed": true
+      },
+      "decoded_association_gate": {
+        "expected": 0,
+        "matched": 0,
+        "passed": true,
+        "matches": []
+      },
+      "annotation_gates": {},
+      "decoded_semantic_gates_passed": true
+    },
+    {
+      "fixture": "seven-square320",
+      "archive": "android-yolo/device-runs/seven-square320/gpu-fp16packed-input16-6405ff8134724d7c8599cd5169f0c954",
+      "run_id": "gpu-fp16packed-input16-6405ff8134724d7c8599cd5169f0c954",
+      "serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "passed": false,
+      "comparison_recomputed_identical": true,
+      "execution_hashes_and_typed_log_validated": true,
+      "fixture_sha256": "07526680d17f02a59331b409c6689123e3dc9d25cea7c1283312127c1a57b556",
+      "comparison_sha256": "51392365d32f4ff74d94ef80cd530a5d738f55515832ae1b77ece9e52d1a5ead",
+      "execution_sha256": "ce9ceb113e3c385c24dfe8f7c1be78e2f643f9977791c114f6f3ab73c229b910",
+      "input_sha256": "d085eac5dc2e402209d86f64cb632c9115b8f4b829e383b429e234d9363820dc",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "afa4306a6a9fb69b86cf7c5007a6aaaf408005a24e808f312d2baff22b3df7df",
+        "ncnn-cpu-out1.fp32": "1f010909681071522208253a1fc39546683822a293778ab498a5eb0ce82fa7aa"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp16packed-input16-out0.fp32": "758ab46d1a10a59e9a2857798b0d3ff8be46eaf2476ea96590bb5ab45f9a7e38",
+        "ncnn-gpu-fp16packed-input16-out1.fp32": "b5a54584199e7c4e20a100538001adde301c09384ea80fb09bdcf8a405fe8e47"
+      },
+      "log_sha256": {
+        "cpu": "e424689ff951bdc4f61decd20e03af517ef6eb21ae4831b0191331afc058da54",
+        "gpu-fp16packed-input16": "4758e65ac6e58f79d00af40493643fdc81a49856f9a2cc0aa92dbe1540e15040"
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/seven-square320/gpu-fp32-7ac8880bcdd942fcb54edd6743856451",
+      "historical_cpu_oracle_byte_identical": true,
+      "output_finite": {
+        "ncnn-cpu-out0.fp32": true,
+        "ncnn-cpu-out1.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out0.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out1.fp32": true
+      },
+      "raw_gates_passed": false,
+      "raw_gates": {
+        "out0": {
+          "max_abs": 0.39270591735839844,
+          "mean_abs": 0.008171456961562394,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": false,
+          "mean_passed": true
+        },
+        "out1": {
+          "max_abs": 0.09035701304674149,
+          "mean_abs": 0.00653770511945982,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": true,
+          "mean_passed": true
+        }
+      },
+      "decoded_count_gate": {
+        "expected": 7,
+        "reference": 7,
+        "actual": 7,
+        "passed": true
+      },
+      "decoded_association_gate": {
+        "expected": 7,
+        "matched": 7,
+        "passed": false,
+        "matches": [
+          {
+            "index": 0,
+            "values": {
+              "iou": 0.9995604050697036,
+              "score_error": 0.005140960216522217,
+              "joint_xy_max": 0.13166503906251137,
+              "joint_score_max": 0.0028044367133023274
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 1,
+            "values": {
+              "iou": 0.9986482397977714,
+              "score_error": 0.0051177144050598145,
+              "joint_xy_max": 0.15077667236334946,
+              "joint_score_max": 0.004514583935209537
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 2,
+            "values": {
+              "iou": 0.9983497867903762,
+              "score_error": 0.007861495018005371,
+              "joint_xy_max": 0.21964111328122726,
+              "joint_score_max": 0.0043594084823931345
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 3,
+            "values": {
+              "iou": 0.9988283879893899,
+              "score_error": 0.006075501441955566,
+              "joint_xy_max": 0.14116668701171875,
+              "joint_score_max": 0.004342338872389662
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 4,
+            "values": {
+              "iou": 0.9984978409504565,
+              "score_error": 0.008442461490631104,
+              "joint_xy_max": 0.5313240051269759,
+              "joint_score_max": 0.002714945800730395
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 5,
+            "values": {
+              "iou": 0.9991660589423544,
+              "score_error": 0.010688960552215576,
+              "joint_xy_max": 0.150054931640625,
+              "joint_score_max": 0.0021602269791336504
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": false,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": false
+          },
+          {
+            "index": 6,
+            "values": {
+              "iou": 0.9968369421072233,
+              "score_error": 0.008385032415390015,
+              "joint_xy_max": 0.18817138671875,
+              "joint_score_max": 0.0040653755811638215
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          }
+        ]
+      },
+      "annotation_gates": {
+        "annotation_reference": {
+          "passed": true,
+          "minimum_iou": 0.3,
+          "matches": [
+            {
+              "person": "left-rear",
+              "body": 4,
+              "iou": 0.6639046141640261
+            },
+            {
+              "person": "left-front",
+              "body": 2,
+              "iou": 0.6387224489661822
+            },
+            {
+              "person": "middle-left-rear",
+              "body": 5,
+              "iou": 0.6261917367616117
+            },
+            {
+              "person": "center-front",
+              "body": 1,
+              "iou": 0.41019135909252036
+            },
+            {
+              "person": "middle-right-rear",
+              "body": 6,
+              "iou": 0.6494470491745341
+            },
+            {
+              "person": "right-front",
+              "body": 0,
+              "iou": 0.6358575183172177
+            },
+            {
+              "person": "right-rear",
+              "body": 3,
+              "iou": 0.555736496850495
+            }
+          ]
+        },
+        "annotation_actual": {
+          "passed": true,
+          "minimum_iou": 0.3,
+          "matches": [
+            {
+              "person": "left-rear",
+              "body": 4,
+              "iou": 0.6632425430782469
+            },
+            {
+              "person": "left-front",
+              "body": 2,
+              "iou": 0.6397098993694399
+            },
+            {
+              "person": "middle-left-rear",
+              "body": 5,
+              "iou": 0.6264094624030694
+            },
+            {
+              "person": "center-front",
+              "body": 1,
+              "iou": 0.4101716070285188
+            },
+            {
+              "person": "middle-right-rear",
+              "body": 6,
+              "iou": 0.6504030766013723
+            },
+            {
+              "person": "right-front",
+              "body": 0,
+              "iou": 0.6361105601856147
+            },
+            {
+              "person": "right-rear",
+              "body": 3,
+              "iou": 0.555136238146913
+            }
+          ]
+        }
+      },
+      "decoded_semantic_gates_passed": false
+    },
+    {
+      "fixture": "one-square320",
+      "archive": "android-yolo/device-runs/one-square320/gpu-fp16packed-input16-a4a4168963d44189b0e4a4b37f664e9c",
+      "run_id": "gpu-fp16packed-input16-a4a4168963d44189b0e4a4b37f664e9c",
+      "serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "passed": false,
+      "comparison_recomputed_identical": true,
+      "execution_hashes_and_typed_log_validated": true,
+      "fixture_sha256": "1954986f40f4982224c10bbab335868ec20a91fa6c7f41d224ca7f6693ca2e30",
+      "comparison_sha256": "760c18bb8fd00de906a67d230a6d0d9716a2969cdd84685e335702b44e5692f8",
+      "execution_sha256": "044eb968812eb5dcfaf51140b905f238af3870fb581cc4646f87cbc5d7ecfb4d",
+      "input_sha256": "911cd25acd12b9a1110873d7d873f43809d7a48d7b158e13e85e160cfbfe21fa",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "6df5f7af3c4e53c3dd11778eef83bab232519a4fa051599eb58d11577ef20757",
+        "ncnn-cpu-out1.fp32": "a53a24e8ca341c95c41a04d32476afccbac41c79406b3d0a0d608cf69d657d5a"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp16packed-input16-out0.fp32": "6cf2d52a8c66ab6ecf4cc05a8f8db349809fe1f53a4d3d52624068b2f58f84a0",
+        "ncnn-gpu-fp16packed-input16-out1.fp32": "7d17413f2197e5b15de1152a8a09753395a19ba007a80f3f0a8bd2e8ba49c719"
+      },
+      "log_sha256": {
+        "cpu": "e424689ff951bdc4f61decd20e03af517ef6eb21ae4831b0191331afc058da54",
+        "gpu-fp16packed-input16": "4758e65ac6e58f79d00af40493643fdc81a49856f9a2cc0aa92dbe1540e15040"
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/one-square320/gpu-fp32-ee829ef774e3476f93bfdc8129e3a99d",
+      "historical_cpu_oracle_byte_identical": true,
+      "output_finite": {
+        "ncnn-cpu-out0.fp32": true,
+        "ncnn-cpu-out1.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out0.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out1.fp32": true
+      },
+      "raw_gates_passed": false,
+      "raw_gates": {
+        "out0": {
+          "max_abs": 0.32085227966308594,
+          "mean_abs": 0.006758494991012785,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": false,
+          "mean_passed": true
+        },
+        "out1": {
+          "max_abs": 0.07615900039672852,
+          "mean_abs": 0.00599135135363192,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": true,
+          "mean_passed": true
+        }
+      },
+      "decoded_count_gate": {
+        "expected": 1,
+        "reference": 1,
+        "actual": 1,
+        "passed": true
+      },
+      "decoded_association_gate": {
+        "expected": 1,
+        "matched": 1,
+        "passed": true,
+        "matches": [
+          {
+            "index": 0,
+            "values": {
+              "iou": 0.9994995949175473,
+              "score_error": 0.0013380050659179688,
+              "joint_xy_max": 0.3190575122833259,
+              "joint_score_max": 0.0019075200535383363
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          }
+        ]
+      },
+      "annotation_gates": {},
+      "decoded_semantic_gates_passed": true
+    },
+    {
+      "fixture": "seven-square416",
+      "archive": "android-yolo/device-runs/seven-square416/gpu-fp16packed-input16-7807dba969674c4dae721fb4872365ee",
+      "run_id": "gpu-fp16packed-input16-7807dba969674c4dae721fb4872365ee",
+      "serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "passed": false,
+      "comparison_recomputed_identical": true,
+      "execution_hashes_and_typed_log_validated": true,
+      "fixture_sha256": "bced8ed630778369db514fd2c335456b77a8c28e116eb0def46efc8a147bca39",
+      "comparison_sha256": "fe065da3f012cf39d4bd56e753aa96277a9c8b71f35af0f253d6b90236cfe75c",
+      "execution_sha256": "1f408116905bdd2851fc844d9fde2b0fedb8f40c5f7333119a37f1a33664e5f8",
+      "input_sha256": "edfeb1742678c52b6b55cdb14f7b1569ec42d8691293a20394ce179c03297f39",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "9637a49d24c52d8a60c042db422bdbb1d433b88d746fb3b15e0d2184df8b54c9",
+        "ncnn-cpu-out1.fp32": "dd5156aa9e04b7d02057f1bad0fbec61911e7572b113ccf8fedf1292b18e1fc0"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp16packed-input16-out0.fp32": "2bed90e23fa21aec7f588458d98170f4a2a0a3039535c9564830ce83d22c5a0b",
+        "ncnn-gpu-fp16packed-input16-out1.fp32": "64b0aae8a9d234191243aaa51bd96017bb0b7e19474ecf3ea22660589ad055b0"
+      },
+      "log_sha256": {
+        "cpu": "f24ab5a937d4667e411935bfc70cb0988b00f4cc3fc5b17c81a429abe3882a15",
+        "gpu-fp16packed-input16": "ca53e208228a78b6db4970eff7c4fde6675380a29434c524ff462b713bfd034e"
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/seven-square416/gpu-fp32-b088221cf8cf4f3c83abad5725a09ebf",
+      "historical_cpu_oracle_byte_identical": true,
+      "output_finite": {
+        "ncnn-cpu-out0.fp32": true,
+        "ncnn-cpu-out1.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out0.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out1.fp32": true
+      },
+      "raw_gates_passed": false,
+      "raw_gates": {
+        "out0": {
+          "max_abs": 0.5112686157226562,
+          "mean_abs": 0.0077767523616331866,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": false,
+          "mean_passed": true
+        },
+        "out1": {
+          "max_abs": 0.1199638843536377,
+          "mean_abs": 0.007431347403521544,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": true,
+          "mean_passed": true
+        }
+      },
+      "decoded_count_gate": {
+        "expected": 7,
+        "reference": 7,
+        "actual": 7,
+        "passed": true
+      },
+      "decoded_association_gate": {
+        "expected": 7,
+        "matched": 7,
+        "passed": true,
+        "matches": [
+          {
+            "index": 0,
+            "values": {
+              "iou": 0.999228563005766,
+              "score_error": 0.0031086206436157227,
+              "joint_xy_max": 0.22091909555285838,
+              "joint_score_max": 0.0024408068770249702
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 1,
+            "values": {
+              "iou": 0.9986422771497577,
+              "score_error": 0.00350797176361084,
+              "joint_xy_max": 0.4277062049279152,
+              "joint_score_max": 0.0042637258256559285
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 2,
+            "values": {
+              "iou": 0.9989625623823685,
+              "score_error": 0.004690647125244141,
+              "joint_xy_max": 0.5720167893629764,
+              "joint_score_max": 0.005749558956179568
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 3,
+            "values": {
+              "iou": 0.9968295676756493,
+              "score_error": 0.006403684616088867,
+              "joint_xy_max": 0.7259944035456556,
+              "joint_score_max": 0.005161643346270117
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 4,
+            "values": {
+              "iou": 0.9991915905578942,
+              "score_error": 0.00322645902633667,
+              "joint_xy_max": 0.1819810133713986,
+              "joint_score_max": 0.004119124406561758
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 5,
+            "values": {
+              "iou": 0.9984623293211985,
+              "score_error": 0.00802844762802124,
+              "joint_xy_max": 0.1684523362379764,
+              "joint_score_max": 0.006733403892878687
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          },
+          {
+            "index": 6,
+            "values": {
+              "iou": 0.9983084524137819,
+              "score_error": 0.008991360664367676,
+              "joint_xy_max": 0.1060884915865472,
+              "joint_score_max": 0.004563756426794963
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          }
+        ]
+      },
+      "annotation_gates": {
+        "annotation_reference": {
+          "passed": true,
+          "minimum_iou": 0.3,
+          "matches": [
+            {
+              "person": "left-rear",
+              "body": 3,
+              "iou": 0.7464306534116384
+            },
+            {
+              "person": "left-front",
+              "body": 2,
+              "iou": 0.6217593784027441
+            },
+            {
+              "person": "middle-left-rear",
+              "body": 5,
+              "iou": 0.6194502644966886
+            },
+            {
+              "person": "center-front",
+              "body": 1,
+              "iou": 0.39325436725749335
+            },
+            {
+              "person": "middle-right-rear",
+              "body": 6,
+              "iou": 0.6287018749515734
+            },
+            {
+              "person": "right-front",
+              "body": 0,
+              "iou": 0.6379428295059228
+            },
+            {
+              "person": "right-rear",
+              "body": 4,
+              "iou": 0.5613789460525016
+            }
+          ]
+        },
+        "annotation_actual": {
+          "passed": true,
+          "minimum_iou": 0.3,
+          "matches": [
+            {
+              "person": "left-rear",
+              "body": 3,
+              "iou": 0.7458494808551819
+            },
+            {
+              "person": "left-front",
+              "body": 2,
+              "iou": 0.6215624859285385
+            },
+            {
+              "person": "middle-left-rear",
+              "body": 5,
+              "iou": 0.620185841861528
+            },
+            {
+              "person": "center-front",
+              "body": 1,
+              "iou": 0.39377944773640083
+            },
+            {
+              "person": "middle-right-rear",
+              "body": 6,
+              "iou": 0.6295321523840358
+            },
+            {
+              "person": "right-front",
+              "body": 0,
+              "iou": 0.6377469769402843
+            },
+            {
+              "person": "right-rear",
+              "body": 4,
+              "iou": 0.5609343850144709
+            }
+          ]
+        }
+      },
+      "decoded_semantic_gates_passed": true
+    },
+    {
+      "fixture": "one-square416",
+      "archive": "android-yolo/device-runs/one-square416/gpu-fp16packed-input16-55ee9b98ac844a9381ae5e37f268131d",
+      "run_id": "gpu-fp16packed-input16-55ee9b98ac844a9381ae5e37f268131d",
+      "serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "passed": false,
+      "comparison_recomputed_identical": true,
+      "execution_hashes_and_typed_log_validated": true,
+      "fixture_sha256": "3f380209d4e6d14dfe901bae8a6eaafdad2ae2d1d8759da0dc61165ba93f1438",
+      "comparison_sha256": "39b5fc89676ed6aafa986705180d4081f977abe3949a4298a61e97868797b6cf",
+      "execution_sha256": "87411107948ef49c8610e481d15ccb923422914bc7c31410c9e860565cbc74fa",
+      "input_sha256": "2d4a671027665aed7e7c400dcc576fb907cf790dce144e1764ecaf7cb3e7f2ae",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "5e9e8f9368d0ecc59e7ce9bfa99f94221da6e36fe56058ac138e58a9191eeb58",
+        "ncnn-cpu-out1.fp32": "5d05515faa9fa6da1379236d9047159a8d94acb3e9f0b9e45268ac4468edf3cb"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp16packed-input16-out0.fp32": "61018de49b70d4f5ad9d94fb6f78a8bdea1cbe6ab7486fac7cace004bd6ffd78",
+        "ncnn-gpu-fp16packed-input16-out1.fp32": "ae9fda55965ec6341bbf215cf8bd9ce13b05be73083675d56dae222213ef59b0"
+      },
+      "log_sha256": {
+        "cpu": "f24ab5a937d4667e411935bfc70cb0988b00f4cc3fc5b17c81a429abe3882a15",
+        "gpu-fp16packed-input16": "ca53e208228a78b6db4970eff7c4fde6675380a29434c524ff462b713bfd034e"
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/one-square416/gpu-fp32-e3f2f22a39cb481fb51a38d1d53a0e37",
+      "historical_cpu_oracle_byte_identical": true,
+      "output_finite": {
+        "ncnn-cpu-out0.fp32": true,
+        "ncnn-cpu-out1.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out0.fp32": true,
+        "ncnn-gpu-fp16packed-input16-out1.fp32": true
+      },
+      "raw_gates_passed": false,
+      "raw_gates": {
+        "out0": {
+          "max_abs": 0.3783550262451172,
+          "mean_abs": 0.0067274301986196125,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": false,
+          "mean_passed": true
+        },
+        "out1": {
+          "max_abs": 0.13621357083320618,
+          "mean_abs": 0.006693120605805474,
+          "max_limit": 0.2,
+          "mean_limit": 0.01,
+          "max_passed": true,
+          "mean_passed": true
+        }
+      },
+      "decoded_count_gate": {
+        "expected": 1,
+        "reference": 1,
+        "actual": 1,
+        "passed": true
+      },
+      "decoded_association_gate": {
+        "expected": 1,
+        "matched": 1,
+        "passed": true,
+        "matches": [
+          {
+            "index": 0,
+            "values": {
+              "iou": 0.9993936599721126,
+              "score_error": 0.0018088221549987793,
+              "joint_xy_max": 0.27564026759222315,
+              "joint_score_max": 0.0020507916788759517
+            },
+            "threshold_checks": {
+              "box_iou": true,
+              "score": true,
+              "joint_xy": true,
+              "joint_score": true
+            },
+            "passed": true
+          }
+        ]
+      },
+      "annotation_gates": {},
+      "decoded_semantic_gates_passed": true
+    }
+  ],
+  "raised_arm_semantic": {
+    "frame": 1500,
+    "fixture": "seven-640",
+    "people": 7,
+    "minimum_confidence": 0.2,
+    "source_width": 1024,
+    "source_height": 576,
+    "valid_left_wrists_above_shoulders": 7,
+    "passed": true,
+    "checks": [
+      {
+        "box": [
+          539.4979414437344,
+          169.1792874567504,
+          621.917447713051,
+          455.7935546496954
+        ],
+        "left_shoulder": [
+          588.4125,
+          247.825,
+          0.9922744656025764
+        ],
+        "left_wrist": [
+          608.425,
+          191.75,
+          0.9497626398694519
+        ],
+        "confidence_and_source_bounds_passed": true,
+        "left_wrist_above_left_shoulder": true,
+        "passed": true
+      },
+      {
+        "box": [
+          736.5795658990376,
+          162.00779545986703,
+          823.7437480503738,
+          430.625366563674
+        ],
+        "left_shoulder": [
+          796.8,
+          235.85,
+          0.9901019362839765
+        ],
+        "left_wrist": [
+          813.6,
+          189.7,
+          0.9194980766039683
+        ],
+        "confidence_and_source_bounds_passed": true,
+        "left_wrist_above_left_shoulder": true,
+        "passed": true
+      },
+      {
+        "box": [
+          270.1093757075288,
+          191.43858478765333,
+          352.9871305634317,
+          432.499643240606
+        ],
+        "left_shoulder": [
+          322.05,
+          247.95,
+          0.9835338249524974
+        ],
+        "left_wrist": [
+          339.05,
+          208.95,
+          0.9268352785943768
+        ],
+        "confidence_and_source_bounds_passed": true,
+        "left_wrist_above_left_shoulder": true,
+        "passed": true
+      },
+      {
+        "box": [
+          843.6676023097514,
+          165.29670200569814,
+          929.7828717577635,
+          385.3020586465
+        ],
+        "left_shoulder": [
+          893.0,
+          229.85,
+          0.9885803853543514
+        ],
+        "left_wrist": [
+          923.6,
+          174.6,
+          0.9359345675826197
+        ],
+        "confidence_and_source_bounds_passed": true,
+        "left_wrist_above_left_shoulder": true,
+        "passed": true
+      },
+      {
+        "box": [
+          608.8192038431688,
+          175.74539981663114,
+          680.6232512921853,
+          390.3306281828821
+        ],
+        "left_shoulder": [
+          643.1,
+          236.775,
+          0.9830850867332734
+        ],
+        "left_wrist": [
+          664.925,
+          206.95,
+          0.9395815801038564
+        ],
+        "confidence_and_source_bounds_passed": true,
+        "left_wrist_above_left_shoulder": true,
+        "passed": true
+      },
+      {
+        "box": [
+          160.22338571652435,
+          194.18182196158278,
+          237.74305055167412,
+          386.0780309269926
+        ],
+        "left_shoulder": [
+          201.8625,
+          235.35,
+          0.9928508980334536
+        ],
+        "left_wrist": [
+          224.55,
+          203.4,
+          0.9648551535992067
+        ],
+        "confidence_and_source_bounds_passed": true,
+        "left_wrist_above_left_shoulder": true,
+        "passed": true
+      },
+      {
+        "box": [
+          386.7933050007502,
+          184.50519462289338,
+          458.2294413169881,
+          389.9671053036119
+        ],
+        "left_shoulder": [
+          435.875,
+          243.375,
+          0.9636433368120323
+        ],
+        "left_wrist": [
+          447.375,
+          197.25,
+          0.8402589766446108
+        ],
+        "confidence_and_source_bounds_passed": true,
+        "left_wrist_above_left_shoulder": true,
+        "passed": true
+      }
+    ],
+    "scope": "Single real fixture semantics only; does not override failed numerical gate."
+  },
+  "closure": "All eleven actual executions completed with finite output, but all eleven failed unchanged frozen numerical limits. Candidate closed without conversion repair or SDK integration. Single-frame decoded semantics and input representation validity do not establish numerical eligibility.",
+  "limitations": "Same converted ncnn graph CPU oracle; not original PyTorch/export oracle. Source-order OOM/drain checks are not hardware fault injection. No performance measurement or >=25/30 FPS claim."
+}

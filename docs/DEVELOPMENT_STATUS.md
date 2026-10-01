@@ -1,3 +1,16 @@
+# Current YOLO-M3 update: FP16 input candidate closed (2026-10-01)
+
+The new explicit GPU-cast FP16 pack1 diagnostic completed all eleven actual
+Snapdragon888 fixtures with finite output, but every frozen numerical golden
+failed. Independent evidence/code review PASS; 67 focused Python tests and
+architecture/public-surface checks PASS. All22 CPU oracle hashes remain exact.
+Decoded semantic checks pass9/11 and seven640 raises7/7 left arms in one frame;
+these do not override failed raw limits. Candidate CLOSED without repair or
+SDK integration. See [closure evidence](reports/2026-10-01-yolo-fp16-input-closure.md).
+Accepted640 remains the device baseline. Explicit512 averages21.18 fresh FPS
+with partial frames and is not default-promoted. >=25 complete-observation FPS
+is unmet; target30 remains. M3 is sole active milestone, no main/Release.
+
 # Current YOLO-M3 result:512 improves speed, acceptance still unmet (2026-10-01)
 
 Actual Unity GPU-AHB512 capture was independently reviewed:21.1799 fresh
