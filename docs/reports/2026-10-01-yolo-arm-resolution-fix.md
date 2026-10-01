@@ -47,6 +47,31 @@ These local weights are not redistributed. The native build also includes
 preserved uncommitted R4 work; the SHA identifies the tested artifact, not a
 claim that HEAD alone reproduces that artifact.
 
-Continuous device following, jitter, independent person coverage and>=25 fresh
-complete observation FPS remain pending. Existing25FPS source cannot certify30.
-No merge to main, Release or completed physical acceptance is claimed.
+## Integrated device result
+
+The authorized open Unity2021.3.45f1 project was backed up, refreshed with zero
+errors, and built through `HumanVision/Evaluation/Build Continuous Video Diagnostic`.
+APK runtime/model/native closure and the installed APK hash matched the reviewed
+stage. APK SHA256:
+`9cc3b87f8b824fe9819b85d1163c15b0e4d1241e59e223d9dca099905710caae`.
+
+```powershell
+pwsh -NoProfile -File tools/test/collect_android_r4_video.ps1 -BuildDirectory out/android-yolo/eval-rectangle640-20261001-m3-armfix -RunLabel yolo640-arms-seven-75s -DurationSeconds 75
+py -3 out/android-yolo/unity-preflight/analyze_observations.py out/android-yolo/eval-rectangle640-20261001-m3-armfix/device-yolo640-arms-seven-75s
+```
+
+The warmed82.312s measurement window includes collector overhead.1261 distinct
+observations give15.32 fresh FPS;1251 count7 observations give15.20FPS. There
+are no partial/empty frames,10 count8 frames and zero GPU-worker errors. Count7
+alone does not certify independent matching or each joint. P50/P95 observed
+age is114.19/134.67ms. Input full-frame CPU readbacks remain zero. Inference HUD
+shows about59ms. Screens30/45/60 show all seven people after collapsing the panel.
+The user reports the new version basically follows actions and requests higher
+FPS. This is useful qualitative feedback, not final physical acceptance.
+
+The >=25 complete-observation FPS gate still FAILS. Preserve640 resolution while
+investigating GPU execution. Previous FP16-storage candidate remains ineligible.
+A separate, explicitly identified packed16-internal/FP32-input candidate may only
+enter runtime after passing unchanged numerical and semantic gates; there is no
+automatic fallback or acceptance-threshold relaxation. Existing25FPS source
+cannot certify30. No main merge, Release or completed acceptance is claimed.

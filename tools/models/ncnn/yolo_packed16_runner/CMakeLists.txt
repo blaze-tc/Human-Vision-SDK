@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.24)
+project(yolo_packed16_model_gate LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+find_package(ncnn REQUIRED)
+add_executable(yolo_packed16_golden_runner ../yolo_packed16_golden_runner.cpp)
+target_link_libraries(yolo_packed16_golden_runner PRIVATE ncnn)

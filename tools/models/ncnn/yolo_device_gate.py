@@ -11,7 +11,7 @@ import sys
 import time
 import uuid
 sys.path.insert(0,str(Path(__file__).resolve().parent))
-from yolo_pose_gate import MODEL_HASHES,sha,compare_directory,execution_options
+from yolo_pose_gate import MODEL_HASHES,sha,compare_directory,execution_options,runner_recipe
 
 
 def save(path,value):
@@ -32,7 +32,8 @@ def run_fixture(args,name):
     shutil.copyfile(args.runner,directory/'runner')
     remote='/data/local/tmp/hv-yolo-'+uuid.uuid4().hex
     prefix=[args.adb,'-s',args.serial]
-    record=dict(schema_version=1,run_id=run_id,state='RUNNING',gpu_mode=args.gpu_mode,serial=args.serial,runner_sha256=sha(directory/'runner'),runner_source_sha256=sha(Path(__file__).with_name('yolo_golden_runner.cpp')),runner_cmake_sha256=sha(Path(__file__).with_name('yolo_runner')/'CMakeLists.txt'),model_hashes=MODEL_HASHES,fixture_sha256=sha(directory/'fixture.json'),input_sha256=sha(directory/'input.fp32'),geometry=g,started_ns=time.time_ns(),stages={})
+    runner_source,runner_cmake=runner_recipe(args.gpu_mode)
+    record=dict(schema_version=1,run_id=run_id,state='RUNNING',gpu_mode=args.gpu_mode,serial=args.serial,runner_sha256=sha(directory/'runner'),runner_source_sha256=sha(runner_source),runner_cmake_sha256=sha(runner_cmake),model_hashes=MODEL_HASHES,fixture_sha256=sha(directory/'fixture.json'),input_sha256=sha(directory/'input.fp32'),geometry=g,started_ns=time.time_ns(),stages={})
     manifest=directory/'execution.json'; save(manifest,record)
     def adb(*command):
         completed=subprocess.run(prefix+list(command),stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
@@ -77,7 +78,7 @@ def run_fixture(args,name):
 def main():
     p=argparse.ArgumentParser(); p.add_argument('--adb',default='adb'); p.add_argument('--serial',required=True)
     p.add_argument('--runner',type=Path,required=True); p.add_argument('--root',type=Path,default=Path('out/android-yolo'))
-    p.add_argument('--gpu-mode',choices=('gpu','gpu-fp32'),default='gpu-fp32'); p.add_argument('--fixtures',nargs='+',required=True)
+    p.add_argument('--gpu-mode',choices=('gpu','gpu-fp32','gpu-fp32-packed16'),default='gpu-fp32'); p.add_argument('--fixtures',nargs='+',required=True)
     a=p.parse_args()
     if not a.runner.is_file() or a.runner.read_bytes()[:4]!=b'\x7fELF': raise ValueError('Android ELF runner required')
     results=[run_fixture(a,name) for name in a.fixtures]

@@ -7,6 +7,7 @@ from pathlib import Path
 import argparse
 import hashlib
 import json
+import re
 import numpy as np
 
 REVISION = 'f1ac75ec54ccb3817a9eba620fe51da8bdcf87ca'
@@ -18,9 +19,34 @@ LIMITS = dict(raw_max=.2,raw_mean=.01,box_iou=.95,score=.01,joint_xy=3.,joint_sc
 
 
 def execution_options(mode):
-    if mode not in ('cpu','gpu','gpu-fp32'): raise ValueError('unknown execution mode')
+    if mode not in ('cpu','gpu','gpu-fp32','gpu-fp32-packed16'): raise ValueError('unknown execution mode')
     half=mode=='gpu'
-    return dict(vulkan=mode!='cpu',fp16_storage=half,fp16_packed=half,fp16_arithmetic=False,subgroup=False,use_packing_layout=True,input_elempack=1,input_bits=16 if half else 32,output_elempack=1,output_bits=32,num_threads=2)
+    return dict(vulkan=mode!='cpu',fp16_storage=half,fp16_packed=half or mode=='gpu-fp32-packed16',fp16_arithmetic=False,subgroup=False,use_packing_layout=True,input_elempack=1,input_bits=16 if half else 32,output_elempack=1,output_bits=32,num_threads=2)
+
+
+def runner_recipe(gpu_mode):
+    base=Path(__file__).resolve().parent
+    if gpu_mode=='gpu-fp32-packed16':
+        return base/'yolo_packed16_golden_runner.cpp',base/'yolo_packed16_runner/CMakeLists.txt'
+    if gpu_mode in ('gpu','gpu-fp32'):
+        return base/'yolo_golden_runner.cpp',base/'yolo_runner/CMakeLists.txt'
+    raise ValueError('unknown precision candidate')
+
+
+def validate_packed16_log(path,g):
+    """Check actual runner boundary diagnostics, in addition to requested options."""
+    lines=path.read_text(encoding='utf-8').splitlines()
+    options='options mode=gpu-fp32-packed16 vulkan=1 storage16=0 packed16=1 arithmetic16=0 subgroup=0 packing=1 threads=2'
+    option_lines=[line for line in lines if line.startswith('options ')]
+    if option_lines!=[options]: raise ValueError('actual mixed packed storage options mismatch')
+    layer_lines=[line for line in lines if line.startswith('layers=')]
+    if len(layer_lines)!=1 or not re.fullmatch(r'layers=[1-9][0-9]* unsupported=0 storage16=0 arithmetic16=0',layer_lines[0]): raise ValueError('unsupported or wrong precision Vulkan execution')
+    n=sum((g['width']//s)*(g['height']//s) for s in (8,16,32))
+    expected=[f"input in0 dims=3 w={g['width']} h={g['height']} c=3 pack=1 bits=32",
+              f'output out0 dims=2 w=65 h={n} c=1 pack=1 bits=32',
+              f'output out1 dims=2 w=51 h={n} c=1 pack=1 bits=32']
+    actual=[line for line in lines if line.startswith(('input ','output '))]
+    if actual!=expected: raise ValueError('actual FP32 pack1 input/output contract mismatch')
 
 
 def validate_execution(directory,gpu_mode,fixture):
@@ -30,8 +56,9 @@ def validate_execution(directory,gpu_mode,fixture):
     if evidence.get('schema_version')!=1 or evidence.get('state')!='SUCCESS' or evidence.get('gpu_mode')!=gpu_mode: raise ValueError('execution is absent, failed, or wrong precision')
     if not evidence.get('serial') or not evidence.get('device_fingerprint') or evidence.get('completed_ns',0)<=evidence.get('started_ns',0): raise ValueError('device identity or completion missing')
     if evidence['runner_sha256']!=sha(directory/'runner'): raise ValueError('runner hash mismatch')
-    if evidence['runner_source_sha256']!=sha(Path(__file__).with_name('yolo_golden_runner.cpp')): raise ValueError('runner source hash mismatch')
-    if evidence['runner_cmake_sha256']!=sha(Path(__file__).with_name('yolo_runner')/'CMakeLists.txt'): raise ValueError('runner build recipe hash mismatch')
+    runner_source,runner_cmake=runner_recipe(gpu_mode)
+    if evidence['runner_source_sha256']!=sha(runner_source): raise ValueError('runner source hash mismatch')
+    if evidence['runner_cmake_sha256']!=sha(runner_cmake): raise ValueError('runner build recipe hash mismatch')
     if evidence['model_hashes']!=MODEL_HASHES: raise ValueError('model hash mismatch')
     if evidence['fixture_sha256']!=sha(directory/'fixture.json') or evidence['input_sha256']!=sha(directory/'input.fp32') or evidence['geometry']!=fixture['geometry']: raise ValueError('execution fixture mismatch')
     if not evidence.get('run_id'): raise ValueError('missing execution run ID')
@@ -44,6 +71,7 @@ def validate_execution(directory,gpu_mode,fixture):
         if stage.get('options')!=execution_options(mode): raise ValueError('precision/options mismatch')
         expected_log=f'android-{mode}.log'
         if stage.get('log_file')!=expected_log or stage.get('log_sha256')!=sha(directory/expected_log): raise ValueError('execution log hash mismatch')
+        if mode=='gpu-fp32-packed16': validate_packed16_log(directory/expected_log,fixture['geometry'])
         expected_names={f'ncnn-{mode}-{blob}.fp32' for blob in ('out0','out1')}
         if not isinstance(stage.get('output_hashes'),dict): raise ValueError('execution output hashes must be an object')
         if set(stage['output_hashes'])!=expected_names: raise ValueError('missing execution output binding')
@@ -152,9 +180,9 @@ def associate_annotations(bodies,annotations,min_iou=.3):
 
 def main():
     p=argparse.ArgumentParser(); p.add_argument('directory',type=Path)
-    p.add_argument('--gpu-mode',choices=('gpu','gpu-fp32'),default='gpu'); a=p.parse_args()
+    p.add_argument('--gpu-mode',choices=('gpu','gpu-fp32','gpu-fp32-packed16'),default='gpu'); a=p.parse_args()
     report=compare_directory(a.directory,a.gpu_mode)
-    filename='comparison.json' if a.gpu_mode=='gpu' else 'comparison-gpu-fp32.json'
+    filename='comparison.json' if a.gpu_mode=='gpu' else f'comparison-{a.gpu_mode}.json'
     (a.directory/filename).write_text(json.dumps(report,indent=2,allow_nan=False)+'\n')
     print(json.dumps({k:v for k,v in report.items() if k not in ('reference','actual')},indent=2))
     raise SystemExit(0 if report['passed'] else 1)
@@ -163,7 +191,7 @@ def main():
 def compare_directory(directory,gpu_mode='gpu'):
     """Always produce a failure result for malformed/missing evidence."""
     try:
-        if gpu_mode not in ('gpu','gpu-fp32'): raise ValueError('unknown precision candidate')
+        if gpu_mode not in ('gpu','gpu-fp32','gpu-fp32-packed16'): raise ValueError('unknown precision candidate')
         record=json.loads((directory/'fixture.json').read_text())
         if not isinstance(record,dict) or not isinstance(record.get('geometry'),dict): raise ValueError('fixture metadata and geometry must be objects')
         g=record['geometry']

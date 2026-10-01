@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "status": "REJECTED_INPUT_STORAGE_REPRESENTATION_CONTRACT",
+  "precision_mode": "gpu-fp32-packed16",
+  "device_serial": "e7c07019",
+  "runner_sha256": "00789087e297e1c22533d379ff13de41737c0fc766698b23ce330f1fdba6d935",
+  "limits": {
+    "raw_max": 0.2,
+    "raw_mean": 0.01,
+    "box_iou": 0.95,
+    "score": 0.01,
+    "joint_xy": 3.0,
+    "joint_score": 0.01
+  },
+  "fixtures": [
+    {
+      "fixture": "seven-416",
+      "archive": "android-yolo/device-runs/seven-416/gpu-fp32-packed16-5a21d25e9cff4b0fa913dc9c3082bc20",
+      "execution_sha256": "2c848c371db9cf36246d4d7889cd7c1e84a48b3755052ea369a2628337c3dd34",
+      "comparison_sha256": "a385bfb7b1cfacf3b70e7fc96a836182121acecc2d5de649d4ccdfac2027fa14",
+      "passed": false,
+      "raw": {
+        "out0": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 3.299686526645353e+37
+        },
+        "out1": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 4.0473137082155997e+37
+        }
+      }
+    },
+    {
+      "fixture": "one-416",
+      "archive": "android-yolo/device-runs/one-416/gpu-fp32-packed16-3002663a6c9e48558d9c728bd68657b6",
+      "execution_sha256": "589c2ca19e13e471284fd8d2156d9226e17d93cfe5800e8eaccf52f1bbb051d3",
+      "comparison_sha256": "4d9f85831e7932b03e00b2694b84137e334f4b748e20d51b023b8d105734c1cd",
+      "passed": false,
+      "raw": {
+        "out0": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 4.2698853216161155e+37
+        },
+        "out1": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 3.502054387503452e+37
+        }
+      }
+    },
+    {
+      "fixture": "seven-320",
+      "archive": "android-yolo/device-runs/seven-320/gpu-fp32-packed16-bd4ba75c48e641f9bd35c84ce1a27b7e",
+      "execution_sha256": "e1e2299a167f82b8228b84d9b9fc4a2ed17c1ad24b3245d3786d73681d1db556",
+      "comparison_sha256": "3783789cb375e8dcb2121f1913d6e1fa05b6c3ca05b158f7051cc0a1ce5041b2",
+      "passed": false,
+      "raw": {
+        "out0": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 4.12248744304559e+37
+        },
+        "out1": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 4.2139369331816185e+37
+        }
+      }
+    },
+    {
+      "fixture": "one-320",
+      "archive": "android-yolo/device-runs/one-320/gpu-fp32-packed16-2d4c73aaef654cc48b618a5e54ae0b70",
+      "execution_sha256": "a980f3dc7808aee1efab4ad1e67c40df65ccdd639732fe8c2a47fe0a6b5aff38",
+      "comparison_sha256": "e0e11919831c2c5a478946be55a07d0fde0509157ef3b88bc13b3cb5451c51d2",
+      "passed": false,
+      "raw": {
+        "out0": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 3.3443189712099094e+37
+        },
+        "out1": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 4.249495579784202e+37
+        }
+      }
+    },
+    {
+      "fixture": "seven-640",
+      "archive": "android-yolo/device-runs/seven-640/gpu-fp32-packed16-8e31915e8fbf4a8d90a42767c273ef72",
+      "execution_sha256": "6f9bf390458a7873875914280fff814e586eefd3b5f30288d505d69f1d601df6",
+      "comparison_sha256": "990954a0b2f6702f274c701653c84626c9c5320b11741713ece3d6f0d5de2795",
+      "passed": false,
+      "raw": {
+        "out0": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 3.6886082584704027e+37
+        },
+        "out1": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 3.6090775912818777e+37
+        }
+      }
+    },
+    {
+      "fixture": "one-640",
+      "archive": "android-yolo/device-runs/one-640/gpu-fp32-packed16-0438574744a1458f83e8ba779e7da6eb",
+      "execution_sha256": "dfca8842221829258782147a94debd7d7e7c365b2376e8b6068362cc5bc5ff05",
+      "comparison_sha256": "f981fd57fcef09ea90c974b3a6cadaf337f0368090b4432e36f6ed5f8dc50ce7",
+      "passed": false,
+      "raw": {
+        "out0": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 4.217429136768986e+37
+        },
+        "out1": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 4.2698853216161155e+37
+        }
+      }
+    },
+    {
+      "fixture": "empty-416",
+      "archive": "android-yolo/device-runs/empty-416/gpu-fp32-packed16-faa34872004149a89f4b63c2bccdb012",
+      "execution_sha256": "c600faf4317b7537127146dffb5dd30438a8df8fd6e6423254cce05079e17748",
+      "comparison_sha256": "9b66ac905204c22f3b78c3344765a50517598803e53bd2aaca11c3a820c0519e",
+      "passed": false,
+      "raw": {
+        "out0": {
+          "max_abs": 6.965116440647041e+18,
+          "mean_abs": 1167149385804367.8
+        },
+        "out1": {
+          "max_abs": 1.2107053584211019e+30,
+          "mean_abs": 6.402971100049836e+26
+        }
+      }
+    },
+    {
+      "fixture": "seven-square320",
+      "archive": "android-yolo/device-runs/seven-square320/gpu-fp32-packed16-9a647e02ffff48dabd90d0784d71ccc3",
+      "execution_sha256": "9ae4b66defb3f0facc3e5c7d3c706e09e3c92396fc44b04542ee4d976a566b9e",
+      "comparison_sha256": "9e7228d364c14eb4ff67585c27498cda87ef0b35c23cc8c5c02e56b5ef9e362f",
+      "passed": false,
+      "raw": {
+        "out0": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 3.540657727348607e+37
+        },
+        "out1": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 3.940175222552014e+37
+        }
+      }
+    },
+    {
+      "fixture": "one-square320",
+      "archive": "android-yolo/device-runs/one-square320/gpu-fp32-packed16-ac1520d9402b4f14aacbd7e4aed99908",
+      "execution_sha256": "3d46bbfc656abbaa48c2388eaa35e70b76a502f4905ac9f167f4edb08a675f1f",
+      "comparison_sha256": "2738707e4c00831498719a906ffcbb906d557572c612982d6f5d1e92c4e9c476",
+      "passed": false,
+      "raw": {
+        "out0": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 3.540657727348607e+37
+        },
+        "out1": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 3.940175222552014e+37
+        }
+      }
+    },
+    {
+      "fixture": "seven-square416",
+      "archive": "android-yolo/device-runs/seven-square416/gpu-fp32-packed16-ef05285b31ad463096c5f6a4dee8de57",
+      "execution_sha256": "0d32521382bbd0f28688429ce466090926bb392db3c0c08d404a03c5904d1fe9",
+      "comparison_sha256": "44d1b3c87957e5c3be88ca8714e40a3d86c3ff50f94b1a1a60ed0cc04167402d",
+      "passed": false,
+      "raw": {
+        "out0": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 4.250968518188534e+37
+        },
+        "out1": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 4.2649312836516e+37
+        }
+      }
+    },
+    {
+      "fixture": "one-square416",
+      "archive": "android-yolo/device-runs/one-square416/gpu-fp32-packed16-4b5e707980db44b6bf1cb8f9192954fa",
+      "execution_sha256": "45815daef3b7fd544516dca3aeffde3fc89ea44a6f6103e651f12129ec77f04b",
+      "comparison_sha256": "5bf18376d2370096bb3a42c8c610a0aa13245a07992a69709c929496eae1c671",
+      "passed": false,
+      "raw": {
+        "out0": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 4.250968518188534e+37
+        },
+        "out1": {
+          "max_abs": 4.2698853216161155e+37,
+          "mean_abs": 4.2649312836516e+37
+        }
+      }
+    }
+  ],
+  "hardware_fps_acceptance": false,
+  "production_integration_allowed": false,
+  "interpretation": "Pinned ncnn packed16 scalar shaders read half pack1 data; explicit FP32 pack1 input conflicts. This is a candidate representation mismatch, not inherent device incapability."
+}
