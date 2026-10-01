@@ -41,6 +41,24 @@ namespace HumanVision.Tests
             }
         }
 
+        [TestCase(400, 600, 120)]
+        [TestCase(320, 240, 192)]
+        [TestCase(1920, 1080, 0)]
+        [TestCase(3840, 2160, 0)]
+        public void GuiScrollContentReservesScrollbarAndPaddingInsteadOfExpandingForLongPaths(int width, int height, int dpi)
+        {
+            float scale = GuiScale(width, height, dpi);
+            var panel = (UnityEngine.Rect)Policy("PcGuiLayout").GetMethod("PanelPixels").Invoke(null,
+                new object[] { (float)width, (float)height, new UnityEngine.Rect(0, 0, width, height), (float)dpi, 1f, true });
+            MethodInfo method = Policy("PcGuiLayout").GetMethod("ScrollContentWidth");
+            Assert.That(method, Is.Not.Null, "Scroll content must have an explicit width budget.");
+            float contentWidth = (float)method.Invoke(null, new object[] { panel.width, scale });
+            Assert.That(contentWidth, Is.GreaterThan(0));
+            Assert.That(contentWidth + 16 + 28, Is.LessThanOrEqualTo(panel.width / scale + .01f),
+                "Panel padding and visible scrollbar must fit beside the content.");
+            Assert.That(contentWidth, Is.LessThan(panel.width / scale));
+        }
+
         [Test]
         public void GuiResolutionAndValidDpiIncreaseReadableScale()
         {

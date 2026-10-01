@@ -68,3 +68,40 @@ checks and independent review before push/pinned Git delivery. Policy/compile
 success does not assert actual rendered/pointer behavior or hardware performance.
 No rerun of unchanged inference FPS. Root's scratch capture project points to
 updated local dedicated UPM. No release/publication acceptance claimed here.
+
+
+## Round 1 actual narrow-window overflow correction
+
+Root actual capture `out/pc-demo/gui-responsive/interaction-400x600-overflow.jpg`
+showed horizontal overflow at400x600 requested, DPI120, observed322x511 client:
+Stop clipped, status/captions unwrapped, long path expanding scroll contents.
+The image was inspected directly; original policy tests did not establish GUI
+content width. This follow-up fixes the observed failure without recognition changes.
+
+A ScrollContentWidth policy reserves16referenceunits panel padding,22scrollbar,
+6gutter. Scroll view always reserves a vertical scrollbar and uses no horizontal
+bar style. A fixed-width content group and explicit width for every grid,slider,
+textfield,label,toggle and button row constrain natural content sizes. Start/Stop
+split the width equally. Textfields are single-line; wrapped button/toggle captions
+use fixedHeight0 plus cached GUILayout.MinHeight44 options. Width options refresh
+only on window/scale changes; no new GUIStyle allocations per OnGUI.
+
+Real isolated Unity EditMode RED `overflow-red.xml`:18total,14passed,4expected
+failures for missing explicit width budget at400x600/320x240/1080p/4K.
+First implementation attempted nonexistent GUIStyle.minHeight; both Unity
+`overflow-green.log` and managed `overflow-managed.log` recorded CS1061/CS0117.
+Corrected immediately to GUILayout.MinHeight; retained failed logs as evidence.
+Final Unity `overflow-green-final.xml`:18/18PASS.
+`powershell -File tools/package/compile_managed.ps1`:PASS, including Android
+conditional compilation; evidence `overflow-managed-final.log`.
+`py -3.13 tools/test/test_pc_demo_package.py`:11/11PASS.
+Architecture/documentation and frozen public-surface checks:PASS.
+Final deterministic regeneration byte-identical; unchanged8DLL/native provenance
+and every model/profile source hash compared to prior implementation commit.
+Final pc.2 asset manifest SHA256:
+9f049790b65216ad06a6e64cb3257ad62e5cacc3e8faf1a0a9a7184337a334c8.
+
+Root owns a fresh actual Player capture/interaction gate and independent review
+for this correction. No screenshot success or pointer acceptance is claimed by
+these policy tests. User project and root screenshot project were not operated;
+only the separate isolated EditMode project was used. No push or Release.

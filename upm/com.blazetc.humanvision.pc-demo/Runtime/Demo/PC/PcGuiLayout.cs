@@ -27,6 +27,10 @@ namespace HumanVision.Demo.PC
                 Mathf.Min((expanded ? 950 : 64) * scale, Mathf.Max(1, safeArea.height - margin * 2)));
         }
 
+        //16 units of box padding +22 scrollbar +6 gutter; independent of
+        //the natural width of a file path, diagnostic line or button caption.
+        public static float ScrollContentWidth(float panelWidthPixels, float scale) => Mathf.Max(1, panelWidthPixels / scale - 44);
+
         public static float ScrollViewportHeight(float panelHeightPixels, float scale) => Mathf.Max(1, panelHeightPixels / scale - 64);
     }
 }
