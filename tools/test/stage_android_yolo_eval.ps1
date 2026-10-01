@@ -1,5 +1,5 @@
 param(
-    [ValidateSet(320,416,512,640)][int]$Size = 320,
+    [ValidateSet(320,416,512,576,640)][int]$Size = 320,
     [ValidateSet('default','sgemm','no-local-memory')][string]$Kernel = 'default',
     [Parameter(Mandatory)][string]$NativeLibrary,
     [Parameter(Mandatory)][string]$OutputDirectory,
@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path "$PSScriptRoot/../..").Path
 if (!$RuntimeDirectory) {
-    $runtimeShape = if ($Kernel -eq 'no-local-memory') { 'rectangle640x384-no-local-memory' } elseif ($Kernel -eq 'sgemm') { 'rectangle640x384-sgemm' } elseif ($Size -eq 640) { 'rectangle640x384-arm' } elseif ($Size -eq 512) { 'rectangle512x288-arm' } else { "square$Size" }
+    $runtimeShape = if ($Kernel -eq 'no-local-memory') { 'rectangle640x384-no-local-memory' } elseif ($Kernel -eq 'sgemm') { 'rectangle640x384-sgemm' } elseif ($Size -eq 640) { 'rectangle640x384-arm' } elseif ($Size -eq 576) { 'rectangle576x352-arm' } elseif ($Size -eq 512) { 'rectangle512x288-arm' } else { "square$Size" }
     $RuntimeDirectory = Join-Path $root "out/android-yolo/runtime-$runtimeShape-verified"
 }
 $native = (Resolve-Path -LiteralPath $NativeLibrary).Path

@@ -369,6 +369,63 @@ TEST(YoloGpuPipeline, Rectangle512TransformAndBoundedContractRejectBeforeBackend
         EXPECT_EQ(api.gpu_pipeline->create(&config,&host,&rejected,nullptr),HV_ERR_MODEL_LOAD);EXPECT_EQ(rejected,nullptr);
     }
 }
+TEST(YoloGpuPipeline, Rectangle576TransformAndBoundedContractRejectBeforeBackend) {
+    auto manifest=Load(Root()/"modelpacks/yolov8n-pose-square320-fp32-local/modelpack.json");
+    const auto profile=Load(Root()/"profiles/android-ncnn-vulkan.json").dump();
+    auto& model=manifest["models"][0];model["input_contract"]["width"]=576;model["input_contract"]["height"]=352;
+    model["output_contract"]["max_output_bytes"]={{"out0",4158*65*4},{"out1",4158*51*4}};
+    Fake fake;fake.detection.assign(4158*65,-80);fake.points.assign(4158*51,0);
+    // Last cell at each stride checks rectangular grid offsets and restored joints.
+    for(int anchor:{72*44-1,72*44+36*22-1,4158-1})fake.detection[anchor*65+64]=8;
+    auto api=Query();HV_HostServicesV3 host{};host.v2.v1.struct_size=sizeof(host);
+    host.v2.v1.api_version=HV_PLUGIN_API_V1;host.v2.v1.context=&fake;
+    host.create_gpu_backend_v3=Create;host.release_gpu_backend_v3=Release;
+    const auto text=manifest.dump();HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,8,0,text.c_str(),"fixture",profile.c_str()};
+    void* instance=nullptr;ASSERT_EQ(api.gpu_pipeline->create(&config,&host,&instance,nullptr),HV_OK);
+    struct Cleanup{const HV_GpuPipelineApiV2* api;void* instance;~Cleanup(){api->destroy(instance);}}cleanup{api.gpu_pipeline,instance};
+    humanvision::gpu::ConsumerFrame lease{};
+    HV_GpuFrameRefV1 frame{sizeof(frame),HV_GPU_FRAME_API_V1,&lease,1024,768,10,10000,1,HV_GPU_IMAGE_RGBA8_UNORM,0};
+    HV_GpuObservationFrameV3 out{};out.v1.struct_size=sizeof(out);out.v1.api_version=HV_PLUGIN_API_V1;
+    for(auto source:{std::pair<int,int>{1024,768},{576,1024},{1024,575}}) {
+        frame.width=source.first;frame.height=source.second;
+        EXPECT_EQ(api.gpu_pipeline->process_gpu(instance,&frame,&out.v1,nullptr),HV_ERR_INVALID_ARGUMENT);
+        EXPECT_EQ(fake.creates,0);EXPECT_EQ(fake.runs,0);
+    }
+    for(int width:{624,1024,1072,1232,1920}) {
+        frame.width=width;frame.height=width/16*9;++frame.frame_id;
+        ASSERT_EQ(api.gpu_pipeline->process_gpu(instance,&frame,&out.v1,nullptr),HV_OK);
+        EXPECT_EQ(fake.transform.output_width,576u);EXPECT_EQ(fake.transform.output_height,352u);
+        EXPECT_FLOAT_EQ(fake.transform.source_rect_px.x,0);EXPECT_FLOAT_EQ(fake.transform.source_rect_px.y,-14/(576.f/width));
+        EXPECT_FLOAT_EQ(fake.transform.source_rect_px.width,float(frame.width));EXPECT_FLOAT_EQ(fake.transform.source_rect_px.height,352/(576.f/width));
+        ASSERT_GT(out.v1.body_count,0u);
+        const auto& nose=out.v1.bodies[0].joints[HV_CANONICAL_NOSE];
+        // Area ordering places the stride32 proposal first.
+        EXPECT_FLOAT_EQ(nose.x_px,17*32/(576.f/width));EXPECT_FLOAT_EQ(nose.y_px,(10*32-14)/(576.f/width));
+    }
+    for(int mutation=0;mutation<9;++mutation) {
+        auto changed=manifest;
+        if(mutation==0)changed["models"][0]["input_contract"]["height"]=576;
+        if(mutation==1)changed["models"][0]["input_contract"]["width"]=352;
+        if(mutation==2)changed["models"][0]["output_contract"]["max_output_bytes"]["out0"]=5040*65*4;
+        if(mutation==3)changed["models"][0]["output_contract"]["max_output_bytes"]["out1"]=4158*51*4-4;
+        if(mutation==4) {
+            changed["execution_contract"]="raw_tensor_fp32_sgemm_v1";changed["models"][0]["execution_contract"]="raw_tensor_fp32_sgemm_v1";
+            changed["models"][0]["backend_options"]["use_winograd_convolution"]=false;changed["models"][0]["backend_options"]["use_sgemm_convolution"]=true;
+        }
+        if(mutation==5) {
+            changed["execution_contract"]="raw_tensor_fp32_no_local_memory_v1";
+            changed["models"][0]["execution_contract"]="raw_tensor_fp32_no_local_memory_v1";
+            changed["models"][0]["backend_options"]["use_winograd_convolution"]=true;
+            changed["models"][0]["backend_options"]["use_sgemm_convolution"]=true;
+            changed["models"][0]["backend_options"]["use_shader_local_memory"]=false;
+        }
+        if(mutation==6)changed["models"][0]["backend_options"]["use_fp16_storage"]=true;
+        if(mutation==7)changed["local_evaluation_only"]=false;
+        if(mutation==8) {changed["models"][0]["input_contract"]["width"]=384;changed["models"][0]["input_contract"]["height"]=576;}
+        const auto invalid=changed.dump();config.model_manifest_utf8=invalid.c_str();void* rejected=nullptr;
+        EXPECT_EQ(api.gpu_pipeline->create(&config,&host,&rejected,nullptr),HV_ERR_MODEL_LOAD);EXPECT_EQ(rejected,nullptr);
+    }
+}
 TEST(YoloGpuPipeline, OneNetworkPerSourceFrameProvenanceAndInvalidHands) {
     const auto manifest=Load(Root()/"modelpacks/yolov8n-pose-square320-fp32-local/modelpack.json").dump();
     const auto profile=Load(Root()/"profiles/android-ncnn-vulkan.json").dump();
@@ -503,6 +560,34 @@ TEST(YoloContract, NoLocalMemoryHostRejectsProductionAndFalseHalfClaims) {
         if(mutation==1)manifest["capabilities"].push_back("fp16-storage");
         if(mutation==2)manifest["capabilities"].push_back("fp16-arithmetic");
         if(mutation==3) {manifest["local_evaluation_only"]=false;manifest["capabilities"].push_back("fp16-storage");manifest["capabilities"].push_back("fp16-arithmetic");}
+        std::ofstream(temp/id/"modelpack.json")<<manifest.dump();
+        ModelPackManager manager(temp);std::string error;
+        EXPECT_FALSE(manager.Resolve(id,error))<<mutation;
+    }
+    std::filesystem::remove_all(temp);
+}
+
+TEST(YoloContract, Rectangle576HostRejectsProductionAndFalseHalfClaims) {
+    using namespace humanvision::runtime;
+    const auto root=std::filesystem::path(HV_TEST_PROJECT_ROOT)/"out/android-yolo/runtime-rectangle576x352-arm-verified";
+    const auto id="yolov8n-pose-rectangle576x352-fp32-local";
+    const auto original=Load(root/"modelpacks"/id/"modelpack.json");
+    const auto temp=std::filesystem::temp_directory_path()/"hv-rectangle576-host-rejection";
+    std::filesystem::create_directories(temp/id);
+    for(const auto& file:{"yolov8n_pose.ncnn.param","yolov8n_pose.ncnn.bin"})
+        std::filesystem::copy_file(root/"modelpacks"/id/file,temp/id/file,std::filesystem::copy_options::overwrite_existing);
+    ModelPackManager baseline(temp);std::string reason;
+    std::ofstream(temp/id/"modelpack.json")<<original.dump();
+    ASSERT_TRUE(baseline.Resolve(id,reason))<<reason;
+    for(int mutation=0;mutation<7;++mutation) {
+        auto manifest=original;
+        if(mutation==0)manifest["local_evaluation_only"]=false;
+        if(mutation==1)manifest["capabilities"].push_back("fp16-storage");
+        if(mutation==2)manifest["capabilities"].push_back("fp16-arithmetic");
+        if(mutation==3) {manifest["local_evaluation_only"]=false;manifest["capabilities"].push_back("fp16-storage");manifest["capabilities"].push_back("fp16-arithmetic");}
+        if(mutation==4)manifest["models"][0]["input_contract"]["height"]=320;
+        if(mutation==5) {manifest["execution_contract"]="raw_tensor_fp32_sgemm_v1";manifest["models"][0]["execution_contract"]="raw_tensor_fp32_sgemm_v1";}
+        if(mutation==6)manifest["models"][0]["backend_options"]["use_shader_local_memory"]=false;
         std::ofstream(temp/id/"modelpack.json")<<manifest.dump();
         ModelPackManager manager(temp);std::string error;
         EXPECT_FALSE(manager.Resolve(id,error))<<mutation;

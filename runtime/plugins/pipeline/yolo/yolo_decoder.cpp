@@ -29,7 +29,7 @@ int AnchorCount(int target) noexcept {
 }
 int AnchorCount(int width,int height) noexcept {
     if(width==height)return AnchorCount(width);
-    if(!((width==640&&height==384)||(width==512&&height==288)))return 0;
+    if(!((width==640&&height==384)||(width==512&&height==288)||(width==576&&height==352)))return 0;
     return (width/8)*(height/8)+(width/16)*(height/16)+(width/32)*(height/32);
 }
 bool BuildGeometry(int sw,int sh,int width,int height,Geometry& out) noexcept {

@@ -96,3 +96,112 @@ All original640/512 contracts remain available. No FPS, GPU-AHB acceptance,
 new execution kernel qualification, default promotion, Release or main merge.
 Target30 and at-least25 fresh complete observations/s remain unmet;25FPS video1
 cannot certify30. Integration requires its separate review/gates.
+
+
+## Task3b: explicit local SDK integration, Code READY pending review
+
+The reviewed576x352 geometry now resolves4158 anchors below the stable public
+API. Its default-kernel `raw_tensor_fp32_v1` ModelPack and profile are explicit
+local evaluation only. The16:9 source produces576x324 resized content with
+fourteen rows of top/bottom padding. Tests exercise multiple16:9 source sizes,
+last cells at all three strides and restored coordinates. Other source aspects,
+576x320/square/portrait shapes, alternate SGEMM/no-local-memory contracts,
+FP16 and production declarations are rejected. Generic GPU preprocessing,
+producer waits, AHB imports, ownership/retirement, Tracker and APIs are unchanged.
+
+The runtime builder rehashes all three actual archives, validates prepared
+pixels/geometry/source provenance and recomputes the original raw comparison.
+It recomputes both CPU/GPU seven-arm annotation associations and matches their
+archived semantic rows. Staging repeats that gate, pins raw/Unity index hashes,
+four selected files and runner/source/recipe/semantic provenance. Existing640,
+512 and original square contracts and historical staging identities are retained.
+
+The real host rejection test first resolved combined production+FP16, wrong
+height, alternate execution and an extra no-local-memory option before the new
+scoped guard; the corrected real-asset RED has four `Actual: true` failures.
+Transform creation and runtime shape acceptance also failed before integration.
+Final GREEN:163/163 focused native tests,115/115 YOLO reference tests and4/4
+legacy staging tests. Architecture/public-surface checks pass. API26 ARM64 audit
+resolves1813 strong dynamic imports. These checks establish software readiness,
+not actual GPU-AHB accuracy, temporal following, throughput or physical acceptance.
+
+The normal ncnn dependency has `NCNN_BENCHMARK=OFF`; GPU_GATE, R4_PARITY,
+NCNN_EXECUTION_TRACE and TOPDOWN_EVAL_TRACE are OFF in the new Android build.
+Five explicit FP32 backend options retain the normal Winograd/SGEMM/local-memory
+selection; no-local-memory is not enabled for576. Existing RTSP/dependency
+packaging remains unchanged, including explicit compatibility libraries.
+
+Frozen ignored evidence is `out/android-yolo/rectangle576-integration-frozen`:
+
+- Native SHA256: `60d847e993db2e8a446f5a6807240be95229c695e20a7040db21474cfab5cb42`.
+- Raw runtime index: `9b1c5b0f3b25c593b4b973ae023cdf3d56615f0fdc1084cdbab3f1a4ede7e46f`.
+- Unity index: `ca90ae5654c63d1f79d16f10e6b07bcde0f49def1905626d53fe9af2add08a95`.
+- Freeze manifest: `2297f013e3f5e8c4c387d1a1ed2f9defbc74c01b31024b2d91b2cac714bb2a15`.
+
+The149 frozen files include126 actual source snapshots, complete working-tree
+patch, native, ncnn archive/cache, runtime indices and RED/GREEN/build/audit logs.
+`verify_freeze.py` verifies those149 hashes and current source bytes, then
+recomputes all three original real-device archive gates. The native binary was
+built from the current tree including preserved unfinished R4 changes; clean
+HEAD alone is not asserted to reproduce it. All31 preexisting dirty tracked
+files still match the Task2 preedit ledger. Caches and old outputs are retained.
+
+Exact verification/build commands, from the worktree:
+
+```powershell
+pwsh -NoProfile -File tools/test/run_native_tests.ps1 -Filter 'Ncnn|Yolo|GpuTrack|TopDown|UnityVulkanBridge|AhbSlotRing|GpuAbi'
+py -3 -m unittest discover -s tests/reference -p 'test_yolo*.py' -q
+py -3 -m unittest tools.test.test_stage_android_yolo_eval -q
+& 'D:/Microsoft Visual Studio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build build/android-yolo-rectangle576 --target humanvision -j 4
+py -3 tools/test/verify_android_native.py --library out/android-yolo/rectangle576-integration-frozen/libhumanvision.so
+py -3 tools/maintenance/check_architecture_boundaries.py
+py -3 out/android-yolo/rectangle576-integration-frozen/verify_freeze.py
+py -3 tools/test/stage_android_yolo_eval.py --runtime out/android-yolo/runtime-rectangle576x352-arm-verified --size 576 --verify-only
+```
+
+The fresh Android configure uses Ninja/Release, BUILD_TESTING=OFF, Unity's
+2022.3.61t4 NDK android.toolchain.cmake, arm64-v8a/android-26 and normal pinned
+`out/ncnn-20260526/android-arm64-api26/install`. The exact cache and Ninja recipe
+are frozen above. Runtime creation was:
+
+```powershell
+py -3 tools/models/ncnn/yolo_stage_runtime.py --size 576 --destination out/android-yolo/runtime-rectangle576x352-arm-verified
+```
+
+That destination already exists and must not be overwritten. Root may use the
+verified runtime/native to prepare a fresh review-approved scratch project:
+
+```powershell
+pwsh -NoProfile -File tools/test/stage_android_yolo_eval.ps1 -Size 576 -Kernel default -RuntimeDirectory out/android-yolo/runtime-rectangle576x352-arm-verified -NativeLibrary out/android-yolo/rectangle576-integration-frozen/libhumanvision.so -OutputDirectory out/android-yolo/eval-rectangle576-reviewed-20261001
+```
+
+Software staging was actually run successfully into
+`out/android-yolo/eval-rectangle576-task3b-full-stage-v2/UnityProject`, including
+copied native/dependencies and both root/embedded runtime selections. It contains
+a genuine20-file `modelpacks/precision-t-26-ncnn-fp16/SHA256SUMS.txt`: all actual
+legacy param/bin and evidence hashes are verified before any stage write, then
+the copied files are verified again before indexing. This satisfies the existing
+editor validator; the selected runtime remains576 YOLO. Tests reject tampered
+legacy assets. No Unity editor/build/install or ADB operation occurred in3b.
+
+## Same-native640 baseline for Root's controlled comparison
+
+Use two scratch copies of the reviewed576 project, preserving the exact native
+and dependency bytes. For the640 baseline only, verify the existing frozen
+`out/android-yolo/runtime-rectangle640x384-arm-verified` index and all four files
+with `verify_runtime(root,640)` plus its historical `INDEX_SHA[640]`. Copy exactly
+those four files to the scratch project's root and embedded Runtime directory;
+write the embedded index using `unity_index(index,files,640)` and verify it again.
+Record both selected index/file hashes and the unchanged new native hash in a
+comparison receipt. Switch each scratch Android runtime asset/scene to its
+explicit selected profile through Root's established workflow. Retain the exact
+same capacity8, video1/start37s, orientation, HUD, warmup and sample window.
+
+The reviewed native supports both old640 and new576 default execution contracts.
+This runtime-only scratch comparison isolates resolution from native build
+identity. Do not pass the new native to historical640 staging: its old native
+allowlist intentionally remains unchanged. Root owns these scratch copies,
+Unity builds, APK/installed identity verification, ABBA capture and thermal/load
+reporting after independent Code review. No performance gain or default promotion
+is claimed by this integration. >=25 fresh complete observations/s and target30
+remain pending/unmet; video1's25FPS cannot certify30. No main merge or Release.

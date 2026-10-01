@@ -125,6 +125,21 @@ std::shared_ptr<const ModelPack> ModelPackManager::Resolve(const std::string& id
         if (!pack->capabilities) throw std::runtime_error("ModelPack capabilities cannot be empty");
         if (schema == 2) {
             const auto execution=json.value("execution_contract",std::string{});
+            // This newly qualified geometry remains an explicit local FP32 candidate.
+            // Validate here as well as at pipeline creation, including combined
+            // production/FP16 mutations that satisfy generic schema-2 capability checks.
+            if(id=="yolov8n-pose-rectangle576x352-fp32-local") {
+                const auto& model=json.at("models").at(0);
+                const auto& input=model.at("input_contract");
+                const nlohmann::json expected_options={{"use_packing_layout",true},{"use_subgroup_ops",false},
+                    {"use_fp16_packed",false},{"use_fp16_storage",false},{"use_fp16_arithmetic",false}};
+                if(!json.value("local_evaluation_only",false)||execution!="raw_tensor_fp32_v1"||
+                   json.at("pipeline_id")!="pipeline.yolo.pose"||json.at("models").size()!=1||
+                   (pack->capabilities&(HV_CAP_FP16_STORAGE|HV_CAP_FP16_ARITHMETIC))||
+                   model.at("execution_contract")!="raw_tensor_fp32_v1"||model.at("backend_options")!=expected_options||
+                   input.at("width")!=576||input.at("height")!=352||input.at("tensor_dtype")!="fp32"||input.at("elempack")!=1)
+                    throw std::runtime_error("Rectangle576 ModelPack requires reviewed local default-kernel FP32 geometry");
+            }
             if(execution=="raw_tensor_fp32_no_local_memory_v1"&&
                (!json.value("local_evaluation_only",false)||(pack->capabilities&(HV_CAP_FP16_STORAGE|HV_CAP_FP16_ARITHMETIC))))
                 throw std::runtime_error("Raw FP32 no-local-memory ModelPack requires local evaluation without FP16 eligibility");
