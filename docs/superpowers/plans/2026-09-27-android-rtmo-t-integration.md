@@ -83,3 +83,16 @@ pipeline/model pack; do not mislabel it RTMO or SimCC. Model geometry belongs in
 the pipeline, inference remains in the generic backend. Any commercial license
 decision remains separate from this local evaluation; no new model redistribution
 or release is authorized. Existing incomplete R4 changes remain preserved.
+
+## Current execution status (2026-10-01)
+
+YOLO-M1 is complete and independently reviewed at de08263 for explicit FP32
+offline eligibility only. YOLO-M2 adapter is independently spec/quality reviewed
+PASS; native67/67 and existing FP16 ModelPack2/2 tests, API/architecture guards
+and separate API26 ARM64 Android build/audit PASS. Details and limitations:
+`docs/reports/2026-10-01-yolo-pose-gpu-adapter.md`.
+
+After the separate M2 commit, YOLO-M3 is the sole next task: existing open Unity
+project, reviewed local FP32 profile/pack, same seven-person video from37s,
+complete observations/FPS/age/coverage and visible alignment on actual device.
+No M2 compilation or offline parity result is a25/30FPS physical acceptance.

@@ -1,0 +1,1 @@
+{"id":"pipeline.yolo.pose","type":"pipeline","version":"0.4.0-preview.4","api_version":3,"capabilities":["body_pose","multi_person","gpu_input"],"dependencies":["plugin.abi","common.config_io","backend.ncnn.vulkan","gpu.android.ahb"],"test_targets":["humanvision_native_tests"],"exports":["pipeline.yolo.pose"]}

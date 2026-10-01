@@ -4,6 +4,7 @@
 #include "plugins/pipeline/rtmo/rtmo_pipeline.h"
 #include "plugins/pipeline/simcc/simcc_pipeline.h"
 #include "plugins/pipeline/simcc/topdown_gpu_pipeline.h"
+#include "plugins/pipeline/yolo/yolo_gpu_pipeline.h"
 #include "plugins/legacy/legacy_pipeline.h"
 #include "plugins/backend/ort/ort_plugin.h"
 #include "plugins/backend/ncnn/ncnn_vulkan_backend.h"
@@ -27,6 +28,7 @@ bool RuntimeSession::Start(const std::filesystem::path& root,const std::string& 
   factory_=std::make_unique<BackendFactory>(std::vector<std::shared_ptr<const PluginModule>>{},false);
   if(!factory_->RegisterV3(HV_QueryNcnnVulkanPluginV3,error))return false;
   if(gpu_pipeline_query&&!factory_->RegisterV3(gpu_pipeline_query,error))return false;
+  if(!factory_->RegisterV3(HV_QueryYoloGpuPipelineV3,error))return false;
   profile_=ProfileManager(root/"profiles").Resolve(profile,capacity,registry_,ModelPackManager(root/"modelpacks"),error,factory_.get());
   if(!profile_)return false;
   GpuConsumerSource* source=gpu_test_source;

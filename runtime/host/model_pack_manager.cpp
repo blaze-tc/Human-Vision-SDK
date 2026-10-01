@@ -124,9 +124,14 @@ std::shared_ptr<const ModelPack> ModelPackManager::Resolve(const std::string& id
         for (const auto& cap : json.at("capabilities")) pack->capabilities |= CapabilityBit(cap.get<std::string>());
         if (!pack->capabilities) throw std::runtime_error("ModelPack capabilities cannot be empty");
         if (schema == 2) {
-            for (const auto& capability : {"vulkan", "fp16-storage", "fp16-arithmetic"})
+            const bool local_fp32=json.value("local_evaluation_only",false)&&json.value("execution_contract",std::string{})=="raw_tensor_fp32_v1";
+            const auto required=local_fp32?std::vector<std::string>{"vulkan"}:
+                std::vector<std::string>{"vulkan","fp16-storage","fp16-arithmetic"};
+            for (const auto& capability : required)
                 if ((pack->capabilities & CapabilityBit(capability)) == 0)
                     throw std::runtime_error(std::string("Schema 2 ModelPack missing required capability: ") + capability);
+            if(local_fp32&&(pack->capabilities&(HV_CAP_FP16_STORAGE|HV_CAP_FP16_ARITHMETIC)))
+                throw std::runtime_error("Local FP32 ModelPack must not advertise FP16 eligibility");
         }
         const auto& models = json.at("models");
         if (!models.is_array() || models.empty()) throw std::runtime_error("ModelPack models must be a nonempty array");

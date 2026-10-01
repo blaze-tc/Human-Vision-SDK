@@ -1,5 +1,6 @@
 #include "plugins/backend/ncnn/ncnn_android_session.h"
 #include "plugins/backend/ncnn/ncnn_input_delivery.h"
+#include "plugins/backend/ncnn/ncnn_execution_contract.h"
 
 #if defined(__ANDROID__)
 #include "common/config_io.h"
@@ -200,7 +201,9 @@ bool AndroidSession::ParseModel(const HV_GpuBackendConfigV1& config, std::string
         auto input = chosen->at("input_contract");
         input["output_blobs"] = output.at("output_blobs");
         if (!ParseInputContract(input, contract_, error)) return false;
-        if (chosen->at("role").get<std::string>() == "detector" &&
+        if(!ValidateRawTensorBoundary(backend_options_,contract_,manifest.value("local_evaluation_only",false),error))return false;
+        if(backend_options_.raw_tensor)detector_role_=false;
+        if (!backend_options_.raw_tensor && chosen->at("role").get<std::string>() == "detector" &&
             (contract_.width != 320 || contract_.height != 320 ||
              contract_.output_type != HV_GPU_TENSOR_FP16 ||
              contract_.output_elempack != 1 || contract_.cast_type_to != 2 ||
@@ -208,7 +211,7 @@ bool AndroidSession::ParseModel(const HV_GpuBackendConfigV1& config, std::string
              contract_.output_blobs != std::vector<std::string>{"cls", "bbox"})) {
             throw std::runtime_error("RTMDet detector requires RGB 320x320 FP16 pack1 with cls/bbox");
         }
-        if (chosen->at("role").get<std::string>() == "body" &&
+        if (!backend_options_.raw_tensor && chosen->at("role").get<std::string>() == "body" &&
             (contract_.width != 192 || contract_.height != 256 ||
              contract_.output_type != HV_GPU_TENSOR_FP16 ||
              contract_.output_elempack != 4 || contract_.cast_type_to != 2 ||
@@ -382,7 +385,7 @@ bool AndroidSession::Initialize(const HV_GpuBackendConfigV1& config,
     option_.use_fp16_packed = contract_.output_type == HV_GPU_TENSOR_FP16;
     option_.use_fp16_storage = contract_.output_type == HV_GPU_TENSOR_FP16;
     ApplyBackendOptions(option_, backend_options_);
-    option_.use_packing_layout = contract_.output_elempack != 1;
+    option_.use_packing_layout = backend_options_.raw_tensor ? backend_options_.use_packing_layout : contract_.output_elempack != 1;
     net_ = std::make_unique<ncnn::Net>();
     net_->opt = option_;
     net_->set_vulkan_device(match.index);
@@ -1106,7 +1109,7 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
     // The preceding preprocessing or inference command has completed/reset.
     *slot.extractor = *slot.pristine_extractor;
     const auto delivery = DeliverInput(*slot.extractor, contract_.input_blob.c_str(),
-        slot.prepared_input, contract_.output_blobs == std::vector<std::string>{"cls", "bbox"});
+        slot.prepared_input, detector_role_);
     if (delivery == InputDeliveryResult::InvalidTensor) {
         error = "RTMDet ncnn extractor input is not 3-channel FP16 pack1";
         return HV_ERR_INTERNAL;

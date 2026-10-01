@@ -29,6 +29,8 @@ std::shared_ptr<const RuntimeProfile> ProfileManager::Resolve(const std::string&
         auto result = std::make_shared<RuntimeProfile>();
         result->id = id; result->json = json.dump(); result->max_people = max_people;
         if (id == "android-ncnn-vulkan") {
+            const bool per_frame=json.value("local_evaluation_only",false)&&json.value("frame_policy",std::string{})=="every_frame";
+            if(!per_frame) {
             const auto& detector = json.at("detector");
             if (!detector.is_object() || !detector.contains("cadence_interval_frames") ||
                 !detector.contains("max_capture_gap_us") ||
@@ -41,6 +43,7 @@ std::shared_ptr<const RuntimeProfile> ProfileManager::Resolve(const std::string&
                 throw std::runtime_error("detector.cadence_interval_frames must be 2-6");
             if (result->detector_max_capture_gap_us < 1 || result->detector_max_capture_gap_us > 200000)
                 throw std::runtime_error("detector.max_capture_gap_us must be <=200000");
+            }
             // The GPU route is a separate V3 contract. Never resolve this profile
             // through a V1 CPU pipeline or a fallback backend.
             if (!gpu_plugins || json.at("hands").value("enabled", false) ||
