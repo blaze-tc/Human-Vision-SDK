@@ -30,6 +30,20 @@ int64_t TraceMs() noexcept {
     clock_gettime(CLOCK_MONOTONIC, &now);
     return static_cast<int64_t>(now.tv_sec) * 1000 + now.tv_nsec / 1000000;
 }
+// Worker-local diagnostic sampling; no state or allocations when tracing is off.
+thread_local uint64_t raw_trace_successes = 0;
+thread_local uint64_t raw_trace_release_frame = 0;
+int64_t TraceUs() noexcept {
+    timespec now{};
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return static_cast<int64_t>(now.tv_sec) * 1000000 + now.tv_nsec / 1000;
+}
+void TraceRawStage(const char* stage, uint64_t frame_id, int64_t begun) noexcept {
+    __android_log_print(ANDROID_LOG_INFO, "HV_TOPDOWN_NCNN",
+        "run_raw stage=%s frame_id=%llu elapsed_us=%lld",
+        stage, static_cast<unsigned long long>(frame_id),
+        static_cast<long long>(TraceUs() - begun));
+}
 void TraceDetectorStage(const char* stage, size_t output, int64_t begun) noexcept {
     __android_log_print(ANDROID_LOG_INFO, "HV_TOPDOWN_NCNN",
         "run_prepared stage=%s output=%zu elapsed_ms=%lld now_ms=%lld",
@@ -982,6 +996,10 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
         return HV_ERR_INVALID_ARGUMENT;
     }
     auto& slot = *slots_[consumer.token.index];
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    const bool trace_raw = backend_options_.raw_tensor &&
+        (raw_trace_successes < 3 || (raw_trace_successes + 1) % 64 == 0);
+#endif
     bool imported = false, acquired = !first_run, released = false, pending = false, unproven = false;
     const auto retire = [&](gpu::ConsumerFrame* lease) noexcept {
         if (unproven) {
@@ -1029,6 +1047,9 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
     }
     if (!ValidateTransform(frame, transform, consumer, error)) return HV_ERR_INVALID_ARGUMENT;
     if (first_run && !DrainDropped(error)) return HV_ERR_INTERNAL;
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    const int64_t preprocess_begun = trace_raw ? TraceUs() : 0;
+#endif
     if (first_run) {
         const auto start = gpu::NextNcnnRole(consumer);
         if (start == gpu::NcnnRoleStart::Invalid) {
@@ -1065,6 +1086,10 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
             error = "ncnn explicit FP16/packing conversion produced the wrong tensor";
             return HV_ERR_INTERNAL;
         }
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+        if (trace_raw) TraceRawStage("import_preprocess_record", consumer.token.frame_id, preprocess_begun);
+        const int64_t preprocess_wait_begun = trace_raw ? TraceUs() : 0;
+#endif
         const int submitted = producer_wait
             ? slot.compute->submit_and_wait(slot.import_semaphore, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)
             : slot.compute->submit_and_wait();
@@ -1073,6 +1098,9 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
             imported = false;
             error = "ncnn GPU wait/import/preprocess submission failed"; return HV_ERR_INTERNAL;
         }
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+        if (trace_raw) TraceRawStage("preprocess_submit_wait", consumer.token.frame_id, preprocess_wait_begun);
+#endif
         imported = false;
         if (slot.compute->reset() != 0) {
             unproven = true;
@@ -1099,6 +1127,10 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
             error = "ncnn repeated observation command reset failed"; return HV_ERR_INTERNAL;
         }
     }
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    if (trace_raw && !first_run) TraceRawStage("preprocess_elapsed", consumer.token.frame_id, preprocess_begun);
+    const int64_t extraction_begun = trace_raw ? TraceUs() : 0;
+#endif
     pending = true;
 #if defined(HV_ANDROID_GPU_GATE)
     if (gate_mode_) {
@@ -1152,17 +1184,29 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
         download_option.use_fp16_packed = false;
         slot.compute->record_download(slot.fp32_outputs[i], slot.cpu_outputs[i], download_option);
     }
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    // Extractor::extract may submit/wait internally; this is elapsed wall time,
+    // not pure CPU recording time or a GPU timestamp measurement.
+    if (trace_raw) TraceRawStage("extract_download_elapsed", consumer.token.frame_id, extraction_begun);
+    const int64_t inference_wait_begun = trace_raw ? TraceUs() : 0;
+#endif
     if (slot.compute->submit_and_wait() != 0) {
         unproven = true;
         pending = false;
         error = "ncnn GPU inference/download failed"; return HV_ERR_INTERNAL;
     }
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    if (trace_raw) TraceRawStage("inference_submit_wait", consumer.token.frame_id, inference_wait_begun);
+#endif
     pending = false;
     if (slot.compute->reset() != 0) {
         unproven = true;
         error = "ncnn GPU inference command reset failed"; return HV_ERR_INTERNAL;
     }
     pending = false;
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    const int64_t copy_begun = trace_raw ? TraceUs() : 0;
+#endif
     for (size_t i = 0; i < contract_.output_blobs.size(); ++i) {
         const auto& mat = slot.cpu_outputs[i];
         DenseOutputLayout layout;
@@ -1188,6 +1232,13 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
         view.data = slot.dense_outputs[i].data();
         view.byte_count = layout.logical_bytes;
     }
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    if (trace_raw) {
+        TraceRawStage("dense_output_copy", consumer.token.frame_id, copy_begun);
+        raw_trace_release_frame = consumer.token.frame_id;
+    }
+    if (backend_options_.raw_tensor) ++raw_trace_successes;
+#endif
     count = static_cast<uint32_t>(contract_.output_blobs.size());
     error.clear();
     consumer.role_owner = this;
@@ -1220,6 +1271,10 @@ bool AndroidSession::ReleaseActiveRole(gpu::ConsumerFrame& frame, std::string& e
         return false;
     }
     auto& slot = *slots_[frame.token.index];
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    const bool trace_release = backend_options_.raw_tensor && raw_trace_release_frame == frame.token.frame_id;
+    const int64_t release_begun = trace_release ? TraceUs() : 0;
+#endif
     slot.compute->record_release_android_hardware_buffer(slot.image,
         device_->info.compute_queue_family_index(), VK_QUEUE_FAMILY_EXTERNAL_KHR);
     if (slot.compute->submit_and_wait() != 0 || slot.compute->reset() != 0) {
@@ -1229,6 +1284,12 @@ bool AndroidSession::ReleaseActiveRole(gpu::ConsumerFrame& frame, std::string& e
         error = "ncnn observation release could not establish external ownership";
         return false;
     }
+#if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
+    if (trace_release) {
+        TraceRawStage("ownership_release_wait", frame.token.frame_id, release_begun);
+        raw_trace_release_frame = 0;
+    }
+#endif
     active_consumer_ = nullptr;
     frame.ncnn_role_complete = true;
     error.clear(); return true;

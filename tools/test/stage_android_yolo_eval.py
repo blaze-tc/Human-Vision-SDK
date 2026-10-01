@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-NATIVE_SHA = 'f759368c26cf9cc621a00113a50d9de439b259b74f2c045cecda91620ba479f0'
+NATIVE_SHA = 'f82c67c8e771ab264dcf891ce44b8b540028dbb04ea524797b2ce5c79bb09989'
 VIDEO_SHA = 'e3620101d8218e7e9f2736cf5dab7a497bfcfc23e33a40244b63ae317c1bb0c8'
 INDEX_SHA = {320: '9119eb49528758d2b4d9237406fd98643e2d0c5d624804ee16769bff9d81ba69',
              416: '10454b1a73e4c86e1d6396e3de251ac398176ed24d31a0d09f7dd8969d7f6629',
