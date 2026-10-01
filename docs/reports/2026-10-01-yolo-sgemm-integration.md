@@ -32,8 +32,35 @@ Frozen native SHA256:
 Runtime index SHA256:
 `dd397a0e2cf8e25e28dd65b46cb7b14ed779eb181ad82de10bfc81065a5bc346`.
 
-This is integration evidence only. Actual Unity GPU-AHB device performance is
-pending; neither the >=25 FPS acceptance gate nor the 30 FPS target is passed.
+## Integrated Snapdragon 888 measurement: throughput gate failed
+
+The current open Unity project refreshed without errors, built the video APK,
+and emitted the settings-restoration marker. Embedded native, four runtime files,
+source video and installed APK identity were verified before capture.
+APK SHA256: `f8bd4818a6859d7b478505f5635494a615fd704ad0c69c1aa54b19a211e2f74b`.
+Evidence: `out/android-yolo/eval-rectangle640-20261001-m3-sgemm/device-yolo640-sgemm-seven-75s/`.
+
+After excluding the first five seconds following active submission, the measured
+window is 81.288 seconds. PID15217 reports 1,128 distinct source-frame/result
+sequence pairs: **13.8766 fresh observations/s**. Of these, 1,121 have body count7:
+13.7905/s; seven have count8, with no empty or partial-count observations.
+Observed result age P50/P95 is116.726/147.159ms. GPU worker, copy and import errors
+and full-frame CPU readbacks are zero in the recorded counters.
+
+These are result metadata counts, not independently verified seven-person
+identity or per-joint accuracy. The60-second screenshot shows seven skeletons.
+The phone changed between portrait and landscape during capture; render rate and
+orientation were not controlled against the earlier baseline. This is therefore
+not a controlled causal comparison, but it clearly fails the >=25FPS gate and
+does not demonstrate improvement over the earlier normal15.32FPS capture.
+
+This candidate is not selected as the default optimization. The previously
+accepted normal APK was restored by its verified SHA256. Preserve the explicit
+SGEMM evaluation path and evidence for reproducibility. M3 remains active; next
+is a bounded smaller rectangular-input eligibility check with unchanged accuracy
+limits and all seven raised-arm evidence required before any SDK integration.
+
+Neither the >=25 FPS acceptance gate nor the 30 FPS target is passed.
 The source video is 25 FPS and cannot certify 30 fresh observations per second.
 Existing unfinished R4 changes remain preserved, and no main merge or Release
 is authorized. Offline accuracy limitations and exact source-byte provenance are

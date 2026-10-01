@@ -1,3 +1,15 @@
+# Current YOLO-M3 result: SGEMM throughput not accepted (2026-10-01)
+
+The integrated seven-person SGEMM APK was measured and independently reviewed:
+13.8766 fresh observations/s, count7 subset13.7905, observed age P50/P95
+116.726/147.159ms, zero empty/partial observations and GPU errors/readbacks.
+The >=25FPS gate failed; rotation/load differed, so no controlled comparison
+claim is made. See [measurement evidence](reports/2026-10-01-yolo-sgemm-integration.md).
+The verified previously accepted normal APK was restored. SGEMM remains an
+explicit evaluation option, not the default performance improvement. M3 remains
+active; next is bounded512x288 numerical and seven-arm eligibility, before any
+SDK shape integration. Public API/synchronization remain unchanged; no Release.
+
 # Current YOLO-M3 update: explicit SGEMM integration (2026-10-01)
 
 SDK integration and staging passed independent spec/quality review, 154 native
