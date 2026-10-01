@@ -127,3 +127,23 @@ class NoLocalMemoryStageTests(unittest.TestCase):
         self.assertIn("[ValidateSet('default','sgemm','no-local-memory')][string]$Kernel = 'default'",source)
         self.assertIn('--convolution-kernel $Kernel',source)
         self.assertIn("'rectangle640x384-no-local-memory'",source)
+
+    def test_full_stage_serializes_exact_frozen_unity_index_with_lf(self):
+        from tools.test.stage_android_yolo_eval import stage, NO_LOCAL_MEMORY_UNITY_INDEX_SHA, NO_LOCAL_MEMORY_NATIVE_SHA
+        root=Path(__file__).resolve().parents[2]
+        frozen=root/'out/android-yolo/no-local-memory-integration-frozen'
+        runtime=frozen/'runtime';native=frozen/'libhumanvision.so'
+        video=Path('E:/Project/Human Vision SDK/video-1.mp4')
+        with tempfile.TemporaryDirectory(dir=root/'out/android-yolo',prefix='no-local-memory-full-stage-test-') as temporary:
+            project=stage(runtime,native,video,Path(temporary)/'evaluation',640,'no-local-memory')
+            embedded=project/'Assets/StreamingAssets/HumanVision/Runtime'
+            raw=(embedded/'index.json').read_bytes()
+            self.assertNotIn(b'\r\n',raw)
+            self.assertEqual(sha256(embedded/'index.json'),NO_LOCAL_MEMORY_UNITY_INDEX_SHA)
+            source=json.loads((runtime/'index.json').read_text())
+            self.assertEqual(json.loads(raw),unity_index(source,source['files'],640,'no-local-memory'))
+            self.assertEqual(sha256(native),NO_LOCAL_MEMORY_NATIVE_SHA)
+            for relative,digest in source['files'].items():
+                self.assertEqual(sha256(embedded/relative),digest)
+                self.assertEqual(sha256(project/relative),digest)
+            self.assertEqual(sha256(project/'Assets/StreamingAssets/HumanVision/Diagnostic'/video.name),sha256(video))

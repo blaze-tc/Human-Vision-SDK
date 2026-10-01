@@ -218,7 +218,8 @@ def stage(runtime, native, video, output, size, kernel='default'):
             target=target_root/relative; target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(runtime/relative, target)
     generated=unity_index(index,files,size,kernel)
-    (embedded/'index.json').write_text(json.dumps(generated, indent=2)+'\n', encoding='utf-8')
+    (embedded/'index.json').write_text(json.dumps(generated, indent=2)+'\n', encoding='utf-8',
+                                       newline='\n' if kernel=='no-local-memory' else None)
     copied_index,copied_files=verify_runtime(embedded, size, kernel)
     if kernel=='no-local-memory':verify_reviewed_no_local_memory_runtime(embedded,copied_index,copied_files)
     for relative, digest in files.items():
