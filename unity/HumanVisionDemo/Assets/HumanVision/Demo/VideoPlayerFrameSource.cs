@@ -203,6 +203,8 @@ namespace HumanVision.Demo
 
         [Header("Playback")]
         [SerializeField] private bool loop = true;
+        [Tooltip("Use a monotonic acquisition clock for runtime profiles. Default preserves the existing media timestamp contract.")]
+        [SerializeField] private bool useRealtimeVideoTimestamps = false;
 
         [Header("Real-time analysis")]
         [SerializeField, Min(1)] private int maxAnalysisWidth = 1280;
@@ -601,7 +603,8 @@ namespace HumanVision.Demo
             ReadbackSlot slot = _slots[slotIndex];
             slot.Busy = true;
             slot.FrameId = _nextSubmissionFrameId++;
-            slot.TimestampUs = ToTimestampUs(source, frameIndex);
+            slot.TimestampUs = SelectVideoTimestampUs(ToTimestampUs(source, frameIndex),
+                checked((long)(Time.realtimeSinceStartupAsDouble * 1000000d)), useRealtimeVideoTimestamps);
             _lastScheduledFrame = frameIndex;
             CapturePresentationFrame(slot.FrameId);
             slot.Request = AsyncGPUReadback.RequestIntoNativeArray(
@@ -950,6 +953,9 @@ namespace HumanVision.Demo
 
             return -1;
         }
+
+        internal static long SelectVideoTimestampUs(long mediaTimestampUs, long acquisitionTimestampUs, bool realtime)
+            => realtime ? acquisitionTimestampUs : mediaTimestampUs;
 
         private static long ToTimestampUs(VideoPlayer player, long frameIndex)
         {

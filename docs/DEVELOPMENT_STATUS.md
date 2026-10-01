@@ -1,3 +1,13 @@
+# Current bounded PC demo delivery (2026-10-01)
+
+User requested a clean Git-installable Unity PC evaluation demo. Task 1 scene,
+explicit CPU/DirectML body-only profiles and timestamp/observation policies pass
+fresh independent review, 5/5 real Unity EditMode tests and managed compilation.
+See [Task 1 evidence](reports/2026-10-01-pc-demo-task1.md).
+Next is dedicated PC UPM packaging then actual video, Win64 build and remote import.
+This request authorizes this bounded Windows demo only; Android acceptance remains
+incomplete and independent. No main merge/Release. Existing Android work and caches
+are retained; the user's original Unity project is untouched during their cleanup.
 ## 2026-10-01 current: YOLO-M3 no-local-memory actual-device check
 
 Explicit640x384 FP32 no-local-memory candidate integration and full-stage
