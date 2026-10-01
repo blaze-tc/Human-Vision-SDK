@@ -789,7 +789,14 @@ HV_Result AndroidSession::RunPrepared(const HV_GpuPreparedRefV1& ref,
             !ValidateDenseDownload(layout, slot.fp32_outputs[i].total())) {
             return unsafe_failure("ncnn prepared detector output exceeds declared bounds", HV_ERR_MODEL_LOAD);
         }
-        slot.compute->record_download(slot.fp32_outputs[i], slot.cpu_outputs[i], option_);
+        // record_download chooses packing again, independently of the explicit
+        // GPU conversion above. Keep the CPU boundary FP32 pack1 while retaining
+        // the network's internal packing and precision options.
+        ncnn::Option download_option = option_;
+        download_option.use_packing_layout = false;
+        download_option.use_fp16_storage = false;
+        download_option.use_fp16_packed = false;
+        slot.compute->record_download(slot.fp32_outputs[i], slot.cpu_outputs[i], download_option);
 #if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
         TraceDetectorStage("download_recorded", i, run_begun);
 #endif
@@ -1136,7 +1143,14 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
             error = "ncnn output shape/dtype exceeds declared bounds: " + contract_.output_blobs[i];
             return HV_ERR_MODEL_LOAD;
         }
-        slot.compute->record_download(slot.fp32_outputs[i], slot.cpu_outputs[i], option_);
+        // record_download chooses packing again, independently of the explicit
+        // GPU conversion above. Keep the CPU boundary FP32 pack1 while retaining
+        // the network's internal packing and precision options.
+        ncnn::Option download_option = option_;
+        download_option.use_packing_layout = false;
+        download_option.use_fp16_storage = false;
+        download_option.use_fp16_packed = false;
+        slot.compute->record_download(slot.fp32_outputs[i], slot.cpu_outputs[i], download_option);
     }
     if (slot.compute->submit_and_wait() != 0) {
         unproven = true;
