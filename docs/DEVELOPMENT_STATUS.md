@@ -1,3 +1,14 @@
+# Current PC Demo GUI update (2026-10-01)
+
+PC package0.4.0-pc.2 responsive GUI implementation045005a passes real Unity
+23/23EditMode,11/11package,managed/architecture checks and independent review.
+Root actual1920x1080Player and3840x2160Editor GUI renders PASS;400x600Player
+source/backend pointer selection, scrolling, complete Stop and collapse/expand
+PASS after correcting observed width and per-row-height failures. Native/model
+payloads unchanged. User's original dirty PC scene preserved. Dedicated branch
+Git delivery pending fresh remote import; no main merge/Release.
+See [GUI delivery](reports/2026-10-01-pc-demo-responsive-gui-delivery.md).
+
 # Current bounded PC demo delivery (2026-10-01)
 
 User requested a clean Git-installable Unity PC evaluation demo. Task 1 scene,
