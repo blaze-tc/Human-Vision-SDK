@@ -17,6 +17,11 @@
 #include <cerrno>
 #include <unistd.h>
 #include <fcntl.h>
+#if defined(HV_ANDROID_NCNN_EXECUTION_TRACE)
+extern "C" void hv_ncnn_execution_begin(uint64_t frame, bool enabled);
+extern "C" void hv_ncnn_execution_end(bool success);
+extern "C" void hv_ncnn_execution_set_phase(int phase);
+#endif
 #if defined(HV_ANDROID_TOPDOWN_EVAL_TRACE)
 #include <android/log.h>
 #include <time.h>
@@ -1000,6 +1005,13 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
     const bool trace_raw = backend_options_.raw_tensor &&
         (raw_trace_successes < 3 || (raw_trace_successes + 1) % 64 == 0);
 #endif
+#if defined(HV_ANDROID_NCNN_EXECUTION_TRACE)
+    hv_ncnn_execution_begin(consumer.token.frame_id, trace_raw);
+    struct ExecutionTraceScope {
+        bool success = false;
+        ~ExecutionTraceScope() { hv_ncnn_execution_end(success); }
+    } execution_trace_scope;
+#endif
     bool imported = false, acquired = !first_run, released = false, pending = false, unproven = false;
     const auto retire = [&](gpu::ConsumerFrame* lease) noexcept {
         if (unproven) {
@@ -1131,6 +1143,9 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
     if (trace_raw && !first_run) TraceRawStage("preprocess_elapsed", consumer.token.frame_id, preprocess_begun);
     const int64_t extraction_begun = trace_raw ? TraceUs() : 0;
 #endif
+#if defined(HV_ANDROID_NCNN_EXECUTION_TRACE)
+    hv_ncnn_execution_set_phase(1); // Only ncnn internal submissions during extraction.
+#endif
     pending = true;
 #if defined(HV_ANDROID_GPU_GATE)
     if (gate_mode_) {
@@ -1190,6 +1205,9 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
     if (trace_raw) TraceRawStage("extract_download_elapsed", consumer.token.frame_id, extraction_begun);
     const int64_t inference_wait_begun = trace_raw ? TraceUs() : 0;
 #endif
+#if defined(HV_ANDROID_NCNN_EXECUTION_TRACE)
+    hv_ncnn_execution_set_phase(2); // Existing outer inference/download submission.
+#endif
     if (slot.compute->submit_and_wait() != 0) {
         unproven = true;
         pending = false;
@@ -1244,6 +1262,9 @@ HV_Result AndroidSession::Run(const HV_GpuFrameRefV1& frame,
     consumer.role_owner = this;
     consumer.complete_role = &AndroidSession::CompleteRoleCallback;
     lease_guard.release(); // The observation worker calls FinishObservation after all roles.
+#if defined(HV_ANDROID_NCNN_EXECUTION_TRACE)
+    execution_trace_scope.success = true;
+#endif
     return HV_OK;
 }
 
