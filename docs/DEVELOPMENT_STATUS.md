@@ -9,7 +9,10 @@ See [Task 2 evidence](reports/2026-10-01-pc-demo-task2.md).
 Task 3 local import, real seven-person video overlay, explicit CPU restart and Win64 build pass.
 Independent review PASS; 6/6 Unity tests, 11/11 package tests and managed/architecture checks pass.
 Observed positive-result arrivals20.7474FPS, ageP50/P95104.13/176.44ms on25FPS input.
-See [Task 3 evidence](reports/2026-10-01-pc-demo-task3.md). Pinned remote Git import is next.
+See [Task 3 evidence](reports/2026-10-01-pc-demo-task3.md). Pinned remote Git import PASS.
+Delivery commit8c0bc5d612beb7ccebfbb476c55ebd05ff0499c5 on dedicated codex/unity-pc-demo.
+See [Git delivery](reports/2026-10-01-pc-demo-git-delivery.md) and [PC guide](PC_DEMO_INSTALLATION.md).
+PC evaluation delivery complete; standalone/camera/RTSP physical use remains user testing.
 This request authorizes this bounded Windows demo only; Android acceptance remains
 incomplete and independent. No main merge/Release. Existing Android work and caches
 are retained; the user's original Unity project is untouched during their cleanup.
