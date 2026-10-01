@@ -1,3 +1,26 @@
+# Current milestone: YOLO-M3 Android integrated performance (2026-10-01)
+
+This current status supersedes the historical milestone entries below. User
+reports that the explicit640x384 FP32 route basically follows arms. The normal
+seven-person capture is15.32 fresh observations/s, count7 subset15.20, observed
+age P50/P95 114.19/134.67ms; no partial/empty results or GPU-worker errors.
+The >=25 complete-observation FPS gate is still unmet; target30 remains.
+The current25FPS video cannot certify30 fresh source observations/s.
+
+YOLO-M1/M2 passed offline eligibility and adapter reviews. M3 remains the sole
+active milestone. Unsafe first-role submission fusion was rejected and reverted;
+producer wait, cached AHB imports, ownership transfer and retirement remain.
+Reviewed sparse timing identifies extraction/internal ncnn waits as the main
+elapsed cost. See [GPU stage report](reports/2026-10-01-yolo-gpu-stage-timing.md).
+The official FP32 SGEMM candidate passes11 fresh numerical fixtures and7 raised
+left arms in frame1500; SDK integration and device FPS measurement are next.
+See [candidate eligibility](reports/2026-10-01-yolo-sgemm-eligibility.md).
+Public API, Tracker and Regions remain stable. No CPU input readback, ORT fallback,
+threshold relaxation, held/predicted FPS counting, main merge or Release.
+Existing unfinished R4 work remains preserved. Physical acceptance is pending.
+
+Historical milestone records follow; they do not override the current status.
+
 # Android Vulkan/ncnn — Revision 4 Task 3 active (2026-09-27)
 
 Task 2 passed independent spec compliance and code quality review. The reviewer
