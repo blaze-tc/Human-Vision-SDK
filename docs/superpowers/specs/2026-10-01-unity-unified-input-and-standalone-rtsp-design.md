@@ -1,7 +1,7 @@
 # Unity 统一画面输入与独立 RTSP 模块 — 待用户审查
 
 日期：2026-10-01。基线 Android worktree `736c874`；PC Demo `2031f90`。
-状态：架构提案，尚未实施；真实摄像头诊断使用既有已审查链路，不等待本提案。
+状态：用户已确认设计并要求编写实施计划，尚未实施；2026-10-01追加三个独立Demo及公共/模式设置分离要求。
 
 ## 用户目标与边界
 
@@ -118,8 +118,12 @@ RTSP PTS 不能冒充 sensor capture time，也不能据此宣称端到端摄像
 
 ## 场景、配置与验收
 
-一个 InputPreview 场景只含源选择器（Video/WebCamera/RTSP）和 RawImage；完全不
-放识别组件、不带模型。Skeleton Demo 通过同一源接入识别，保留现有骨骼调用。
+SDK提供三个独立场景：CameraDemo、VideoDemo、RtspDemo，用公共选择按钮互相切换。
+公共识别设置包含人数、区域规划和ModelPack已验证的分析输入尺寸；任意输入尺寸不得
+绕过模型契约。每个Demo独立保存本模式参数：设备/视频/RTSP地址、镜像、骨骼线宽
+和点径等。公共设置面板Prefab复用，模式参数不在切场景时互相覆盖。
+独立输入包仍提供无识别组件/模型的InputPreview样例，证明只需输入包即可播放。
+三个SDK Demo通过同一源接入识别，保留现有骨骼调用，可独立显示画面。
 请求720p/1080p/FPS和实际值分别显示；RTSP 地址配置不写入分享日志/报告中的凭据。
 新输入层不重写骨骼 Renderer，也不用 prediction 冒充 fresh FPS。
 
@@ -144,5 +148,5 @@ P50/P95年龄、drops/热状态。>=25过渡/30硬目标不因输入重构自动
 - [Android NDK ImageReader](https://developer.android.com/ndk/reference/group/media)：
   API26 newWithUsage/PRIVATE 与 AHardwareBuffer 能力；并非任意格式/usage 都支持。
 
-需要用户确认：采用上述独立输入包/插件边界和 Android GPU RTSP 路径后，再编写
-详细实施计划并沿用 sequential fresh implementer + spec/quality review。
+用户已确认上述独立输入包/插件边界和Android GPU RTSP路径；当前进入详细实施计划
+阶段。沿用sequential fresh implementer + spec/quality review，计划书面审查后实施。

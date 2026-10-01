@@ -1,3 +1,23 @@
+# Current: camera direction fixed; unified-input plan awaits review (2026-10-01)
+
+Bounded Unity Android camera fix `3a6e9e3` reviewed SpecPASS/QualityPASS;
+RED2/2 expected failures, actual GPU orientation tests3/3 and routing12/12 PASS.
+Camera APKff7e2cc0 installed with actual1280x720 front input. Same native60d847,
+all7libraries/4selected runtime files/index verified; no MP4/CPU full-frame readback.
+Independent60s capture/facts review:40s warmed window582 observations14.55FPS,
+554one-body13.85FPS,28empty; UnityObserved ageP50/P95 102.8/165.6ms.
+Later raw logs confirm10.4–11.0FPS; camera remains30FPS. >=25/30 remainsFAIL.
+User confirms direction correct/basic following, then reports low FPS. Feet not
+fully in frame; complete-body/sensor-time physical acceptance remains unpassed.
+Lines9px/points27px now3x running baseline. No UPM GPU readiness/Release claim.
+
+Approved unified-input design now includes separate Camera/Video/RTSP Demo scenes,
+shared recognition settings and per-mode configuration. Detailed11-task plan
+[awaits written review](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
+No new input architecture code implemented; input refactor does not promise30FPS.
+M3 remains sole active milestone; existing R4 dirty bytes/caches preserved.
+[Camera report](reports/2026-10-01-camera-orientation-and-unified-input.md).
+
 # Current YOLO-M3: bounded execution/resolution trial complete (2026-10-01)
 
 Task1 diagnostic713649d measured convolution84.854% of traced GPU layer time;
