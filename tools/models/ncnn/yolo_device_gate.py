@@ -78,7 +78,7 @@ def run_fixture(args,name):
 def main():
     p=argparse.ArgumentParser(); p.add_argument('--adb',default='adb'); p.add_argument('--serial',required=True)
     p.add_argument('--runner',type=Path,required=True); p.add_argument('--root',type=Path,default=Path('out/android-yolo'))
-    p.add_argument('--gpu-mode',choices=('gpu','gpu-fp32','gpu-fp32-packed16','gpu-fp32-sgemm','gpu-fp16packed-input16'),default='gpu-fp32'); p.add_argument('--fixtures',nargs='+',required=True)
+    p.add_argument('--gpu-mode',choices=('gpu','gpu-fp32','gpu-fp32-packed16','gpu-fp32-sgemm','gpu-fp16packed-input16','gpu-fp32-no-local-memory'),default='gpu-fp32'); p.add_argument('--fixtures',nargs='+',required=True)
     a=p.parse_args()
     if not a.runner.is_file() or a.runner.read_bytes()[:4]!=b'\x7fELF': raise ValueError('Android ELF runner required')
     results=[run_fixture(a,name) for name in a.fixtures]

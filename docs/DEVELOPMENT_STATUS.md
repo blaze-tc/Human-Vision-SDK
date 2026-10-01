@@ -1,3 +1,16 @@
+# Current YOLO-M3 update: FP32 local-memory candidate eligible (2026-10-01)
+
+Separate gpu-fp32-no-local-memory runner passes all11 fresh Snapdragon888
+numerical/person/annotation gates unchanged; all22 CPU hashes match historical.
+CPU/GPU each7/7 real raised left arms in seven640 frame1500. Independent
+spec/quality/source/evidence review PASS, 78 YOLO tests and API26 ARM64 build
+PASS. See [eligibility](reports/2026-10-01-yolo-no-local-memory-eligibility.md).
+Official local-memory option is disabled while baseline FP32 math/model/640
+geometry remain unchanged. This is offline eligibility, not a speed claim.
+Next: separately reviewed explicit SDK option binding then actual Unity GPU-AHB
+FPS/age/coverage. >=25 complete observations/s still unmet; target30 remains.
+M3 sole active, accepted640 preserved, no main merge/Release or fallback.
+
 # Current YOLO-M3 update: FP16 input candidate closed (2026-10-01)
 
 The new explicit GPU-cast FP16 pack1 diagnostic completed all eleven actual

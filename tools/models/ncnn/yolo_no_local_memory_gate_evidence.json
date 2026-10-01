@@ -1,0 +1,2283 @@
+{
+  "status": "ELIGIBLE_FP32_NO_LOCAL_MEMORY_OFFLINE_ONLY",
+  "precision_mode": "gpu-fp32-no-local-memory",
+  "integration_completed": false,
+  "hardware_fps_acceptance": false,
+  "performance_claim": false,
+  "options": {
+    "vulkan": true,
+    "fp16_storage": false,
+    "fp16_packed": false,
+    "fp16_arithmetic": false,
+    "subgroup": false,
+    "use_packing_layout": true,
+    "input_elempack": 1,
+    "input_bits": 32,
+    "output_elempack": 1,
+    "output_bits": 32,
+    "num_threads": 2,
+    "use_winograd_convolution": true,
+    "use_sgemm_convolution": true,
+    "use_shader_local_memory": false
+  },
+  "cpu_options": {
+    "vulkan": false,
+    "fp16_storage": false,
+    "fp16_packed": false,
+    "fp16_arithmetic": false,
+    "subgroup": false,
+    "use_packing_layout": true,
+    "input_elempack": 1,
+    "input_bits": 32,
+    "output_elempack": 1,
+    "output_bits": 32,
+    "num_threads": 2
+  },
+  "limits": {
+    "raw_max": 0.2,
+    "raw_mean": 0.01,
+    "box_iou": 0.95,
+    "score": 0.01,
+    "joint_xy": 3.0,
+    "joint_score": 0.01
+  },
+  "model_hashes": {
+    "yolov8n_pose.ncnn.param": "908ace8e8d5b99622e0b492ebb18a6b287e647d2df7dff81205e8322752e0905",
+    "yolov8n_pose.ncnn.bin": "6128010de189605795a496f3d3f6baa6435a493b31796ceaf400cced07038da9"
+  },
+  "model_upstream_revision": "f1ac75ec54ccb3817a9eba620fe51da8bdcf87ca",
+  "device_identity": {
+    "serial": "e7c07019",
+    "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+    "device_model": "LE2120"
+  },
+  "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+  "runner_source_sha256": "62bb3d5e4acdc15709a04f41bee21a2fe78c14e41f7ec835b30dfe71d1f00a02",
+  "runner_cmake_sha256": "6fd87d16b50461cdd53597c59e2b7e7d1bcd86e69091e7b4395b79c99f576e70",
+  "source_snapshot_hashes": {
+    "tools/models/ncnn/yolo_no_local_memory_golden_runner.cpp": "62bb3d5e4acdc15709a04f41bee21a2fe78c14e41f7ec835b30dfe71d1f00a02",
+    "tools/models/ncnn/yolo_no_local_memory_runner/CMakeLists.txt": "6fd87d16b50461cdd53597c59e2b7e7d1bcd86e69091e7b4395b79c99f576e70",
+    "tools/models/ncnn/yolo_pose_gate.py": "8fa57abbbe003131f3a71b7a1cc4946d247a480b34926f35b5ed32a0da6e339f",
+    "tools/models/ncnn/yolo_device_gate.py": "21410ef40a3d8b5ff52e3e29f37b5a6326f65a7178fa5da10f990cdcc06c1a76",
+    "tests/reference/test_yolo_no_local_memory_gate.py": "112f9cd76c3631330f5f35d11f551be24d1b07ea7f0f7cfa2895b90f169745ec"
+  },
+  "ncnn_install": "out/ncnn-20260526/android-arm64-api26/install",
+  "ncnn_library_sha256": "10fde433fddb459ce7620d307ba2abc7e068d88d38c346ab03e5126ddc04f020",
+  "ncnn_config_sha256": "3c5c90e5a096a22d945e61f46fcfe1a761cd974335a084909a49858df34f4d93",
+  "ncnn_source_archive_sha256": "754659d6fe65545cf2ef4483ffb84526fea631f8764c44b150f1601d0fb4004b",
+  "source_proof_hashes": {
+    "src/option.cpp": "3b8b9ba630f8c7c0afd9173c54c319c8656397ed5b517ad2ce60086b99d7294a",
+    "src/option.h": "e78e473e281dd091baed07277f5a3a57614800881a83ce18130f06e854295555",
+    "src/layer/vulkan/convolution_vulkan.cpp": "5d5a5145a1cbd887f3fc8bab3c764c5846be3d2e031bcd4ef83120a84b8a6cd7",
+    "src/layer/vulkan/shader/convolution_packed_gemm.comp": "6199bff625182a9aeb6fb359dc5300d00fa8c1c61633267fed61aae5ccc8f3fd",
+    "src/gpu.cpp": "ccb37d82002bc6efb3be481c0c41eed47bf3d0189adff9ed2a43dfa9ae8246cb"
+  },
+  "freeze_sha256": "9490534ea36e65e0772d580ac4e5b9f3660235ea37b995111c8391fecdf88b71",
+  "historical_regression_sha256": "d0a645d99c401fa18e1b75a75146f6699418c7c1c9214d303171cb517ce8cfb6",
+  "cpu_hash_matches": 22,
+  "fixtures": [
+    {
+      "fixture": "seven-416",
+      "archive": "android-yolo/device-runs/seven-416/gpu-fp32-no-local-memory-26e85da1d5e44d8b84c963297623f998",
+      "passed": true,
+      "run_id": "gpu-fp32-no-local-memory-26e85da1d5e44d8b84c963297623f998",
+      "geometry": {
+        "width": 416,
+        "height": 256,
+        "resized_width": 416,
+        "resized_height": 234,
+        "left": 0,
+        "top": 11,
+        "scale": 0.40625,
+        "source_width": 1024,
+        "source_height": 576
+      },
+      "sequential_frame_index": 1500,
+      "source": "E:/Project/Human Vision SDK/video-1.mp4",
+      "fixture_sha256": "e04a51fa96304850efd7fbeffa5ee3f039e9cce8aa1a83108a840945104745ae",
+      "input_sha256": "377e6cac23559bbef87e06dfc95dcd71f0fa91de78703a4ed16bfd7c863d1c39",
+      "source_png_sha256": "017ac2921ed78faff17d125165430bf45eb350861ff80ef5408c3a4b873dad04",
+      "source_video_sha256": "e3620101d8218e7e9f2736cf5dab7a497bfcfc23e33a40244b63ae317c1bb0c8",
+      "comparison_sha256": "3a5fadbdc9a17e238639440ed3c5518c499ffe9c3f7c6e51e8531cecb16fcd09",
+      "execution_sha256": "1d7584fde07958b9de9188902fc5e393b53b4cf8de90521a57f8a1376860e31c",
+      "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+      "stages": {
+        "cpu": {
+          "state": "SUCCESS",
+          "mode": "cpu",
+          "run_id": "gpu-fp32-no-local-memory-26e85da1d5e44d8b84c963297623f998",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": false,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-cpu-out0.fp32": "f858f2f70c22edabc70b35348d904d249c9de44be6773fd46891201b04e7c207",
+            "ncnn-cpu-out1.fp32": "0d6c7d94c2f4728dd6c88b8d12458dc6f90551ea9b95903c12b886b2c1b0fe5f"
+          },
+          "log_file": "android-cpu.log",
+          "log_sha256": "17fb6fe210ed49b5b4b4168c00013fcca44e7f74895a0f5ee8e60f45a6d45e60"
+        },
+        "gpu-fp32-no-local-memory": {
+          "state": "SUCCESS",
+          "mode": "gpu-fp32-no-local-memory",
+          "run_id": "gpu-fp32-no-local-memory-26e85da1d5e44d8b84c963297623f998",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": true,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2,
+            "use_winograd_convolution": true,
+            "use_sgemm_convolution": true,
+            "use_shader_local_memory": false
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-gpu-fp32-no-local-memory-out0.fp32": "a371614be17499efd4f184a502f20e06484566651f2aee93b12663660b555dc3",
+            "ncnn-gpu-fp32-no-local-memory-out1.fp32": "2f9bd6eb374b5de2df0c52d13ca936afaba2af702a0d5477a5e4639b65b1dba5"
+          },
+          "log_file": "android-gpu-fp32-no-local-memory.log",
+          "log_sha256": "7ce915cff194bfbe08ef5cf14dcb7445c8ad20237d8861c0067727f5051319cf"
+        }
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/seven-416/gpu-fp32-f786820ea0284e598a3411810c1ce8a5",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "f858f2f70c22edabc70b35348d904d249c9de44be6773fd46891201b04e7c207",
+        "ncnn-cpu-out1.fp32": "0d6c7d94c2f4728dd6c88b8d12458dc6f90551ea9b95903c12b886b2c1b0fe5f"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp32-no-local-memory-out0.fp32": "a371614be17499efd4f184a502f20e06484566651f2aee93b12663660b555dc3",
+        "ncnn-gpu-fp32-no-local-memory-out1.fp32": "2f9bd6eb374b5de2df0c52d13ca936afaba2af702a0d5477a5e4639b65b1dba5"
+      },
+      "reference_people": 7,
+      "gpu_people": 7,
+      "raw": {
+        "out0": {
+          "max_abs": 9.822845458984375e-05,
+          "mean_abs": 1.845017807267485e-06
+        },
+        "out1": {
+          "max_abs": 2.09808349609375e-05,
+          "mean_abs": 1.290724084826566e-06
+        }
+      },
+      "associations": [
+        {
+          "iou": 0.9999993772037117,
+          "score_error": 1.7881393432617188e-07,
+          "joint_xy_max": 9.390024041522338e-05,
+          "joint_score_max": 2.4736302128847143e-07
+        },
+        {
+          "iou": 0.9999991904279317,
+          "score_error": 5.960464477539063e-08,
+          "joint_xy_max": 7.042518029720668e-05,
+          "joint_score_max": 9.656032287086447e-07
+        },
+        {
+          "iou": 0.9999995146968756,
+          "score_error": 1.7881393432617188e-07,
+          "joint_xy_max": 0.00010329026446243006,
+          "joint_score_max": 1.826670802507202e-06
+        },
+        {
+          "iou": 0.9999986726978851,
+          "score_error": 7.152557373046875e-07,
+          "joint_xy_max": 0.00029109074517919,
+          "joint_score_max": 1.0442396766174866e-06
+        },
+        {
+          "iou": 0.9999995860959935,
+          "score_error": 1.7881393432617188e-07,
+          "joint_xy_max": 3.756009616040501e-05,
+          "joint_score_max": 6.185221388399498e-07
+        },
+        {
+          "iou": 0.9999990588421817,
+          "score_error": 4.76837158203125e-07,
+          "joint_xy_max": 0.00011268028845279332,
+          "joint_score_max": 7.397416071919238e-07
+        },
+        {
+          "iou": 0.9999995784256871,
+          "score_error": 1.1920928955078125e-07,
+          "joint_xy_max": 4.342886114727662e-05,
+          "joint_score_max": 1.0317486930366826e-06
+        }
+      ],
+      "annotation_reference": {
+        "passed": true,
+        "minimum_iou": 0.3,
+        "matches": [
+          {
+            "person": "left-rear",
+            "body": 3,
+            "iou": 0.762387995080428
+          },
+          {
+            "person": "left-front",
+            "body": 2,
+            "iou": 0.62610882315713
+          },
+          {
+            "person": "middle-left-rear",
+            "body": 5,
+            "iou": 0.6232756524237939
+          },
+          {
+            "person": "center-front",
+            "body": 1,
+            "iou": 0.3831431156542818
+          },
+          {
+            "person": "middle-right-rear",
+            "body": 6,
+            "iou": 0.6328999295558257
+          },
+          {
+            "person": "right-front",
+            "body": 0,
+            "iou": 0.6365957258435782
+          },
+          {
+            "person": "right-rear",
+            "body": 4,
+            "iou": 0.5588941634139555
+          }
+        ]
+      },
+      "annotation_actual": {
+        "passed": true,
+        "minimum_iou": 0.3,
+        "matches": [
+          {
+            "person": "left-rear",
+            "body": 3,
+            "iou": 0.762386995610065
+          },
+          {
+            "person": "left-front",
+            "body": 2,
+            "iou": 0.6261089911624729
+          },
+          {
+            "person": "middle-left-rear",
+            "body": 5,
+            "iou": 0.6232762240326496
+          },
+          {
+            "person": "center-front",
+            "body": 1,
+            "iou": 0.38314340044530887
+          },
+          {
+            "person": "middle-right-rear",
+            "body": 6,
+            "iou": 0.6329000563088453
+          },
+          {
+            "person": "right-front",
+            "body": 0,
+            "iou": 0.6365959730596593
+          },
+          {
+            "person": "right-rear",
+            "body": 4,
+            "iou": 0.5588941908202583
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "one-416",
+      "archive": "android-yolo/device-runs/one-416/gpu-fp32-no-local-memory-8890181c8fb44b69b12d0548bb586d3a",
+      "passed": true,
+      "run_id": "gpu-fp32-no-local-memory-8890181c8fb44b69b12d0548bb586d3a",
+      "geometry": {
+        "width": 288,
+        "height": 416,
+        "resized_width": 262,
+        "resized_height": 416,
+        "left": 13,
+        "top": 0,
+        "scale": 1.2023121387283238,
+        "source_width": 218,
+        "source_height": 346
+      },
+      "sequential_frame_index": null,
+      "source": "tests\\testdata\\d0_3_one_person.mp4",
+      "fixture_sha256": "27a7153ed7446175b3d9799a9dbe5b0bfd7e69e87ca9bcd56fbbc603a61a1022",
+      "input_sha256": "c174a3e1342af9c244485c0e5ce57dce0858cf2133161971470b3f7eb1da8044",
+      "source_png_sha256": "cce59593686244632e5f1fd2e23da9c72f8c52c3948f28c16b9ba8299b668ad7",
+      "source_video_sha256": "20806434a5620aca9e6198782d6882beb6fc53f1e5a0725e48abf128b46f2f94",
+      "comparison_sha256": "3788868404e6afcb9189bc40d1887fe9f757bb704f44d653127b9c008f63bbea",
+      "execution_sha256": "53a4608f2b56c895a2cb9236d1dc0a67e2a2d6b768bc848a218821d6d0e5370e",
+      "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+      "stages": {
+        "cpu": {
+          "state": "SUCCESS",
+          "mode": "cpu",
+          "run_id": "gpu-fp32-no-local-memory-8890181c8fb44b69b12d0548bb586d3a",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": false,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-cpu-out0.fp32": "59eff021675a14cc9a1d552cccc01bc55dfc97123c3e10238e4d02c07cc9d8f0",
+            "ncnn-cpu-out1.fp32": "155f6cdbbdd562a472a8d8381c3030a9207a4d6be04fa8c8d806f4ebe94e7118"
+          },
+          "log_file": "android-cpu.log",
+          "log_sha256": "380ac49d0a8dc2e0bac9fcbc3876fa1515d38db59053956a4bad269fad75f7bd"
+        },
+        "gpu-fp32-no-local-memory": {
+          "state": "SUCCESS",
+          "mode": "gpu-fp32-no-local-memory",
+          "run_id": "gpu-fp32-no-local-memory-8890181c8fb44b69b12d0548bb586d3a",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": true,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2,
+            "use_winograd_convolution": true,
+            "use_sgemm_convolution": true,
+            "use_shader_local_memory": false
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-gpu-fp32-no-local-memory-out0.fp32": "5c279a90da66dd7750708acb1a5628df03bc8406a9274055e346f5d695f4ea9d",
+            "ncnn-gpu-fp32-no-local-memory-out1.fp32": "73b1cc466f11096a456dbe06815c8099c9fed707e11343234fe45b21c61a1cc4"
+          },
+          "log_file": "android-gpu-fp32-no-local-memory.log",
+          "log_sha256": "2078989729d621d63a7f9e83269e73633885f282811d7e0577c8470234c99eea"
+        }
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/one-416/gpu-fp32-c8352498684a4e9b9f966c45fca54f80",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "59eff021675a14cc9a1d552cccc01bc55dfc97123c3e10238e4d02c07cc9d8f0",
+        "ncnn-cpu-out1.fp32": "155f6cdbbdd562a472a8d8381c3030a9207a4d6be04fa8c8d806f4ebe94e7118"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp32-no-local-memory-out0.fp32": "5c279a90da66dd7750708acb1a5628df03bc8406a9274055e346f5d695f4ea9d",
+        "ncnn-gpu-fp32-no-local-memory-out1.fp32": "73b1cc466f11096a456dbe06815c8099c9fed707e11343234fe45b21c61a1cc4"
+      },
+      "reference_people": 1,
+      "gpu_people": 1,
+      "raw": {
+        "out0": {
+          "max_abs": 9.250640869140625e-05,
+          "mean_abs": 1.5184978981736756e-06
+        },
+        "out1": {
+          "max_abs": 2.002716064453125e-05,
+          "mean_abs": 1.2206677738564101e-06
+        }
+      },
+      "associations": [
+        {
+          "iou": 0.9999999470198652,
+          "score_error": 5.960464477539063e-08,
+          "joint_xy_max": 8.883843054263707e-05,
+          "joint_score_max": 7.080533566128366e-07
+        }
+      ],
+      "annotation_reference": null,
+      "annotation_actual": null
+    },
+    {
+      "fixture": "seven-320",
+      "archive": "android-yolo/device-runs/seven-320/gpu-fp32-no-local-memory-a6a3b23214884600902838c24bd29019",
+      "passed": true,
+      "run_id": "gpu-fp32-no-local-memory-a6a3b23214884600902838c24bd29019",
+      "geometry": {
+        "width": 320,
+        "height": 192,
+        "resized_width": 320,
+        "resized_height": 180,
+        "left": 0,
+        "top": 6,
+        "scale": 0.3125,
+        "source_width": 1024,
+        "source_height": 576
+      },
+      "sequential_frame_index": 1500,
+      "source": "E:/Project/Human Vision SDK/video-1.mp4",
+      "fixture_sha256": "b0a8d73bf80e4e3b05ea510d57454863d55361f10c8491fc978359e9c1de6a09",
+      "input_sha256": "6d136e0a5278671dffa08ac29e4d8b0feeb0ab173edfff09718e65ec6b2a31dc",
+      "source_png_sha256": "017ac2921ed78faff17d125165430bf45eb350861ff80ef5408c3a4b873dad04",
+      "source_video_sha256": "e3620101d8218e7e9f2736cf5dab7a497bfcfc23e33a40244b63ae317c1bb0c8",
+      "comparison_sha256": "344e98b7cbf5179ee5faa711478497574c3a63af1b41c4f287a707b1839b35df",
+      "execution_sha256": "f1127d3c86c8db811a5594be4d9255a97e936e5d72bc6295b25839cc6d80226d",
+      "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+      "stages": {
+        "cpu": {
+          "state": "SUCCESS",
+          "mode": "cpu",
+          "run_id": "gpu-fp32-no-local-memory-a6a3b23214884600902838c24bd29019",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": false,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-cpu-out0.fp32": "d23e3667aa98aabf4bc296d2025d94e0e4ddd5cfbadcc1af0ce248c94ffbdce2",
+            "ncnn-cpu-out1.fp32": "f856c90c4ebf28298e7540516577d8ac9b5aee1786360d915ac230ef032ed45e"
+          },
+          "log_file": "android-cpu.log",
+          "log_sha256": "cd3166d7f3f589a48e4838981a6d38e9965d545f14a9c541d23512215f0fc70c"
+        },
+        "gpu-fp32-no-local-memory": {
+          "state": "SUCCESS",
+          "mode": "gpu-fp32-no-local-memory",
+          "run_id": "gpu-fp32-no-local-memory-a6a3b23214884600902838c24bd29019",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": true,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2,
+            "use_winograd_convolution": true,
+            "use_sgemm_convolution": true,
+            "use_shader_local_memory": false
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-gpu-fp32-no-local-memory-out0.fp32": "2812b03ac02a4066d549bf25a2932dab34fcfb905432988416f3caae72be7de1",
+            "ncnn-gpu-fp32-no-local-memory-out1.fp32": "7e3e5728186fe9bd46a6cd2cf5d3d7b720482c5c98b25724a7442a68355790a6"
+          },
+          "log_file": "android-gpu-fp32-no-local-memory.log",
+          "log_sha256": "efaf95ebad3610115e84d33308933eeb1c8b1d13991e51fc306fd768c381f154"
+        }
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/seven-320/gpu-fp32-f4423d071999463ca76635d11dedc68f",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "d23e3667aa98aabf4bc296d2025d94e0e4ddd5cfbadcc1af0ce248c94ffbdce2",
+        "ncnn-cpu-out1.fp32": "f856c90c4ebf28298e7540516577d8ac9b5aee1786360d915ac230ef032ed45e"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp32-no-local-memory-out0.fp32": "2812b03ac02a4066d549bf25a2932dab34fcfb905432988416f3caae72be7de1",
+        "ncnn-gpu-fp32-no-local-memory-out1.fp32": "7e3e5728186fe9bd46a6cd2cf5d3d7b720482c5c98b25724a7442a68355790a6"
+      },
+      "reference_people": 7,
+      "gpu_people": 7,
+      "raw": {
+        "out0": {
+          "max_abs": 7.557868957519531e-05,
+          "mean_abs": 2.460249674368464e-06
+        },
+        "out1": {
+          "max_abs": 2.1576881408691406e-05,
+          "mean_abs": 1.41560153974263e-06
+        }
+      },
+      "associations": [
+        {
+          "iou": 0.9999993953800088,
+          "score_error": 2.980232238769531e-07,
+          "joint_xy_max": 5.760192868820013e-05,
+          "joint_score_max": 1.370185969240545e-06
+        },
+        {
+          "iou": 0.9999990223410035,
+          "score_error": 1.1324882507324219e-06,
+          "joint_xy_max": 8.544921877273737e-05,
+          "joint_score_max": 9.31408170923298e-07
+        },
+        {
+          "iou": 0.9999991140640079,
+          "score_error": 5.364418029785156e-07,
+          "joint_xy_max": 0.00010528564450851263,
+          "joint_score_max": 1.0189739994004299e-06
+        },
+        {
+          "iou": 0.9999987960469006,
+          "score_error": 2.473592758178711e-06,
+          "joint_xy_max": 5.6457519576724735e-05,
+          "joint_score_max": 8.245777543547383e-07
+        },
+        {
+          "iou": 0.9999994861003411,
+          "score_error": 2.5331974029541016e-06,
+          "joint_xy_max": 8.544921871589395e-05,
+          "joint_score_max": 8.724982216712363e-07
+        },
+        {
+          "iou": 0.9999992759246463,
+          "score_error": 2.652406692504883e-06,
+          "joint_xy_max": 3.967285152839395e-05,
+          "joint_score_max": 4.222906145878724e-07
+        },
+        {
+          "iou": 0.9999991105749816,
+          "score_error": 2.8312206268310547e-06,
+          "joint_xy_max": 8.850097657386868e-05,
+          "joint_score_max": 9.506776240120196e-07
+        }
+      ],
+      "annotation_reference": {
+        "passed": true,
+        "minimum_iou": 0.3,
+        "matches": [
+          {
+            "person": "left-rear",
+            "body": 5,
+            "iou": 0.673848648369568
+          },
+          {
+            "person": "left-front",
+            "body": 2,
+            "iou": 0.6460991545197262
+          },
+          {
+            "person": "middle-left-rear",
+            "body": 6,
+            "iou": 0.638126568652828
+          },
+          {
+            "person": "center-front",
+            "body": 1,
+            "iou": 0.41207161037800655
+          },
+          {
+            "person": "middle-right-rear",
+            "body": 3,
+            "iou": 0.6041351667795197
+          },
+          {
+            "person": "right-front",
+            "body": 0,
+            "iou": 0.6428311917744391
+          },
+          {
+            "person": "right-rear",
+            "body": 4,
+            "iou": 0.5636659514108878
+          }
+        ]
+      },
+      "annotation_actual": {
+        "passed": true,
+        "minimum_iou": 0.3,
+        "matches": [
+          {
+            "person": "left-rear",
+            "body": 5,
+            "iou": 0.6738490483926701
+          },
+          {
+            "person": "left-front",
+            "body": 2,
+            "iou": 0.646098986781708
+          },
+          {
+            "person": "middle-left-rear",
+            "body": 6,
+            "iou": 0.6381269594632067
+          },
+          {
+            "person": "center-front",
+            "body": 1,
+            "iou": 0.41207128831057227
+          },
+          {
+            "person": "middle-right-rear",
+            "body": 3,
+            "iou": 0.6041356832144379
+          },
+          {
+            "person": "right-front",
+            "body": 0,
+            "iou": 0.6428312025307257
+          },
+          {
+            "person": "right-rear",
+            "body": 4,
+            "iou": 0.563665981882639
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "one-320",
+      "archive": "android-yolo/device-runs/one-320/gpu-fp32-no-local-memory-eea2bf9e81e447e0956f7ea6adecdb5a",
+      "passed": true,
+      "run_id": "gpu-fp32-no-local-memory-eea2bf9e81e447e0956f7ea6adecdb5a",
+      "geometry": {
+        "width": 224,
+        "height": 320,
+        "resized_width": 201,
+        "resized_height": 320,
+        "left": 11,
+        "top": 0,
+        "scale": 0.9248554913294798,
+        "source_width": 218,
+        "source_height": 346
+      },
+      "sequential_frame_index": null,
+      "source": "tests\\testdata\\d0_3_one_person.mp4",
+      "fixture_sha256": "622b5b2eb006767c9d5e9028e7ebb46b402b33cfc03458044fa5a74686dca361",
+      "input_sha256": "69f5ee21c368ed2449b5735db9ffe5898b378941bab8a21ff2f07b33afa50cc2",
+      "source_png_sha256": "cce59593686244632e5f1fd2e23da9c72f8c52c3948f28c16b9ba8299b668ad7",
+      "source_video_sha256": "20806434a5620aca9e6198782d6882beb6fc53f1e5a0725e48abf128b46f2f94",
+      "comparison_sha256": "2d328157c207ae2fb7c0c0f4af23bda73547494b386b2111a247c3653f6027a6",
+      "execution_sha256": "a80601e1ec8a91c5e1bb217ef2216f4905e593d7ab1006bdc796fc518692ef9b",
+      "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+      "stages": {
+        "cpu": {
+          "state": "SUCCESS",
+          "mode": "cpu",
+          "run_id": "gpu-fp32-no-local-memory-eea2bf9e81e447e0956f7ea6adecdb5a",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": false,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-cpu-out0.fp32": "a8ffa19132d8267b2efbab496207b594524f4919d6cbac3bea36226cb623acaf",
+            "ncnn-cpu-out1.fp32": "3f95c82c4644aac553960a21c93dc7b3b8367e89558baf8d5949e746089cf7a7"
+          },
+          "log_file": "android-cpu.log",
+          "log_sha256": "86bb507fdd6b2f23cfa1c3c04768d0f79bf48cb176152cfb26f5a016174ee77d"
+        },
+        "gpu-fp32-no-local-memory": {
+          "state": "SUCCESS",
+          "mode": "gpu-fp32-no-local-memory",
+          "run_id": "gpu-fp32-no-local-memory-eea2bf9e81e447e0956f7ea6adecdb5a",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": true,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2,
+            "use_winograd_convolution": true,
+            "use_sgemm_convolution": true,
+            "use_shader_local_memory": false
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-gpu-fp32-no-local-memory-out0.fp32": "fd1c01dbf925fb043c3fca6b269f6356b35d45f985f02b8c02605d6f43a2480b",
+            "ncnn-gpu-fp32-no-local-memory-out1.fp32": "ea91ddd7ea32a8a755eabf01a81860379fc5f9fd2514be3e66677c296d993c29"
+          },
+          "log_file": "android-gpu-fp32-no-local-memory.log",
+          "log_sha256": "58a6d5fd271bf9aac17aa6931f10311c146399e611a4af94fba10259df34f8f5"
+        }
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/one-320/gpu-fp32-f91dc295572342adbe6c17e04cb0490d",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "a8ffa19132d8267b2efbab496207b594524f4919d6cbac3bea36226cb623acaf",
+        "ncnn-cpu-out1.fp32": "3f95c82c4644aac553960a21c93dc7b3b8367e89558baf8d5949e746089cf7a7"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp32-no-local-memory-out0.fp32": "fd1c01dbf925fb043c3fca6b269f6356b35d45f985f02b8c02605d6f43a2480b",
+        "ncnn-gpu-fp32-no-local-memory-out1.fp32": "ea91ddd7ea32a8a755eabf01a81860379fc5f9fd2514be3e66677c296d993c29"
+      },
+      "reference_people": 1,
+      "gpu_people": 1,
+      "raw": {
+        "out0": {
+          "max_abs": 0.000186920166015625,
+          "mean_abs": 1.8898474031703798e-06
+        },
+        "out1": {
+          "max_abs": 2.3484230041503906e-05,
+          "mean_abs": 1.4304416206486196e-06
+        }
+      },
+      "associations": [
+        {
+          "iou": 0.9999998408989338,
+          "score_error": 1.1920928955078125e-07,
+          "joint_xy_max": 9.074211121173903e-05,
+          "joint_score_max": 6.767435632992758e-07
+        }
+      ],
+      "annotation_reference": null,
+      "annotation_actual": null
+    },
+    {
+      "fixture": "seven-640",
+      "archive": "android-yolo/device-runs/seven-640/gpu-fp32-no-local-memory-5c7bb015e67f4cef9129dddec5b5dcf9",
+      "passed": true,
+      "run_id": "gpu-fp32-no-local-memory-5c7bb015e67f4cef9129dddec5b5dcf9",
+      "geometry": {
+        "width": 640,
+        "height": 384,
+        "resized_width": 640,
+        "resized_height": 360,
+        "left": 0,
+        "top": 12,
+        "scale": 0.625,
+        "source_width": 1024,
+        "source_height": 576
+      },
+      "sequential_frame_index": 1500,
+      "source": "E:/Project/Human Vision SDK/video-1.mp4",
+      "fixture_sha256": "4606dcec0ad97a0f3b41097aa775cfacb6e045647bd972b7c834a1e37f885030",
+      "input_sha256": "9c2f9fde0c5eb2ae4e53c96c9ecfd34c7c1fc9c624191ce6559a1461751ba939",
+      "source_png_sha256": "017ac2921ed78faff17d125165430bf45eb350861ff80ef5408c3a4b873dad04",
+      "source_video_sha256": "e3620101d8218e7e9f2736cf5dab7a497bfcfc23e33a40244b63ae317c1bb0c8",
+      "comparison_sha256": "b5f53ef8943ceea5a53856ce291c126bcd206c70942393fcfa8ab18d7d2f223b",
+      "execution_sha256": "c2ee76d44dbb2ad0ca306e40793d579eeeda0e94cd037de1fa4a504da22f5fc6",
+      "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+      "stages": {
+        "cpu": {
+          "state": "SUCCESS",
+          "mode": "cpu",
+          "run_id": "gpu-fp32-no-local-memory-5c7bb015e67f4cef9129dddec5b5dcf9",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": false,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-cpu-out0.fp32": "f822c5a8c60929d6311ed29f181652609f08b4c95b046f73b3ed4f4b5f35186c",
+            "ncnn-cpu-out1.fp32": "1f26d3e41e93a0096432ef8062ccf70db5787a14abe826b414de6bb1f1c6125b"
+          },
+          "log_file": "android-cpu.log",
+          "log_sha256": "2756563b06a0b6f65d2e912d21b20cf8c340122d90a907742b0a311436c99ad7"
+        },
+        "gpu-fp32-no-local-memory": {
+          "state": "SUCCESS",
+          "mode": "gpu-fp32-no-local-memory",
+          "run_id": "gpu-fp32-no-local-memory-5c7bb015e67f4cef9129dddec5b5dcf9",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": true,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2,
+            "use_winograd_convolution": true,
+            "use_sgemm_convolution": true,
+            "use_shader_local_memory": false
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-gpu-fp32-no-local-memory-out0.fp32": "aff322d8fab66cc9876c032fbe9c06fdc29a9fe4fd522d5bcdb73fc60722813b",
+            "ncnn-gpu-fp32-no-local-memory-out1.fp32": "b874b78f7cee8dc73cdb07eee41d3f5033a6eb588e1dc98e971883722f4f69c6"
+          },
+          "log_file": "android-gpu-fp32-no-local-memory.log",
+          "log_sha256": "e07c615c07608681f6831a321327d7ee5bd44f443ec4f921482db1cf184e668e"
+        }
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/seven-640/gpu-fp32-866e333068bf4b058ca0c40176faf897",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "f822c5a8c60929d6311ed29f181652609f08b4c95b046f73b3ed4f4b5f35186c",
+        "ncnn-cpu-out1.fp32": "1f26d3e41e93a0096432ef8062ccf70db5787a14abe826b414de6bb1f1c6125b"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp32-no-local-memory-out0.fp32": "aff322d8fab66cc9876c032fbe9c06fdc29a9fe4fd522d5bcdb73fc60722813b",
+        "ncnn-gpu-fp32-no-local-memory-out1.fp32": "b874b78f7cee8dc73cdb07eee41d3f5033a6eb588e1dc98e971883722f4f69c6"
+      },
+      "reference_people": 7,
+      "gpu_people": 7,
+      "raw": {
+        "out0": {
+          "max_abs": 0.000141143798828125,
+          "mean_abs": 2.006379033018042e-06
+        },
+        "out1": {
+          "max_abs": 3.552436828613281e-05,
+          "mean_abs": 1.5648187134973458e-06
+        }
+      },
+      "associations": [
+        {
+          "iou": 0.9999995828175552,
+          "score_error": 0.0,
+          "joint_xy_max": 0.00014038085939205303,
+          "joint_score_max": 2.4171317040133644e-06
+        },
+        {
+          "iou": 0.9999992752355931,
+          "score_error": 1.7881393432617188e-07,
+          "joint_xy_max": 0.00010986328123863132,
+          "joint_score_max": 4.141224408948929e-07
+        },
+        {
+          "iou": 0.9999990527588509,
+          "score_error": 2.384185791015625e-07,
+          "joint_xy_max": 0.00030517578125,
+          "joint_score_max": 2.100743412059014e-06
+        },
+        {
+          "iou": 0.9999996370796412,
+          "score_error": 7.748603820800781e-07,
+          "joint_xy_max": 0.00012817382810226263,
+          "joint_score_max": 2.6202164666866423e-06
+        },
+        {
+          "iou": 0.9999994136955392,
+          "score_error": 5.960464477539063e-08,
+          "joint_xy_max": 7.324218751136868e-05,
+          "joint_score_max": 3.623912714412203e-06
+        },
+        {
+          "iou": 0.9999997235156877,
+          "score_error": 5.364418029785156e-07,
+          "joint_xy_max": 7.476806638351263e-05,
+          "joint_score_max": 3.853299886946715e-07
+        },
+        {
+          "iou": 0.9999996814410269,
+          "score_error": 4.172325134277344e-07,
+          "joint_xy_max": 6.713867190910605e-05,
+          "joint_score_max": 1.1417485480391676e-06
+        }
+      ],
+      "annotation_reference": {
+        "passed": true,
+        "minimum_iou": 0.3,
+        "matches": [
+          {
+            "person": "left-rear",
+            "body": 5,
+            "iou": 0.8585699715421086
+          },
+          {
+            "person": "left-front",
+            "body": 2,
+            "iou": 0.8407638991086968
+          },
+          {
+            "person": "middle-left-rear",
+            "body": 6,
+            "iou": 0.889659753031266
+          },
+          {
+            "person": "center-front",
+            "body": 0,
+            "iou": 0.5972225755284087
+          },
+          {
+            "person": "middle-right-rear",
+            "body": 4,
+            "iou": 0.9565336574171979
+          },
+          {
+            "person": "right-front",
+            "body": 1,
+            "iou": 0.908357700832074
+          },
+          {
+            "person": "right-rear",
+            "body": 3,
+            "iou": 0.8905370050997405
+          }
+        ]
+      },
+      "annotation_actual": {
+        "passed": true,
+        "minimum_iou": 0.3,
+        "matches": [
+          {
+            "person": "left-rear",
+            "body": 5,
+            "iou": 0.8585701450655051
+          },
+          {
+            "person": "left-front",
+            "body": 2,
+            "iou": 0.8407640140055438
+          },
+          {
+            "person": "middle-left-rear",
+            "body": 6,
+            "iou": 0.8896600130835083
+          },
+          {
+            "person": "center-front",
+            "body": 0,
+            "iou": 0.5972224612432079
+          },
+          {
+            "person": "middle-right-rear",
+            "body": 4,
+            "iou": 0.956533938722092
+          },
+          {
+            "person": "right-front",
+            "body": 1,
+            "iou": 0.9083582855166005
+          },
+          {
+            "person": "right-rear",
+            "body": 3,
+            "iou": 0.8905369398708459
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "one-640",
+      "archive": "android-yolo/device-runs/one-640/gpu-fp32-no-local-memory-a4baf403a1b54011b42563fab53e3e0d",
+      "passed": true,
+      "run_id": "gpu-fp32-no-local-memory-a4baf403a1b54011b42563fab53e3e0d",
+      "geometry": {
+        "width": 416,
+        "height": 640,
+        "resized_width": 403,
+        "resized_height": 640,
+        "left": 6,
+        "top": 0,
+        "scale": 1.8497109826589595,
+        "source_width": 218,
+        "source_height": 346
+      },
+      "sequential_frame_index": null,
+      "source": "tests\\testdata\\d0_3_one_person.mp4",
+      "fixture_sha256": "5c730a7446cdb11b583cecd52dbc0e75a2910ce7cdf38af79d5541863175768f",
+      "input_sha256": "edf10fbf8761ff4c4e7191d2a7dca023a71493bd8bcc93d4c8e1221136a6d20a",
+      "source_png_sha256": "cce59593686244632e5f1fd2e23da9c72f8c52c3948f28c16b9ba8299b668ad7",
+      "source_video_sha256": "20806434a5620aca9e6198782d6882beb6fc53f1e5a0725e48abf128b46f2f94",
+      "comparison_sha256": "b9844c6e0d94cb4bb27c3be604a8db02ad5d4eca3219bb6307e4861451a9ec21",
+      "execution_sha256": "411ecc3bd75b6d682514df357ce4da84842d5d2b2ff8de2fbb73aca5cce2f69f",
+      "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+      "stages": {
+        "cpu": {
+          "state": "SUCCESS",
+          "mode": "cpu",
+          "run_id": "gpu-fp32-no-local-memory-a4baf403a1b54011b42563fab53e3e0d",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": false,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-cpu-out0.fp32": "c488f42f82c44d58a15e84feaa165637a092e2db3f5e42b2eefa45fb933f3519",
+            "ncnn-cpu-out1.fp32": "c543ae237d78b2afe7390afee3c0440fbb01615fc045d8b30b0c94bdf87e05ea"
+          },
+          "log_file": "android-cpu.log",
+          "log_sha256": "e1a29e084c1d45af4347bce5c0351b2355c137ebb44a7880026822fe0870eb16"
+        },
+        "gpu-fp32-no-local-memory": {
+          "state": "SUCCESS",
+          "mode": "gpu-fp32-no-local-memory",
+          "run_id": "gpu-fp32-no-local-memory-a4baf403a1b54011b42563fab53e3e0d",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": true,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2,
+            "use_winograd_convolution": true,
+            "use_sgemm_convolution": true,
+            "use_shader_local_memory": false
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-gpu-fp32-no-local-memory-out0.fp32": "9b0a8347f05d878f345c488ea670f88201cf77470c8000c22f72753e8bd1608b",
+            "ncnn-gpu-fp32-no-local-memory-out1.fp32": "fff042ad197bdccd536723c61696e82928c8548ae952a64f3d9d0ba8a1b655aa"
+          },
+          "log_file": "android-gpu-fp32-no-local-memory.log",
+          "log_sha256": "cc0f95730b82186b2a42f53a14faeb97178cc575cab18c38cf92442113811632"
+        }
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/one-640/gpu-fp32-73b77b3347814c928dbb033082ea0dfc",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "c488f42f82c44d58a15e84feaa165637a092e2db3f5e42b2eefa45fb933f3519",
+        "ncnn-cpu-out1.fp32": "c543ae237d78b2afe7390afee3c0440fbb01615fc045d8b30b0c94bdf87e05ea"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp32-no-local-memory-out0.fp32": "9b0a8347f05d878f345c488ea670f88201cf77470c8000c22f72753e8bd1608b",
+        "ncnn-gpu-fp32-no-local-memory-out1.fp32": "fff042ad197bdccd536723c61696e82928c8548ae952a64f3d9d0ba8a1b655aa"
+      },
+      "reference_people": 1,
+      "gpu_people": 1,
+      "raw": {
+        "out0": {
+          "max_abs": 0.00010013580322265625,
+          "mean_abs": 1.5906970527347909e-06
+        },
+        "out1": {
+          "max_abs": 4.315376281738281e-05,
+          "mean_abs": 1.5584679641312675e-06
+        }
+      },
+      "associations": [
+        {
+          "iou": 0.9999996594599664,
+          "score_error": 1.1920928955078125e-07,
+          "joint_xy_max": 6.599426268394382e-05,
+          "joint_score_max": 1.1051978731080325e-06
+        }
+      ],
+      "annotation_reference": null,
+      "annotation_actual": null
+    },
+    {
+      "fixture": "empty-416",
+      "archive": "android-yolo/device-runs/empty-416/gpu-fp32-no-local-memory-2ebc556fef16417182b88f6e71048849",
+      "passed": true,
+      "run_id": "gpu-fp32-no-local-memory-2ebc556fef16417182b88f6e71048849",
+      "geometry": {
+        "width": 416,
+        "height": 256,
+        "resized_width": 416,
+        "resized_height": 256,
+        "left": 0,
+        "top": 0,
+        "scale": 1.0,
+        "source_width": 416,
+        "source_height": 256
+      },
+      "sequential_frame_index": null,
+      "source": "analytic uniform114 negative control",
+      "fixture_sha256": "160f639cc8525a116516232e5a1605a09107372f2e0ef16e5b72ae1eaf200ef5",
+      "input_sha256": "601c9f830e84b707168648d79bc531f85bb324181cb57729dd6baba80682d298",
+      "source_png_sha256": "898b3af019108ae519bbd5c7fb42423cfbf13d745b25b6270c885ea176fe548a",
+      "source_video_sha256": null,
+      "comparison_sha256": "6e87ae8966e0e1e7bb1da995bf7325e4a9e051c8b3c81e3dd546757499c39c57",
+      "execution_sha256": "5dd80ce39a3edf38d61ef4b276e2b775b88f9fd5eac9b66387a4ed30896439c5",
+      "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+      "stages": {
+        "cpu": {
+          "state": "SUCCESS",
+          "mode": "cpu",
+          "run_id": "gpu-fp32-no-local-memory-2ebc556fef16417182b88f6e71048849",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": false,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-cpu-out0.fp32": "5296dc4759a9e185928882931925413f6723579b2c99b8fa389b497c3ea42eb3",
+            "ncnn-cpu-out1.fp32": "d413095e12cf48a6c64f50faa7a310d7e7c2819180f98bc850cb75ff3713f41f"
+          },
+          "log_file": "android-cpu.log",
+          "log_sha256": "17fb6fe210ed49b5b4b4168c00013fcca44e7f74895a0f5ee8e60f45a6d45e60"
+        },
+        "gpu-fp32-no-local-memory": {
+          "state": "SUCCESS",
+          "mode": "gpu-fp32-no-local-memory",
+          "run_id": "gpu-fp32-no-local-memory-2ebc556fef16417182b88f6e71048849",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": true,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2,
+            "use_winograd_convolution": true,
+            "use_sgemm_convolution": true,
+            "use_shader_local_memory": false
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-gpu-fp32-no-local-memory-out0.fp32": "84dd9f14aa3daa2a3a80954203949ebaf7f96b872e2b4eefc2bae689af4c1cf8",
+            "ncnn-gpu-fp32-no-local-memory-out1.fp32": "507c8ca8e0104022308463b6f3103490f57c4ee98b98b1a735f96a9900bb9f1a"
+          },
+          "log_file": "android-gpu-fp32-no-local-memory.log",
+          "log_sha256": "7ce915cff194bfbe08ef5cf14dcb7445c8ad20237d8861c0067727f5051319cf"
+        }
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/empty-416/gpu-fp32-0b271831ccca4a55be85f35f678975db",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "5296dc4759a9e185928882931925413f6723579b2c99b8fa389b497c3ea42eb3",
+        "ncnn-cpu-out1.fp32": "d413095e12cf48a6c64f50faa7a310d7e7c2819180f98bc850cb75ff3713f41f"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp32-no-local-memory-out0.fp32": "84dd9f14aa3daa2a3a80954203949ebaf7f96b872e2b4eefc2bae689af4c1cf8",
+        "ncnn-gpu-fp32-no-local-memory-out1.fp32": "507c8ca8e0104022308463b6f3103490f57c4ee98b98b1a735f96a9900bb9f1a"
+      },
+      "reference_people": 0,
+      "gpu_people": 0,
+      "raw": {
+        "out0": {
+          "max_abs": 0.00013446807861328125,
+          "mean_abs": 1.437767685912188e-06
+        },
+        "out1": {
+          "max_abs": 3.844499588012695e-05,
+          "mean_abs": 1.6133811631262878e-06
+        }
+      },
+      "associations": [],
+      "annotation_reference": null,
+      "annotation_actual": null
+    },
+    {
+      "fixture": "seven-square320",
+      "archive": "android-yolo/device-runs/seven-square320/gpu-fp32-no-local-memory-d220eaf3f1274cd896594728b012fff6",
+      "passed": true,
+      "run_id": "gpu-fp32-no-local-memory-d220eaf3f1274cd896594728b012fff6",
+      "geometry": {
+        "width": 320,
+        "height": 320,
+        "resized_width": 320,
+        "resized_height": 180,
+        "left": 0,
+        "top": 70,
+        "scale": 0.3125,
+        "source_width": 1024,
+        "source_height": 576
+      },
+      "sequential_frame_index": 1500,
+      "source": "E:/Project/Human Vision SDK/video-1.mp4",
+      "fixture_sha256": "07526680d17f02a59331b409c6689123e3dc9d25cea7c1283312127c1a57b556",
+      "input_sha256": "d085eac5dc2e402209d86f64cb632c9115b8f4b829e383b429e234d9363820dc",
+      "source_png_sha256": "017ac2921ed78faff17d125165430bf45eb350861ff80ef5408c3a4b873dad04",
+      "source_video_sha256": "e3620101d8218e7e9f2736cf5dab7a497bfcfc23e33a40244b63ae317c1bb0c8",
+      "comparison_sha256": "88ed73231ed32c981897bde4fae10784e06ba6636365bdeadd57a327317a4fb8",
+      "execution_sha256": "acd4eee5c2b5299e4326697161fb9ea66c057e5cacffccd13472c48b7fbacc7a",
+      "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+      "stages": {
+        "cpu": {
+          "state": "SUCCESS",
+          "mode": "cpu",
+          "run_id": "gpu-fp32-no-local-memory-d220eaf3f1274cd896594728b012fff6",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": false,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-cpu-out0.fp32": "afa4306a6a9fb69b86cf7c5007a6aaaf408005a24e808f312d2baff22b3df7df",
+            "ncnn-cpu-out1.fp32": "1f010909681071522208253a1fc39546683822a293778ab498a5eb0ce82fa7aa"
+          },
+          "log_file": "android-cpu.log",
+          "log_sha256": "e424689ff951bdc4f61decd20e03af517ef6eb21ae4831b0191331afc058da54"
+        },
+        "gpu-fp32-no-local-memory": {
+          "state": "SUCCESS",
+          "mode": "gpu-fp32-no-local-memory",
+          "run_id": "gpu-fp32-no-local-memory-d220eaf3f1274cd896594728b012fff6",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": true,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2,
+            "use_winograd_convolution": true,
+            "use_sgemm_convolution": true,
+            "use_shader_local_memory": false
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-gpu-fp32-no-local-memory-out0.fp32": "dd7934a0ca18fd31c81b1af3df1944a145bddf8fbd4be31c6b5438b305a68456",
+            "ncnn-gpu-fp32-no-local-memory-out1.fp32": "ed125ca80f677713848ef725c11455bb76446d5bd5d67f03e8ba5468cfe3a0a3"
+          },
+          "log_file": "android-gpu-fp32-no-local-memory.log",
+          "log_sha256": "f0e054f1648ff0158b7a52c377392cf4afb670dcf0b89ad8eb78f9039fbf12a4"
+        }
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/seven-square320/gpu-fp32-7ac8880bcdd942fcb54edd6743856451",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "afa4306a6a9fb69b86cf7c5007a6aaaf408005a24e808f312d2baff22b3df7df",
+        "ncnn-cpu-out1.fp32": "1f010909681071522208253a1fc39546683822a293778ab498a5eb0ce82fa7aa"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp32-no-local-memory-out0.fp32": "dd7934a0ca18fd31c81b1af3df1944a145bddf8fbd4be31c6b5438b305a68456",
+        "ncnn-gpu-fp32-no-local-memory-out1.fp32": "ed125ca80f677713848ef725c11455bb76446d5bd5d67f03e8ba5468cfe3a0a3"
+      },
+      "reference_people": 7,
+      "gpu_people": 7,
+      "raw": {
+        "out0": {
+          "max_abs": 0.0001163482666015625,
+          "mean_abs": 1.6149834292454025e-06
+        },
+        "out1": {
+          "max_abs": 2.6106834411621094e-05,
+          "mean_abs": 1.2858566132683122e-06
+        }
+      },
+      "associations": [
+        {
+          "iou": 0.999999674955774,
+          "score_error": 6.556510925292969e-07,
+          "joint_xy_max": 5.493164064773737e-05,
+          "joint_score_max": 7.606490248779352e-07
+        },
+        {
+          "iou": 0.9999993611299085,
+          "score_error": 5.364418029785156e-07,
+          "joint_xy_max": 8.544921877273737e-05,
+          "joint_score_max": 9.605688117142464e-07
+        },
+        {
+          "iou": 0.9999994588580728,
+          "score_error": 8.940696716308594e-07,
+          "joint_xy_max": 0.00010452270510086237,
+          "joint_score_max": 9.857336884522283e-07
+        },
+        {
+          "iou": 0.9999999099754956,
+          "score_error": 0.0,
+          "joint_xy_max": 7.05718994140625e-05,
+          "joint_score_max": 7.428938070819235e-07
+        },
+        {
+          "iou": 0.9999995706049711,
+          "score_error": 0.0,
+          "joint_xy_max": 0.00012130737309234974,
+          "joint_score_max": 3.992232281424535e-07
+        },
+        {
+          "iou": 0.999999272735644,
+          "score_error": 1.7881393432617188e-07,
+          "joint_xy_max": 6.103515625e-05,
+          "joint_score_max": 2.0195095679076402e-07
+        },
+        {
+          "iou": 0.9999984619934148,
+          "score_error": 8.940696716308594e-08,
+          "joint_xy_max": 6.713867185226263e-05,
+          "joint_score_max": 9.36796079265001e-07
+        }
+      ],
+      "annotation_reference": {
+        "passed": true,
+        "minimum_iou": 0.3,
+        "matches": [
+          {
+            "person": "left-rear",
+            "body": 4,
+            "iou": 0.6639046141640261
+          },
+          {
+            "person": "left-front",
+            "body": 2,
+            "iou": 0.6387224489661822
+          },
+          {
+            "person": "middle-left-rear",
+            "body": 5,
+            "iou": 0.6261917367616117
+          },
+          {
+            "person": "center-front",
+            "body": 1,
+            "iou": 0.41019135909252036
+          },
+          {
+            "person": "middle-right-rear",
+            "body": 6,
+            "iou": 0.6494470491745341
+          },
+          {
+            "person": "right-front",
+            "body": 0,
+            "iou": 0.6358575183172177
+          },
+          {
+            "person": "right-rear",
+            "body": 3,
+            "iou": 0.555736496850495
+          }
+        ]
+      },
+      "annotation_actual": {
+        "passed": true,
+        "minimum_iou": 0.3,
+        "matches": [
+          {
+            "person": "left-rear",
+            "body": 4,
+            "iou": 0.6639044513004457
+          },
+          {
+            "person": "left-front",
+            "body": 2,
+            "iou": 0.6387225446461059
+          },
+          {
+            "person": "middle-left-rear",
+            "body": 5,
+            "iou": 0.6261917332113315
+          },
+          {
+            "person": "center-front",
+            "body": 1,
+            "iou": 0.41019140674247495
+          },
+          {
+            "person": "middle-right-rear",
+            "body": 6,
+            "iou": 0.6494471325132181
+          },
+          {
+            "person": "right-front",
+            "body": 0,
+            "iou": 0.6358574619163827
+          },
+          {
+            "person": "right-rear",
+            "body": 3,
+            "iou": 0.5557364717326577
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "one-square320",
+      "archive": "android-yolo/device-runs/one-square320/gpu-fp32-no-local-memory-5467fd032e9247e992c2dc87da8e7310",
+      "passed": true,
+      "run_id": "gpu-fp32-no-local-memory-5467fd032e9247e992c2dc87da8e7310",
+      "geometry": {
+        "width": 320,
+        "height": 320,
+        "resized_width": 201,
+        "resized_height": 320,
+        "left": 59,
+        "top": 0,
+        "scale": 0.9248554913294798,
+        "source_width": 218,
+        "source_height": 346
+      },
+      "sequential_frame_index": null,
+      "source": "tests\\testdata\\d0_3_one_person.mp4",
+      "fixture_sha256": "1954986f40f4982224c10bbab335868ec20a91fa6c7f41d224ca7f6693ca2e30",
+      "input_sha256": "911cd25acd12b9a1110873d7d873f43809d7a48d7b158e13e85e160cfbfe21fa",
+      "source_png_sha256": "cce59593686244632e5f1fd2e23da9c72f8c52c3948f28c16b9ba8299b668ad7",
+      "source_video_sha256": "20806434a5620aca9e6198782d6882beb6fc53f1e5a0725e48abf128b46f2f94",
+      "comparison_sha256": "60482190cc3c7e6f0b992499ace66b27f0ac3f2c48bf2b17c470129fdda2ac90",
+      "execution_sha256": "41d430e906e5c62e37a2fb52b2b0385901d39490d64bc6df18e3fe6e61b99555",
+      "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+      "stages": {
+        "cpu": {
+          "state": "SUCCESS",
+          "mode": "cpu",
+          "run_id": "gpu-fp32-no-local-memory-5467fd032e9247e992c2dc87da8e7310",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": false,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-cpu-out0.fp32": "6df5f7af3c4e53c3dd11778eef83bab232519a4fa051599eb58d11577ef20757",
+            "ncnn-cpu-out1.fp32": "a53a24e8ca341c95c41a04d32476afccbac41c79406b3d0a0d608cf69d657d5a"
+          },
+          "log_file": "android-cpu.log",
+          "log_sha256": "e424689ff951bdc4f61decd20e03af517ef6eb21ae4831b0191331afc058da54"
+        },
+        "gpu-fp32-no-local-memory": {
+          "state": "SUCCESS",
+          "mode": "gpu-fp32-no-local-memory",
+          "run_id": "gpu-fp32-no-local-memory-5467fd032e9247e992c2dc87da8e7310",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": true,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2,
+            "use_winograd_convolution": true,
+            "use_sgemm_convolution": true,
+            "use_shader_local_memory": false
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-gpu-fp32-no-local-memory-out0.fp32": "3ee2ba5bce4cd8b9c90c4e2b17b467749c147d98879dcae3229bcbecb16e3c32",
+            "ncnn-gpu-fp32-no-local-memory-out1.fp32": "2eb4d22eb70a1ca52eb287a8227fa9b86357d9bda00b3fe5d624816878c7d3d8"
+          },
+          "log_file": "android-gpu-fp32-no-local-memory.log",
+          "log_sha256": "f0e054f1648ff0158b7a52c377392cf4afb670dcf0b89ad8eb78f9039fbf12a4"
+        }
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/one-square320/gpu-fp32-ee829ef774e3476f93bfdc8129e3a99d",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "6df5f7af3c4e53c3dd11778eef83bab232519a4fa051599eb58d11577ef20757",
+        "ncnn-cpu-out1.fp32": "a53a24e8ca341c95c41a04d32476afccbac41c79406b3d0a0d608cf69d657d5a"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp32-no-local-memory-out0.fp32": "3ee2ba5bce4cd8b9c90c4e2b17b467749c147d98879dcae3229bcbecb16e3c32",
+        "ncnn-gpu-fp32-no-local-memory-out1.fp32": "2eb4d22eb70a1ca52eb287a8227fa9b86357d9bda00b3fe5d624816878c7d3d8"
+      },
+      "reference_people": 1,
+      "gpu_people": 1,
+      "raw": {
+        "out0": {
+          "max_abs": 0.00018310546875,
+          "mean_abs": 1.6205984885569178e-06
+        },
+        "out1": {
+          "max_abs": 3.123283386230469e-05,
+          "mean_abs": 1.3979243461857122e-06
+        }
+      },
+      "associations": [
+        {
+          "iou": 0.999999774210609,
+          "score_error": 1.1920928955078125e-07,
+          "joint_xy_max": 0.00014848709105308444,
+          "joint_score_max": 2.5941383197114476e-07
+        }
+      ],
+      "annotation_reference": null,
+      "annotation_actual": null
+    },
+    {
+      "fixture": "seven-square416",
+      "archive": "android-yolo/device-runs/seven-square416/gpu-fp32-no-local-memory-10a8030b71f54510babc410d5b557b93",
+      "passed": true,
+      "run_id": "gpu-fp32-no-local-memory-10a8030b71f54510babc410d5b557b93",
+      "geometry": {
+        "width": 416,
+        "height": 416,
+        "resized_width": 416,
+        "resized_height": 234,
+        "left": 0,
+        "top": 91,
+        "scale": 0.40625,
+        "source_width": 1024,
+        "source_height": 576
+      },
+      "sequential_frame_index": 1500,
+      "source": "E:/Project/Human Vision SDK/video-1.mp4",
+      "fixture_sha256": "bced8ed630778369db514fd2c335456b77a8c28e116eb0def46efc8a147bca39",
+      "input_sha256": "edfeb1742678c52b6b55cdb14f7b1569ec42d8691293a20394ce179c03297f39",
+      "source_png_sha256": "017ac2921ed78faff17d125165430bf45eb350861ff80ef5408c3a4b873dad04",
+      "source_video_sha256": "e3620101d8218e7e9f2736cf5dab7a497bfcfc23e33a40244b63ae317c1bb0c8",
+      "comparison_sha256": "c7077c124f16102ca7b09bfbc24ef49891b69084350c72dc033e09190dba875d",
+      "execution_sha256": "936f3a233b3693383c1e4bb5e6758d855cb492fff18d37b3c91ef25f9380691f",
+      "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+      "stages": {
+        "cpu": {
+          "state": "SUCCESS",
+          "mode": "cpu",
+          "run_id": "gpu-fp32-no-local-memory-10a8030b71f54510babc410d5b557b93",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": false,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-cpu-out0.fp32": "9637a49d24c52d8a60c042db422bdbb1d433b88d746fb3b15e0d2184df8b54c9",
+            "ncnn-cpu-out1.fp32": "dd5156aa9e04b7d02057f1bad0fbec61911e7572b113ccf8fedf1292b18e1fc0"
+          },
+          "log_file": "android-cpu.log",
+          "log_sha256": "f24ab5a937d4667e411935bfc70cb0988b00f4cc3fc5b17c81a429abe3882a15"
+        },
+        "gpu-fp32-no-local-memory": {
+          "state": "SUCCESS",
+          "mode": "gpu-fp32-no-local-memory",
+          "run_id": "gpu-fp32-no-local-memory-10a8030b71f54510babc410d5b557b93",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": true,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2,
+            "use_winograd_convolution": true,
+            "use_sgemm_convolution": true,
+            "use_shader_local_memory": false
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-gpu-fp32-no-local-memory-out0.fp32": "4e9506c7b8b0e3e0bd528fe87ad6cacabae852ac834dcdf90ae3bcf58e983dcc",
+            "ncnn-gpu-fp32-no-local-memory-out1.fp32": "8299846b941308696fdd8f4eca9aa1215b494f9d65ae3858626b7c8e92fb00fa"
+          },
+          "log_file": "android-gpu-fp32-no-local-memory.log",
+          "log_sha256": "0def9e43070794e90aef24e4202e36bf73a1d20de9555438e555bb0e12cdeed5"
+        }
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/seven-square416/gpu-fp32-b088221cf8cf4f3c83abad5725a09ebf",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "9637a49d24c52d8a60c042db422bdbb1d433b88d746fb3b15e0d2184df8b54c9",
+        "ncnn-cpu-out1.fp32": "dd5156aa9e04b7d02057f1bad0fbec61911e7572b113ccf8fedf1292b18e1fc0"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp32-no-local-memory-out0.fp32": "4e9506c7b8b0e3e0bd528fe87ad6cacabae852ac834dcdf90ae3bcf58e983dcc",
+        "ncnn-gpu-fp32-no-local-memory-out1.fp32": "8299846b941308696fdd8f4eca9aa1215b494f9d65ae3858626b7c8e92fb00fa"
+      },
+      "reference_people": 7,
+      "gpu_people": 7,
+      "raw": {
+        "out0": {
+          "max_abs": 0.00010585784912109375,
+          "mean_abs": 1.7319432000608353e-06
+        },
+        "out1": {
+          "max_abs": 3.147125244140625e-05,
+          "mean_abs": 1.4875386884059262e-06
+        }
+      },
+      "associations": [
+        {
+          "iou": 0.9999989382809897,
+          "score_error": 0.0,
+          "joint_xy_max": 6.573016827360334e-05,
+          "joint_score_max": 3.746065818654998e-07
+        },
+        {
+          "iou": 0.9999990102220374,
+          "score_error": 4.172325134277344e-07,
+          "joint_xy_max": 5.634014428324008e-05,
+          "joint_score_max": 1.568178202293602e-06
+        },
+        {
+          "iou": 0.9999992945580294,
+          "score_error": 4.172325134277344e-07,
+          "joint_xy_max": 0.00016902043267918998,
+          "joint_score_max": 1.399662297396631e-06
+        },
+        {
+          "iou": 0.9999984420996646,
+          "score_error": 8.344650268554688e-07,
+          "joint_xy_max": 0.00029343825119099165,
+          "joint_score_max": 8.43674276773676e-07
+        },
+        {
+          "iou": 0.9999991067486111,
+          "score_error": 1.7881393432617188e-07,
+          "joint_xy_max": 3.756009618882672e-05,
+          "joint_score_max": 4.776129065575674e-07
+        },
+        {
+          "iou": 0.9999991247830132,
+          "score_error": 8.344650268554688e-07,
+          "joint_xy_max": 0.00018310546875,
+          "joint_score_max": 2.297928421324258e-06
+        },
+        {
+          "iou": 0.9999990285921623,
+          "score_error": 2.980232238769531e-07,
+          "joint_xy_max": 5.164513223121503e-05,
+          "joint_score_max": 6.913468194591488e-07
+        }
+      ],
+      "annotation_reference": {
+        "passed": true,
+        "minimum_iou": 0.3,
+        "matches": [
+          {
+            "person": "left-rear",
+            "body": 3,
+            "iou": 0.7464306534116384
+          },
+          {
+            "person": "left-front",
+            "body": 2,
+            "iou": 0.6217593784027441
+          },
+          {
+            "person": "middle-left-rear",
+            "body": 5,
+            "iou": 0.6194502644966886
+          },
+          {
+            "person": "center-front",
+            "body": 1,
+            "iou": 0.39325436725749335
+          },
+          {
+            "person": "middle-right-rear",
+            "body": 6,
+            "iou": 0.6287018749515734
+          },
+          {
+            "person": "right-front",
+            "body": 0,
+            "iou": 0.6379428295059228
+          },
+          {
+            "person": "right-rear",
+            "body": 4,
+            "iou": 0.5613789460525016
+          }
+        ]
+      },
+      "annotation_actual": {
+        "passed": true,
+        "minimum_iou": 0.3,
+        "matches": [
+          {
+            "person": "left-rear",
+            "body": 3,
+            "iou": 0.7464297122531526
+          },
+          {
+            "person": "left-front",
+            "body": 2,
+            "iou": 0.621759753643553
+          },
+          {
+            "person": "middle-left-rear",
+            "body": 5,
+            "iou": 0.6194507562907766
+          },
+          {
+            "person": "center-front",
+            "body": 1,
+            "iou": 0.3932547252738674
+          },
+          {
+            "person": "middle-right-rear",
+            "body": 6,
+            "iou": 0.6287019874737156
+          },
+          {
+            "person": "right-front",
+            "body": 0,
+            "iou": 0.6379426156804612
+          },
+          {
+            "person": "right-rear",
+            "body": 4,
+            "iou": 0.5613794120492462
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "one-square416",
+      "archive": "android-yolo/device-runs/one-square416/gpu-fp32-no-local-memory-4b33f1a97d1448a8b7867ba00cf63f20",
+      "passed": true,
+      "run_id": "gpu-fp32-no-local-memory-4b33f1a97d1448a8b7867ba00cf63f20",
+      "geometry": {
+        "width": 416,
+        "height": 416,
+        "resized_width": 262,
+        "resized_height": 416,
+        "left": 77,
+        "top": 0,
+        "scale": 1.2023121387283238,
+        "source_width": 218,
+        "source_height": 346
+      },
+      "sequential_frame_index": null,
+      "source": "tests\\testdata\\d0_3_one_person.mp4",
+      "fixture_sha256": "3f380209d4e6d14dfe901bae8a6eaafdad2ae2d1d8759da0dc61165ba93f1438",
+      "input_sha256": "2d4a671027665aed7e7c400dcc576fb907cf790dce144e1764ecaf7cb3e7f2ae",
+      "source_png_sha256": "cce59593686244632e5f1fd2e23da9c72f8c52c3948f28c16b9ba8299b668ad7",
+      "source_video_sha256": "20806434a5620aca9e6198782d6882beb6fc53f1e5a0725e48abf128b46f2f94",
+      "comparison_sha256": "fbab2858389992a78d2c38c1f279759e5ab133ef0094608dbe7141a2ce3fe45f",
+      "execution_sha256": "712e7fc03178a82b1057da281fe8edee916ebd07341a098a9b4efd5c68ef5fbe",
+      "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+      "stages": {
+        "cpu": {
+          "state": "SUCCESS",
+          "mode": "cpu",
+          "run_id": "gpu-fp32-no-local-memory-4b33f1a97d1448a8b7867ba00cf63f20",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": false,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-cpu-out0.fp32": "5e9e8f9368d0ecc59e7ce9bfa99f94221da6e36fe56058ac138e58a9191eeb58",
+            "ncnn-cpu-out1.fp32": "5d05515faa9fa6da1379236d9047159a8d94acb3e9f0b9e45268ac4468edf3cb"
+          },
+          "log_file": "android-cpu.log",
+          "log_sha256": "f24ab5a937d4667e411935bfc70cb0988b00f4cc3fc5b17c81a429abe3882a15"
+        },
+        "gpu-fp32-no-local-memory": {
+          "state": "SUCCESS",
+          "mode": "gpu-fp32-no-local-memory",
+          "run_id": "gpu-fp32-no-local-memory-4b33f1a97d1448a8b7867ba00cf63f20",
+          "serial": "e7c07019",
+          "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+          "runner_sha256": "4cb46cb5ad25bc7e4da97e318dd35a34e6ac30d939f0bf75091041ff86d58537",
+          "options": {
+            "vulkan": true,
+            "fp16_storage": false,
+            "fp16_packed": false,
+            "fp16_arithmetic": false,
+            "subgroup": false,
+            "use_packing_layout": true,
+            "input_elempack": 1,
+            "input_bits": 32,
+            "output_elempack": 1,
+            "output_bits": 32,
+            "num_threads": 2,
+            "use_winograd_convolution": true,
+            "use_sgemm_convolution": true,
+            "use_shader_local_memory": false
+          },
+          "exit_code": 0,
+          "output_hashes": {
+            "ncnn-gpu-fp32-no-local-memory-out0.fp32": "28581292ecfc91127e1b37fd60c4c155a24d2cd812778ecfccdee604b5b1973c",
+            "ncnn-gpu-fp32-no-local-memory-out1.fp32": "6a9202e2897724db8b77dc358354a49074f57793dc73eebc20fa803869dcc134"
+          },
+          "log_file": "android-gpu-fp32-no-local-memory.log",
+          "log_sha256": "0def9e43070794e90aef24e4202e36bf73a1d20de9555438e555bb0e12cdeed5"
+        }
+      },
+      "historical_cpu_archive": "android-yolo/device-runs/one-square416/gpu-fp32-e3f2f22a39cb481fb51a38d1d53a0e37",
+      "cpu_output_sha256": {
+        "ncnn-cpu-out0.fp32": "5e9e8f9368d0ecc59e7ce9bfa99f94221da6e36fe56058ac138e58a9191eeb58",
+        "ncnn-cpu-out1.fp32": "5d05515faa9fa6da1379236d9047159a8d94acb3e9f0b9e45268ac4468edf3cb"
+      },
+      "output_sha256": {
+        "ncnn-gpu-fp32-no-local-memory-out0.fp32": "28581292ecfc91127e1b37fd60c4c155a24d2cd812778ecfccdee604b5b1973c",
+        "ncnn-gpu-fp32-no-local-memory-out1.fp32": "6a9202e2897724db8b77dc358354a49074f57793dc73eebc20fa803869dcc134"
+      },
+      "reference_people": 1,
+      "gpu_people": 1,
+      "raw": {
+        "out0": {
+          "max_abs": 8.487701416015625e-05,
+          "mean_abs": 1.5459378953226529e-06
+        },
+        "out1": {
+          "max_abs": 2.7418136596679688e-05,
+          "mean_abs": 1.4582838844642374e-06
+        }
+      },
+      "associations": [
+        {
+          "iou": 0.9999997490113836,
+          "score_error": 4.172325134277344e-07,
+          "joint_xy_max": 0.00010152963491805167,
+          "joint_score_max": 8.084006052899717e-07
+        }
+      ],
+      "annotation_reference": null,
+      "annotation_actual": null
+    }
+  ],
+  "raised_arm_semantic": {
+    "fixture": "seven-640",
+    "sequential_frame_index": 1500,
+    "source_width": 1024,
+    "source_height": 576,
+    "minimum_confidence": 0.2,
+    "people": 7,
+    "passed": true,
+    "reference": {
+      "valid_left_wrists_above_shoulders": 7,
+      "unique_annotation_assignment": true,
+      "passed": true,
+      "checks": [
+        {
+          "person": "left-rear",
+          "body": 5,
+          "annotation_iou": 0.8585699715421086,
+          "box": [
+            160.22917266417394,
+            194.1759916385143,
+            237.73665227366828,
+            386.10645358055933
+          ],
+          "left_shoulder": [
+            201.84026794433595,
+            235.14358520507812,
+            0.9930027446873255
+          ],
+          "left_wrist": [
+            224.60162353515625,
+            202.79071044921875,
+            0.9653766270607945
+          ],
+          "passed": true
+        },
+        {
+          "person": "left-front",
+          "body": 2,
+          "annotation_iou": 0.8407638991086968,
+          "box": [
+            270.10637384123504,
+            191.4462766353241,
+            353.0165937941821,
+            432.4389319877957
+          ],
+          "left_shoulder": [
+            322.05567321777346,
+            247.9446044921875,
+            0.9837572740055784
+          ],
+          "left_wrist": [
+            339.1319885253906,
+            208.5388427734375,
+            0.927363373939283
+          ],
+          "passed": true
+        },
+        {
+          "person": "middle-left-rear",
+          "body": 6,
+          "annotation_iou": 0.889659753031266,
+          "box": [
+            386.79936707190205,
+            184.44399045709946,
+            458.2505187396744,
+            389.9348959607147
+          ],
+          "left_shoulder": [
+            435.88698425292966,
+            243.36094970703124,
+            0.9643237622769734
+          ],
+          "left_wrist": [
+            447.4504333496094,
+            197.01649780273436,
+            0.8405777252269596
+          ],
+          "passed": true
+        },
+        {
+          "person": "center-front",
+          "body": 0,
+          "annotation_iou": 0.5972225755284087,
+          "box": [
+            539.5269644117453,
+            169.2248159767934,
+            621.9081322550618,
+            455.7976945688917
+          ],
+          "left_shoulder": [
+            588.408674621582,
+            247.737744140625,
+            0.9924697016747507
+          ],
+          "left_wrist": [
+            608.3512512207031,
+            191.43223266601564,
+            0.9505227408456305
+          ],
+          "passed": true
+        },
+        {
+          "person": "middle-right-rear",
+          "body": 4,
+          "annotation_iou": 0.9565336574171979,
+          "box": [
+            608.8206080842828,
+            175.56906593824752,
+            680.6428698869998,
+            390.3608303564027
+          ],
+          "left_shoulder": [
+            643.0809448242187,
+            236.75525512695313,
+            0.9834979469314059
+          ],
+          "left_wrist": [
+            664.9900085449219,
+            206.73406372070312,
+            0.9405026553407576
+          ],
+          "passed": true
+        },
+        {
+          "person": "right-front",
+          "body": 1,
+          "annotation_iou": 0.908357700832074,
+          "box": [
+            736.6046818624712,
+            162.02103656469328,
+            823.6935041890252,
+            430.54767848245046
+          ],
+          "left_shoulder": [
+            796.828256225586,
+            235.83896484375,
+            0.9903177616483096
+          ],
+          "left_wrist": [
+            813.4741577148437,
+            189.39603271484376,
+            0.9206137961121678
+          ],
+          "passed": true
+        },
+        {
+          "person": "right-rear",
+          "body": 3,
+          "annotation_iou": 0.8905370050997405,
+          "box": [
+            843.6683399206079,
+            165.41797429935656,
+            929.7667525311208,
+            385.3132633807582
+          ],
+          "left_shoulder": [
+            892.976936340332,
+            229.7851318359375,
+            0.988910392783456
+          ],
+          "left_wrist": [
+            923.6758972167969,
+            174.27989501953124,
+            0.9369642239666028
+          ],
+          "passed": true
+        }
+      ]
+    },
+    "actual": {
+      "valid_left_wrists_above_shoulders": 7,
+      "unique_annotation_assignment": true,
+      "passed": true,
+      "checks": [
+        {
+          "person": "left-rear",
+          "body": 5,
+          "annotation_iou": 0.8585701450655051,
+          "box": [
+            160.22916551253073,
+            194.17597279053234,
+            237.73664827971788,
+            386.10644696241434
+          ],
+          "left_shoulder": [
+            201.84026489257812,
+            235.14361572265625,
+            0.9930027446873255
+          ],
+          "left_wrist": [
+            224.60164489746094,
+            202.79063720703124,
+            0.9653765633083823
+          ],
+          "passed": true
+        },
+        {
+          "person": "left-front",
+          "body": 2,
+          "annotation_iou": 0.8407640140055438,
+          "box": [
+            270.1063945611931,
+            191.4463140816441,
+            353.01662882270006,
+            432.43896077735224
+          ],
+          "left_shoulder": [
+            322.0556442260742,
+            247.94460754394532,
+            0.9837572282895161
+          ],
+          "left_wrist": [
+            339.131982421875,
+            208.53853759765624,
+            0.9273632293990981
+          ],
+          "passed": true
+        },
+        {
+          "person": "middle-left-rear",
+          "body": 6,
+          "annotation_iou": 0.8896600130835083,
+          "box": [
+            386.79936609246505,
+            184.44396367127527,
+            458.2505247461492,
+            389.9349145446513
+          ],
+          "left_shoulder": [
+            435.8869567871094,
+            243.36095275878907,
+            0.9643236884551181
+          ],
+          "left_wrist": [
+            447.45045166015626,
+            197.016552734375,
+            0.8405772779304557
+          ],
+          "passed": true
+        },
+        {
+          "person": "center-front",
+          "body": 0,
+          "annotation_iou": 0.5972224612432079,
+          "box": [
+            539.5269598255746,
+            169.22486250602145,
+            621.9081205645591,
+            455.79771097248056
+          ],
+          "left_shoulder": [
+            588.4085693359375,
+            247.7377685546875,
+            0.9924696446555475
+          ],
+          "left_wrist": [
+            608.3512634277344,
+            191.43209228515624,
+            0.9505227632709242
+          ],
+          "passed": true
+        },
+        {
+          "person": "middle-right-rear",
+          "body": 4,
+          "annotation_iou": 0.956533938722092,
+          "box": [
+            608.8206117637228,
+            175.56911719980198,
+            680.6428847439738,
+            390.36081111957105
+          ],
+          "left_shoulder": [
+            643.0809600830078,
+            236.7552703857422,
+            0.9834977689348222
+          ],
+          "left_wrist": [
+            664.9900085449219,
+            206.7340087890625,
+            0.9405020816628546
+          ],
+          "passed": true
+        },
+        {
+          "person": "right-front",
+          "body": 1,
+          "annotation_iou": 0.9083582855166005,
+          "box": [
+            736.604676415662,
+            162.02104745247968,
+            823.6935517143953,
+            430.5476988807708
+          ],
+          "left_shoulder": [
+            796.8282318115234,
+            235.83895263671874,
+            0.9903177433596944
+          ],
+          "left_wrist": [
+            813.4741882324219,
+            189.39602661132812,
+            0.9206136741399404
+          ],
+          "passed": true
+        },
+        {
+          "person": "right-rear",
+          "body": 3,
+          "annotation_iou": 0.8905369398708459,
+          "box": [
+            843.6683527337889,
+            165.41796494782457,
+            929.7667465325464,
+            385.3132409730135
+          ],
+          "left_shoulder": [
+            892.9769393920899,
+            229.7851135253906,
+            0.988910314343747
+          ],
+          "left_wrist": [
+            923.6757690429688,
+            174.27994384765626,
+            0.9369639704983758
+          ],
+          "passed": true
+        }
+      ]
+    }
+  },
+  "limitations": "Same converted ncnn graph CPU oracle, not original PyTorch/export oracle. Offline numerical and one-frame semantics only. No temporal following or integrated GPU-AHB FPS acceptance. OOM guards are source-order regressions, not device fault injection."
+}
