@@ -1,3 +1,22 @@
+# Current YOLO-M3: bounded execution/resolution trial complete (2026-10-01)
+
+Task1 diagnostic713649d measured convolution84.854% of traced GPU layer time;
+Task2b34699d/7aa3142 closed without a justified execution change. Task3a393d773
+and3b180357c integrate explicit local576x352 FP32 after independent spec/quality
+PASS and163 native/115 YOLO/4 staging gates plus API26 ARM64 audit. Original
+640/512 defaults, APIs, AHB/sync and existing unfinished R4 bytes remain intact.
+
+Root same-native actual ABBA:640 mean18.5375 vs576 mean21.4875 fresh observation
+frames/s, descriptive15.9137% mean difference; all partial/empty frames included.
+Age P50/P95 per run is in [the ABBA report](reports/2026-10-01-yolo-resolution-abba.md).
+Eight-body records6/1483 vs32/1719 require semantic review; counts are not identity
+or joint/temporal acceptance. GPU clocks unreadable, two repeats per shape only;
+no general sustained causal gain claimed. GPU copy/import/readback counters0.
+>=25 remains FAIL and25FPS video cannot certify target30.576 stays local candidate.
+Accepted640 APK9cc3b87f restored, installed SHA verified, force-stopped. Original
+open PC test project preserved. Independent Task4 facts/quality SpecPASS/QualityPASS.
+M3 remains sole active milestone; this trial complete, overall Android goal unmet.
+No main merge/Release, fallback, new backend/model, Hand/QNN/ORT/Renderer work.
 ## 2026-10-01 current: YOLO-M3 no-local-memory actual-device check
 
 Explicit640x384 FP32 no-local-memory candidate integration and full-stage

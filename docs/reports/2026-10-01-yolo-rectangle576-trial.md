@@ -205,3 +205,18 @@ Unity builds, APK/installed identity verification, ABBA capture and thermal/load
 reporting after independent Code review. No performance gain or default promotion
 is claimed by this integration. >=25 fresh complete observations/s and target30
 remain pending/unmet; video1's25FPS cannot certify30. No main merge or Release.
+
+## Task4 actual same-native ABBA outcome
+
+Root completed A640 B576 B576 A640 on Snapdragon888 using the same reviewed
+native60d847e9 and seven-library closure. Fixed40s warmed windows include every
+unique fresh result pair.640 average18.5375FPS;576 average21.4875FPS, descriptive
+mean difference15.9137%, below25/target30. Zero partial/empty in these windows,
+but eight-body records increase from6/1483 to32/1719; count alone is not semantic
+or temporal acceptance. GPU frequency is unreadable and temperatures differ;
+do not claim a sustained causal gain. Copy/import/full-frame-readback counters0.
+Accepted640 APK9cc3b87f is reinstalled, installed base APK hash verified and
+force-stopped. Full per-run identities, ages, drop/thermal/load details and actual
+screen captures are documented in
+[the root ABBA report](2026-10-01-yolo-resolution-abba.md).576 remains explicit
+local evaluation only; defaults/API/sync unchanged, no main merge or Release.
