@@ -38,4 +38,27 @@ remeasure unchanged inference FPS or certify camera/RTSP hardware performance.
 Final package asset-sha256.json SHA256:
 5d171e338408855f98916eea957b3f4bac006826c254e0cbed4d03273016474e;
 153indexed assets. Dedicated PC branch delivery only; no main merge or Release.
-Next delivery gate: fresh remote Git SHA import and all packaged hash validation.
+Fresh remote Git SHA import and all153packaged hashes PASS; evidence below.
+
+## Final Git import delivery gate
+
+Pinned package commit2ec12d7374d2c0699395db8db91af84f649aa12f:
+
+```text
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.pc-demo#2ec12d7374d2c0699395db8db91af84f649aa12f
+```
+
+Fresh scratch projectout/pc-demo/remote-import-gui-2ec12d7-20261001 contained no
+Library/PackageCache/StreamingAssets. Unity2021.3.45f1 PID58128 resolved only the
+pinned remote Git dependency; lock sourcegit/hash equals full commit. Successful
+pc-remote-import-pass.json at2026-10-01T11:00:00.3041537Z confirms pc.2 compilation,
+PC scene generation,7installed model/profile hash and separateGUID checks, and
+actual explicit CPU native initialization/shutdown. Root independently verified
+all153remote indexedassets equal reviewed local bytes, including models/DLLs;
+remote-gui-payload-pass.json retains hashes and cache identity. Remote manifest
+matches5d171e33 above. git ls-remote verified dedicated branch pointed to2ec12d7
+before the later documentation-only commit. SSL settings unchanged.
+
+Actual visual/pointer review finalSpecPASS/QualityPASS. GUI task complete;
+no Android acceptance, camera/RTSP hardware or new inference-FPS claim. No main
+merge or Release. User's original dirty project remains untouched.

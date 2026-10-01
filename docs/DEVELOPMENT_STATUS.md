@@ -6,7 +6,7 @@ Root actual1920x1080Player and3840x2160Editor GUI renders PASS;400x600Player
 source/backend pointer selection, scrolling, complete Stop and collapse/expand
 PASS after correcting observed width and per-row-height failures. Native/model
 payloads unchanged. User's original dirty PC scene preserved. Dedicated branch
-Git delivery pending fresh remote import; no main merge/Release.
+Git delivery complete: pinned2ec12d7374d2c0699395db8db91af84f649aa12f, fresh remote import/native initialization/GUIDs and all153asset hashes PASS. No main merge/Release.
 See [GUI delivery](reports/2026-10-01-pc-demo-responsive-gui-delivery.md).
 
 # Current bounded PC demo delivery (2026-10-01)
