@@ -308,8 +308,14 @@ namespace HumanVision.Demo
         }
 
         public bool SubmitExternalTexture(Texture texture, long timestampUs, int rotationDegrees = 0, bool mirrored = false)
+            => SubmitExternalTexture(texture, timestampUs, rotationDegrees, mirrored, null);
+
+        public bool SubmitExternalTexture(Texture texture, long timestampUs, int rotationDegrees, bool mirrored, Texture previewTexture)
         {
             if (texture == null || manager == null || !manager.IsInitialized) return false;
+            if (Application.platform == RuntimePlatform.Android && previewTexture != null &&
+                HumanVisionAndroidFrameRoute.Select(manager.ActiveRuntimeProfile) == HumanVisionAndroidFrameRoute.FramePath.Gpu)
+                return SubmitExternalGpuTexture(texture as RenderTexture, timestampUs, rotationDegrees, mirrored, previewTexture);
             if (Application.platform == RuntimePlatform.Android)
                 return HumanVisionAndroidFrameRoute.Submit(manager.ActiveRuntimeProfile, this,
                     texture, timestampUs, rotationDegrees, mirrored);
@@ -361,11 +367,11 @@ namespace HumanVision.Demo
             return true;
         }
 
-        private bool SubmitExternalGpuTexture(RenderTexture texture, long timestampUs, int rotationDegrees, bool mirrored)
+        private bool SubmitExternalGpuTexture(RenderTexture texture, long timestampUs, int rotationDegrees, bool mirrored, Texture previewTexture = null)
         {
             if (texture == null) { SetError("NCNN Vulkan input requires the oriented RenderTexture."); return false; }
             _livePreview = true;
-            PresentLiveTexture(texture);
+            PresentLiveTexture(previewTexture != null ? previewTexture : texture);
             double now = Time.realtimeSinceStartupAsDouble;
             if (SourceWidth != texture.width || SourceHeight != texture.height) _gpuAdmission.Reset();
             if (!_gpuAdmission.CanSubmit(now)) { manager.RecordSourceArrival(true); return false; }

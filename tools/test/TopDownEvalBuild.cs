@@ -59,6 +59,8 @@ namespace HumanVision.Editor
             Directory.CreateDirectory(directory);
             HumanVisionCameraDemoBuilder.CreateEvaluationPair(scene, settings);
             EditorSceneManager.OpenScene(scene);
+            var overlay = UnityEngine.Object.FindObjectOfType<HumanVisionSkeletonOverlayer>();
+            if (overlay != null) { overlay.lineWidthPixels = 9; overlay.jointDiameterPixels = 27; }
             var facade = UnityEngine.Object.FindObjectOfType<HumanVisionCameraManager>();
             if (facade == null) throw new InvalidOperationException("Camera Demo scene has no manager");
             if(parity && videoDiagnostic) throw new InvalidOperationException("R4 static and video routes are exclusive");

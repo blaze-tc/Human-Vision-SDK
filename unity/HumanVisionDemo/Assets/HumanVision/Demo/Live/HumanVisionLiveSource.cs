@@ -15,6 +15,7 @@ namespace HumanVision
         private WebCamTexture _webcam;
         private Texture2D _rtspTexture;
         private RenderTexture _oriented;
+        private RenderTexture _gpuSource;
         private Material _orientation;
         private HumanVisionCameraSettings _settings;
         private byte[] _rgba;
@@ -187,14 +188,22 @@ namespace HumanVision
                         ReleaseOrientedTexture();
                         _oriented = new RenderTexture(w, h, 0, RenderTextureFormat.ARGB32);
                         _oriented.Create();
-                        if (_bridge != null && GetComponent<HumanVisionManager>().UsesAndroidGpuFrames)
-                            GetComponent<HumanVisionManager>().BeginAndroidGpuSourceLease(_oriented);
+                        if (_bridge != null && GetComponent<HumanVisionManager>().UsesAndroidGpuFrames) {
+                            // Native Vulkan preprocessing consumes top-origin rows. Keep the
+                            // upright Unity texture separate from this linear UNORM source.
+                            _gpuSource = new RenderTexture(w, h, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+                            _gpuSource.Create();
+                            GetComponent<HumanVisionManager>().BeginAndroidGpuSourceLease(_gpuSource);
+                        }
                     }
                     _orientation.SetFloat("_Rotation", rotation / 90);
                     _orientation.SetFloat("_FlipY", flipY ? 1 : 0);
                     _orientation.SetFloat("_Mirror", _settings.mirror ? 1 : 0);
                     Graphics.Blit(input, _oriented, _orientation);
-                    _bridge.SubmitExternalTexture(_oriented, timestamp, rotation, _settings.mirror);
+                    if (_gpuSource != null) {
+                        NormalizeGpuSourceRows(_oriented, _gpuSource);
+                        _bridge.SubmitExternalTexture(_gpuSource, timestamp, rotation, _settings.mirror, _oriented);
+                    } else _bridge.SubmitExternalTexture(_oriented, timestamp, rotation, _settings.mirror);
                     _lastFrameTime = Time.realtimeSinceStartup;
                     _invalidated = false;
                     Status = _webcam != null ? "WebCamera streaming" : "RTSP streaming";
@@ -231,11 +240,17 @@ namespace HumanVision
             ReleaseOrientedTexture();
             if (_orientation != null) { Destroy(_orientation); _orientation = null; }
         }
+        private static void NormalizeGpuSourceRows(Texture preview, RenderTexture source)
+            => Graphics.Blit(preview, source, new Vector2(1, -1), new Vector2(0, 1));
+
         private void ReleaseOrientedTexture()
         {
             if (_oriented == null) return;
             // The synchronous native drain owns all outstanding render events/views for this texture.
             GetComponent<HumanVisionManager>()?.EndAndroidGpuSourceLease();
+            if (_gpuSource != null) {
+                _gpuSource.Release(); Destroy(_gpuSource); _gpuSource = null;
+            }
             _oriented.Release(); Destroy(_oriented); _oriented = null;
         }
         private void OnDisable() { Close(); }
