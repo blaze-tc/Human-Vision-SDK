@@ -74,10 +74,10 @@ Task1审查ruling：设计要求时间戳时钟域优先于上述简写字段列
 **Files:** Create `native/input/CMakeLists.txt`, `native/input/include/humanvision_input.h`, `native/input/src/input_session.cpp`, `native/input/src/ffmpeg_rtsp_demux.cpp`, `native/input/src/windows_rtsp_decoder.cpp`, `tests/input/test_rtsp_session.cpp`; Modify `native/CMakeLists.txt`; Create `tools/package/build_input_native.ps1`。
 **Interfaces:** 新独立C ABI：opaque `HV_InputHandle`；`HV_Input_Open(const HV_InputOptions*,HV_InputHandle*)`, `HV_Input_Close(HV_InputHandle)`非阻塞发起关闭、`HV_Input_Release(HV_InputHandle)`在copy/worker退休后销毁（未退休返回BUSY，handle继续可查询）、 `HV_Input_GetState`返回Closing直至worker/copy退休、 `HV_Input_GetLastError`, `HV_Input_PollFrame(HV_InputHandle,uint64_t afterSequence,HV_InputFrameInfo*)`，`HV_Input_CopyRgba`仅Windows新路由。结构含size/version、实际尺寸/sequence/generation/本地monotonic时间/PTS；禁止模型类型。旧`HV_Rtsp*`导出保持原库签名和语义，本Task不重定向旧入口或删除旧实现。
 
-- [ ] RED：`RtspSession.StalledReadCanBeCancelled`超时/Close有界并不占Unity主线程；`RtspSession.SequenceAndGenerationOnReconnect`；`ErrorsRedactCredentials`断言`rtsp://user:secret@host`不进入错误输出。
-- [ ] Run `pwsh -NoProfile -File tools/package/build_input_native.ps1 -Platform Windows -RunTests`，缺humanvision_input目标FAIL。脚本使用已锁定FFmpeg来源，v143/Ninja Multi-Config；输出out/input-native/windows。
-- [ ] 复用`native/src/input/rtsp_source.cpp`中的已验证demux/decoder逻辑，独立sessionworker/缓冲；不得链接humanvision/ORT/ncnn/Runtime。后台解码RGBA后主线程上传成本明确。队列最新已解码帧，不任意丢P/B包。
-- [ ] GREEN同命令；CTest `ctest --test-dir out/input-native/windows -C Release -R input --output-on-failure`；动态依赖审计无ORT/ncnn/humanvision；旧RTSP ABI测试仍PASS。review后commit `feat: extract independent Windows RTSP input runtime`。
+- [x] RED：`RtspSession.StalledReadCanBeCancelled`超时/Close有界并不占Unity主线程；`RtspSession.SequenceAndGenerationOnReconnect`；`ErrorsRedactCredentials`断言`rtsp://user:secret@host`不进入错误输出。
+- [x] Run `pwsh -NoProfile -File tools/package/build_input_native.ps1 -Platform Windows -RunTests`，缺humanvision_input目标FAIL。脚本使用已锁定FFmpeg来源，v143/Ninja Multi-Config；输出out/input-native/windows。
+- [x] 复用`native/src/input/rtsp_source.cpp`中的已验证demux/decoder逻辑，独立sessionworker/缓冲；不得链接humanvision/ORT/ncnn/Runtime。后台解码RGBA后主线程上传成本明确。队列最新已解码帧，不任意丢P/B包。
+- [x] GREEN同命令；CTest `ctest --test-dir out/input-native/windows -C Release -R input --output-on-failure`；动态依赖审计无ORT/ncnn/humanvision；旧RTSP ABI测试仍PASS。review后commit `feat: extract independent Windows RTSP input runtime`。
 
 ### Task4: Unity RTSP组件与Windows受控实流
 

@@ -1,27 +1,32 @@
-# Current: unified-input Task2 verified; Task3 next (2026-10-02)
+# Current: unified-input Task3 verified; Task4 next (2026-10-02)
 
-Approved 11-task plan executes sequentially in the existing isolated worktree.
-Task1 is committed242956f; Task2 independent Unity Video/WebCamera/GPU normalization
-and RawImage preview now pass fresh SpecPASS/QualityPASS after runner correction.
-Actual Unity2021.3: Core11/11; D3D11 and D3D12 each EditMode6/6 + PlayMode12/12,
-all exits0. Private-video guard RED/GREEN restores Core independence; architecture
-checker actualexit0. No current active-RT warning or late-callback exception.
+Approved 11-task input plan executes sequentially in the existing isolated worktree.
+Task1 committed242956f; Task2 committedb6c1d32. Task3 independent Windows RTSP
+C ABI/plugin now passes fresh SpecPASS/QualityPASS after one focused review-fix round.
+Actual qualified v143/Ninja build and final CTest8/8; errors/Close/copy/clock/legacy
+ABI tested. Root architecture checker actualexit0. DLL9a3cb144 has eight input
+exports and no inference/SDK/Host dependencies; pinned FFmpeg DLLs/937headers verified.
+Color primaries and exact pixel/metadata copy tests strengthened; no open findings.
 
-Final frozen input-only ARM64/API26/Vulkan APKa249accc installed/hash-verified
-on LE2120 e7c07019. Actual1280x720 front input, gen1/2 pause-resume, closeStopped,
-reopenStreaminggen3/finalStopped/currentTexture=false,1035 observed input frames.
-Sampled source publication~30.06FPS is not skeleton FPS or a sustained benchmark.
-No models/SDK/native inference dependencies in that APK.
-[Task2 ownership, tests and bounded camera evidence](reports/2026-10-02-unified-input-task2.md).
+Native Close is cancellation-only; ReleaseBUSY preserves handle until worker/copy
+retirement. New clock is explicitly independent; Windows output is CPU RGBA/top-left,
+unknown color stays unknown. Shared FFmpeg nonprinting callback prevents credential
+output. Existing HV_Rtsp code/export signatures remain untouched. The local Ninja
+stale-header object incident is closed with bounded reconstruction/header rebuild
+proof; original overwritten fault binary/dump unavailable, no exact-stack claim.
+[Task3 commands, evidence and limits](reports/2026-10-02-unified-input-task3.md).
+[Task2 independent preview and bounded camera probe](reports/2026-10-02-unified-input-task2.md).
 [Task1 contracts and clocks](reports/2026-10-01-unified-input-task1.md).
 [Approved sequential plan](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
 
-Extra Unity-owned raw-normalization marker withdrawn after diagnosis; actual
-external consumer copy fences and native Task5-8 ownership gates remain required.
-RTSP/native GPU producer/adapter/three packaged demos remain later tasks.
-Camera skeleton raw~11FPS; >=25/30 fresh complete observation target remainsFAIL.
-No sensor-age or final physical acceptance, main merge or Release. M3 remains
-sole active milestone; all existing R4 bytes/caches and user project preserved.
+Task4 Unity RTSP source/controlled real H264TCP playback/reconnect is next;
+Task3 loopback tests validate real failed TCP attempts, not successful RTSP protocol.
+Android hardware decode/GPU producer/adapter/three packaged demos are later tasks.
+Task2 input-only camera source~30publicationFPS is not skeleton FPS or sensor age.
+Actual external copy fences and native Task5-8 ownership gates remain mandatory.
+Camera raw skeleton~11FPS; >=25/30 fresh complete observation goal remainsFAIL.
+No final physical acceptance, main merge or Release. M3 remains sole active milestone;
+all34existing protected R4 files/caches and user Unity project preserved.
 
 # Current YOLO-M3: bounded execution/resolution trial complete (2026-10-01)
 

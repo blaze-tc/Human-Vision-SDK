@@ -176,3 +176,9 @@ if(HV_ENABLE_RTSP)
         endif()
     endforeach()
 endif()
+
+# Optional independent input plugin. Existing HV_Rtsp ABI remains in humanvision.
+option(HV_BUILD_INPUT "Build the independent Windows input plugin" OFF)
+if(HV_BUILD_INPUT)
+    add_subdirectory(input)
+endif()
