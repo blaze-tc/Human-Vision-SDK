@@ -20,7 +20,8 @@ public static class AndroidInputCapabilityBuild
         importer.SetPlatformData(BuildTarget.Android,"CPU","ARM64");
         importer.isPreloaded=true; importer.SaveAndReimport();
         var scene=EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);
-        new GameObject("Input capability probe").AddComponent<AndroidInputCapabilityProbe>();
+        if (Resources.Load<TextAsset>("input-gate-mode").text.Trim() == "Lifecycle") new GameObject("Input lifecycle probe").AddComponent<AndroidInputLifecycleProbe>();
+        else new GameObject("Input capability probe").AddComponent<AndroidInputCapabilityProbe>();
         EditorSceneManager.SaveScene(scene,"Assets/InputCapabilityGate.unity");
         var args=System.Environment.GetCommandLineArgs();
         var index=System.Array.IndexOf(args,"-inputGateApk");

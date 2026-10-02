@@ -1,7 +1,8 @@
-param([ValidateSet('Capabilities','Color','StartupTimeout','CleanupFault','ViewFailure')][string]$Gate='Capabilities',[string]$Serial='e7c07019',
+param([ValidateSet('Capabilities','Color','StartupTimeout','CleanupFault','ViewFailure','Lifecycle')][string]$Gate='Capabilities',[string]$Serial='e7c07019',
       [string]$Output='out/input/task5-device',[string]$Unity='D:/Developer/2021.3.45f1/Editor/Unity.exe',
       [ValidateSet('601','709')][string]$ColorMatrix='601',[ValidateSet('Full','Limited')][string]$ColorRange='Limited',[switch]$CropFixture)
 $ErrorActionPreference='Stop'
+. "$PSScriptRoot/input_gate_owned_process.ps1"
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $outputPath=[IO.Path]::GetFullPath((Join-Path $repo $Output))
 if(-not $outputPath.StartsWith(([IO.Path]::GetFullPath("$repo/out/input")+[IO.Path]::DirectorySeparatorChar),[StringComparison]::OrdinalIgnoreCase)){throw 'Gate output must be within out/input'}
@@ -19,7 +20,7 @@ Copy-Item "$repo/out/input-native/android/build-source-identity.json" "$run/buil
 $lock=(& py -3.13 "$PSScriptRoot/rtsp_fixture_manifest.py")|ConvertFrom-Json
 foreach($pair in @(@($ffmpeg,$lock.ffmpeg_sha256),@($server,$lock.mediamtx_sha256))){if((Get-FileHash $pair[0]).Hash.ToLowerInvariant() -ne $pair[1]){throw 'Controlled fixture tool qualification failed'}}
 if((Get-FileHash $fixture).Hash -ne '926DF205B1A8D3E1CF3E0EBEBBDC4E9232F5A0F8D2EB65C2B918C372F2668CFC'){throw 'Task4 controlled H264 fixture identity mismatch'}
-if($Gate -in @('Color','StartupTimeout','CleanupFault','ViewFailure')){
+if($Gate -in @('Color','StartupTimeout','CleanupFault','ViewFailure','Lifecycle')){
   $fixtureArgs=@('--output',$run,'--matrix',$ColorMatrix,'--range',$ColorRange)
   if($CropFixture){$fixtureArgs+='--crop'}
   if($Gate -eq 'StartupTimeout'){$fixtureArgs+='--startup-timeout'}
@@ -33,12 +34,25 @@ if($LASTEXITCODE -ne 0){throw 'Authorized Android device unavailable'}
 $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);$listener.Start();$port=$listener.LocalEndpoint.Port;$listener.Stop()
 "rtsp://127.0.0.1:$port/fixture" | Set-Content "$project/Assets/Resources/input-gate-url.txt" -Encoding utf8
 $Gate | Set-Content "$project/Assets/Resources/input-gate-mode.txt" -Encoding utf8
-'{"dependencies":{"com.unity.modules.androidjni":"1.0.0","com.unity.modules.jsonserialize":"1.0.0","com.unity.modules.imgui":"1.0.0"}}' | Set-Content "$project/Packages/manifest.json" -Encoding utf8
+'{"dependencies":{"com.unity.modules.androidjni":"1.0.0","com.unity.modules.jsonserialize":"1.0.0","com.unity.modules.imgui":"1.0.0","com.unity.modules.video":"1.0.0","com.unity.modules.audio":"1.0.0"}}' | Set-Content "$project/Packages/manifest.json" -Encoding utf8
 'm_EditorVersion: 2021.3.45f1' | Set-Content "$project/ProjectSettings/ProjectVersion.txt"
 Copy-Item "$repo/upm/com.blazetc.humanvision.input/Tests/PlayMode/AndroidInputCapabilityProbe.cs" "$project/Assets/AndroidInputCapabilityProbe.cs" -Force
+if($Gate -eq 'Lifecycle'){
+  Copy-Item "$repo/upm/com.blazetc.humanvision.input/Tests/PlayMode/AndroidInputLifecycleProbe.cs" "$project/Assets/AndroidInputLifecycleProbe.cs" -Force
+  foreach($file in Get-ChildItem "$repo/upm/com.blazetc.humanvision.input/Runtime" -Filter '*.cs') {if($file.Name -ne 'FramePreview.cs'){Copy-Item $file.FullName "$project/Assets/$($file.Name)" -Force}}
+  Copy-Item "$repo/upm/com.blazetc.humanvision.input/Runtime/Resources/HumanVisionInputOrientation.shader" "$project/Assets/Resources/HumanVisionInputOrientation.shader" -Force
+}
+else {
+  # Build helper references lifecycle type, compile it in diagnostic APKs too.
+  Copy-Item "$repo/upm/com.blazetc.humanvision.input/Tests/PlayMode/AndroidInputLifecycleProbe.cs" "$project/Assets/AndroidInputLifecycleProbe.cs" -Force
+  foreach($file in Get-ChildItem "$repo/upm/com.blazetc.humanvision.input/Runtime" -Filter '*.cs') {if($file.Name -ne 'FramePreview.cs'){Copy-Item $file.FullName "$project/Assets/$($file.Name)" -Force}}
+}
 Copy-Item "$PSScriptRoot/AndroidInputCapabilityBuild.cs" "$project/Assets/Editor/AndroidInputCapabilityBuild.cs" -Force
 New-Item -ItemType Directory -Force "$run/source-artifacts" | Out-Null
 Copy-Item "$project/Assets/AndroidInputCapabilityProbe.cs","$project/Assets/Editor/AndroidInputCapabilityBuild.cs","$project/Packages/manifest.json",$PSCommandPath,"$PSScriptRoot/check_input_color_gate.py","$PSScriptRoot/input_color_fixture.py" "$run/source-artifacts/" -Force
+foreach($file in Get-ChildItem "$project/Assets" -Filter '*.cs'){Copy-Item $file.FullName "$run/source-artifacts/$($file.Name)" -Force}
+Copy-Item "$PSScriptRoot/analyze_android_input_gate.py" "$run/source-artifacts/" -Force
+Copy-Item "$PSScriptRoot/input_gate_owned_process.ps1" "$run/source-artifacts/" -Force
 Copy-Item "$repo/out/input-native/android/libhumanvision_input.so" "$project/Assets/Plugins/Android/arm64-v8a/libhumanvision_input.so" -Force
 Copy-Item "$repo/out/input-native/android/libhumanvision_input.so" "$run/libhumanvision_input.so" -Force
 foreach($name in @('avformat','avcodec','avutil','swresample')){Copy-Item "$repo/out/live-deps/ffmpeg-android/lib$name.so" "$project/Assets/Plugins/Android/arm64-v8a/lib$name.so" -Force}
@@ -46,7 +60,7 @@ $apk="$run/input-capability.apk"
 $owned=@()
 function StartOwned($exe,$arguments,$stdout,$stderr) {
   $process=Start-Process -FilePath $exe -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-  $identity=@{pid=$process.Id;startTicks=$process.StartTime.ToUniversalTime().Ticks;exe=$process.Path}
+  $identity=New-InputGateProcessIdentity $process $exe
   $script:owned+=$identity
   $script:owned | ConvertTo-Json -Depth 4 | Set-Content "$run/owned-processes.json"
   return $process
@@ -108,7 +122,32 @@ paths:
   & $adb -s $Serial logcat -c
   $logCollector=StartOwned $adb "-s $Serial logcat -v threadtime" "$run/device-logcat-stream.txt" "$run/device-logcat-stream.stderr.txt"
   & $adb -s $Serial shell monkey -p com.blazetc.humanvision.inputgate 1 > "$run/launch.log"
-  if($Gate -in @('Color','ViewFailure')) {
+  if($Gate -eq 'Lifecycle'){
+    $timer=[Diagnostics.Stopwatch]::StartNew();$disconnected=$false;$restored=$false;$pausedApp=$false;$resumedApp=$false;$captured=$false;$mutations=@()
+    while($timer.Elapsed.TotalSeconds -lt 190){
+      Start-Sleep -Seconds 2;$log=Get-Content "$run/device-logcat-stream.txt" -Raw
+      if(-not $captured -and $log -match 'gpu_frame_published'){
+        & $adb -s $Serial shell screencap -p /sdcard/hv-input-task7-live.png
+        & $adb -s $Serial pull /sdcard/hv-input-task7-live.png "$run/live-production-preview.png" > "$run/live-screenshot-pull.log"
+        if($LASTEXITCODE -ne 0){throw 'Production live preview screenshot failed'}
+        & $adb -s $Serial shell rm /sdcard/hv-input-task7-live.png
+        $captured=$true;$mutations+=@{event='actual_live_production_preview_capture';seconds=$timer.Elapsed.TotalSeconds}
+      }
+      if($log -match 'lifecycle_playback_started' -and $timer.Elapsed.TotalSeconds -gt 25 -and -not $disconnected){
+        $identity=$owned | Where-Object {$_.pid -eq $publisher.Id} | Select-Object -Last 1
+        Stop-InputGateOwnedProcess $identity | Out-Null
+        $disconnected=$true;$disconnectAt=$timer.Elapsed.TotalSeconds;$mutations+=@{event='owned_publisher_disconnected';seconds=$disconnectAt}
+      }
+      if($disconnected -and -not $restored -and $timer.Elapsed.TotalSeconds -gt ($disconnectAt+5)){
+        $publisher=StartOwned $ffmpeg "-hide_banner -nostdin -stream_loop -1 -re -i `"$fixture`" -an -c:v copy -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:$port/fixture" "$run/publisher-restart.stdout.log" "$run/publisher-restart.stderr.log"
+        $restored=$true;$mutations+=@{event='owned_publisher_restored';seconds=$timer.Elapsed.TotalSeconds}
+      }
+      if($restored -and $timer.Elapsed.TotalSeconds -gt 50 -and -not $pausedApp){& $adb -s $Serial shell input keyevent 3 | Out-Null;$pausedApp=$true;$pauseAt=$timer.Elapsed.TotalSeconds;$mutations+=@{event='actual_app_home_pause';seconds=$pauseAt}}
+      if($pausedApp -and -not $resumedApp -and $timer.Elapsed.TotalSeconds -gt ($pauseAt+4)){& $adb -s $Serial shell monkey -p com.blazetc.humanvision.inputgate 1 > "$run/resume.log";$resumedApp=$true;$mutations+=@{event='actual_app_resume';seconds=$timer.Elapsed.TotalSeconds}}
+      $mutations | ConvertTo-Json -Depth 4 | Set-Content "$run/lifecycle-controlled-events.json"
+      if($log -match 'lifecycle_result=PASS|lifecycle_result=FAIL'){break}
+    }
+  } elseif($Gate -in @('Color','ViewFailure')) {
     Start-Sleep -Seconds 8
     & $adb -s $Serial shell screencap -p /sdcard/hv-input-task6-live.png
     & $adb -s $Serial pull /sdcard/hv-input-task6-live.png "$run/live-gpu-preview.png" > "$run/live-screenshot-pull.log"
@@ -138,8 +177,7 @@ paths:
   } else {Start-Sleep -Seconds 22}
   & $adb -s $Serial logcat -d > "$run/device-logcat-final-snapshot.txt"
   $logIdentity=$owned | Where-Object {$_.pid -eq $logCollector.Id} | Select-Object -Last 1
-  $logLive=Get-Process -Id $logCollector.Id -ErrorAction SilentlyContinue
-  if($logLive -and $logLive.StartTime.ToUniversalTime().Ticks -eq $logIdentity.startTicks -and $logLive.Path -eq $logIdentity.exe){Stop-Process -Id $logLive.Id -Force;$logCollector.WaitForExit()}
+  Stop-InputGateOwnedProcess $logIdentity | Out-Null
   if(-not(Test-Path "$run/device-logcat-stream.txt")){throw 'Owned continuous device log capture missing'}
   Copy-Item "$run/device-logcat-stream.txt" "$run/device-logcat.txt"
   $raw=Get-Content "$run/device-logcat.txt" -Raw
@@ -158,7 +196,13 @@ paths:
     $pass=$raw -match 'capability_result=FAIL stage=RTSP startup keyframe not received within configured timeout code=-110' -and $raw -notmatch 'decoder_first_keyframe=true|gpu_color_submitted|gpu_color_completed|Fatal signal' -and $raw -match 'decoder_resources_closed=true active_images=0 active_ahb_references=0 active_owned_fds=0' -and $raw -match 'gpu_color_counters imports=0 destroys=0 submits=0 completes=0' -and $raw -match 'errors=0 cache_live=0 cpu_image_readbacks=0' -and $raw -match 'bounded_probe_closed=true' -and $raw -match 'visible_startup_error=true reason=RTSP startup keyframe not received within configured timeout'
     @{status=$(if($pass){'PASS_EXPECTED_TIMEOUT'}else{'FAIL'});expectedNativeError='configured startup keyframe timeout';configuredTimeoutMs=5000;actualGpuSubmissions=0;nativeResourcesBalanced=$pass;fixture=(Get-Content "$run/color-fixture.json" -Raw|ConvertFrom-Json)}|ConvertTo-Json -Depth 8|Set-Content "$run/startup-timeout-analysis.json"
   }
+  if($Gate -eq 'Lifecycle'){
+    Copy-Item "$PSScriptRoot/analyze_android_input_gate.py" "$run/source-artifacts/analyze_android_input_gate.py" -Force
+    & py -3.13 "$run/source-artifacts/analyze_android_input_gate.py" $run > "$run/lifecycle-analysis.stdout.txt"
+    $pass=$LASTEXITCODE -eq 0
+  }
   $hashes=[ordered]@{}
+  if($Gate -eq 'Lifecycle' -and (Test-Path "$run/live-production-preview.png")){$hashes["$run/live-production-preview.png"]=(Get-FileHash "$run/live-production-preview.png").Hash}
   foreach($file in @($apk,"$run/installed-base.apk",$fixture,$server,$ffmpeg,$Unity,$adb,"$run/libhumanvision_input.so")){ $hashes[$file]=(Get-FileHash $file).Hash }
   foreach($file in @(Get-ChildItem "$run/source-artifacts" -File -ErrorAction SilentlyContinue)){ $hashes[$file.FullName]=(Get-FileHash $file.FullName).Hash }
   if($Gate -in @('Color','ViewFailure')){foreach($file in @("$run/live-gpu-preview.png","$run/static-test-snapshot.png")){if(Test-Path $file){$hashes[$file]=(Get-FileHash $file).Hash}}}
@@ -169,6 +213,8 @@ paths:
 } finally {
   & $adb -s $Serial shell am force-stop com.blazetc.humanvision.inputgate | Out-Null
   if($reversed){& $adb -s $Serial reverse --remove "tcp:$port" | Out-Null}
-  foreach($identity in $owned){$live=Get-Process -Id $identity.pid -ErrorAction SilentlyContinue;if($live -and $live.StartTime.ToUniversalTime().Ticks -eq $identity.startTicks -and $live.Path -eq $identity.exe){Stop-Process -Id $live.Id -Force}}
-  @{reverseRemoved=$reversed;ownedProcesses=$owned;closedUtc=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json -Depth 5 | Set-Content "$run/cleanup.json"
+  $cleanupFailures=@()
+  foreach($identity in $owned){try {Stop-InputGateOwnedProcess $identity | Out-Null} catch {$cleanupFailures+=$_.Exception.Message}}
+  @{reverseRemoved=$reversed;ownedProcesses=$owned;status=$(if($cleanupFailures.Count){'FAIL'}else{'PASS'});errors=$cleanupFailures;closedUtc=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json -Depth 5 | Set-Content "$run/cleanup.json"
+  if($cleanupFailures.Count){throw "Owned process cleanup failed: $($cleanupFailures -join '; ')"}
 }

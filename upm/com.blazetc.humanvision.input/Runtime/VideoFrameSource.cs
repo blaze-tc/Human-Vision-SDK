@@ -21,7 +21,7 @@ namespace HumanVision.Input
 
         public InputSourceState State { get; protected set; } = InputSourceState.Stopped;
         public string LastError { get; protected set; } = string.Empty;
-        public Texture CurrentTexture => timeline == null ? null : timeline.CurrentTexture;
+        public virtual Texture CurrentTexture => timeline == null ? null : timeline.CurrentTexture;
         protected bool DisplayMirror;
         protected ulong ActiveGeneration => timeline.Generation;
 
@@ -119,13 +119,13 @@ namespace HumanVision.Input
             OnRetirementProgress();
         }
 
-        public bool TryGetLatestFrame(long afterFrameId, out HumanVisionTextureFrame frame)
+        public virtual bool TryGetLatestFrame(long afterFrameId, out HumanVisionTextureFrame frame)
         {
             frame = default;
             return timeline != null && timeline.TryGetLatestFrame(afterFrameId, out frame);
         }
 
-        public bool TryAcquireSourceCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease)
+        public virtual bool TryAcquireSourceCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease)
         {
             lease = default;
             return timeline != null && timeline.TryAcquireSourceCopyLease(in frame, out lease);

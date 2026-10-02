@@ -114,10 +114,10 @@ Task1审查ruling：设计要求时间戳时钟域优先于上述简写字段列
 **Files:** Create `native/input/src/android/input_frame_ring.cpp`, `native/input/src/android/input_gpu_sync.cpp`, `tests/input/test_input_frame_ring.cpp`; Modify Task5/6 producer/cache/render event；Create `tools/test/analyze_android_input_gate.py`。
 **Interfaces:** 固定3个输出slot；状态`Free→Acquired→CopyQueued→Published→Retiring→Free`，buffer导入cache独立于slot。空slot缺失则最新已解码frame/drop；`InputGpuSync.WaitAcquireFdAndOwn`, `SignalReleaseFdAndReturnOwnership`在Unity queue操作；release fence供AImage_deleteAsync，AHB acquire/release各一对。
 
-- [ ] RED：`NoFreeSlotDropsWithoutRenderThreadWait`、`CloseBeforeCopyCompletesKeepsBufferAlive`、`ReconnectionRejectsOldGeneration`、`EncodedBacklogFlushWaitsForKeyframe`。检查acquire/release/fd所有权完整，禁止漏wait或直接销毁cache。
-- [ ] 同Task5构建/CTest；尚无ring/sync正确行为FAIL。实现wait/signal sync-fd、外部queue ownership transfer，render event只入队copy，绝不等待ncnn；错误/Close路径fence退休及fd释放一致。
-- [ ] 与input包RtspFrameSource连接：复用固定event data；RenderTexture主线程创建、供native GPU写入；PollFrame只读metadata，不读image。网络/decoder/输出队列有界，关键帧恢复受控，不随机丢压缩P/B。
-- [ ] Run `pwsh -NoProfile -File tools/test/collect_android_input_gate.ps1 -Gate Lifecycle -Serial e7c07019 -Output out/input/task7-device`，含60s播放、10次切换/断线/暂停、Close时在途copy。要求readbacks/errors=0、slot/cache/fd持有数回到基线，旧帧不发布。统计drops不当成功；review后commit `feat: synchronize and retire Android RTSP GPU frames safely`。
+- [x] RED：`NoFreeSlotDropsWithoutRenderThreadWait`、`CloseBeforeCopyCompletesKeepsBufferAlive`、`ReconnectionRejectsOldGeneration`、`EncodedBacklogFlushWaitsForKeyframe`。检查acquire/release/fd所有权完整，禁止漏wait或直接销毁cache。
+- [x] 同Task5构建/CTest；尚无ring/sync正确行为FAIL。实现wait/signal sync-fd、外部queue ownership transfer，render event只入队copy，绝不等待ncnn；错误/Close路径fence退休及fd释放一致。
+- [x] 与input包RtspFrameSource连接：复用固定event data；RenderTexture主线程创建、供native GPU写入；PollFrame只读metadata，不读image。网络/decoder/输出队列有界，关键帧恢复受控，不随机丢压缩P/B。
+- [x] Run `pwsh -NoProfile -File tools/test/collect_android_input_gate.ps1 -Gate Lifecycle -Serial e7c07019 -Output out/input/task7-device`，含60s播放、10次切换/断线/暂停、Close时在途copy。要求readbacks/errors=0、slot/cache/fd持有数回到基线，旧帧不发布。统计drops不当成功；review后commit `feat: synchronize and retire Android RTSP GPU frames safely`。
 
 ### Task8: 将SDK源copy退休与inference槽退休解耦
 

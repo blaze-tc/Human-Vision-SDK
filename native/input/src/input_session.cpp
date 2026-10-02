@@ -1,4 +1,8 @@
 #include "input_internal.h"
+#ifdef __ANDROID__
+#include "android/input_vulkan_private.h"
+#include "android_input_vulkan.h"
+#endif
 #include <cstring>
 #include <memory>
 #include <new>
@@ -66,7 +70,11 @@ bool Retired(HV_InputHandle h) {
   return h->active_copies == 0 &&
          WaitForSingleObject(h->worker.native_handle(), 0) == WAIT_OBJECT_0;
 #else
-  return h->active_copies == 0 && h->worker_done;
+  return h->active_copies == 0 && h->worker_done
+#ifdef __ANDROID__
+         && hvinput::InputGpuRetired(h)
+#endif
+         ;
 #endif
 }
 struct CopyScope {
@@ -122,7 +130,16 @@ HV_INPUT_API int HV_INPUT_CALL HV_Input_Open(const HV_InputOptions *o,
     s->info.decode_mode = 0; // GPU PRIVATE source; no CPU RGBA contract.
 #endif
     hvinput::InstallSafeLog();
-    s->worker = std::thread(&hvinput::Session::Run, s.get());
+    #ifdef __ANDROID__
+    if (!hvinput::BeginInputGpu(s.get())) return HV_INPUT_BUSY;
+#endif
+    try { s->worker = std::thread(&hvinput::Session::Run, s.get()); }
+    catch (...) {
+#ifdef __ANDROID__
+      hvinput::DetachInputGpu(s.get());
+#endif
+      throw;
+    }
     *out = s.release();
     return 0;
   } catch (...) {
@@ -132,6 +149,9 @@ HV_INPUT_API int HV_INPUT_CALL HV_Input_Open(const HV_InputOptions *o,
 HV_INPUT_API int HV_INPUT_CALL HV_Input_Close(HV_InputHandle h) {
   if (!h)
     return HV_INPUT_INVALID;
+  #ifdef __ANDROID__
+  hvinput::CloseInputGpu(h);
+#endif
   h->stop = true;
   h->wake.notify_all();
   return 0;
@@ -146,6 +166,9 @@ HV_INPUT_API int HV_INPUT_CALL HV_Input_Release(HV_InputHandle h) {
     return HV_INPUT_BUSY;
   lock.unlock();
   h->worker.join();
+#ifdef __ANDROID__
+  hvinput::DetachInputGpu(h);
+#endif
   delete h;
   return 0;
 }
@@ -174,12 +197,16 @@ HV_INPUT_API int HV_INPUT_CALL HV_Input_PollFrame(HV_InputHandle h,
                                                   HV_InputFrameInfo *p) {
   if (!h || !Valid(p))
     return HV_INPUT_INVALID;
+#ifdef __ANDROID__
+  return hvinput::PollInputGpuMetadata(h,after,p);
+#else
   std::lock_guard<std::mutex> lock(h->mutex);
   FillEmpty(*h, p);
   if (h->stop || h->state != HV_INPUT_STREAMING || h->latest.empty() ||
       h->info.sequence <= after)
     return HV_INPUT_NO_FRAME;
   return 0;
+#endif
 }
 HV_INPUT_API int HV_INPUT_CALL HV_Input_CopyRgba(HV_InputHandle h,
                                                  uint64_t sequence, void *p,

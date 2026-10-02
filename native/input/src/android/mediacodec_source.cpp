@@ -2,6 +2,7 @@
 #include "android_input_gpu.h"
 #include "input_vulkan_private.h"
 #include "input_h264_color.h"
+#include "input_frame_ring.h"
 #include <android/log.h>
 #include <media/NdkImageReader.h>
 #include <media/NdkMediaCodec.h>
@@ -18,19 +19,22 @@ static std::atomic<int> live_images{0}, live_ahb_references{0}, live_owned_fds{0
 // No pixel mapping or sampling occurs during Task5. Returning the original
 // acquire fence as release fence preserves producer completion even on failure.
 AndroidDecodedImage::~AndroidDecodedImage() {
-  const int fd=acquire_fd;
+  const int fd=acquire_fd;const int returned_release_fd=release_fd;
   if(gpu_submitted&&acquire_fd>=0)close(acquire_fd);
   if(image) { AImage_deleteAsync(image,gpu_submitted?release_fd:acquire_fd); acquire_fd=-1;release_fd=-1; }
   else if(acquire_fd>=0) close(acquire_fd);
   if(buffer) AHardwareBuffer_release(buffer);
   if(image_counted) {--live_images;if(fd>=0)--live_owned_fds;}
   if(buffer) --live_ahb_references;
+  if(release_fd_counted)--live_owned_fds;
+  if(release_fd_counted)__android_log_print(ANDROID_LOG_INFO,"HVInputGate","release_fd_transferred_to_AImage=%d active_owned_fds=%d",returned_release_fd,live_owned_fds.load());
   if(image) __android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoded_lease_returned=true acquire_fd=%d release_fence=%s gpu_fence_complete=%d no_gpu_work=%d ahb_reference_released=%d active_images=%d active_ahb_references=%d active_owned_fds=%d",fd,gpu_submitted?"actual_gpu_release":"original_acquire",gpu_submitted,!gpu_submitted,buffer!=nullptr,live_images.load(),live_ahb_references.load(),live_owned_fds.load());
 }
+void AndroidDecodedImage::CountReleaseFd() noexcept {if(release_fd>=0&&!release_fd_counted){release_fd_counted=true;++live_owned_fds;__android_log_print(ANDROID_LOG_INFO,"HVInputGate","release_fd_held=%d active_owned_fds=%d",release_fd,live_owned_fds.load());}}
 void AndroidDecodedImage::Reset() noexcept {this->~AndroidDecodedImage();new(this)AndroidDecodedImage();}
 void AndroidDecodedImage::TakeFrom(AndroidDecodedImage& s) noexcept {
  image=std::exchange(s.image,nullptr);buffer=std::exchange(s.buffer,nullptr);acquire_fd=std::exchange(s.acquire_fd,-1);image_counted=std::exchange(s.image_counted,false);
- release_fd=std::exchange(s.release_fd,-1);gpu_submitted=std::exchange(s.gpu_submitted,false);generation=s.generation;pts_us=s.pts_us;received_us=s.received_us;decoded_us=s.decoded_us;
+ release_fd=std::exchange(s.release_fd,-1);release_fd_counted=std::exchange(s.release_fd_counted,false);gpu_submitted=std::exchange(s.gpu_submitted,false);generation=s.generation;pts_us=s.pts_us;received_us=s.received_us;decoded_us=s.decoded_us;
  matrix=s.matrix;color_range=s.color_range;transfer=s.transfer;primaries=s.primaries;width=s.width;height=s.height;crop_left=s.crop_left;crop_top=s.crop_top;crop_right=s.crop_right;crop_bottom=s.crop_bottom;
 }
 static std::mutex gate_mutex;
@@ -58,6 +62,8 @@ struct Resources {
   }
 };
 void Session::Decode() {
+  const bool production=InputGpuProduction(this);
+  if(production)PrepareInputGpuGeneration(this);
   Resources r;
   auto fail=[this](const char* stage,int code){SetError(stage,code); state=HV_INPUT_FAILED;
     __android_log_print(ANDROID_LOG_ERROR,"HVInputGate","capability_result=FAIL stage=%s code=%d",stage,code); stop=true;};
@@ -67,7 +73,7 @@ void Session::Decode() {
   AVDictionary* options=nullptr; av_dict_set(&options,"rtsp_transport","tcp",0);
   deadline=NowUs()+int64_t(timeout_ms)*1000;
   int status=avformat_open_input(&r.format,url.c_str(),nullptr,&options); av_dict_free(&options);
-  if(status<0) {fail("open compressed RTSP",status);return;}
+  if(status<0) {SetError("open compressed RTSP",status);state=HV_INPUT_RECONNECTING;if(!production)stop=true;return;}
   // RTSP SDP already declares streams/extradata; never call find_stream_info,
   // avcodec_open or receive_frame, which may decode CPU frames while probing.
   int stream=-1;
@@ -75,12 +81,12 @@ void Session::Decode() {
   if(stream<0 || r.format->streams[stream]->codecpar->codec_id!=AV_CODEC_ID_H264) {fail("RTSP stream must be H264",AVERROR_INVALIDDATA);return;}
   auto* params=r.format->streams[stream]->codecpar;
   H264Color declared{};bool valid_sps=ParseH264Color(params->extradata,params->extradata_size>0?size_t(params->extradata_size):0,declared);
-  if(ColorProbeEnabled()&&params->extradata_size>0&&!valid_sps){fail("H264 SPS color contract malformed or unsupported",AVERROR_INVALIDDATA);return;}
+  if((ColorProbeEnabled()||production)&&params->extradata_size>0&&!valid_sps){fail("H264 SPS color contract malformed or unsupported",AVERROR_INVALIDDATA);return;}
   __android_log_print(ANDROID_LOG_INFO,"HVInputGate","source_h264_vui valid_sps=%d present=%d matrix=%u range=%u matrix_code=%u primaries=%u transfer=%u demux_av_colorspace=%d demux_av_range=%d metadata_domain=H264_SPS_VUI",valid_sps,declared.present,declared.matrix,declared.range,declared.matrix_code,declared.primaries,declared.transfer,params->color_space,params->color_range);
   ANativeWindow* window=nullptr;
   status=AImageReader_newWithUsage(max_width,max_height,AIMAGE_FORMAT_PRIVATE,AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE,4,&r.reader);
   if(status!=AMEDIA_OK || AImageReader_getWindow(r.reader,&window)!=AMEDIA_OK) {fail("PRIVATE GPU sampled ImageReader",status);return;}
-  if(ColorProbeEnabled()) { AImageReader_BufferRemovedListener listener{nullptr,[](void*,AImageReader*,AHardwareBuffer* b){NotifyRemovedBuffer(b);}};AImageReader_setBufferRemovedListener(r.reader,&listener); }
+  if(ColorProbeEnabled()||production) { AImageReader_BufferRemovedListener listener{nullptr,[](void*,AImageReader*,AHardwareBuffer* b){NotifyRemovedBuffer(b);}};AImageReader_setBufferRemovedListener(r.reader,&listener); }
   std::string name;
   {std::lock_guard<std::mutex> lock(gate_mutex);name=codec_name;}
   if(name.empty()) {fail("hardware codec capability selection missing",AVERROR(EINVAL));return;}
@@ -141,27 +147,33 @@ void Session::Decode() {
     AImage_getWidth(image.image,&image.width);AImage_getHeight(image.image,&image.height);AImageCropRect crop{};
     if(AImage_getCropRect(image.image,&crop)!=AMEDIA_OK){fail("query actual decoder crop",AVERROR_INVALIDDATA);return;}
     AHardwareBuffer_Desc allocation{};AHardwareBuffer_describe(image.buffer,&allocation);
-    if(ColorProbeEnabled()&&(!codec_crop_known||codec_crop.right>int64_t(allocation.width)||codec_crop.bottom>int64_t(allocation.height)||codec_crop.right-codec_crop.left!=image.width||codec_crop.bottom-codec_crop.top!=image.height)){fail("actual decoder crop unavailable or incompatible with AHB/display geometry",AVERROR_INVALIDDATA);return;}
-    const auto actual_crop=ColorProbeEnabled()?codec_crop:crop;
+    if((ColorProbeEnabled()||production)&&(!codec_crop_known||codec_crop.right>int64_t(allocation.width)||codec_crop.bottom>int64_t(allocation.height)||codec_crop.right-codec_crop.left!=image.width||codec_crop.bottom-codec_crop.top!=image.height)){fail("actual decoder crop unavailable or incompatible with AHB/display geometry",AVERROR_INVALIDDATA);return;}
+    const auto actual_crop=(ColorProbeEnabled()||production)?codec_crop:crop;
     image.crop_left=actual_crop.left;image.crop_top=actual_crop.top;image.crop_right=actual_crop.right;image.crop_bottom=actual_crop.bottom;
-    if(ColorProbeEnabled())__android_log_print(ANDROID_LOG_INFO,"HVInputGate","resolved_ahb_crop left=%d top=%d right_exclusive=%d bottom_exclusive=%d ahb_width=%u ahb_height=%u aimage_rect=%d,%d,%d,%d crop_source=MediaCodec_coded_rect",actual_crop.left,actual_crop.top,actual_crop.right,actual_crop.bottom,allocation.width,allocation.height,crop.left,crop.top,crop.right,crop.bottom);
-    if(ColorProbeEnabled())__android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoded_crop generation=%llu image_width=%d image_height=%d left=%d top=%d right=%d bottom=%d display_width=%d display_height=%d matrix=%u range=%u transfer=%u primaries=%u crop_metadata_domain=AImage_full_window matrix_range_domain=resolved_Android_or_H264_VUI raw_transfer_primaries_domain=AndroidMediaFormat",(unsigned long long)image.generation,image.width,image.height,crop.left,crop.top,crop.right,crop.bottom,crop.right-crop.left,crop.bottom-crop.top,matrix,range,transfer,primaries);
-    RecordDecodedCapability(image,name.c_str()); ++decoded;
-    if(ColorProbeEnabled())QueueColorImage(image);
+    if(ColorProbeEnabled()||production)__android_log_print(ANDROID_LOG_INFO,"HVInputGate","resolved_ahb_crop left=%d top=%d right_exclusive=%d bottom_exclusive=%d ahb_width=%u ahb_height=%u aimage_rect=%d,%d,%d,%d crop_source=MediaCodec_coded_rect",actual_crop.left,actual_crop.top,actual_crop.right,actual_crop.bottom,allocation.width,allocation.height,crop.left,crop.top,crop.right,crop.bottom);
+    if(ColorProbeEnabled()||production)__android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoded_crop generation=%llu image_width=%d image_height=%d left=%d top=%d right=%d bottom=%d display_width=%d display_height=%d matrix=%u range=%u transfer=%u primaries=%u crop_metadata_domain=AImage_full_window matrix_range_domain=resolved_Android_or_H264_VUI raw_transfer_primaries_domain=AndroidMediaFormat",(unsigned long long)image.generation,image.width,image.height,crop.left,crop.top,crop.right,crop.bottom,crop.right-crop.left,crop.bottom-crop.top,matrix,range,transfer,primaries);
+    if(!production||decoded==0)RecordDecodedCapability(image,name.c_str()); ++decoded;
+    if(production)state=HV_INPUT_STREAMING;
+    if(ColorProbeEnabled()||production)QueueColorImage(image);
   };
-  bool have_keyframe=false;uint32_t startup_dropped=0;const int64_t keyframe_deadline=NowUs()+int64_t(timeout_ms)*1000;
-  while(!stop && (ColorProbeEnabled()||decoded<3)) {
+  InputEncodedBacklog backlog;backlog.Reset(NowUs()+int64_t(timeout_ms)*1000);uint32_t startup_dropped=0;
+  // One compressed packet is retained. Pressure cannot accumulate an unbounded application queue.
+  // On decoder pressure, recreate RTSP/decoder resources, then require a new keyframe.
+  const auto reconnect=[&](const char* stage,int code){SetError(stage,code);state=HV_INPUT_RECONNECTING;__android_log_print(ANDROID_LOG_INFO,"HVInputGate","encoded_backlog_controlled_reconnect=1 wait_for_keyframe=1 stage=%s",stage);};
+  while(!stop && (production||ColorProbeEnabled()||decoded<3)) {
     deadline=NowUs()+int64_t(timeout_ms)*1000;
     status=av_read_frame(r.format,r.packet); info.received_timestamp_us=NowUs();
-    if(status<0) {fail("read compressed H264",status);return;}
+    if(status<0) {if(production)reconnect("read compressed H264",status);else fail("read compressed H264",status);return;}
     if(r.packet->stream_index!=stream) {av_packet_unref(r.packet);continue;}
     // A newly joined RTSP stream may begin inside a GOP. Concealed decoder output
     // is not a valid source image: start the hardware decoder input at a keyframe.
-    if(!have_keyframe){if(!(r.packet->flags&AV_PKT_FLAG_KEY)){++startup_dropped;av_packet_unref(r.packet);if(NowUs()>=keyframe_deadline){fail("RTSP startup keyframe not received within configured timeout",AVERROR(ETIMEDOUT));return;}continue;}have_keyframe=true;__android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoder_first_keyframe=true compressed_startup_packets_dropped=%u packet_flags=%d packet_pts=%lld",startup_dropped,r.packet->flags,(long long)r.packet->pts);}
+    bool was_waiting=backlog.Waiting();
+    if(!backlog.Admit((r.packet->flags&AV_PKT_FLAG_KEY)!=0)){++startup_dropped;av_packet_unref(r.packet);if(backlog.Expired(NowUs())){fail("RTSP startup keyframe not received within configured timeout",AVERROR(ETIMEDOUT));return;}continue;}
+    if(was_waiting)__android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoder_first_keyframe=true compressed_startup_packets_dropped=%u packet_flags=%d packet_pts=%lld",startup_dropped,r.packet->flags,(long long)r.packet->pts);
     ssize_t index=-1;
     while(!stop && NowUs()<deadline && (index=AMediaCodec_dequeueInputBuffer(r.codec,1000))<0) drain();
     if(stop) return;
-    if(index<0) {fail("bounded compressed queue pressure",AVERROR(ETIMEDOUT));return;}
+    if(index<0) {if(production)reconnect("bounded compressed queue pressure",AVERROR(ETIMEDOUT));else fail("bounded compressed queue pressure",AVERROR(ETIMEDOUT));return;}
     size_t capacity=0; auto* data=AMediaCodec_getInputBuffer(r.codec,index,&capacity);
     if(!data || r.packet->size<0 || size_t(r.packet->size)>capacity) {fail("compressed access unit exceeds codec buffer",AVERROR(ENOBUFS));return;}
     std::memcpy(data,r.packet->data,r.packet->size);
@@ -171,7 +183,7 @@ void Session::Decode() {
     drain();
   }
   if(decoded) state=HV_INPUT_STREAMING;
-  stop=true; // bounded capability probe, no Task6 GPU import/publication.
+  if(!production)stop=true; // Only the diagnostic is bounded.
 }
 void StartCapabilityProbe(const char* url) {
   std::lock_guard<std::mutex> lock(gate_mutex);

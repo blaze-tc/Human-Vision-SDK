@@ -8,6 +8,14 @@ namespace HumanVision.Input
     /// <summary>Independent Windows RTSP decoder. Main-thread RGBA upload; latest complete native copy wins.</summary>
     public sealed class RtspFrameSource : UnityTextureFrameSource
     {
+        private HumanVisionSourceSettings androidSettings;
+        private int androidTimeout, androidDelay;
+        private bool androidPaused, androidResume;
+        private AndroidRtspGpuSource android;
+        public override Texture CurrentTexture => android != null ? android.CurrentTexture : base.CurrentTexture;
+        public override bool TryGetLatestFrame(long after, out HumanVisionTextureFrame frame) { if (android != null) return android.TryGetLatestFrame(after, out frame); return base.TryGetLatestFrame(after, out frame); }
+        public override bool TryAcquireSourceCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease) { if (android != null) return android.TryAcquireSourceCopyLease(in frame, out lease); return base.TryAcquireSourceCopyLease(in frame, out lease); }
+        internal IntPtr AndroidHandle => android == null ? IntPtr.Zero : android.Handle;
         private IntPtr handle, rgba;
         private uint capacity;
         private Texture2D upload;
@@ -20,7 +28,7 @@ namespace HumanVision.Input
         private uint previousState = uint.MaxValue;
         protected override bool HasPendingWorkerRetirement
         {
-            get { for (int i = 0; i < retiring.Length; ++i) if (retiring[i] != IntPtr.Zero) return true; return false; }
+            get { if (android != null && android.Pending) return true; for (int i = 0; i < retiring.Length; ++i) if (retiring[i] != IntPtr.Zero) return true; return false; }
         }
         public override void Open(HumanVisionSourceSettings settings)
         {
@@ -34,7 +42,14 @@ namespace HumanVision.Input
                 settings.RequestedWidth < 1 || settings.RequestedWidth > 4096 || settings.RequestedHeight < 1 || settings.RequestedHeight > 4096 ||
                 timeout < 100 || timeout > 60000 || delay < 0 || delay > 60000)
             { State = InputSourceState.Error; LastError = "Use a valid rtsp:// address, dimensions 1–4096, timeout 100–60000ms and reconnect delay 0–60000ms."; return; }
-#if !UNITY_STANDALONE_WIN && !UNITY_EDITOR_WIN
+#if UNITY_ANDROID && !UNITY_EDITOR
+            try {
+                if (rtsp != null && rtsp.Transport != RtspTransport.Tcp) throw new InvalidOperationException("Android RTSP currently supports H.264 over TCP only.");
+                if (android == null) android = new AndroidRtspGpuSource();
+                androidSettings = settings; androidTimeout = timeout; androidDelay = delay; androidPaused = androidResume = false; android.Open(settings, timeout, delay); State = android.State; LastError = android.LastError;
+            } catch (Exception ex) { State = InputSourceState.Error; LastError = ex is InvalidOperationException ? ex.Message : "Android RTSP initialization failed; install the qualified ARM64 input plugin and FFmpeg dependencies."; }
+            return;
+#elif !UNITY_STANDALONE_WIN && !UNITY_EDITOR_WIN
             State = InputSourceState.Error; LastError = "RTSP input currently requires the Windows x64 input plugin; Android hardware input is not enabled.";
             return;
 #else
@@ -64,6 +79,15 @@ namespace HumanVision.Input
         private void Update()
         {
             PollRetirement();
+            if (android != null) {
+                try {
+                    android.Tick();
+                    if (androidResume && !android.Pending) { androidResume = false; android.Open(androidSettings, androidTimeout, androidDelay); }
+                    State = android.State; LastError = android.LastError;
+                }
+                catch (Exception ex) { android.Fail(ex is InvalidOperationException ? ex.Message : "RTSP GPU frame publication failed."); State = android.State; LastError = android.LastError; }
+                return;
+            }
             if (handle == IntPtr.Zero) return;
             try {
                 if (NativeInputBindings.HV_Input_GetState(handle, out var state) != 0) { Fail("RTSP state query failed."); return; }
@@ -104,6 +128,14 @@ namespace HumanVision.Input
                 nativeSequence = actual.Sequence;
             } catch (Exception) { Fail("RTSP frame upload failed; verify native plugin and available texture memory."); }
         }
+        private void OnApplicationPause(bool paused)
+        {
+            if (android == null || androidSettings == null) return;
+            if (paused) {
+                androidPaused = android.Handle != IntPtr.Zero && android.State != InputSourceState.Closing && android.State != InputSourceState.Error;
+                if (androidPaused) { android.Close(); State = InputSourceState.Closing; Debug.Log("HVInputGate production_pause_closed=true"); }
+            } else if (androidPaused) { androidPaused = false; androidResume = true; Debug.Log("HVInputGate production_resume_requested=true"); }
+        }
         internal void EnsureRgbaCapacity(uint required)
         {
             if (capacity >= required) return;
@@ -123,6 +155,7 @@ namespace HumanVision.Input
         public override void Close()
         {
             CheckThread(); State = InputSourceState.Closing;
+            if (android != null) { androidResume = androidPaused = false; android.Close(); State = android.State; LastError = android.LastError; WatchWorkerRetirement(); return; }
             if (handle != IntPtr.Zero) {
                 NativeInputBindings.HV_Input_Close(handle);
                 for (int i = 0; i < retiring.Length; ++i) if (retiring[i] == IntPtr.Zero) { retiring[i] = handle; handle = IntPtr.Zero; break; }

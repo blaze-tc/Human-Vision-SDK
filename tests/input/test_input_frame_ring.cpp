@@ -1,0 +1,12 @@
+#include "input_frame_ring.h"
+#include <cstdio>
+#include <cstring>
+#define CHECK(c) do{if(!(c)){std::fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#c);return 1;}}while(0)
+int main(int argc,char** argv){using namespace hvinput;const char* name=argc>1?argv[1]:"";InputFrameRing ring;ring.Begin(1);
+ if(!std::strcmp(name,"NoFreeSlotDropsWithoutRenderThreadWait")){for(int i=0;i<3;++i){CHECK(ring.Acquire(1,i+1)==i);CHECK(ring.Queue(i,i+1));}CHECK(ring.Acquire(1,4)==-1);CHECK(ring.Drops()==1);CHECK(ring.Live()==3);}
+ else if(!std::strcmp(name,"SupersededUnobservedPublicationDoesNotLeak")){int a=ring.Acquire(1,1);CHECK(ring.Queue(a,1));CHECK(ring.Complete(a,1));int b=ring.Acquire(1,2);CHECK(ring.Queue(b,2));CHECK(ring.Complete(b,2));ring.Collect(2);CHECK(ring.Live()==1);ring.Observe(b,2);int c=ring.Acquire(1,3);CHECK(ring.Queue(c,3));CHECK(ring.Complete(c,3));ring.Collect(3);CHECK(ring.Live()==2);ring.Observe(c,99);int d=ring.Acquire(1,4);CHECK(ring.Queue(d,4));CHECK(ring.Complete(d,4));ring.Collect(4);CHECK(ring.Live()==2);}
+ else if(!std::strcmp(name,"ConsumerCopyKeepsPublishedSlotBusy")){for(int i=0;i<3;++i){CHECK(ring.Acquire(1,i+1)==i);CHECK(ring.Queue(i,i+1));CHECK(ring.Complete(i,i+1));ring.Observe(i,i+1);}CHECK(ring.Acquire(1,4)==-1);ring.Release(0,99);ring.Collect(3);CHECK(ring.Acquire(1,4)==-1);ring.Release(0,1);ring.Collect(3);CHECK(ring.Acquire(1,4)==0);}
+ else if(!std::strcmp(name,"CloseBeforeCopyCompletesKeepsBufferAlive")){int s=ring.Acquire(1,1);CHECK(ring.Queue(s,8));ring.Close();ring.Collect(7);CHECK(ring.Live()==1);CHECK(ring.Slot(s).state==InputSlotState::Retiring);CHECK(!ring.Complete(s,7));ring.Collect(8);CHECK(ring.Live()==0);CHECK(ring.Published()==-1);}
+ else if(!std::strcmp(name,"ReconnectionRejectsOldGeneration")){int s=ring.Acquire(1,1);CHECK(ring.Queue(s,8));ring.Begin(2);CHECK(!ring.Complete(s,8));CHECK(ring.Published()==-1);CHECK(ring.Acquire(1,2)==-1);ring.Collect(8);int n=ring.Acquire(2,3);CHECK(n>=0);CHECK(ring.Queue(n,9));CHECK(!ring.Complete(n,8));CHECK(ring.Complete(n,9));CHECK(ring.Published()==n);}
+ else if(!std::strcmp(name,"EncodedBacklogFlushWaitsForKeyframe")){InputEncodedBacklog backlog;backlog.Reset(100);CHECK(!backlog.Admit(false));CHECK(!backlog.Expired(99));CHECK(backlog.Expired(100));CHECK(backlog.Admit(true));CHECK(backlog.Admit(false));backlog.Reset(200);CHECK(!backlog.Admit(false));CHECK(backlog.Waiting());CHECK(backlog.Admit(true));}
+ else return 2;std::puts("PASS");return 0;}

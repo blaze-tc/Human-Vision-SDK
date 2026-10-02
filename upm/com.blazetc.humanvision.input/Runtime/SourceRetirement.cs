@@ -106,6 +106,14 @@ namespace HumanVision.Input
                     resources[i].Retiring = true;
         }
 
+        internal bool HasPendingCopies(Texture texture)
+        {
+            CheckThread();
+            for (int i = 0; i < resources.Length; ++i)
+                if (resources[i].Token != 0 && resources[i].Texture == texture) return resources[i].Copies != 0;
+            return false;
+        }
+
         internal bool IsLive(in HumanVisionTextureFrame frame)
         {
             CheckThread();

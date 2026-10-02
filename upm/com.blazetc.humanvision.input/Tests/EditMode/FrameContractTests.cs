@@ -13,6 +13,18 @@ namespace HumanVision.Input.Tests
         }
 
         [Test]
+        public void AndroidInitializationFailureRemainsActionable()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Vulkan) Assert.Ignore("This negative capability case uses the qualified D3D host.");
+            var gpu = new AndroidRtspGpuSource();
+            Assert.Throws<InvalidOperationException>(() => gpu.Open(new RtspSourceSettings { Location = "rtsp://127.0.0.1:1/test" }, 500, 250));
+            gpu.Tick();
+            Assert.That(gpu.State, Is.EqualTo(InputSourceState.Error));
+            Assert.That(gpu.LastError, Does.Contain("Vulkan"));
+            Assert.That(gpu.Pending, Is.False);
+        }
+
+        [Test]
         public void OldGenerationCannotPublish()
         {
             var retirement = new SourceRetirement();
@@ -144,6 +156,7 @@ namespace HumanVision.Input.Tests
                 Assert.That(source.TryPublish(in frame), Is.True);
                 Assert.That(source.TryAcquireSourceCopyLease(in frame, out var first), Is.True);
                 Assert.That(source.TryAcquireSourceCopyLease(in frame, out var second), Is.True);
+                Assert.That(retirement.HasPendingCopies(texture), Is.True, "A queued or unqueued consumer lease prevents native output reuse");
                 var fence = new CopyFence { IsComplete = true };
                 first.RetireAfter(fence);
                 Assert.Throws<InvalidOperationException>(() => first.RetireAfter(fence));
@@ -154,6 +167,7 @@ namespace HumanVision.Input.Tests
                 retirement.Poll();
                 retirement.Poll();
                 Assert.That(destroyed, Is.EqualTo(1));
+                Assert.That(retirement.HasPendingCopies(texture), Is.False);
                 Assert.Throws<InvalidOperationException>(() => second.RetireAfter(fence));
             }
             finally { UnityEngine.Object.DestroyImmediate(texture); }
