@@ -1,4 +1,4 @@
-# Current: camera direction fixed; unified-input plan awaits review (2026-10-01)
+# Current: unified-input Task1 verified; Task2 next (2026-10-02)
 
 Bounded Unity Android camera fix `3a6e9e3` reviewed SpecPASS/QualityPASS;
 RED2/2 expected failures, actual GPU orientation tests3/3 and routing12/12 PASS.
@@ -13,8 +13,11 @@ Lines9px/points27px now3x running baseline. No UPM GPU readiness/Release claim.
 
 Approved unified-input design now includes separate Camera/Video/RTSP Demo scenes,
 shared recognition settings and per-mode configuration. Detailed11-task plan
-[awaits written review](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
-No new input architecture code implemented; input refactor does not promise30FPS.
+[approved for sequential execution](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
+Task1 standalone frame contract/source-copy retirement: real Unity11/11PASS,
+fresh SpecPASS/QualityPASS after timestamp-domain fixes. Task2 starts next.
+[Task1 evidence and clock contract](reports/2026-10-01-unified-input-task1.md).
+Input refactor does not promise30FPS; >=25/30 remains unpassed.
 M3 remains sole active milestone; existing R4 dirty bytes/caches preserved.
 [Camera report](reports/2026-10-01-camera-orientation-and-unified-input.md).
 

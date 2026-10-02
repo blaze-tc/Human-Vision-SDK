@@ -23,7 +23,7 @@
 - WebCamTexture时间是UnityObserved；RTSP接收/解码时间及PTS不得冒充sensor time。R4 sensor gate继续未通过。
 - fresh FPS按完整observation frame计，不按人数累加；空帧/部分人数必须保留；25过渡/30硬目标。
 - 先保存并声明当前dirty R4快照；不reset/clean、不改现有用户项目。独立worktree执行并保存源/二进制hash。新计划代码不假装当前dirty native快照已经能由cleanHEAD重建。
-- 本计划目前仅待执行确认；保持用户已选择的fresh implementer + spec compliance + quality review、GPT-6.1 Sol medium。每Task独立commit，review不通过不得前进。
+- 本计划用户已确认并开始逐Task执行；保持用户已选择的fresh implementer + spec compliance + quality review、GPT-6.1 Sol medium。每Task独立commit，review不通过不得前进。
 
 ## Review Focus
 
@@ -44,7 +44,7 @@ SDK当前UPM缺少Android GPU支持；Task8/9必须对齐已验证生产所需�
 
 ### Task1: 独立输入契约及GPU资源退休
 
-**Files:** Create `upm/com.blazetc.humanvision.input/package.json`, `Runtime/HumanVision.Input.asmdef`, `Runtime/IHumanVisionFrameSource.cs`, `Runtime/HumanVisionSourceSettings.cs`, `Runtime/HumanVisionTextureFrame.cs`, `Runtime/SourceRetirement.cs`, `Tests/EditMode/HumanVision.Input.Tests.asmdef`, `Tests/EditMode/FrameContractTests.cs`; Create `tools/test/run_input_tests.ps1`.
+**Files:** Create `upm/com.blazetc.humanvision.input/package.json`, `Runtime/HumanVision.Input.asmdef`, `Runtime/IHumanVisionFrameSource.cs`, `Runtime/HumanVisionSourceSettings.cs`, `Runtime/HumanVisionTextureFrame.cs`, `Runtime/SourceRetirement.cs`, `Runtime/InputMonotonicClock.cs`, `Tests/EditMode/HumanVision.Input.Tests.asmdef`, `Tests/EditMode/FrameContractTests.cs`; Create `tools/test/run_input_tests.ps1`.
 **Interfaces:** Namespace `HumanVision.Input`. `InputSourceState {Stopped,Opening,Streaming,Reconnecting,Error,Closing}`; `InputKind {Video,WebCamera,Rtsp}`.
 `IHumanVisionFrameSource.Open(HumanVisionSourceSettings settings)`, `Close()`, `State`, `LastError`, `CurrentTexture`, `bool TryGetLatestFrame(long afterFrameId,out HumanVisionTextureFrame frame)`.
 `HumanVisionTextureFrame`值类型：`ulong SourceId, Generation`; `long FrameId, PublishedTimestampUs, PresentationTimestampUs`; `Texture Texture`; `int Width,Height,AppliedRotationDegrees`; `bool AppliedMirrorX`; `FrameRowOrigin RowOrigin`; `FrameColorSpace ColorSpace`; `FrameTimestampKind TimestampKind`; `ulong ResourceToken`。
@@ -52,10 +52,12 @@ SDK当前UPM缺少Android GPU支持；Task8/9必须对齐已验证生产所需�
 `FrameTimestampKind {UnityObserved,LocalDecode}`；`FrameColorSpace {Srgb,Linear,Unknown}`。`ISourceCopyFence.IsComplete`只表示copy的GPU完成，不包含inference。
 资源接口`bool TryAcquireSourceCopyLease(in HumanVisionTextureFrame frame,out SourceCopyLease lease)`；`SourceCopyLease.RetireAfter(ISourceCopyFence fence)`。源Close不接收inference fence，borrowed预览纹理只在当前generation有效。
 
-- [ ] RED：`FrameContractTests.OldGenerationCannotPublish`断言切源后旧回调无输出；`ClosingWaitsForCopyNotInference`用未完成copy fence阻止destroy，copy完成后即退休而不依赖模拟inference；`FrameMetadataUsesActualGeometry`请求1920×1080/实际1280×720返回实际值。
-- [ ] 建立隔离Unity测试runner：`pwsh -NoProfile -File tools/test/run_input_tests.ps1 -Phase Core -Output out/input/task1`；记录预期缺类型/契约失败，无sensor输入伪造。
-- [ ] 实现上述接口、generation/单调帧ID和退休队列，sourceId跨重连保持、generation提升；ResourceToken明确lease身份。添加包/asmdef和`.meta`，不得引用HumanVision.Runtime。
-- [ ] GREEN同命令：三个测试PASS；反射/依赖测试`InputAssemblyHasNoInferenceReferences`断言包不依赖ORT/ncnn/SDK。更新状态，spec+quality review后仅add这些文件，commit `feat: define standalone Unity input frame contract`。
+- [x] RED：`FrameContractTests.OldGenerationCannotPublish`断言切源后旧回调无输出；`ClosingWaitsForCopyNotInference`用未完成copy fence阻止destroy，copy完成后即退休而不依赖模拟inference；`FrameMetadataUsesActualGeometry`请求1920×1080/实际1280×720返回实际值。
+- [x] 建立隔离Unity测试runner：`pwsh -NoProfile -File tools/test/run_input_tests.ps1 -Phase Core -Output out/input/task1`；记录预期缺类型/契约失败，无sensor输入伪造。
+- [x] 实现上述接口、generation/单调帧ID和退休队列，sourceId跨重连保持、generation提升；ResourceToken明确lease身份。添加包/asmdef和`.meta`，不得引用HumanVision.Runtime。
+- [x] GREEN同命令：三个测试PASS；反射/依赖测试`InputAssemblyHasNoInferenceReferences`断言包不依赖ORT/ncnn/SDK。更新状态，spec+quality review后仅add这些文件，commit `feat: define standalone Unity input frame contract`。
+
+Task1审查ruling：设计要求时间戳时钟域优先于上述简写字段列表；增加独立InputMonotonicClock、SourceTimestampUs/SourceClockDomain/SourceClockId，发布时钟固定InputMonotonic，源时间与PTS分离。实际Unity11/11PASS，SpecPASS/QualityPASS。
 
 ### Task2: Unity Video/WebCamera和独立预览
 
@@ -137,7 +139,7 @@ SDK当前UPM缺少Android GPU支持；Task8/9必须对齐已验证生产所需�
 - [ ] 实现adapter/compat wrappers，并用独立preview Texture和已验证GPU输入行契约，lease结束按Task8copy-only退休。禁每帧JSON/Task/分配；模型MaxBodies设置与source无关，Region仍bbox/pelvis assignment。
 - [ ] GREEN实际Windows/Android conditional compilation及公共API反射测试；分别编译真正UPM来源，不能用Unity-source测试替代旧CPU-only UPM GPU迁移。未批准R4代码不混入包；review后commit `feat: adapt unified Unity frames to stable skeleton APIs`。
 
-### Task10: 独立输入包、两个演示场景与干净导入
+### Task10: 独立输入包、三个演示场景与干净导入
 
 **Files:** Create input包 `Samples~/InputPreview/InputPreview.unity`, `Samples~/InputPreview/InputPreviewController.cs`, `Editor/InputPreviewSceneBuilder.cs`, `Documentation~/INPUT_GUIDE.md`；Create SDK Demo `Demo/Input/HumanVisionDemoNavigator.cs`, `Demo/Input/SharedRecognitionSettings.cs`, `Demo/Input/DemoModeSettings.cs`, `Demo/Input/HumanVisionSharedSettingsPanel.cs`, `Demo/Input/HumanVisionModeSettingsPanel.cs`, `Demo/Input/HumanVisionSettingsStore.cs`, `Demo/Input/SharedSettingsPanel.prefab`, `Samples~/UnifiedInput/{HumanVisionCameraDemo,HumanVisionVideoDemo,HumanVisionRtspDemo}.unity`, `Tests/EditMode/DemoSettingsTests.cs`；Modify SDK `package.json`, `Editor/HumanVisionCameraDemoBuilder.cs`及Unity镜像；Create `tools/package/package_input.py`, `tools/package/check_input_package.py`。
 **Interfaces:** SDK三个场景CameraDemo/VideoDemo/RtspDemo；`HumanVisionDemoNavigator.SwitchTo(InputKind kind)`公共按钮切换并沿用Task1退休/generation协议。公共设置面板Prefab复用；`SharedRecognitionSettings`持有MaxBodies、Region列表/编号、AnalysisProfileId/ModelPack声明的分析尺寸；`DemoModeSettings`按InputKind存设备名/视频路径/RTSP URL、镜像、线宽/点径、采集请求参数。`HumanVisionSettingsStore.LoadShared/SaveShared`与`LoadMode/SaveMode(InputKind,DemoModeSettings)`独立文件/键，设置写入仅用户操作时JSON，不入每帧路径。input-only InputPreview仅RawImage/source选择，作为独立样例。CanvasScaler ScaleWithScreenSize reference1280×720/match0.5；请求720p/1080p/FPS和实际值分开，GUI隐藏不停源。

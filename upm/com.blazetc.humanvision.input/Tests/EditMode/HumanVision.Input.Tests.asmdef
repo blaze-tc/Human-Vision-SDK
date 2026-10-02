@@ -1,0 +1,7 @@
+{
+  "name": "HumanVision.Input.Tests",
+  "rootNamespace": "HumanVision.Input.Tests",
+  "references": ["HumanVision.Input"],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"]
+}
