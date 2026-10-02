@@ -1,6 +1,8 @@
 {
   "name": "HumanVision.Input",
   "rootNamespace": "HumanVision.Input",
-  "references": [],
+  "references": [
+    "Unity.ugui"
+  ],
   "autoReferenced": true
 }

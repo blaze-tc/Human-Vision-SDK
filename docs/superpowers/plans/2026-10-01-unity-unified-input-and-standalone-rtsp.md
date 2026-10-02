@@ -64,10 +64,10 @@ Task1审查ruling：设计要求时间戳时钟域优先于上述简写字段列
 **Files:** Create input包 `Runtime/VideoFrameSource.cs`, `Runtime/WebCameraFrameSource.cs`, `Runtime/FramePreview.cs`, `Runtime/FrameTextureNormalizer.cs`, `Runtime/Resources/HumanVisionInputOrientation.shader`, `Tests/EditMode/UnitySourceTests.cs`, `Tests/PlayMode/UnitySourceLifecycleTests.cs`。
 **Interfaces:** Task1；`VideoFrameSource : MonoBehaviour,IHumanVisionFrameSource`使用VideoPlayer；`WebCameraFrameSource`同接口；`FramePreview.Bind(IHumanVisionFrameSource source)`仅绑定RawImage。`FrameTextureNormalizer.Update(Texture input,int rotationDegrees,bool verticalMirror,bool displayMirror)`复用正向RT并发布实际尺寸，不暴露模型尺寸。
 
-- [ ] RED：`UnitySourceTests.AsymmetricMarkerTransformsExactlyOnce`对0/90/180/270和镜像组合验证GPU彩色标记及Width/Height交换；测试夹具可诊断读回，生产禁止；`PreviewWithoutModels`无SDK/模型也能绑定实际VideoPlayer纹理。
-- [ ] Run `pwsh -NoProfile -File tools/test/run_input_tests.ps1 -Phase UnitySources -Output out/input/task2`，缺源实现FAIL。
-- [ ] 实现MP4 VideoPlayer→RT、WebCamTexture→GPU normalization→RT。复用已验证视频回调/纹理方向，使用实际rotation/mirror，权限异步。纹理只契约变化时重建，暂停/恢复提升generation。
-- [ ] PlayMode测试`SwitchAndPauseRejectLateFrames`、`RequestedResolutionIsNotActualResolution`、`PreviewHasNoPerFrameManagedAllocationsAfterWarmup`；采集/预览与消费者速度无关。GREEN同命令，记录真实摄像头请求/实际分辨率，review后commit `feat: add independent Unity video and camera preview`。
+- [x] RED：`UnitySourceTests.AsymmetricMarkerTransformsExactlyOnce`对0/90/180/270和镜像组合验证GPU彩色标记及Width/Height交换；测试夹具可诊断读回，生产禁止；`PreviewWithoutModels`无SDK/模型也能绑定实际VideoPlayer纹理。
+- [x] Run `pwsh -NoProfile -File tools/test/run_input_tests.ps1 -Phase UnitySources -Output out/input/task2`，缺源实现FAIL。
+- [x] 实现MP4 VideoPlayer→RT、WebCamTexture→GPU normalization→RT。复用已验证视频回调/纹理方向，使用实际rotation/mirror，权限异步。纹理只契约变化时重建，暂停/恢复提升generation。
+- [x] PlayMode测试`SwitchAndPauseRejectLateFrames`、`RequestedResolutionIsNotActualResolution`、`PreviewHasNoPerFrameManagedAllocationsAfterWarmup`；采集/预览与消费者速度无关。GREEN同命令，记录真实摄像头请求/实际分辨率，review后commit `feat: add independent Unity video and camera preview`。
 
 ### Task3: 独立Windows RTSP插件
 

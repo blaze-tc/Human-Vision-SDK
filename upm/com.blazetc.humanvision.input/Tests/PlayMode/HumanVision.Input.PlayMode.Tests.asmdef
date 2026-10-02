@@ -1,0 +1,10 @@
+{
+  "name": "HumanVision.Input.PlayMode.Tests",
+  "references": [
+    "HumanVision.Input",
+    "Unity.ugui"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

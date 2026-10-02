@@ -1,25 +1,27 @@
-# Current: unified-input Task1 verified; Task2 next (2026-10-02)
+# Current: unified-input Task2 verified; Task3 next (2026-10-02)
 
-Bounded Unity Android camera fix `3a6e9e3` reviewed SpecPASS/QualityPASS;
-RED2/2 expected failures, actual GPU orientation tests3/3 and routing12/12 PASS.
-Camera APKff7e2cc0 installed with actual1280x720 front input. Same native60d847,
-all7libraries/4selected runtime files/index verified; no MP4/CPU full-frame readback.
-Independent60s capture/facts review:40s warmed window582 observations14.55FPS,
-554one-body13.85FPS,28empty; UnityObserved ageP50/P95 102.8/165.6ms.
-Later raw logs confirm10.4–11.0FPS; camera remains30FPS. >=25/30 remainsFAIL.
-User confirms direction correct/basic following, then reports low FPS. Feet not
-fully in frame; complete-body/sensor-time physical acceptance remains unpassed.
-Lines9px/points27px now3x running baseline. No UPM GPU readiness/Release claim.
+Approved 11-task plan executes sequentially in the existing isolated worktree.
+Task1 is committed242956f; Task2 independent Unity Video/WebCamera/GPU normalization
+and RawImage preview now pass fresh SpecPASS/QualityPASS after runner correction.
+Actual Unity2021.3: Core11/11; D3D11 and D3D12 each EditMode6/6 + PlayMode12/12,
+all exits0. Private-video guard RED/GREEN restores Core independence; architecture
+checker actualexit0. No current active-RT warning or late-callback exception.
 
-Approved unified-input design now includes separate Camera/Video/RTSP Demo scenes,
-shared recognition settings and per-mode configuration. Detailed11-task plan
-[approved for sequential execution](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
-Task1 standalone frame contract/source-copy retirement: real Unity11/11PASS,
-fresh SpecPASS/QualityPASS after timestamp-domain fixes. Task2 starts next.
-[Task1 evidence and clock contract](reports/2026-10-01-unified-input-task1.md).
-Input refactor does not promise30FPS; >=25/30 remains unpassed.
-M3 remains sole active milestone; existing R4 dirty bytes/caches preserved.
-[Camera report](reports/2026-10-01-camera-orientation-and-unified-input.md).
+Final frozen input-only ARM64/API26/Vulkan APKa249accc installed/hash-verified
+on LE2120 e7c07019. Actual1280x720 front input, gen1/2 pause-resume, closeStopped,
+reopenStreaminggen3/finalStopped/currentTexture=false,1035 observed input frames.
+Sampled source publication~30.06FPS is not skeleton FPS or a sustained benchmark.
+No models/SDK/native inference dependencies in that APK.
+[Task2 ownership, tests and bounded camera evidence](reports/2026-10-02-unified-input-task2.md).
+[Task1 contracts and clocks](reports/2026-10-01-unified-input-task1.md).
+[Approved sequential plan](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
+
+Extra Unity-owned raw-normalization marker withdrawn after diagnosis; actual
+external consumer copy fences and native Task5-8 ownership gates remain required.
+RTSP/native GPU producer/adapter/three packaged demos remain later tasks.
+Camera skeleton raw~11FPS; >=25/30 fresh complete observation target remainsFAIL.
+No sensor-age or final physical acceptance, main merge or Release. M3 remains
+sole active milestone; all existing R4 bytes/caches and user project preserved.
 
 # Current YOLO-M3: bounded execution/resolution trial complete (2026-10-01)
 
