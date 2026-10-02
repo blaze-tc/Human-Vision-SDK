@@ -1,5 +1,6 @@
-param([ValidateSet('Capabilities')][string]$Gate='Capabilities',[string]$Serial='e7c07019',
-      [string]$Output='out/input/task5-device',[string]$Unity='D:/Developer/2021.3.45f1/Editor/Unity.exe')
+param([ValidateSet('Capabilities','Color','StartupTimeout','CleanupFault','ViewFailure')][string]$Gate='Capabilities',[string]$Serial='e7c07019',
+      [string]$Output='out/input/task5-device',[string]$Unity='D:/Developer/2021.3.45f1/Editor/Unity.exe',
+      [ValidateSet('601','709')][string]$ColorMatrix='601',[ValidateSet('Full','Limited')][string]$ColorRange='Limited',[switch]$CropFixture)
 $ErrorActionPreference='Stop'
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $outputPath=[IO.Path]::GetFullPath((Join-Path $repo $Output))
@@ -11,17 +12,33 @@ $ffmpeg='C:/ffmpeg/bin/ffmpeg.exe'
 $server="$repo/out/tools/mediamtx-v1.12.3/mediamtx.exe"
 $fixture="$repo/out/input/task4-round1/asymmetric-video-1-h264.mp4"
 foreach($folder in @($run,"$project/Assets/Editor","$project/Assets/Plugins/Android/arm64-v8a","$project/Assets/Resources","$project/Packages","$project/ProjectSettings")){New-Item -ItemType Directory -Force $folder | Out-Null}
+$buildIdentity=Get-Content "$repo/out/input-native/android/build-source-identity.json" -Raw | ConvertFrom-Json
+if($buildIdentity.native_sha256 -ne (Get-FileHash "$repo/out/input-native/android/libhumanvision_input.so").Hash.ToLowerInvariant()){throw 'Native candidate differs from successful build receipt'}
+foreach($source in $buildIdentity.sources.PSObject.Properties){if((Get-FileHash (Join-Path $repo $source.Name)).Hash.ToLowerInvariant() -ne $source.Value){throw "Native source differs from successful build receipt: $($source.Name)"}}
+Copy-Item "$repo/out/input-native/android/build-source-identity.json" "$run/build-source-identity.json" -Force
 $lock=(& py -3.13 "$PSScriptRoot/rtsp_fixture_manifest.py")|ConvertFrom-Json
 foreach($pair in @(@($ffmpeg,$lock.ffmpeg_sha256),@($server,$lock.mediamtx_sha256))){if((Get-FileHash $pair[0]).Hash.ToLowerInvariant() -ne $pair[1]){throw 'Controlled fixture tool qualification failed'}}
 if((Get-FileHash $fixture).Hash -ne '926DF205B1A8D3E1CF3E0EBEBBDC4E9232F5A0F8D2EB65C2B918C372F2668CFC'){throw 'Task4 controlled H264 fixture identity mismatch'}
+if($Gate -in @('Color','StartupTimeout','CleanupFault','ViewFailure')){
+  $fixtureArgs=@('--output',$run,'--matrix',$ColorMatrix,'--range',$ColorRange)
+  if($CropFixture){$fixtureArgs+='--crop'}
+  if($Gate -eq 'StartupTimeout'){$fixtureArgs+='--startup-timeout'}
+  & py -3.13 "$PSScriptRoot/input_color_fixture.py" @fixtureArgs > "$run/color-fixture-build.stdout.txt"
+  if($LASTEXITCODE -ne 0){throw 'Locked source color fixture encoding failed'}
+  $fixture="$run/controlled-color-h264.mp4"
+  Copy-Item "$run/color-fixture.json" "$project/Assets/Resources/input-color-fixture.json" -Force
+}
 & $adb -s $Serial get-state > "$run/adb-state.txt"
 if($LASTEXITCODE -ne 0){throw 'Authorized Android device unavailable'}
 $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);$listener.Start();$port=$listener.LocalEndpoint.Port;$listener.Stop()
 "rtsp://127.0.0.1:$port/fixture" | Set-Content "$project/Assets/Resources/input-gate-url.txt" -Encoding utf8
-'{"dependencies":{"com.unity.modules.androidjni":"1.0.0"}}' | Set-Content "$project/Packages/manifest.json" -Encoding utf8
+$Gate | Set-Content "$project/Assets/Resources/input-gate-mode.txt" -Encoding utf8
+'{"dependencies":{"com.unity.modules.androidjni":"1.0.0","com.unity.modules.jsonserialize":"1.0.0","com.unity.modules.imgui":"1.0.0"}}' | Set-Content "$project/Packages/manifest.json" -Encoding utf8
 'm_EditorVersion: 2021.3.45f1' | Set-Content "$project/ProjectSettings/ProjectVersion.txt"
 Copy-Item "$repo/upm/com.blazetc.humanvision.input/Tests/PlayMode/AndroidInputCapabilityProbe.cs" "$project/Assets/AndroidInputCapabilityProbe.cs" -Force
 Copy-Item "$PSScriptRoot/AndroidInputCapabilityBuild.cs" "$project/Assets/Editor/AndroidInputCapabilityBuild.cs" -Force
+New-Item -ItemType Directory -Force "$run/source-artifacts" | Out-Null
+Copy-Item "$project/Assets/AndroidInputCapabilityProbe.cs","$project/Assets/Editor/AndroidInputCapabilityBuild.cs","$project/Packages/manifest.json",$PSCommandPath,"$PSScriptRoot/check_input_color_gate.py","$PSScriptRoot/input_color_fixture.py" "$run/source-artifacts/" -Force
 Copy-Item "$repo/out/input-native/android/libhumanvision_input.so" "$project/Assets/Plugins/Android/arm64-v8a/libhumanvision_input.so" -Force
 Copy-Item "$repo/out/input-native/android/libhumanvision_input.so" "$run/libhumanvision_input.so" -Force
 foreach($name in @('avformat','avcodec','avutil','swresample')){Copy-Item "$repo/out/live-deps/ffmpeg-android/lib$name.so" "$project/Assets/Plugins/Android/arm64-v8a/lib$name.so" -Force}
@@ -56,6 +73,7 @@ with zipfile.ZipFile(run/'input-capability.apk') as apk:
   source=run/leaf if leaf=='libhumanvision_input.so' else repo/'out/live-deps/ffmpeg-android'/leaf
   if hashlib.sha256(source.read_bytes()).hexdigest()!=digest: raise RuntimeError('APK plugin bytes differ: '+leaf)
   receipt[entry]=digest
+  if leaf=='libhumanvision_input.so':(run/'apk-libhumanvision_input.so').write_bytes(data)
  (run/'apk-native-entries.json').write_text(json.dumps({'all_native_entries':entries,'qualified_entry_sha256':receipt},indent=2))
 '@
   & py -3.13 -c $audit $repo $run
@@ -88,15 +106,63 @@ paths:
   if($LASTEXITCODE -ne 0){throw 'Owned ADB reverse failed'};$reversed=$true
   & $adb -s $Serial shell am force-stop com.blazetc.humanvision.inputgate | Out-Null
   & $adb -s $Serial logcat -c
+  $logCollector=StartOwned $adb "-s $Serial logcat -v threadtime" "$run/device-logcat-stream.txt" "$run/device-logcat-stream.stderr.txt"
   & $adb -s $Serial shell monkey -p com.blazetc.humanvision.inputgate 1 > "$run/launch.log"
-  Start-Sleep -Seconds 22
-  & $adb -s $Serial logcat -d > "$run/device-logcat.txt"
+  if($Gate -in @('Color','ViewFailure')) {
+    Start-Sleep -Seconds 8
+    & $adb -s $Serial shell screencap -p /sdcard/hv-input-task6-live.png
+    & $adb -s $Serial pull /sdcard/hv-input-task6-live.png "$run/live-gpu-preview.png" > "$run/live-screenshot-pull.log"
+    if($LASTEXITCODE -ne 0){throw 'Actual live GPU diagnostic screenshot failed'}
+    & $adb -s $Serial shell rm /sdcard/hv-input-task6-live.png
+    Start-Sleep -Seconds 18
+    & $adb -s $Serial shell screencap -p /sdcard/hv-input-task6-complete.png
+    & $adb -s $Serial pull /sdcard/hv-input-task6-complete.png "$run/static-test-snapshot.png" > "$run/static-screenshot-pull.log"
+    if($LASTEXITCODE -ne 0){throw 'Actual completed diagnostic screenshot failed'}
+    & $adb -s $Serial shell rm /sdcard/hv-input-task6-complete.png
+    Start-Sleep -Seconds 19
+  } elseif($Gate -eq 'StartupTimeout') {
+    $captureTimer=[Diagnostics.Stopwatch]::StartNew();$errorVisible=$false
+    while($captureTimer.Elapsed.TotalSeconds -lt 18){
+      $phase=& $adb -s $Serial logcat -d -s 'HVInputGate:I' 'Unity:I' '*:S'
+      if(($phase -join "`n") -match 'visible_startup_error=true reason=RTSP startup keyframe not received within configured timeout'){$errorVisible=$true;break}
+      Start-Sleep -Milliseconds 500
+    }
+    if(-not $errorVisible){throw 'Native startup ERROR was not reflected by the diagnostic UI before screenshot deadline'}
+    Start-Sleep -Milliseconds 500
+    @{capturePhase='actual_managed_native_timeout_ERROR';captureUtc=[DateTime]::UtcNow.ToString('o');elapsedAfterLaunchSeconds=$captureTimer.Elapsed.TotalSeconds} | ConvertTo-Json | Set-Content "$run/startup-screenshot-state.json"
+    & $adb -s $Serial shell screencap -p /sdcard/hv-input-task6-timeout.png
+    & $adb -s $Serial pull /sdcard/hv-input-task6-timeout.png "$run/startup-error.png" > "$run/startup-screenshot-pull.log"
+    if($LASTEXITCODE -ne 0){throw 'Actual configured startup ERROR screenshot failed'}
+    & $adb -s $Serial shell rm /sdcard/hv-input-task6-timeout.png
+    if($captureTimer.Elapsed.TotalSeconds -lt 22){Start-Sleep -Milliseconds ([int]((22-$captureTimer.Elapsed.TotalSeconds)*1000))}
+  } else {Start-Sleep -Seconds 22}
+  & $adb -s $Serial logcat -d > "$run/device-logcat-final-snapshot.txt"
+  $logIdentity=$owned | Where-Object {$_.pid -eq $logCollector.Id} | Select-Object -Last 1
+  $logLive=Get-Process -Id $logCollector.Id -ErrorAction SilentlyContinue
+  if($logLive -and $logLive.StartTime.ToUniversalTime().Ticks -eq $logIdentity.startTicks -and $logLive.Path -eq $logIdentity.exe){Stop-Process -Id $logLive.Id -Force;$logCollector.WaitForExit()}
+  if(-not(Test-Path "$run/device-logcat-stream.txt")){throw 'Owned continuous device log capture missing'}
+  Copy-Item "$run/device-logcat-stream.txt" "$run/device-logcat.txt"
   $raw=Get-Content "$run/device-logcat.txt" -Raw
   $decoded=@([regex]::Matches($raw,'decoded codec=[^\r\n]+') | ForEach-Object {$_.Value})
   $returned=@([regex]::Matches($raw,'decoded_lease_returned=true[^\r\n]+active_images=0 active_ahb_references=0 active_owned_fds=0'))
   $pass=$decoded.Count -eq 3 -and $returned.Count -eq 3 -and @($decoded | Where-Object {$_ -match 'logical_proven=1' -and $_ -match 'query=1 failure=0'}).Count -eq 3 -and $raw -notmatch 'capability_result=FAIL' -and $raw -match 'input_only_preinit_hook=1' -and $raw -match 'device_creation success' -and $raw -match 'sync_fd_properties importable=1 exportable=1' -and $raw -match 'decoder_resources_closed=true active_images=0 active_ahb_references=0 active_owned_fds=0' -and $raw -match 'bounded_probe_closed=true'
+  if($Gate -eq 'Color'){$pass=$raw -match 'color_pixels=PASS' -and $raw -notmatch 'color_result=FAIL|color_pixels=FAIL|capability_result=FAIL' -and $raw -match 'foreign_extension_successful_device=1' -and $raw -match 'gpu_color_counters.+errors=0 cache_live=0 cpu_image_readbacks=0' -and $raw -match 'decoder_resources_closed=true active_images=0 active_ahb_references=0 active_owned_fds=0'}
+  if($Gate -eq 'ViewFailure'){$pass=$raw -match 'target_view_fault_injected=true retired_handle_null=1' -and $raw -match 'target_view_replacement_old_retired=true' -and $raw -match 'color_pixels=PASS' -and $raw -match 'gpu_color_counters.+errors=1 cache_live=0 cpu_image_readbacks=0' -and $raw -match 'bounded_probe_closed=true'}
+  if($Gate -in @('Color','ViewFailure')){
+    $analysisArgs=@($run);if($Gate -eq 'ViewFailure'){$analysisArgs+='--expected-target-view-failure'}
+    & py -3.13 "$PSScriptRoot/check_input_color_gate.py" @analysisArgs > "$run/color-analysis.stdout.txt"
+    $pass=$pass -and $LASTEXITCODE -eq 0
+  }
+  if($Gate -eq 'CleanupFault'){$pass=$raw -match 'cleanup_fault_injected=true actual_gpu_active=1' -and $raw -match 'error_cleanup_complete=true responsive_retirement_frames=[1-9]' -and $raw -match 'gpu_color_completed sequence=1' -and $raw -match 'gpu_color_counters imports=1 destroys=1 submits=1 completes=1' -and $raw -match 'target_views_created=1 target_views_destroyed=1' -and $raw -match 'errors=0 cache_live=0 cpu_image_readbacks=0' -and $raw -notmatch 'Fatal signal' -and $raw -match 'bounded_probe_closed=true' -and $raw -match 'decoder_resources_closed=true active_images=0 active_ahb_references=0 active_owned_fds=0'}
+  if($Gate -eq 'StartupTimeout'){
+    $pass=$raw -match 'capability_result=FAIL stage=RTSP startup keyframe not received within configured timeout code=-110' -and $raw -notmatch 'decoder_first_keyframe=true|gpu_color_submitted|gpu_color_completed|Fatal signal' -and $raw -match 'decoder_resources_closed=true active_images=0 active_ahb_references=0 active_owned_fds=0' -and $raw -match 'gpu_color_counters imports=0 destroys=0 submits=0 completes=0' -and $raw -match 'errors=0 cache_live=0 cpu_image_readbacks=0' -and $raw -match 'bounded_probe_closed=true' -and $raw -match 'visible_startup_error=true reason=RTSP startup keyframe not received within configured timeout'
+    @{status=$(if($pass){'PASS_EXPECTED_TIMEOUT'}else{'FAIL'});expectedNativeError='configured startup keyframe timeout';configuredTimeoutMs=5000;actualGpuSubmissions=0;nativeResourcesBalanced=$pass;fixture=(Get-Content "$run/color-fixture.json" -Raw|ConvertFrom-Json)}|ConvertTo-Json -Depth 8|Set-Content "$run/startup-timeout-analysis.json"
+  }
   $hashes=[ordered]@{}
   foreach($file in @($apk,"$run/installed-base.apk",$fixture,$server,$ffmpeg,$Unity,$adb,"$run/libhumanvision_input.so")){ $hashes[$file]=(Get-FileHash $file).Hash }
+  foreach($file in @(Get-ChildItem "$run/source-artifacts" -File -ErrorAction SilentlyContinue)){ $hashes[$file.FullName]=(Get-FileHash $file.FullName).Hash }
+  if($Gate -in @('Color','ViewFailure')){foreach($file in @("$run/live-gpu-preview.png","$run/static-test-snapshot.png")){if(Test-Path $file){$hashes[$file]=(Get-FileHash $file).Hash}}}
+  if($Gate -eq 'StartupTimeout'){$hashes["$run/startup-error.png"]=(Get-FileHash "$run/startup-error.png").Hash}
   @{gate=$Gate;serial=$Serial;status=$(if($pass){'PASS'}else{'FAIL'});protocol='RTSP_TCP';codec='H264';port=$port;apk=$apk;project=$project;artifactSha256=$hashes;decodedRecords=$decoded;sourceGeneration='actual native decoded records in device-logcat.txt'} | ConvertTo-Json -Depth 6 | Set-Content "$run/result.json"
   Select-String -Path "$run/device-logcat.txt" -Pattern 'HVInputGate' | ForEach-Object {$_.Line}
   if(-not $pass){throw "Actual Android capability gate FAIL; raw evidence $run"}

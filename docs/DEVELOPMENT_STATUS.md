@@ -1,35 +1,37 @@
-# Current: unified-input Task5 verified; Vulkan image import next (2026-10-02)
+# Current: unified-input Task6 verified; production RTSP lifecycle next (2026-10-02)
 
-Tasks1-4 committed242956f, b6c1d32,99a19c0 ande1f5c73. Task5 independent Android
-hardware input capability gate passes fresh SpecPASS/QualityPASS after one focused
-review-fix round. Native API26/ARM64 build/import closure audit exit0; Windows23/23
-actual tests PASS including old8 regressions,4 policy and11 declaration tests.
-Architecture/public-surface checks exit0/PASS. Frozen13 sources/73 artifacts match;
-all34 protected preexisting R4 files remain unchanged, user project/caches retained.
+Tasks1-5 committed242956f,b6c1d32,99a19c0,e1f5c73,a60a3fe. Task6 passes fresh
+SpecPASS/QualityPASS after fixing3 review blockers: asynchronous diagnostic error
+retirement before worker join, accurate opaque ownership, transactional target-view
+creation. Actual host29/29 and affected owner/cache4/4 PASS, API26/ARM64 closure PASS;
+architecture/public-surface PASS. Root29-source/166-repair-artifact and original
+27-source/250-artifact hashes match;34 protected preexisting R4 bytes preserved.
 
-Actual Snapdragon888 MediaCodec PRIVATE AHB query gate PASS. Initial Unity default
-logical-device FAIL is preserved; input-only preinit now explicitly requests the
-necessary physically supported capabilities, preserving Unity's request. Actual
-successful same-physical/same-Unity-device enabled proof, AHB externalFormat506 and
-sync-fd import/export support confirmed on3 images. Conflicting/duplicate feature
-chains reject before physical queries/create; focused RED6/11→GREEN11/11 retained.
-APK d854cee8 equals installed-base; nativeb485413e and all input-only entries verified.
-AImage/AHB/fd counts retire to0; actualfd-1 alreadycomplete only, no positivefdwait.
-[Task5 exact commands, device evidence and limits](reports/2026-10-02-unified-input-task5.md).
-[Task4 real H264TCP preview](reports/2026-10-02-unified-input-task4.md).
-[Task3 independent native ABI](reports/2026-10-02-unified-input-task3.md).
-[Task2 sources](reports/2026-10-02-unified-input-task2.md).
+Actual Snapdragon888 GPU sampled/read-only AHB import/color gate: native798c805c,
+four601/709 full/limited groups plusstrongnonzero crop,40transforms/256points PASS.
+Current repairnativeab866740 actualactive-copy exception cleanup andtarget-view
+failure/retry PASS;8normaltransforms/48points PASS,203submits/completes,13imports/
+destroys,9targetviews/destroys, cache/readbacks0 andexactly1declared injectederror.
+Cleanupfault1submit/complete balancesallper-bufferresources over4yieldingframes.
+Unchangedshader/color/crop/metadata coverage retains original798 results separately;
+fourmatrix/crop tests were not rerun onab866 and are notclaimed asnewbinaryproof.
+ActualFOREIGN enablement/ownershipreturn/export/completion verified; acquireFDs
+all-1 alreadycomplete only, positivefdhardware path remainsunqualified.
+[Task6 exact evidence and limits](reports/2026-10-02-unified-input-task6.md).
+[Task5 capabilities](reports/2026-10-02-unified-input-task5.md).
 [Approved sequential plan](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
 
-5/11 input tasks verified. Task6 next: actual AHB import/cache/GPU color conversion.
-Before any actual sampling/FOREIGN_EXT ownership, qualify+enable the missing foreign
-queue extension and safe acquire/return synchronization. Task5 is query-only with
-three images, not production RTSP texture output or full GPU ownership proof.
-Task7 full three-slot/sync lifecycle remains serial; Tasks8-11 adapter/packages/demos/
-acceptance remain later. No decoded CPU image/readback/inference fallback route.
-Camera raw skeleton~11FPS; >=25 interim/30 fresh complete observation frames/s FAIL.
-No final physical acceptance, main merge or Release. M3 remains sole active SDK
-milestone outside this approved input subplan; no inference optimization claim.
+6/11 input tasks verified. Task7 next: fixedthreeoutputs, boundeddecoded/encoded
+backpressure, productionRtspFrameSource metadata/texture publication, reconnect/
+pause/close/fault retirement andactual60s/10switch lifecycle gate. SDK source-copy
+retirement/adapter/packages/threeDemos/finalacceptance remainTasks8-11.
+The APK sofar isboundedinputdiagnostics usingtemporaryownedRTSP/USBreverse, not
+a standaloneusable Camera/Video/RTSP skeletonDemo; cleanupremovesitsstream.
+LiveGPUpreview andactualerrorfeedback added. Minorunexpectedcleanup EXPECTEDERROR
+label/init-stage detail/readability/NDKCMakewarnings recordedforfinalreview.
+Camera raw skeleton~11FPS;25interim/30freshcompleteobservationframes/s stillFAIL.
+Noinferenceoptimization/fallback/fullTask7claim, finalphysicalacceptance/mainmerge/
+Release. UserUnityproject/caches retained; M3 remainssoleactiveSDKmilestone.
 
 # Current YOLO-M3: bounded execution/resolution trial complete (2026-10-01)
 

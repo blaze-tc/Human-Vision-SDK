@@ -1,0 +1,20 @@
+#version 450
+layout(local_size_x=8,local_size_y=8) in;
+layout(set=0,binding=0) uniform sampler2D decodedImage;
+layout(set=0,binding=1,rgba8) writeonly uniform image2D unityTarget;
+layout(push_constant) uniform Contract { vec4 crop; ivec4 outputInfo; } contract;
+void main() {
+ ivec2 p=ivec2(gl_GlobalInvocationID.xy), size=contract.outputInfo.xy;
+ if(any(greaterThanEqual(p,size)))return;
+ vec2 uv=(vec2(p)+0.5)/vec2(size);
+ // Normalized output rows are UnityBottomLeft; decoder crop is NativeTopLeft.
+ uv.y=1.0-uv.y;
+ if(contract.outputInfo.w!=0)uv.x=1.0-uv.x;
+ int rotation=contract.outputInfo.z;
+ if(rotation==90)uv=vec2(uv.y,1.0-uv.x);
+ else if(rotation==180)uv=1.0-uv;
+ else if(rotation==270)uv=vec2(1.0-uv.y,uv.x);
+ uv=mix(contract.crop.xy,contract.crop.zw,uv);
+ // Vulkan sampler conversion performs the queried/declared YCbCr matrix/range.
+ imageStore(unityTarget,p,vec4(texture(decodedImage,uv).rgb,1.0));
+}

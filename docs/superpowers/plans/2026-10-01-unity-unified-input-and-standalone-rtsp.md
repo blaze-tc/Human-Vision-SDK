@@ -104,10 +104,10 @@ Task1审查ruling：设计要求时间戳时钟域优先于上述简写字段列
 **Files:** Create `native/input/src/android/unity_input_vulkan.cpp`, `native/input/src/android/ahb_image_cache.cpp`, `native/input/src/android/yuv_to_rgba.cpp`, `native/input/shaders/input_yuv_to_rgba.comp`, `tools/shaders/build_input_shaders.py`, `tests/input/test_ahb_image_cache.cpp`, `tests/input/test_input_color_contract.cpp`。
 **Interfaces:** Task5实际InputGpuCapabilities。`HV_Input_BindUnityTarget(handle,void* unityTexture,uint32_t width,uint32_t height,uint64_t generation)`仅记录target；`HV_Input_GetRenderEventFunc()`供Unity render event。VkImage通过Unity Vulkan AccessTexture获取，绝不把Surface/OES handle强转为VkImage。`InputImageCache.Acquire(AHardwareBuffer*,generation,contract)`按buffer身份缓存且跟踪bufferRemoved，`RetireBufferAfterFence`退休资源。
 
-- [ ] RED：`SameBufferReusesImport`断言连续100帧相同活跃buffer不create/import；`RemovedBufferWaitsForFence`；`YuvColorContract`彩色/灰阶参考验证BT.601/709和full/limited、裁剪、转向。
-- [ ] Run Task5 build命令及`ctest --test-dir out/input-native/android-host-tests -C Release -R input --output-on-failure`；尚无import/转换FAIL。host测试runner是Task5脚本创建的真实可执行target，不能把AndroidELF在host执行。
-- [ ] 实现只读sampled AHB→YCbCr conversion→Unity-owned RGBA RT GPU路径；external-format读取sampler conversion实际参数，目标storage/color attachment功能按设备查询选择。shader用仓库锁定NDK/Vulkan编译器生成并保存hash，禁止per-frame管线创建。
-- [ ] Run `pwsh -NoProfile -File tools/test/collect_android_input_gate.ps1 -Gate Color -Serial e7c07019 -Output out/input/task6-device`。诊断GPU标记/受控色彩帧可单独读回作为gate工具，生产整帧回读计数必须0。颜色/方向实际PASS才继续，review后commit `feat: import Android RTSP frames into Unity Vulkan textures`。
+- [x] RED：`SameBufferReusesImport`断言连续100帧相同活跃buffer不create/import；`RemovedBufferWaitsForFence`；`YuvColorContract`彩色/灰阶参考验证BT.601/709和full/limited、裁剪、转向。
+- [x] Run Task5 build命令及`ctest --test-dir out/input-native/android-host-tests -C Release -R input --output-on-failure`；尚无import/转换FAIL。host测试runner是Task5脚本创建的真实可执行target，不能把AndroidELF在host执行。
+- [x] 实现只读sampled AHB→YCbCr conversion→Unity-owned RGBA RT GPU路径；external-format读取sampler conversion实际参数，目标storage/color attachment功能按设备查询选择。shader用仓库锁定NDK/Vulkan编译器生成并保存hash，禁止per-frame管线创建。
+- [x] Run `pwsh -NoProfile -File tools/test/collect_android_input_gate.ps1 -Gate Color -Serial e7c07019 -Output out/input/task6-device`。诊断GPU标记/受控色彩帧可单独读回作为gate工具，生产整帧回读计数必须0。颜色/方向实际PASS才继续，review后commit `feat: import Android RTSP frames into Unity Vulkan textures`。
 
 ### Task7: 跨队列fence、ownership与bounded最新帧协议
 

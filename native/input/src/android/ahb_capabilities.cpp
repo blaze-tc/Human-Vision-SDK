@@ -2,6 +2,7 @@
 #include "input_ycbcr_declarations.h"
 #include "IUnityGraphics.h"
 #include "IUnityGraphicsVulkan.h"
+#include "input_vulkan_private.h"
 #include <android/log.h>
 #include <atomic>
 #include <cstring>
@@ -9,6 +10,8 @@
 #include <vector>
 namespace hvinput {
 static IUnityGraphicsVulkan* unity_vulkan = nullptr;
+static IUnityGraphics* graphics=nullptr;
+static void UNITY_INTERFACE_API GraphicsEvent(UnityGfxDeviceEventType event){if(event==kUnityGfxDeviceEventInitialize&&graphics&&graphics->GetRenderer()==kUnityGfxRendererVulkan&&InputForeignEnabled())ConfigureInputRenderEvent();}
 static PFN_vkGetInstanceProcAddr loader = nullptr;
 static PFN_vkCreateDevice create_device = nullptr;
 static PFN_vkCreateInstance create_instance = nullptr;
@@ -18,6 +21,9 @@ static std::mutex device_mutex;
 static VkDevice proven_device = VK_NULL_HANDLE;
 static VkPhysicalDevice proven_physical = VK_NULL_HANDLE;
 static bool enabled_ycbcr = false, enabled_sync = false, enabled_ahb = false;
+static bool enabled_foreign=false;
+IUnityGraphicsVulkan* InputUnityVulkan(){return unity_vulkan;}
+bool InputForeignEnabled(){std::lock_guard<std::mutex> lock(device_mutex);return proven_device&&unity_vulkan&&proven_device==unity_vulkan->Instance().device&&enabled_foreign;}
 static bool HasExtension(const VkDeviceCreateInfo* p, const char* name) {
   for (uint32_t i=0; i<p->enabledExtensionCount; ++i)
     if (!std::strcmp(p->ppEnabledExtensionNames[i], name)) return true;
@@ -66,7 +72,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL CaptureCreateDevice(VkPhysicalDevice physi
     for(const auto& extension:available) if(!std::strcmp(extension.extensionName,name)) {requested.push_back(name);return true;}
     __android_log_print(ANDROID_LOG_ERROR,"HVInputGate","capability_result=FAIL missing_physical_extension=%s",name);return false;
   };
-  bool complete=require(VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME) && require(VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME);
+  bool complete=require(VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME) && require(VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME) && require(VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME);
   if(!core11) {
     for(auto* dependency:{VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME,VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME,VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,VK_KHR_BIND_MEMORY_2_EXTENSION_NAME,VK_KHR_MAINTENANCE1_EXTENSION_NAME}) complete=require(dependency) && complete;
   }
@@ -86,6 +92,8 @@ static VKAPI_ATTR VkResult VKAPI_CALL CaptureCreateDevice(VkPhysicalDevice physi
     proven_device = *device; proven_physical=physical; enabled_ycbcr = ycbcr;
     enabled_sync = HasExtension(info, VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME);
     enabled_ahb = HasExtension(info, VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME);
+    enabled_foreign=HasExtension(info,VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME);
+    __android_log_print(ANDROID_LOG_INFO,"HVInputGate","foreign_extension_successful_device=%d device=%p",enabled_foreign,*device);
     __android_log_print(ANDROID_LOG_INFO,"HVInputGate",
       "device_creation success device=%p ycbcr_enabled=%d sync_fd_extension_enabled=%d ahb_extension_enabled=%d extension_count=%u",
       *device,ycbcr,enabled_sync,enabled_ahb,info->enabledExtensionCount);
@@ -172,9 +180,11 @@ void RecordDecodedCapability(AndroidDecodedImage& image,const char* codec) {
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces* interfaces) {
   hvinput::unity_vulkan=interfaces->Get<IUnityGraphicsVulkan>();
   bool hooked=hvinput::unity_vulkan && hvinput::unity_vulkan->InterceptInitialization(hvinput::Initialize,nullptr);
+  hvinput::graphics=interfaces->Get<IUnityGraphics>();
+  if(hvinput::graphics)hvinput::graphics->RegisterDeviceEventCallback(hvinput::GraphicsEvent);
   __android_log_print(ANDROID_LOG_INFO,"HVInputGate","input_only_preinit_hook=%d",hooked);
 }
-extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload() { hvinput::StopCapabilityProbe(); }
+extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload() { hvinput::StopCapabilityProbe(); hvinput::ShutdownInputColor(); if(hvinput::graphics)hvinput::graphics->UnregisterDeviceEventCallback(hvinput::GraphicsEvent); }
 extern "C" __attribute__((visibility("default"))) void HV_Input_StartCapabilityProbe(const char* url) {
   try { hvinput::StartCapabilityProbe(url); }
   catch(...) { __android_log_print(ANDROID_LOG_ERROR,"HVInputGate","capability_result=FAIL probe_initialization_exception"); }

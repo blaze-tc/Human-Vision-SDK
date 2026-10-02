@@ -8,6 +8,8 @@ $repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $cmake="$VisualStudio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
 $ninja="$VisualStudio/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe"
 if($Platform -eq 'Android') {
+    & py -3.13 "$repo/tools/shaders/build_input_shaders.py"
+    if($LASTEXITCODE -ne 0){throw 'Qualified input shader build failed'}
     $build=Join-Path $repo 'out/input-native/android'
     New-Item -ItemType Directory -Force $build | Out-Null
     $common=& git -C $repo rev-parse --path-format=absolute --git-common-dir
@@ -69,6 +71,18 @@ with zipfile.ZipFile(path) as jar:
       & pwsh -NoProfile -File $PSCommandPath -Platform Windows -RunTests -VisualStudio $VisualStudio -MsvcIncludePrefix $MsvcIncludePrefix
       if($LASTEXITCODE -ne 0){throw 'Input host tests failed'}
     }
+    $identity=@'
+import sys,pathlib,hashlib,json
+repo,build=map(pathlib.Path,sys.argv[1:3]);host_tests=sys.argv[3]=='True'
+sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+paths=[p for p in (repo/'native/input').rglob('*') if p.is_file() and (p.suffix in ('.cpp','.h','.comp','.spv') or p.name=='CMakeLists.txt')]
+paths += [repo/'third_party/unity-plugin-api/include'/n for n in ('IUnityInterface.h','IUnityGraphics.h','IUnityGraphicsVulkan.h')]
+paths += [repo/'tools/shaders/build_input_shaders.py',repo/'native/input/shaders/input_yuv_to_rgba.build.json']
+receipt={'platform':'Android','abi':'arm64-v8a','api':26,'successful_build':True,'successful_build_and_host_tests':host_tests,'native_sha256':sha(build/'libhumanvision_input.so'),'sources':{str(p.relative_to(repo)):sha(p) for p in paths},'shader_receipt':json.loads((repo/'native/input/shaders/input_yuv_to_rgba.build.json').read_text())}
+(build/'build-source-identity.json').write_text(json.dumps(receipt,indent=2)+'\n')
+'@
+    & py -3.13 -c $identity $repo $build $RunTests.IsPresent
+    if($LASTEXITCODE -ne 0){throw 'Input Android build identity receipt failed'}
     Get-FileHash "$build/libhumanvision_input.so" -Algorithm SHA256
     exit 0
 }
