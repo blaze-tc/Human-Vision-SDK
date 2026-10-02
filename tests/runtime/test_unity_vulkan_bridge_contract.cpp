@@ -305,6 +305,87 @@ HV_AndroidGpuSubmissionV1 Submission(int64_t frame) {
           0};
 }
 
+TEST(UnityVulkanBridgeContract, RetireSourceDoesNotWaitInference) {
+  FakeVulkan fake;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  void* event = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &event), BridgeResult::Ok);
+  ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+  ConsumerFrame inference;
+  ASSERT_EQ(bridge.ClaimConsumer(inference), SlotResult::Ok);
+  EXPECT_TRUE(inference.claimed);
+  EXPECT_NE(inference.ahb_buffer, 0u);
+  EXPECT_TRUE(fake.complete); // Submitted source copy has completed, inference has not.
+  uint64_t token = 0;
+  ASSERT_EQ(bridge.RetireSourceCopies(bridge.Generation(), token), BridgeResult::Ok);
+  EXPECT_EQ(bridge.PollSourceRetirement(token), BridgeResult::Ok);
+  EXPECT_GT(fake.completion_checks, 0u);
+  EXPECT_EQ(fake.drained, 0u);
+  EXPECT_TRUE(inference.claimed);
+  EXPECT_EQ(bridge.RetireConsumer(inference, CompletionProof::GpuQuiescent), SlotResult::Ok);
+}
+
+TEST(UnityVulkanBridgeContract, QueuedCopyKeepsSourceAlive) {
+  FakeVulkan fake;
+  fake.defer_queue = true;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  void* event = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &event), BridgeResult::Ok);
+  ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+  ASSERT_NE(fake.queued_callback, nullptr);
+  uint64_t token = 0;
+  ASSERT_EQ(bridge.RetireSourceCopies(bridge.Generation(), token), BridgeResult::Ok);
+  EXPECT_EQ(bridge.PollSourceRetirement(token), BridgeResult::Busy);
+  EXPECT_EQ(fake.released, 0u);
+  EXPECT_EQ(fake.drained, 0u);
+  fake.queued_callback(fake.queued_data);
+  fake.queued_callback = nullptr;
+  EXPECT_EQ(fake.released, 1u);
+  EXPECT_EQ(bridge.PollSourceRetirement(token), BridgeResult::Ok);
+  EXPECT_EQ(std::count(fake.calls.begin(), fake.calls.end(), "signal"), 0);
+}
+
+TEST(UnityVulkanBridgeContract, SourceRetirementRequiresSubmittedCopyFence) {
+  FakeVulkan fake;
+  fake.complete = false;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  void* event = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &event), BridgeResult::Ok);
+  ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+  uint64_t token = 0;
+  ASSERT_EQ(bridge.RetireSourceCopies(bridge.Generation(), token), BridgeResult::Ok);
+  EXPECT_EQ(bridge.PollSourceRetirement(token), BridgeResult::Busy);
+  EXPECT_GT(fake.completion_checks, 0u);
+  fake.complete = true;
+  EXPECT_EQ(bridge.PollSourceRetirement(token), BridgeResult::Ok);
+  EXPECT_EQ(fake.drained, 0u);
+}
+
+TEST(UnityVulkanBridgeContract, RetiredGenerationCannotPublish) {
+  FakeVulkan fake;
+  UnityVulkanBridge bridge(fake.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  void* event = nullptr;
+  ASSERT_EQ(bridge.Prepare(Submission(1), &event), BridgeResult::Ok);
+  const auto generation = bridge.Generation();
+  uint64_t token = 0;
+  EXPECT_EQ(bridge.RetireSourceCopies(generation + 1, token), BridgeResult::Invalid);
+  ASSERT_EQ(bridge.RetireSourceCopies(generation, token), BridgeResult::Ok);
+  EXPECT_EQ(bridge.Render(event), BridgeResult::Closed);
+  EXPECT_EQ(bridge.Generation(), 0u);
+  EXPECT_EQ(bridge.PollSourceRetirement(token), BridgeResult::Ok);
+  ConsumerFrame frame;
+  EXPECT_EQ(bridge.ClaimConsumer(frame), SlotResult::Closed);
+  EXPECT_EQ(std::count(fake.calls.begin(), fake.calls.end(), "signal"), 0);
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  EXPECT_NE(bridge.Generation(), generation);
+  EXPECT_EQ(bridge.PollSourceRetirement(token), BridgeResult::Ok);
+  EXPECT_EQ(bridge.PollSourceRetirement(bridge.Generation()), BridgeResult::Invalid);
+}
+
 TEST(UnityVulkanBridgeContract, BlitUsesMeasuredPathAndExactOwnershipBarriers) {
   FakeVulkan fake;
   UnityVulkanBridge bridge(fake.Dispatch());

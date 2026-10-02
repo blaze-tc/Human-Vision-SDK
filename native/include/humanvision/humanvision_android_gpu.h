@@ -70,6 +70,24 @@ typedef struct HV_AndroidGpuBridgeStatusV1 {
     uint8_t ncnn_driver_uuid[HV_ANDROID_GPU_UUID_SIZE];
 } HV_AndroidGpuBridgeStatusV1;
 
+/* Additive copy-only lifetime token. No V1 structure or End semantics change.
+ * HV_NO_NEW_RESULT means keep the source alive and poll on a later main-thread
+ * update. HV_OK from Poll proves source GPU reads/views retired, independently
+ * of AHB inference leases. Errors never authorize source destruction. */
+#define HV_ANDROID_GPU_RETIREMENT_API_V2 2u
+typedef struct HV_AndroidGpuSourceRetirementV2 {
+    uint32_t struct_size;
+    uint32_t api_version;
+    uint64_t generation;
+    uint64_t copy_token;
+} HV_AndroidGpuSourceRetirementV2;
+HV_API HV_Result HV_CALL HV_RuntimeRetireAndroidGpuSourceCopies(
+    HV_RuntimeHandle runtime, HV_AndroidGpuSourceRetirementV2* out_token);
+HV_API HV_Result HV_CALL HV_AndroidGpuRetireSourceCopies(
+    uint64_t generation, HV_AndroidGpuSourceRetirementV2* out_token);
+HV_API HV_Result HV_CALL HV_AndroidGpuPollSourceRetirement(
+    const HV_AndroidGpuSourceRetirementV2* token);
+
 HV_API HV_Result HV_CALL HV_RuntimePrepareAndroidGpuFrame(
     HV_RuntimeHandle runtime,
     const HV_AndroidGpuSubmissionV1* submission,

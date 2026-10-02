@@ -29,6 +29,38 @@ HV_Result BridgeFailure(HV_RuntimeHandle runtime, const char* fallback) noexcept
 // A4's existing exports and layouts remain frozen. B4 adds source-lease
 // exports so the Unity owner can drain before destroying its RenderTexture.
 extern "C" {
+HV_Result HV_CALL HV_RuntimeRetireAndroidGpuSourceCopies(
+    HV_RuntimeHandle runtime, HV_AndroidGpuSourceRetirementV2* out_token) {
+    if (!runtime || !out_token || out_token->struct_size < sizeof(*out_token) ||
+        out_token->api_version != HV_ANDROID_GPU_RETIREMENT_API_V2) return HV_ERR_INVALID_ARGUMENT;
+#if defined(__ANDROID__)
+    HV_AndroidGpuSourceRetirementV2 token{};
+    const auto result = humanvision::runtime::GpuSourceLeaseCoordinator::Instance().Retire(
+        runtime, token, humanvision::gpu::RetireUnityVulkanSourceCopies);
+    if (result == humanvision::gpu::BridgeResult::Ok) *out_token = token;
+    return humanvision::gpu::AndroidBridgeResultCode(result);
+#else
+    return Unsupported(runtime);
+#endif
+}
+HV_Result HV_CALL HV_AndroidGpuRetireSourceCopies(
+    uint64_t generation, HV_AndroidGpuSourceRetirementV2* out_token) {
+    if (!generation || !out_token || out_token->struct_size < sizeof(*out_token) ||
+        out_token->api_version != HV_ANDROID_GPU_RETIREMENT_API_V2) return HV_ERR_INVALID_ARGUMENT;
+    HV_AndroidGpuSourceRetirementV2 token{};
+    const auto result = humanvision::gpu::RetireUnityVulkanSourceCopies(generation, token);
+    if (result == humanvision::gpu::BridgeResult::Ok) *out_token = token;
+    return humanvision::gpu::AndroidBridgeResultCode(result);
+}
+HV_Result HV_CALL HV_AndroidGpuPollSourceRetirement(
+    const HV_AndroidGpuSourceRetirementV2* token) {
+    if (!token || token->struct_size < sizeof(*token) ||
+        token->api_version != HV_ANDROID_GPU_RETIREMENT_API_V2 || !token->generation) return HV_ERR_INVALID_ARGUMENT;
+    const auto result = humanvision::gpu::PollUnityVulkanSourceRetirement(*token);
+    if (result == humanvision::gpu::BridgeResult::Ok &&
+        !humanvision::runtime::GpuSourceLeaseCoordinator::Instance().CompleteRetirement(*token)) return HV_NO_NEW_RESULT;
+    return humanvision::gpu::AndroidBridgeResultCode(result);
+}
 HV_Result HV_CALL HV_RuntimeBeginAndroidGpuSourceLease(
     HV_RuntimeHandle runtime, void* unity_texture) {
     if (!runtime || !unity_texture) return HV_ERR_INVALID_ARGUMENT;

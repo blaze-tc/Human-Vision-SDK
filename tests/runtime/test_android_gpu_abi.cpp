@@ -54,3 +54,23 @@ TEST(AndroidGpuAbi, ValidSubmissionToUnavailableBridgeMapsToUnsupported) {
                humanvision::gpu::BridgeResult::Invalid),
            HV_ERR_INVALID_ARGUMENT);
 }
+TEST(AndroidGpuAbi, AdditiveRetirementTokenPreservesV1AndRejectsInvalidStorage) {
+ static_assert(sizeof(HV_AndroidGpuSourceRetirementV2)==24);
+ static_assert(offsetof(HV_AndroidGpuSourceRetirementV2,generation)==8);
+ static_assert(offsetof(HV_AndroidGpuSourceRetirementV2,copy_token)==16);
+ static_assert(sizeof(HV_AndroidGpuSubmissionV1)==48);
+ static_assert(sizeof(HV_AndroidGpuBridgeStatusV1)==128);
+ humanvision::runtime::RuntimeSession runtime;
+ HV_AndroidGpuSourceRetirementV2 token{8,2,9,10};auto before=token;
+ EXPECT_EQ(HV_RuntimeRetireAndroidGpuSourceCopies(&runtime,&token),HV_ERR_INVALID_ARGUMENT);
+ EXPECT_EQ(std::memcmp(&before,&token,sizeof(token)),0);
+ token={sizeof(token),2,9,10};before=token;
+ EXPECT_EQ(HV_RuntimeRetireAndroidGpuSourceCopies(&runtime,&token),HV_ANDROID_GPU_ERR_UNSUPPORTED_PLATFORM);
+ EXPECT_EQ(std::memcmp(&before,&token,sizeof(token)),0);
+ EXPECT_EQ(HV_AndroidGpuRetireSourceCopies(9,&token),HV_ANDROID_GPU_ERR_UNSUPPORTED_PLATFORM);
+ EXPECT_EQ(std::memcmp(&before,&token,sizeof(token)),0);
+ EXPECT_EQ(HV_AndroidGpuPollSourceRetirement(&token),HV_ANDROID_GPU_ERR_UNSUPPORTED_PLATFORM);
+ token.api_version=1;
+ EXPECT_EQ(HV_AndroidGpuPollSourceRetirement(&token),HV_ERR_INVALID_ARGUMENT);
+ EXPECT_EQ(HV_AndroidGpuRetireSourceCopies(0,&token),HV_ERR_INVALID_ARGUMENT);
+}

@@ -32,7 +32,13 @@
 namespace humanvision::gpu {
 namespace {
 
+#if defined(HV_ANDROID_GPU_GATE)
+std::atomic<uint64_t> task8_slot_owners{0}, task8_source_views_created{0}, task8_source_views_destroyed{0};
+#endif
 struct AndroidSlot {
+#if defined(HV_ANDROID_GPU_GATE)
+  AndroidSlot() { task8_slot_owners.fetch_add(1); }
+#endif
 #if defined(HV_ANDROID_R4_PARITY)
   std::unique_ptr<ImageParityReduction> parity;
 #endif
@@ -79,8 +85,12 @@ struct AndroidSlot {
     // issue Vulkan destruction calls against that dead device.
     if (device && Alive()) {
     for (auto &source : source_views)
-      if (source.view)
+      if (source.view) {
         vkDestroyImageView(device, source.view, nullptr);
+#if defined(HV_ANDROID_GPU_GATE)
+        task8_source_views_destroyed.fetch_add(1);
+#endif
+      }
     if (pipeline)
       vkDestroyPipeline(device, pipeline, nullptr);
     if (vertex)
@@ -118,6 +128,9 @@ struct AndroidSlot {
       AHardwareBuffer_release(ahb);
       AHardwareBuffer_release(ahb);
     }
+#if defined(HV_ANDROID_GPU_GATE)
+    task8_slot_owners.fetch_sub(1);
+#endif
   }
 };
 
@@ -137,7 +150,7 @@ public:
 
   UnityVulkanBridgeDispatch MakeDispatch() noexcept {
     return {this, Create, Drain, Access, PrepareSource, Release, QueueAccess, Blit,
-            Color, Submit, Export, Complete, Cancel};
+            Color, Submit, Export, Complete, Cancel, RetireSourceViews};
   }
 
   bool Configure(const AhbSelection &selection,
@@ -178,6 +191,7 @@ public:
     if (bridge_.IsQuarantined() || !texture || !device_live_.load(std::memory_order_acquire) ||
         source_lease_texture_.load(std::memory_order_acquire)) return false;
     source_image_.store(0, std::memory_order_release);
+    source_retiring_.store(false, std::memory_order_release);
     source_lease_generation_.store(bridge_.Generation(), std::memory_order_release);
     source_lease_token_.fetch_add(1, std::memory_order_acq_rel);
 #if defined(HV_ANDROID_GPU_GATE)
@@ -187,8 +201,10 @@ public:
     return true;
   }
   void ConfigurationEvent(void *data) noexcept {
+    configuration_callbacks_.fetch_add(1, std::memory_order_acq_rel);
+    struct Guard { std::atomic<uint32_t>& count; ~Guard(){count.fetch_sub(1, std::memory_order_acq_rel);} } guard{configuration_callbacks_};
     const auto event_token = reinterpret_cast<uintptr_t>(data);
-    if (!event_token ||
+    if (source_retiring_.load(std::memory_order_acquire) || !event_token ||
         event_token != configuration_event_token_.load(std::memory_order_acquire) ||
         !configuration_requested_.load(std::memory_order_acquire) ||
         event_token != source_lease_token_.load(std::memory_order_acquire) ||
@@ -244,16 +260,59 @@ public:
   }
   void EndSourceLease() noexcept {
     std::lock_guard<std::mutex> lock(control_);
+    const auto source_token = source_lease_token_.load(std::memory_order_acquire);
     InvalidateSourceLease();
     bridge_.Shutdown();
+    if (!bridge_.IsQuarantined()) completed_source_token_.store(source_token, std::memory_order_release);
     // Quarantine joins CPU users but intentionally retains AndroidSlot owners.
     // Caller must inspect SourceRequiresRetention before destroying its texture.
     ReleaseMeasuredNcnnLease();
     std::lock_guard<std::mutex> queue(queue_mutex_);
     queue_closed_ = true;
   }
+  BridgeResult RetireSourceCopies(uint64_t generation, HV_AndroidGpuSourceRetirementV2& token) noexcept {
+    std::unique_lock<std::mutex> lock(control_, std::try_to_lock);
+    if (!lock.owns_lock()) return BridgeResult::Busy;
+    const auto current = source_lease_token_.load(std::memory_order_acquire);
+    if (!source_lease_texture_.load() || (generation && generation != current)) return BridgeResult::Invalid;
+    if (bridge_.IsQuarantined()) return BridgeResult::Closed;
+    uint64_t copy_token = retiring_copy_token_;
+    if (!source_retiring_.load() && !bridge_.IsClosed()) {
+      const auto result = bridge_.RetireSourceCopies(bridge_.Generation(), copy_token);
+      if (result != BridgeResult::Ok) return result;
+    }
+    source_retiring_.store(true, std::memory_order_release);
+    retiring_copy_token_ = copy_token;
+    // Unissued measuring events become harmless no-ops. Any callback already
+    // inside AccessTexture remains counted until its actual return.
+    configuration_requested_.store(false);
+    configuration_ready_.store(false);
+    token = {sizeof(token), HV_ANDROID_GPU_RETIREMENT_API_V2, current, copy_token};
+    return BridgeResult::Ok;
+  }
+  BridgeResult PollSourceRetirement(const HV_AndroidGpuSourceRetirementV2& token) noexcept {
+    if (token.generation && token.generation <= completed_source_token_.load(std::memory_order_acquire)) return BridgeResult::Ok;
+    std::unique_lock<std::mutex> lock(control_, std::try_to_lock);
+    if (!lock.owns_lock()) return BridgeResult::Busy;
+    if (!source_retiring_.load() || token.generation != source_lease_token_.load() ||
+        token.copy_token != retiring_copy_token_) return BridgeResult::Invalid;
+    if (configuration_callbacks_.load(std::memory_order_acquire)) return BridgeResult::Busy;
+    if (token.copy_token) {
+      const auto result = bridge_.PollSourceRetirement(token.copy_token);
+      if (result != BridgeResult::Ok) return result;
+    }
+    completed_source_token_.store(token.generation, std::memory_order_release);
+    InvalidateSourceLease();
+    retiring_copy_token_ = 0;
+    // The worker owns full-generation drain. It may wait inference; this
+    // method and source Close never join it or wait for that consumer lease.
+    retirement_drain_requested_.store(true, std::memory_order_release);
+    source_requests_cv_.notify_one();
+    return BridgeResult::Ok;
+  }
   BridgeResult Prepare(const HV_AndroidGpuSubmissionV1 &s,
                        void **out) noexcept {
+    if (source_retiring_.load(std::memory_order_acquire)) { if(out)*out=nullptr; return BridgeResult::Closed; }
     if (!device_live_.load(std::memory_order_acquire)) { if(out)*out=nullptr; return BridgeResult::Closed; }
     if (bridge_.IsClosed() && source_lease_texture_.load(std::memory_order_acquire) == s.unity_texture) {
       if (out) *out = nullptr;
@@ -345,7 +404,9 @@ public:
     vulkan_ = interfaces ? interfaces->Get<IUnityGraphicsVulkanV2>() : nullptr;
     if (vulkan_) {
       interception_installed_ =
-          vulkan_->InterceptInitialization(InitializeVulkan, this);
+          vulkan_->AddInterceptInitialization &&
+          vulkan_->AddInterceptInitialization(InitializeVulkan, this,
+              kUnityVulkanInitCallbackMaxPriority - 1);
       if (!interception_installed_)
         diagnostic_ = "Unity Vulkan interception was installed too late; preload libhumanvision.so";
     }
@@ -677,10 +738,20 @@ private:
         std::unique_lock<std::mutex> pending(source_requests_mutex_);
         source_requests_cv_.wait(pending, [&] {
           return stop_source_worker_ || configuration_ready_.load(std::memory_order_acquire) ||
+              retirement_drain_requested_.load(std::memory_order_acquire) ||
               std::any_of(source_requests_.begin(), source_requests_.end(),
               [](const auto& r) { return r.slot != nullptr; });
         });
         if (stop_source_worker_) return;
+      }
+      if (retirement_drain_requested_.exchange(false, std::memory_order_acq_rel)) {
+        // Source completion was proven before scheduling this drain. Keep the
+        // producer control mutex available to Begin/Close while inference owns
+        // the old AHB. This single worker serializes subsequent configuration.
+        bridge_.Shutdown();
+        std::lock_guard<std::mutex> control(control_);
+        ReleaseMeasuredNcnnLease();
+        continue;
       }
       if (configuration_ready_.exchange(false, std::memory_order_acq_rel)) {
         ConfigureMeasuredSource();
@@ -722,6 +793,9 @@ private:
           creation_failed = true;
           break;
         }
+#if defined(HV_ANDROID_GPU_GATE)
+        task8_source_views_created.fetch_add(1);
+#endif
         entry.image = request.image;
         entry.format = request.format;
         inserted = true;
@@ -1542,6 +1616,21 @@ private:
       return self.queued_callbacks_.load(std::memory_order_acquire) == 0;
     });
   }
+  static void RetireSourceViews(void*, UnityVulkanSlotCache& cache) noexcept {
+    auto* slot = S(cache);
+    if (!slot || !slot->Alive()) return;
+    std::lock_guard<std::mutex> source(slot->source_mutex);
+    for (auto& view : slot->source_views) {
+      if (view.view) {
+        vkDestroyImageView(slot->device, view.view, nullptr);
+#if defined(HV_ANDROID_GPU_GATE)
+        task8_source_views_destroyed.fetch_add(1);
+#endif
+      }
+      view = {};
+    }
+    slot->active_source_view = VK_NULL_HANDLE;
+  }
 
   IUnityInterfaces *interfaces_ = nullptr;
   IUnityGraphics *graphics_ = nullptr;
@@ -1580,6 +1669,11 @@ private:
   std::atomic<void*> source_lease_texture_{nullptr};
   std::atomic<uint64_t> source_lease_generation_{0};
   std::atomic<uint64_t> source_lease_token_{0};
+  std::atomic<bool> source_retiring_{false};
+  std::atomic<bool> retirement_drain_requested_{false};
+  std::atomic<uint32_t> configuration_callbacks_{0};
+  std::atomic<uint64_t> completed_source_token_{0};
+  uint64_t retiring_copy_token_ = 0;
   std::atomic<uintptr_t> source_image_{0};
   static_assert(sizeof(void*) >= sizeof(uint64_t), "Android GPU event tokens require a 64-bit player");
   HV_AndroidGpuSubmissionV1 configuration_event_submission_{};
@@ -1614,6 +1708,12 @@ bool BeginUnityVulkanSourceLease(void *texture) noexcept {
 }
 void EndUnityVulkanSourceLease() noexcept {
   AndroidProducer::Get().EndSourceLease();
+}
+BridgeResult RetireUnityVulkanSourceCopies(uint64_t generation, HV_AndroidGpuSourceRetirementV2& token) noexcept {
+  return AndroidProducer::Get().RetireSourceCopies(generation, token);
+}
+BridgeResult PollUnityVulkanSourceRetirement(const HV_AndroidGpuSourceRetirementV2& token) noexcept {
+  return AndroidProducer::Get().PollSourceRetirement(token);
 }
 bool UnityVulkanSourceRequiresRetention() noexcept {
   return AndroidProducer::Get().SourceRequiresRetention();
@@ -1658,6 +1758,52 @@ extern "C" UNITY_INTERFACE_EXPORT void UNITY_INTERFACE_API UnityPluginUnload() {
   humanvision::gpu::AndroidProducer::Get().Unload();
 }
 #if defined(HV_ANDROID_GPU_GATE)
+namespace {
+humanvision::gpu::ConsumerFrame task8_held_consumer;
+HV_AndroidGpuSourceRetirementV2 task8_retirement{};
+}
+extern "C" UNITY_INTERFACE_EXPORT int HV_CALL HV_Task8GpuBegin(void* texture) {
+  return humanvision::gpu::BeginUnityVulkanSourceLease(texture) ? 0 : -6;
+}
+extern "C" UNITY_INTERFACE_EXPORT int HV_CALL HV_Task8GpuPrepare(
+    const HV_AndroidGpuSubmissionV1* frame, void** event) {
+  if (!frame || !event) return HV_ERR_INVALID_ARGUMENT;
+  return humanvision::gpu::AndroidBridgeResultCode(humanvision::gpu::PrepareUnityVulkanFrame(*frame,event));
+}
+extern "C" UNITY_INTERFACE_EXPORT int HV_CALL HV_Task8GpuHoldNewest() {
+  auto* bridge=humanvision::gpu::UnityVulkanProducerBridge();
+  return bridge && bridge->ClaimConsumer(task8_held_consumer)==humanvision::gpu::SlotResult::Ok ? 0 : 1;
+}
+extern "C" UNITY_INTERFACE_EXPORT uint32_t HV_CALL HV_Task8GpuHeld() {
+  return task8_held_consumer.claimed && task8_held_consumer.ahb_buffer && task8_held_consumer.producer_fd.HasPayload() ? 1u : 0u;
+}
+extern "C" UNITY_INTERFACE_EXPORT int HV_CALL HV_Task8GpuRetire(HV_AndroidGpuSourceRetirementV2* token) {
+  if (!token) return HV_ERR_INVALID_ARGUMENT;
+  const auto result=humanvision::gpu::RetireUnityVulkanSourceCopies(0,task8_retirement);
+  if(result==humanvision::gpu::BridgeResult::Ok)*token=task8_retirement;
+  return humanvision::gpu::AndroidBridgeResultCode(result);
+}
+extern "C" UNITY_INTERFACE_EXPORT int HV_CALL HV_Task8GpuReleaseHold() {
+  if (!task8_held_consumer.claimed ||
+      humanvision::gpu::PollUnityVulkanSourceRetirement(task8_retirement)!=humanvision::gpu::BridgeResult::Ok) return HV_ERR_INVALID_ARGUMENT;
+  return humanvision::gpu::UnityVulkanProducerBridge()->RetireConsumer(task8_held_consumer,
+      humanvision::gpu::CompletionProof::GpuQuiescent)==humanvision::gpu::SlotResult::Ok ? HV_OK : HV_ERR_INTERNAL;
+}
+extern "C" UNITY_INTERFACE_EXPORT void HV_CALL HV_Task8GpuSnapshot(uint64_t* values, uint32_t count) {
+  if (!values || count != 8) return;
+  auto* bridge=humanvision::gpu::UnityVulkanProducerBridge();
+  values[0]=humanvision::gpu::task8_slot_owners.load();
+  values[1]=humanvision::gpu::task8_source_views_created.load()-humanvision::gpu::task8_source_views_destroyed.load();
+  values[2]=task8_held_consumer.claimed ? 1 : 0;
+  values[3]=task8_held_consumer.producer_fd.HasPayload() ? 1 : 0;
+  values[4]=bridge->CopyErrors();
+  values[5]=bridge->IsClosed() ? 1 : 0;
+  values[6]=bridge->SuccessfulCopies();
+  values[7]=task8_held_consumer.ahb_buffer ? 1 : 0;
+}
+extern "C" UNITY_INTERFACE_EXPORT void HV_CALL HV_Task8GpuEnd() {
+  humanvision::gpu::EndUnityVulkanSourceLease();
+}
 // Gate-only additive diagnostic. Never blocks or consumes/reset the terminal
 // latch; the managed owner must query again after GateEnd joins its worker.
 extern "C" UNITY_INTERFACE_EXPORT uint32_t HV_CALL HV_AndroidGpuGateMustRetainSource() {
@@ -1673,6 +1819,8 @@ bool ConfigureUnityVulkanProducer(const AhbSelection &,
 }
 bool BeginUnityVulkanSourceLease(void *) noexcept { return false; }
 void EndUnityVulkanSourceLease() noexcept {}
+BridgeResult RetireUnityVulkanSourceCopies(uint64_t, HV_AndroidGpuSourceRetirementV2&) noexcept { return BridgeResult::Closed; }
+BridgeResult PollUnityVulkanSourceRetirement(const HV_AndroidGpuSourceRetirementV2&) noexcept { return BridgeResult::Closed; }
 bool UnityVulkanSourceRequiresRetention() noexcept { return false; }
 void ShutdownUnityVulkanProducer() noexcept {}
 BridgeResult PrepareUnityVulkanFrame(const HV_AndroidGpuSubmissionV1 &,

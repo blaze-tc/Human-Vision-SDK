@@ -203,6 +203,7 @@ bool GpuSourceLeaseCoordinator::Begin(void* owner,void* texture,BeginFn begin,En
     if (owner_) {error="Android GPU producer source lease is already owned by a runtime";return false;}
     if (!begin(texture)) {error="Android Vulkan source lease unavailable";return false;}
     owner_=owner;end_=end;active_=active;
+    retirement_generation_=0;
     active_(owner_,true);
     error.clear();return true;
 }
@@ -214,17 +215,38 @@ bool GpuSourceLeaseCoordinator::End(void* owner,std::string& error) {
     active_(owner_,false);
     end_();
     owner_=nullptr;end_=nullptr;active_=nullptr;
+    retirement_generation_=0;
     error.clear();return true;
 }
 bool GpuSourceLeaseCoordinator::Owns(void* owner) const noexcept {
     std::lock_guard<std::mutex> lock(mutex_);return owner && owner_==owner;
+}
+gpu::BridgeResult GpuSourceLeaseCoordinator::Retire(void* owner,
+    HV_AndroidGpuSourceRetirementV2& token, RetireFn retire) noexcept {
+    std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+    if (!lock.owns_lock()) return gpu::BridgeResult::Busy;
+    if (!owner || owner_ != owner || !retire) return gpu::BridgeResult::Invalid;
+    const auto result = retire(0, token);
+    if (result == gpu::BridgeResult::Ok) {
+        active_(owner_, false);
+        retirement_generation_ = token.generation;
+    }
+    return result;
+}
+bool GpuSourceLeaseCoordinator::CompleteRetirement(const HV_AndroidGpuSourceRetirementV2& token) noexcept {
+    std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);
+    if (!lock.owns_lock()) return false;
+    if (retirement_generation_ && retirement_generation_ == token.generation) {
+        owner_=nullptr; end_=nullptr; active_=nullptr; retirement_generation_=0;
+    }
+    return true;
 }
 gpu::BridgeResult GpuSourceLeaseCoordinator::Prepare(void* owner,
     const HV_AndroidGpuSubmissionV1& submission,void** out,PrepareFn prepare,
     DimensionsFn dimensions) noexcept {
     std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);
     if (!lock.owns_lock()) return gpu::BridgeResult::Busy;
-    if (!owner || owner_!=owner || !prepare || !dimensions) return gpu::BridgeResult::Closed;
+    if (!owner || owner_!=owner || retirement_generation_ || !prepare || !dimensions) return gpu::BridgeResult::Closed;
     const auto result=prepare(submission,out);
     if (result==gpu::BridgeResult::Ok)
         dimensions(owner,static_cast<uint32_t>(submission.width),static_cast<uint32_t>(submission.height));

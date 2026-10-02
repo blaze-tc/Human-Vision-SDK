@@ -124,10 +124,10 @@ Task1审查ruling：设计要求时间戳时钟域优先于上述简写字段列
 **Files:** Modify `runtime/gpu/android/unity_vulkan_bridge.cpp`, `runtime/gpu/android/unity_vulkan_plugin.cpp`, `native/include/humanvision/humanvision_android_gpu.h`, Unity `Runtime/Android/HumanVisionAndroidGpuFrameBridge.cs`, `Runtime/HumanVisionManager.cs`; Test `tests/runtime/test_unity_vulkan_bridge.cpp`；对应UPM只迁移已验证新公共桥方法，不混入未验证R4诊断。
 **Interfaces:** 新增V2/internal窄接口`HV_AndroidGpuRetireSourceCopies(generation,out_copy_retirement_token)`和`HV_AndroidGpuPollSourceRetirement(token)`；V1 ABI原样保留。现有end-source接口保持原同步语义用于旧调用者，新adapter使用非阻塞退休token；Runtime持有已copy AHB/inference槽。具体token字段增加在V2/internal扩展，不能更改V1结构大小。
 
-- [ ] RED：`RetireSourceDoesNotWaitInference`在copy完成/inference未完成时返回可退休；`QueuedCopyKeepsSourceAlive`及`RetiredGenerationCannotPublish`。新增接口必须先断言实际native状态，禁止仅managed计时假装异步。
-- [ ] 构建affected host/Android，`ctest --test-dir out/input-sdk-host -C Release -R unity_vulkan_bridge --output-on-failure`（Task8建立隔离CMakebuild，复用仓库native测试配置）；现有copied-slot寿命检查PASS，新增契约初始FAIL。
-- [ ] 分离sourcecopy引用与inference引用；不同generation/copy fences计数独立，不删AHB acquire/release或sync-fd。主线程Close轮询退休，旧纹理由源Retirement持有到GPU确认。不得调用旧同步全量drain达到新Close。
-- [ ] 同命令GREEN+API26 ELF/public ABI审计；实际RTSP预览Close/adapterdetach不被慢inference阻塞。review后commit `feat: retire GPU input sources independently of inference slots`。
+- [x] RED：`RetireSourceDoesNotWaitInference`在copy完成/inference未完成时返回可退休；`QueuedCopyKeepsSourceAlive`及`RetiredGenerationCannotPublish`。新增接口必须先断言实际native状态，禁止仅managed计时假装异步。
+- [x] 构建affected host/Android，`ctest --test-dir out/input-sdk-host -C Release -R unity_vulkan_bridge --output-on-failure`（Task8建立隔离CMakebuild，复用仓库native测试配置）；现有copied-slot寿命检查PASS，新增契约初始FAIL。
+- [x] 分离sourcecopy引用与inference引用；不同generation/copy fences计数独立，不删AHB acquire/release或sync-fd。主线程Close轮询退休，旧纹理由源Retirement持有到GPU确认。不得调用旧同步全量drain达到新Close。
+- [x] 同命令GREEN+API26 ELF/public ABI审计；实际RTSP预览Close/adapterdetach不被慢inference阻塞。review后commit `feat: retire GPU input sources independently of inference slots`。
 
 ### Task9: 统一识别适配器和旧Demo/API兼容
 

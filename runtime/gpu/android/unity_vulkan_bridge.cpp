@@ -143,8 +143,10 @@ bool UnityVulkanBridge::Initialize(const UnityVulkanDeviceContext& device,
         record.token = {}; record.unity_texture = nullptr; record.generation = ring_.Generation();
         record.reservation_id = 0; record.pending.store(false); record.queue_pending.store(false);
         record.texture_accessed.store(false); recovery_[i].kind.store(0); recovery_[i].fd.Reset();
+        record.source_copy_pending.store(false);
     }
     initialized_.store(true, std::memory_order_release);
+    source_retired_.store(false, std::memory_order_release);
     accepting_calls_.store(true, std::memory_order_release);
     return true;
 }
@@ -152,6 +154,49 @@ bool UnityVulkanBridge::Initialize(const UnityVulkanDeviceContext& device,
 void UnityVulkanBridge::Shutdown() noexcept {
     std::lock_guard<std::mutex> control(control_mutex_);
     ShutdownLocked();
+}
+
+BridgeResult UnityVulkanBridge::RetireSourceCopies(uint64_t generation, uint64_t& token) noexcept {
+    token = 0;
+    std::unique_lock<std::mutex> control(control_mutex_, std::try_to_lock);
+    if (!control.owns_lock()) return BridgeResult::Busy;
+    if (!generation || generation != ring_.Generation() || !initialized_.load())
+        return BridgeResult::Invalid;
+    std::unique_lock<std::mutex> publication(publication_mutex_,std::try_to_lock);
+    if (!publication.owns_lock()) return BridgeResult::Busy;
+    accepting_calls_.store(false, std::memory_order_release);
+    source_retired_.store(true, std::memory_order_release);
+    token = generation;
+    return BridgeResult::Ok;
+}
+
+BridgeResult UnityVulkanBridge::PollSourceRetirement(uint64_t token) noexcept {
+    if (!token) return BridgeResult::Invalid;
+    if (token <= completed_source_generation_.load(std::memory_order_acquire)) return BridgeResult::Ok;
+    std::unique_lock<std::mutex> control(control_mutex_, std::try_to_lock);
+    if (!control.owns_lock()) return BridgeResult::Busy;
+    if (token != ring_.Generation() || !source_retired_.load()) return BridgeResult::Invalid;
+    if (quarantined_.load()) return BridgeResult::Closed;
+    // A callback can have dequeued its record before storing the submitted
+    // fence state. Its active-call guard covers that gap, independently of
+    // long-lived consumer_leases_. A queued callback keeps the source alive.
+    if (active_calls_.load(std::memory_order_acquire)) return BridgeResult::Busy;
+    for (uint32_t i = 0; i < records_.size(); ++i) {
+        auto& record = records_[i];
+        if (record.queue_pending.load(std::memory_order_acquire) ||
+            record.texture_accessed.load(std::memory_order_acquire)) return BridgeResult::Busy;
+        if (record.source_copy_pending.load(std::memory_order_acquire)) {
+            if (!dispatch_.submission_complete(dispatch_.context, device_, slots_[i])) return BridgeResult::Busy;
+            record.source_copy_pending.store(false, std::memory_order_release);
+        }
+        // Unissued render events now fail Enter without dereferencing source.
+        record.pending.store(false, std::memory_order_release);
+        record.reservation_id.store(0, std::memory_order_release);
+    }
+    if (dispatch_.retire_source_views)
+        for (auto& slot : slots_) dispatch_.retire_source_views(dispatch_.context, slot);
+    completed_source_generation_.store(token, std::memory_order_release);
+    return BridgeResult::Ok;
 }
 
 void UnityVulkanBridge::ShutdownLocked() noexcept {
@@ -218,7 +263,12 @@ void UnityVulkanBridge::Recover() noexcept {
             const SlotToken token = r.token;
             SyncFd fd = std::move(r.fd);
             r.kind.store(0, std::memory_order_release);
-            const SlotResult published = ring_.PublishSubmitted(token, fd);
+            SlotResult published;
+            {
+                std::lock_guard<std::mutex> publication(publication_mutex_);
+                published = source_retired_.load(std::memory_order_acquire)
+                    ? SlotResult::Closed : ring_.PublishSubmitted(token, fd);
+            }
             if (published == SlotResult::Ok) {
                 imported_frames_.fetch_add(1);
                 RecordSuccessfulCopy();
@@ -507,6 +557,8 @@ SlotResult UnityVulkanBridge::RetainGeneration(ConsumerGeneration& generation,
 
 BridgeResult UnityVulkanBridge::ExecuteQueue(EventRecord* record) noexcept {
     if (!record) return BridgeResult::Closed;
+    active_calls_.fetch_add(1, std::memory_order_acq_rel);
+    struct Guard { const UnityVulkanBridge* b; ~Guard(){b->Leave();} } guard{this};
     const auto release = [&] {
         if (record->texture_accessed.exchange(false, std::memory_order_acq_rel))
             dispatch_.release_texture(dispatch_.context, record->unity_texture, record->access);
@@ -532,6 +584,7 @@ BridgeResult UnityVulkanBridge::ExecuteQueue(EventRecord* record) noexcept {
         recovery_[record->token.index].token = record->token; recovery_[record->token.index].kind.store(1);
         return BridgeResult::GpuError;
     }
+    record->source_copy_pending.store(true, std::memory_order_release);
     auto& recovery = recovery_[record->token.index]; recovery.token = record->token;
     SyncFd fd;
     if (!dispatch_.export_sync_fd(dispatch_.context, device_, slot, fd)) {
@@ -541,7 +594,12 @@ BridgeResult UnityVulkanBridge::ExecuteQueue(EventRecord* record) noexcept {
     // No callback reads mutable event/source data after publication.
     release();
     const SlotToken token = record->token;
-    const SlotResult published = ring_.PublishSubmitted(token, fd);
+    SlotResult published;
+    {
+        std::lock_guard<std::mutex> publication(publication_mutex_);
+        published = source_retired_.load(std::memory_order_acquire)
+            ? SlotResult::Closed : ring_.PublishSubmitted(token, fd);
+    }
     if (published == SlotResult::Ok) { last_error_.store(0); imported_frames_.fetch_add(1); RecordSuccessfulCopy(); return BridgeResult::Ok; }
     recovery.fd = std::move(fd);
     if (published == SlotResult::Busy) {

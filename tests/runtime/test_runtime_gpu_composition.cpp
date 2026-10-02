@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdio>
 #include <functional>
+#include <future>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -517,4 +518,20 @@ TEST(RuntimeGpuComposition, DestroyingOwnerEndsOnlyItsOwnSourceLease) {
     auto next=std::make_unique<RuntimeSession>();
     ASSERT_TRUE(coordinator.Begin(next.get(),reinterpret_cast<void*>(2),BeginLease,EndLease,ActiveRuntime,error));
     next.reset();EXPECT_EQ(end_count,2);
+}
+TEST(RuntimeGpuComposition, CopyRetirementPollingDoesNotWaitLegacyInferenceDrain) {
+    auto& coordinator=GpuSourceLeaseCoordinator::Instance();
+    bool owner=false;std::string error;end_entered=false;end_released=false;
+    ASSERT_TRUE(coordinator.Begin(&owner,reinterpret_cast<void*>(1),BeginLease,BlockingEndLease,ActiveLease,error));
+    HV_AndroidGpuSourceRetirementV2 token{sizeof(token),2,77,99};
+    auto retire=[](uint64_t,HV_AndroidGpuSourceRetirementV2& result) noexcept {
+        result={sizeof(result),2,77,99};return BridgeResult::Ok;
+    };
+    ASSERT_EQ(coordinator.Retire(&owner,token,retire),BridgeResult::Ok);
+    EXPECT_FALSE(owner);EXPECT_TRUE(coordinator.Owns(&owner));
+    std::thread ending([&]{std::string e;coordinator.End(&owner,e);});
+    if(!Await([&]{return end_entered.load();})){end_released=true;ending.join();FAIL()<<"Legacy drain did not enter";return;}
+    auto poll=std::async(std::launch::async,[&]{coordinator.CompleteRetirement(token);});
+    EXPECT_EQ(poll.wait_for(std::chrono::milliseconds(100)),std::future_status::ready);
+    end_released=true;ending.join();poll.get();
 }

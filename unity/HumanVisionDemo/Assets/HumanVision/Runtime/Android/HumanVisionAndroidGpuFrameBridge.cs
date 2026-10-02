@@ -138,6 +138,19 @@ namespace HumanVision
             _leasedTexture = IntPtr.Zero;
             _leasedSource = null;
         }
+        internal bool TryRetireSourceCopies(out HumanVisionAndroidSourceRetirement retirement)
+        {
+            retirement = null;
+            if (_leasedTexture == IntPtr.Zero) return true;
+            var token = new AndroidGpuSourceRetirementNative { Size = 24, Version = 2 };
+            int result = RuntimeBindings.HV_RuntimeRetireAndroidGpuSourceCopies(_runtime, ref token);
+            if (result == 1) return false;
+            Check(result, "retire GPU source copies");
+            retirement = new HumanVisionAndroidSourceRetirement(token, _leasedSource);
+            _leasedTexture = IntPtr.Zero;
+            _leasedSource = null;
+            return true;
+        }
 
         internal static void ValidateSource(RenderTexture leased, RenderTexture submitted)
         {

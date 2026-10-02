@@ -62,6 +62,12 @@ struct AdapterFacts {
   IUnityGraphicsDeviceEventCallback device_event = nullptr;
   UnityVulkanPluginEventConfig event_config{};
   int event_config_calls = 0;
+  int input_initializations = 0, input_device_calls = 0, input_instance_calls = 0;
+  int loader_device_calls = 0, loader_instance_calls = 0;
+  bool composed_input_contract = false;
+  int final_ycbcr_nodes = 0;
+  bool final_ycbcr_enabled = false;
+  const void* final_feature_tail = nullptr;
   std::vector<BarrierCall> barriers;
   uintptr_t next = 100;
 } g;
@@ -96,8 +102,9 @@ VkResult VKAPI_CALL GetSemaphoreFd(VkDevice, const VkSemaphoreGetFdInfoKHR* info
 }
 VkResult VKAPI_CALL Enumerate(VkPhysicalDevice, const char*, uint32_t* count, VkExtensionProperties* p) {
   static const char* names[] = {VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME,
-                                VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME};
-  const uint32_t available = g.omit_sync_fd_extension ? 1u : 2u;
+                                VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME,
+                                VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME};
+  const uint32_t available = g.omit_sync_fd_extension ? 1u : (g.composed_input_contract ? 3u : 2u);
   if (!p) { *count=available; return VK_SUCCESS; }
   *count = available;
   for (uint32_t i = 0; i < available; ++i)
@@ -106,6 +113,14 @@ VkResult VKAPI_CALL Enumerate(VkPhysicalDevice, const char*, uint32_t* count, Vk
 }
 VkResult VKAPI_CALL CreateDevice(VkPhysicalDevice, const VkDeviceCreateInfo* ci,
                                  const VkAllocationCallbacks*, VkDevice* out) {
+  ++g.loader_device_calls;
+  g.final_ycbcr_nodes=0;g.final_ycbcr_enabled=false;g.final_feature_tail=nullptr;
+  if(g.composed_input_contract) for(auto* node=static_cast<const VkBaseInStructure*>(ci->pNext);node;node=node->pNext) {
+    if(node->sType==VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES) {
+      ++g.final_ycbcr_nodes;
+      g.final_ycbcr_enabled=reinterpret_cast<const VkPhysicalDeviceSamplerYcbcrConversionFeatures*>(node)->samplerYcbcrConversion==VK_TRUE;
+    } else g.final_feature_tail=node;
+  }
   g.enabled_extensions.clear();
   for(uint32_t i=0;i<ci->enabledExtensionCount;++i) g.enabled_extensions.emplace_back(ci->ppEnabledExtensionNames[i]);
   *out=NewHandle<VkDevice>(); return VK_SUCCESS;
@@ -121,6 +136,7 @@ VkResult VKAPI_CALL EnumerateInstance(const char*, uint32_t* count, VkExtensionP
   return VK_SUCCESS;
 }
 VkResult VKAPI_CALL CreateInstance(const VkInstanceCreateInfo* ci, const VkAllocationCallbacks*, VkInstance* out) {
+  ++g.loader_instance_calls;
   g.instance_pnext=ci->pNext;
   g.enabled_instance_extensions.clear();
   for(uint32_t i=0;i<ci->enabledExtensionCount;++i) g.enabled_instance_extensions.emplace_back(ci->ppEnabledExtensionNames[i]);
@@ -148,6 +164,104 @@ PFN_vkVoidFunction VKAPI_CALL LoaderGipa(VkInstance instance, const char* name) 
 
 IUnityGraphics graphics_api{};
 IUnityGraphicsVulkanV2 vulkan_api{};
+struct InitializationRegistration { UnityVulkanInitCallback callback; void* context; int32_t priority; };
+std::vector<InitializationRegistration> initialization_registrations;
+bool UNITY_INTERFACE_API RegisterInitialization(UnityVulkanInitCallback callback,void* context,int32_t priority) {
+  if(priority==kUnityVulkanInitCallbackMaxPriority)
+    for(auto& entry:initialization_registrations)if(entry.priority==priority){entry={callback,context,priority};return true;}
+  initialization_registrations.push_back({callback,context,priority});return true;
+}
+// Stateful representative of input ahb_capabilities.cpp Initialize/CaptureGetProc:
+// cache downstream create functions, capture the live instance, and contribute
+// input-only YCbCr/FOREIGN requests while preserving SDK requests and pNext.
+struct InputInitializationFacts {
+  PFN_vkGetInstanceProcAddr next = nullptr, initialized_next = nullptr;
+  PFN_vkCreateInstance create_instance = nullptr;
+  PFN_vkCreateDevice create_device = nullptr;
+  VkInstance instance = VK_NULL_HANDLE;
+  uint32_t depth = 0, max_depth = 0, lookups = 0;
+  bool saw_sdk_extensions = false;
+  std::vector<int32_t> callback_order;
+} input_initialization;
+VkResult VKAPI_CALL InputCreateInstance(const VkInstanceCreateInfo* info,
+    const VkAllocationCallbacks* allocator,VkInstance* instance) {
+  if(++g.input_instance_calls>8){ADD_FAILURE()<<"Recursive input instance forwarding";return VK_ERROR_INITIALIZATION_FAILED;}
+  if(!input_initialization.create_instance)return VK_ERROR_INITIALIZATION_FAILED;
+  auto result=input_initialization.create_instance(info,allocator,instance);
+  if(result==VK_SUCCESS)input_initialization.instance=*instance;
+  return result;
+}
+VkResult VKAPI_CALL InputCreateDevice(VkPhysicalDevice physical,const VkDeviceCreateInfo* info,
+    const VkAllocationCallbacks* allocator,VkDevice* device) {
+  if(++g.input_device_calls>8){ADD_FAILURE()<<"Recursive input device forwarding";return VK_ERROR_INITIALIZATION_FAILED;}
+  if(!input_initialization.create_device || !input_initialization.instance)return VK_ERROR_INITIALIZATION_FAILED;
+  std::vector<const char*> extensions(info->ppEnabledExtensionNames,
+      info->ppEnabledExtensionNames+info->enabledExtensionCount);
+  auto contains=[&](const char* name){return std::any_of(extensions.begin(),extensions.end(),[&](const char* p){return std::strcmp(p,name)==0;});};
+  input_initialization.saw_sdk_extensions=contains(VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME) && contains(VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME);
+  auto enumerate=reinterpret_cast<PFN_vkEnumerateDeviceExtensionProperties>(input_initialization.next(input_initialization.instance,"vkEnumerateDeviceExtensionProperties"));
+  if(!enumerate)return VK_ERROR_INITIALIZATION_FAILED;
+  uint32_t count=0;if(enumerate(physical,nullptr,&count,nullptr)!=VK_SUCCESS)return VK_ERROR_EXTENSION_NOT_PRESENT;
+  std::vector<VkExtensionProperties> available(count);
+  if(enumerate(physical,nullptr,&count,available.data())!=VK_SUCCESS)return VK_ERROR_EXTENSION_NOT_PRESENT;
+  for(auto* required:{VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME,VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME,VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME}) {
+    if(contains(required))continue;
+    if(std::none_of(available.begin(),available.end(),[&](const auto& extension){return std::strcmp(extension.extensionName,required)==0;}))return VK_ERROR_EXTENSION_NOT_PRESENT;
+    extensions.push_back(required);
+  }
+  VkPhysicalDeviceSamplerYcbcrConversionFeatures enable{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES,const_cast<void*>(info->pNext),VK_TRUE};
+  VkDeviceCreateInfo amended=*info;amended.enabledExtensionCount=static_cast<uint32_t>(extensions.size());amended.ppEnabledExtensionNames=extensions.data();
+  bool declared=false;
+  for(auto* node=static_cast<const VkBaseInStructure*>(info->pNext);node;node=node->pNext)
+    if(node->sType==VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES) {
+      declared=true;
+      if(!reinterpret_cast<const VkPhysicalDeviceSamplerYcbcrConversionFeatures*>(node)->samplerYcbcrConversion)return VK_ERROR_FEATURE_NOT_PRESENT;
+    }
+  if(!declared)amended.pNext=&enable;
+  return input_initialization.create_device(physical,&amended,allocator,device);
+}
+PFN_vkVoidFunction VKAPI_CALL InputGetProc(VkInstance instance,const char* name) {
+  ++input_initialization.lookups;
+  const auto depth=++input_initialization.depth;
+  input_initialization.max_depth=std::max(input_initialization.max_depth,depth);
+  struct Guard {~Guard(){--input_initialization.depth;}} guard;
+  if(depth>8){ADD_FAILURE()<<"Recursive input/SDK GIPA forwarding";return nullptr;}
+  auto result=input_initialization.next?input_initialization.next(instance,name):nullptr;
+  if(result && std::strcmp(name,"vkCreateInstance")==0) {
+    input_initialization.create_instance=reinterpret_cast<PFN_vkCreateInstance>(result);
+    return reinterpret_cast<PFN_vkVoidFunction>(InputCreateInstance);
+  }
+  if(result && std::strcmp(name,"vkCreateDevice")==0) {
+    input_initialization.create_device=reinterpret_cast<PFN_vkCreateDevice>(result);
+    return reinterpret_cast<PFN_vkVoidFunction>(InputCreateDevice);
+  }
+  return result;
+}
+PFN_vkGetInstanceProcAddr UNITY_INTERFACE_API InputPriorityBoundary(PFN_vkGetInstanceProcAddr next,void*) {
+  ++g.input_initializations;input_initialization.next=next;return InputGetProc;
+}
+PFN_vkVoidFunction VKAPI_CALL DeferredNextInitialization(VkInstance instance,const char* name) {
+  // Unity calls the lower-priority initializer first. Its next-layer dispatch
+  // cannot use that returned outer wrapper: it resolves to the higher-priority
+  // initializer's result once initialization finishes, ending at the loader.
+  return input_initialization.initialized_next?input_initialization.initialized_next(instance,name):nullptr;
+}
+PFN_vkGetInstanceProcAddr InitializeRegisteredChain() {
+  std::sort(initialization_registrations.begin(),initialization_registrations.end(),[](const auto& a,const auto& b){return a.priority<b.priority;});
+  EXPECT_EQ(initialization_registrations.size(),2u);
+  const auto& sdk=initialization_registrations.front();
+  const auto& input=initialization_registrations.back();
+  EXPECT_EQ(sdk.priority,kUnityVulkanInitCallbackMaxPriority-1);
+  EXPECT_EQ(input.priority,kUnityVulkanInitCallbackMaxPriority);
+  input_initialization.callback_order.push_back(sdk.priority);
+  auto outer=sdk.callback(DeferredNextInitialization,sdk.context);
+  input_initialization.callback_order.push_back(input.priority);
+  input_initialization.initialized_next=input.callback(LoaderGipa,input.context);
+  EXPECT_EQ(input_initialization.next,LoaderGipa);
+  EXPECT_EQ(input_initialization.initialized_next,InputGetProc);
+  EXPECT_NE(outer,InputGetProc);EXPECT_NE(outer,LoaderGipa);
+  return outer;
+}
 IUnityInterface* UNITY_INTERFACE_API GetInterface(UnityInterfaceGUID guid) {
   if (guid==GetUnityInterfaceGUID<IUnityGraphics>()) return &graphics_api;
   if (guid==GetUnityInterfaceGUID<IUnityGraphicsVulkanV2>()) return &vulkan_api;
@@ -159,7 +273,10 @@ void InstallAndCreateUnityDevice() {
   graphics_api.GetRenderer=[]() {return kUnityGfxRendererVulkan;};
   graphics_api.RegisterDeviceEventCallback=[](IUnityGraphicsDeviceEventCallback cb) {g.device_event=cb;};
   graphics_api.UnregisterDeviceEventCallback=[](IUnityGraphicsDeviceEventCallback) {};
-  vulkan_api.InterceptInitialization=[](UnityVulkanInitCallback cb,void* p) {g.intercepted_gipa=cb(LoaderGipa,p);return true;};
+  vulkan_api.AddInterceptInitialization=[](UnityVulkanInitCallback cb,void* p,int32_t priority) {
+    EXPECT_EQ(priority, kUnityVulkanInitCallbackMaxPriority - 1);
+    g.intercepted_gipa=cb(LoaderGipa,p);return true;
+  };
   vulkan_api.ConfigureEvent=[](int,const UnityVulkanPluginEventConfig* config) {g.event_config=*config;++g.event_config_calls;};
   vulkan_api.Instance=[]() {return g.active_instance;};
   static IUnityInterfaces interfaces{};interfaces.GetInterface=GetInterface;
@@ -343,6 +460,91 @@ TEST(UnityVulkanAndroidAdapter, AndroidAbiDistinguishesUnavailableLifecycleFromM
   HV_AndroidGpuBridgeStatusV1 status{sizeof(status),HV_ANDROID_GPU_API_V1};
   EXPECT_EQ(HV_RuntimeGetAndroidGpuBridgeStatus(&runtime,&status),HV_ANDROID_GPU_ERR_UNSUPPORTED_PLATFORM);
   EXPECT_EQ(status.copy_path,HV_ANDROID_GPU_COPY_UNAVAILABLE);
+}
+TEST(UnityVulkanAndroidAdapter, SdkInitializationRegistrationComposesWithInputMaxPriorityInEitherLoadOrder) {
+  // This boundary fixture follows the pinned Unity registration semantics;
+  // the physical APK separately executes the actual input initialization code.
+  for(bool input_first:{false,true}) {
+    g=AdapterFacts{};g.composed_input_contract=true;
+    input_initialization=InputInitializationFacts{};
+    graphics_api={};vulkan_api={};initialization_registrations.clear();
+    graphics_api.GetRenderer=[](){return kUnityGfxRendererVulkan;};
+    graphics_api.RegisterDeviceEventCallback=[](IUnityGraphicsDeviceEventCallback callback){g.device_event=callback;};
+    graphics_api.UnregisterDeviceEventCallback=[](IUnityGraphicsDeviceEventCallback){};
+    vulkan_api.AddInterceptInitialization=RegisterInitialization;
+    vulkan_api.ConfigureEvent=[](int,const UnityVulkanPluginEventConfig*){};
+    vulkan_api.Instance=[](){return g.active_instance;};
+    static IUnityInterfaces interfaces{};interfaces.GetInterface=GetInterface;
+    if(input_first)RegisterInitialization(InputPriorityBoundary,nullptr,kUnityVulkanInitCallbackMaxPriority);
+    UnityPluginLoad(&interfaces);
+    if(!input_first)RegisterInitialization(InputPriorityBoundary,nullptr,kUnityVulkanInitCallbackMaxPriority);
+    ASSERT_EQ(initialization_registrations.size(),2u);
+    auto chain=InitializeRegisteredChain();
+    EXPECT_EQ(input_initialization.callback_order,(std::vector<int32_t>{kUnityVulkanInitCallbackMaxPriority-1,kUnityVulkanInitCallbackMaxPriority}));
+    VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};app.apiVersion=VK_API_VERSION_1_1;
+    VkInstanceCreateInfo create_instance{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};create_instance.pApplicationInfo=&app;
+    auto instance_fn=reinterpret_cast<PFN_vkCreateInstance>(chain(nullptr,"vkCreateInstance"));
+    ASSERT_NE(instance_fn,nullptr);
+    EXPECT_NE(instance_fn,InputCreateInstance);EXPECT_NE(instance_fn,CreateInstance);
+    ASSERT_EQ(instance_fn(&create_instance,nullptr,&g.active_instance.instance),VK_SUCCESS);
+    // The application does not request input-specific features/extensions.
+    // Input interception must add them and preserve this unrelated feature tail.
+    VkPhysicalDeviceProtectedMemoryFeatures tail{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROTECTED_MEMORY_FEATURES,nullptr,VK_TRUE};
+    VkDeviceCreateInfo info{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,&tail};
+    const char* foreign=VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME;
+    auto device_fn=reinterpret_cast<PFN_vkCreateDevice>(chain(g.active_instance.instance,"vkCreateDevice"));
+    ASSERT_NE(device_fn,nullptr);
+    EXPECT_NE(device_fn,InputCreateDevice);EXPECT_NE(device_fn,CreateDevice);
+    ASSERT_EQ(device_fn(Handle<VkPhysicalDevice>(88),&info,nullptr,&g.active_instance.device),VK_SUCCESS);
+    EXPECT_TRUE(input_initialization.saw_sdk_extensions);
+    EXPECT_EQ(input_initialization.create_instance,CreateInstance);
+    EXPECT_EQ(input_initialization.create_device,CreateDevice);
+    EXPECT_EQ(input_initialization.max_depth,1u);EXPECT_EQ(input_initialization.depth,0u);
+    EXPECT_GT(input_initialization.lookups,0u);EXPECT_LT(input_initialization.lookups,20u);
+    EXPECT_EQ(g.input_initializations,1);
+    EXPECT_EQ(g.input_instance_calls,1);EXPECT_EQ(g.input_device_calls,1);
+    EXPECT_EQ(g.loader_instance_calls,1);EXPECT_EQ(g.loader_device_calls,1);
+    EXPECT_EQ(g.final_ycbcr_nodes,1);EXPECT_TRUE(g.final_ycbcr_enabled);
+    EXPECT_EQ(g.final_feature_tail,&tail);EXPECT_EQ(tail.pNext,nullptr);
+    EXPECT_EQ(g.enabled_extensions.size(),3u);
+    EXPECT_EQ(std::count(g.enabled_extensions.begin(),g.enabled_extensions.end(),foreign),1);
+    EXPECT_EQ(std::count(g.enabled_extensions.begin(),g.enabled_extensions.end(),VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME),1);
+    EXPECT_EQ(std::count(g.enabled_extensions.begin(),g.enabled_extensions.end(),VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME),1);
+    humanvision::gpu::ShutdownUnityVulkanProducer();UnityPluginUnload();
+  }
+}
+TEST(UnityVulkanAndroidAdapter, NativeFenceRetiresSourceWhileInferenceStillHoldsAhb) {
+  using namespace humanvision::gpu;
+  g=AdapterFacts{}; InstallAndCreateUnityDevice();
+  vulkan_api.AccessTexture=UnityAccessTexture;
+  vulkan_api.AccessQueue=UnityAccessQueue;
+  ASSERT_TRUE(ConfigureUnityVulkanProducer(Selection(HV_ANDROID_GPU_COPY_BLIT),Contract(HV_ANDROID_GPU_COPY_BLIT)));
+  ASSERT_TRUE(BeginUnityVulkanSourceLease(reinterpret_cast<void*>(1)));
+  HV_AndroidGpuSubmissionV1 frame{sizeof(frame),1,reinterpret_cast<void*>(1),320,240,1,1000,0,0};
+  void* event=nullptr;
+  ASSERT_EQ(PrepareUnityVulkanFrame(frame,&event),BridgeResult::Ok);
+  g.fence_complete=false;
+  AndroidProducer::RenderEvent(0,event);
+  ConsumerFrame inference;
+  auto* bridge=UnityVulkanProducerBridge();
+  ASSERT_EQ(bridge->ClaimConsumer(inference),SlotResult::Ok);
+  HV_AndroidGpuSourceRetirementV2 token{};
+  ASSERT_EQ(RetireUnityVulkanSourceCopies(0,token),BridgeResult::Ok);
+  EXPECT_EQ(HV_AndroidGpuPollSourceRetirement(&token),HV_NO_NEW_RESULT);
+  EXPECT_TRUE(inference.claimed);
+  EXPECT_GT(g.ahb_live,0);
+  g.fence_complete=true;
+  EXPECT_EQ(HV_AndroidGpuPollSourceRetirement(&token),HV_OK);
+  EXPECT_TRUE(inference.claimed);
+  EXPECT_NE(inference.ahb_buffer,0u);
+  // Full drain may be waiting this consumer on the existing worker. Poll and
+  // Begin must still return without requiring consumer retirement.
+  EXPECT_EQ(HV_AndroidGpuPollSourceRetirement(&token),HV_OK);
+  EXPECT_TRUE(BeginUnityVulkanSourceLease(reinterpret_cast<void*>(2)));
+  EXPECT_EQ(bridge->RetireConsumer(inference,CompletionProof::GpuQuiescent),SlotResult::Ok);
+  EndUnityVulkanSourceLease();
+  UnityPluginUnload();
+  EXPECT_EQ(g.ahb_live,0);
 }
 TEST(UnityVulkanAndroidAdapter, UnexpectedDeviceShutdownQuarantinesWithoutWaitOrDestroyedDeviceCalls) {
   using namespace humanvision::gpu;
@@ -691,7 +893,11 @@ TEST(UnityVulkanAndroidAdapter, ColorSourceViewsWarmOnceAndTypedBgraDoesNotSwap)
   EXPECT_EQ(AndroidProducer::TestPrepareSource(cache,a),humanvision::gpu::SourcePreparation::Ready);
   EXPECT_EQ(g.view_creates,generation_views+1);
   auto b=Barriers(a.image,cache.image);b[0].new_layout=humanvision::gpu::BridgeImageLayout::ShaderRead;b[1].new_layout=humanvision::gpu::BridgeImageLayout::ColorAttachment;b[2].old_layout=humanvision::gpu::BridgeImageLayout::ColorAttachment;b[3].old_layout=humanvision::gpu::BridgeImageLayout::ShaderRead;
-  ASSERT_TRUE(AndroidProducer::TestColor(cache,a,b.data())); EXPECT_EQ(g.pushed_swap,0u); EXPECT_EQ(g.view_creates,generation_views+1);
+  // Existing production flags use bit0 for BGRA swizzle and bit1 for source
+  // row-origin correction at identical extents. Typed BGRA needs no swizzle.
+  ASSERT_TRUE(AndroidProducer::TestColor(cache,a,b.data()));
+  EXPECT_EQ(g.pushed_swap & 1u,0u); EXPECT_EQ(g.pushed_swap & 2u,2u);
+  EXPECT_EQ(g.pushed_swap,2u); EXPECT_EQ(g.view_creates,generation_views+1);
   a.image = 902;
   EXPECT_EQ(AndroidProducer::TestPrepareSource(cache, a),
             humanvision::gpu::SourcePreparation::Unsupported);

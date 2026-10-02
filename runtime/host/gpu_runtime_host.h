@@ -92,6 +92,9 @@ public:
     bool Begin(void* owner,void* texture,BeginFn,EndFn,ActiveFn,std::string& error);
     bool End(void* owner,std::string& error);
     bool Owns(void* owner) const noexcept;
+    using RetireFn = gpu::BridgeResult (*)(uint64_t, HV_AndroidGpuSourceRetirementV2&) noexcept;
+    gpu::BridgeResult Retire(void* owner, HV_AndroidGpuSourceRetirementV2&, RetireFn) noexcept;
+    bool CompleteRetirement(const HV_AndroidGpuSourceRetirementV2&) noexcept;
     gpu::BridgeResult Prepare(void* owner,const HV_AndroidGpuSubmissionV1&,void**,
                               PrepareFn,DimensionsFn) noexcept;
 private:
@@ -99,5 +102,6 @@ private:
     void* owner_=nullptr;
     EndFn end_=nullptr;
     ActiveFn active_=nullptr;
+    uint64_t retirement_generation_=0;
 };
 }

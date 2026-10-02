@@ -95,6 +95,14 @@ namespace HumanVision
             _gpuBridge?.End();
             _gpuSourceTexture = null;
         }
+        internal bool TryRetireGpuSourceCopies(out HumanVisionAndroidSourceRetirement retirement)
+        {
+            retirement = null;
+            if (_gpuBridge == null) return true;
+            if (!_gpuBridge.TryRetireSourceCopies(out retirement)) return false;
+            _gpuSourceTexture = null;
+            return true;
+        }
         internal bool SubmitGpuFrame(RenderTexture texture, int rotationDegrees, bool mirrored, long frameId, long timestampUs)
         {
             if (_gpuBridge == null) throw new InvalidOperationException("The selected Android runtime mode does not accept GPU frames.");

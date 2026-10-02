@@ -142,6 +142,7 @@ struct UnityVulkanBridgeDispatch {
   bool (*submission_complete)(void *, const UnityVulkanDeviceContext &,
                               const UnityVulkanSlotCache &) noexcept = nullptr;
   void (*cancel_and_drain_events)(void *) noexcept = nullptr;
+  void (*retire_source_views)(void *, UnityVulkanSlotCache &) noexcept = nullptr;
 };
 
 class UnityVulkanBridge {
@@ -157,6 +158,7 @@ public:
     std::atomic<bool> pending{false};
     std::atomic<bool> queue_pending{false};
     std::atomic<bool> texture_accessed{false};
+    std::atomic<bool> source_copy_pending{false};
     UnityTextureAccess access{};
     std::array<BridgeBarrier, 4> barriers{};
   };
@@ -169,6 +171,10 @@ public:
   bool Initialize(const UnityVulkanDeviceContext &, const AhbSelection &,
                   const SlotContract &) noexcept;
   void Shutdown() noexcept;
+  // Admission closes immediately. Poll proves only this generation's source
+  // GPU reads complete; a ConsumerFrame can keep its AHB leased independently.
+  BridgeResult RetireSourceCopies(uint64_t generation, uint64_t& token) noexcept;
+  BridgeResult PollSourceRetirement(uint64_t token) noexcept;
   BridgeResult Prepare(const HV_AndroidGpuSubmissionV1 &,
                        void **event_data) noexcept;
   BridgeResult Render(void *event_identity) noexcept;
@@ -193,7 +199,9 @@ public:
   bool IsClosed() const noexcept { return !initialized_.load(std::memory_order_acquire); }
   bool IsQuarantined() const noexcept { return quarantined_.load(std::memory_order_acquire); }
   const char* Diagnostic() const noexcept;
-  uint64_t Generation() const noexcept { return ring_.Generation(); }
+  uint64_t Generation() const noexcept {
+    return source_retired_.load(std::memory_order_acquire) ? 0 : ring_.Generation();
+  }
   static void RenderEvent(int event_id, void *data) noexcept;
   static void QueueEvent(void *data) noexcept;
 
@@ -230,9 +238,12 @@ private:
   mutable std::atomic<uint32_t> active_calls_{0};
   std::atomic<uint32_t> consumer_leases_{0};
   std::atomic<bool> quarantined_{false};
+  std::atomic<bool> source_retired_{false};
+  std::atomic<uint64_t> completed_source_generation_{0};
   mutable std::mutex active_mutex_;
   mutable std::condition_variable active_cv_;
   std::mutex control_mutex_;
+  std::mutex publication_mutex_;
   std::atomic<uint64_t> next_reservation_{1};
   std::atomic<uint64_t> source_contract_signature_{0};
   std::atomic<uint64_t> submitted_frames_{0};

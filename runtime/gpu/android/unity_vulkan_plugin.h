@@ -18,6 +18,9 @@ bool ConfigureUnityVulkanProducer(const AhbSelection &,
 // attempting an unbounded GPU wait on the quarantined generation.
 bool BeginUnityVulkanSourceLease(void *unity_texture) noexcept;
 void EndUnityVulkanSourceLease() noexcept;
+BridgeResult RetireUnityVulkanSourceCopies(uint64_t generation,
+                                         HV_AndroidGpuSourceRetirementV2&) noexcept;
+BridgeResult PollUnityVulkanSourceRetirement(const HV_AndroidGpuSourceRetirementV2&) noexcept;
 bool UnityVulkanSourceRequiresRetention() noexcept;
 void ShutdownUnityVulkanProducer() noexcept;
 BridgeResult PrepareUnityVulkanFrame(const HV_AndroidGpuSubmissionV1 &,

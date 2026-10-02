@@ -1,33 +1,40 @@
-# Current: unified-input Task7 verified; SDK source-copy retirement next (2026-10-02)
+# Current: unified-input Task8 verified; continuous SDK adapter next (2026-10-02)
 
-Tasks1-6 committed242956f,b6c1d32,99a19c0,e1f5c73,a60a3fe,4d1823d.
-Task7 fresh Spec/Quality PASS after fixing two acceptance-tool blockers: reliable
-owned-process identity/termination and signed terminal resource/releaseFD accounting.
-Actual owned-child4/4 and analyzer7/7 pass; exact unchanged final hardware archive
-passes stronger analyzer separately. Original failed runs, maps and append-only
-historical logfile correction remain preserved with original-prefix SHA proof.
+Tasks1-7 committed242956f,b6c1d32,99a19c0,e1f5c73,a60a3fe,4d1823d,a0d6e10.
+Task8 fresh Spec/Quality PASS after one initialization-test fix. Source-copy
+retirement uses additive24-byte V2 token/fence state and retains already-copied
+AHB/ConsumerFrame ownership. V1 and old synchronous End remain unchanged.
+Generation token is Close/detach-only; continuous per-frame copy tickets remain
+Task9. Both native plugins' initializer chain has representative deterministic
+both-order coverage plus one actual successful combined physical load order.
 
-Actual Snapdragon888 RTSP GPU lifecycle native2810d88a/APKfa44f59d:60.004s Streaming,
-10 transitions/10 actual consumer copies,6 overlapping closes,1466 completed GPU
-conversions/releases/ownership pairs,65 imports/destroys,32 targetviews/destroys,
-all terminal resources/errors/readbacks0. Positive releaseFD holds/transfers1466,
-peak1/final0. Positive acquireFD hardware unqualified; physical codec query uses
-API29+, API26 native closure does not certify API26-28 physical codec support.
-Native36/36,Core12/12,source regressions6+12,API26 closure/architecture PASS;
-30 reviewed owned sources and34 protected R4 bytes match frozen provenance.
-[Task7 evidence and limits](reports/2026-10-02-unified-input-task7.md).
-[Task6 color/crop](reports/2026-10-02-unified-input-task6.md).
+Qualified host86/86, canonical+CPU-onlyUPM3/3 each, API26/506-import guard-OFF
+closure/export audit PASS. Test-only fix has behavioralRED and focused clean2/2
+GREEN; no unchanged APK/native/managed/device matrix rerun. Original immutable
+148 artifacts and new23 fix artifacts retain failures and exact source bindings.
+Minor managed retained-reference assertion and legacy warning qualification are
+recorded for final review. Builds are not claimed warning-free.
+
+Actual Snapdragon888 input/private SDK-copy gate: two realGPUcopies, source token
+ready while realConsumerFrame held, old admission rejected, new admission pending
+then newcopy complete after release;247 releaseFD pairs balanced, terminal input
+and SDK resource counts/copyerrors0. Close129.837ms is lifecycle latency, not
+main-thread call timing. Physical fixture is no-inference; public model/continuous
+adapter and skeleton output are not certified. Positive acquireFD hardware remains
+unqualified; API26 native does not certify API26-28 hardware-codec runtime.
+[Task8 evidence and limits](reports/2026-10-02-unified-input-task8.md).
+[Task7 lifecycle](reports/2026-10-02-unified-input-task7.md).
 [Approved sequential plan](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
 
-7/11 input tasks verified. Task8 next: retire source GPU copies independently of
-inference slots; Task9 unified SDK adapter; Task10 three Camera/Video/RTSP Demos
-and clean package imports; Task11 unified physical acceptance/maintenance delivery.
-Current input-only diagnostic relies on temporary owned RTSP/USBreverse removed
-after testing; reopening alone has no stream. Visible preview/pending/error status
-exists, but it is not the final standalone skeleton Demo. Camera raw skeleton~11FPS;
-25 interim/30fresh complete observation frames/s stillFAIL. No model/Renderer/ORT
-optimization, fallback, final physical acceptance, main merge or Release.
-User Unity project/caches retained; M3 remains sole active SDK milestone.
+8/11 input tasks verified. Task9 next: native per-submission copy tickets and
+unified SDK adapter; Task10 three usable Camera/Video/RTSP Demos and clean package
+imports; Task11 physical acceptance/maintenance delivery. Temporary diagnostic
+RTSP publisher/USB reverse is removed after tests; reopening alone has no stream.
+Visible preview/status now identifies no recognition. Camera raw skeleton~11FPS;
+25 interim/30 fresh complete observation frames/s remain unmet. No model/Renderer/
+ORT optimization, fallback, final physical acceptance, main merge or Release.
+User Unity project/caches and existing R4 dirty edits retained; M3 remains sole
+active SDK milestone.
 
 # Current YOLO-M3: bounded execution/resolution trial complete (2026-10-01)
 
