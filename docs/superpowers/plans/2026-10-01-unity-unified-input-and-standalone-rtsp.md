@@ -84,10 +84,10 @@ Task1审查ruling：设计要求时间戳时钟域优先于上述简写字段列
 **Files:** Create input包 `Runtime/NativeInputBindings.cs`, `Runtime/RtspFrameSource.cs`, `Runtime/RtspSourceSettings.cs`, `Tests/EditMode/RtspSourceTests.cs`, `Tests/PlayMode/RtspPreviewTests.cs`; Create `tools/test/run_rtsp_fixture.ps1`, `tools/test/rtsp_fixture_manifest.py`。
 **Interfaces:** Task1/3；`RtspFrameSource : IHumanVisionFrameSource`，设置URL/Transport=TCP/OpenTimeoutMs=5000；状态/错误脱敏。地址仅本地设置，报告不存凭据。Windows在主线程复用Texture2D上传，FrameTimestampKind.LocalDecode。
 
-- [ ] RED：`RtspPreviewTests.PreviewWithoutInferencePackage`在只装input包的干净项目播放真实TCP H.264流；`ConnectionLossReconnectsWithoutBlockingControls`断开受控服务器后状态重连、恢复generation递增。
-- [ ] Run `pwsh -NoProfile -File tools/test/run_rtsp_fixture.ps1 -Platform Windows -Output out/input/task4`；没有RtspFrameSource时FAIL。受控服务器版本/来源/配置和MP4hash保存，仅本机监听；停止只本脚本创建PID，不碰其他服务。
-- [ ] 实现RtspFrameSource WindowsPoll/Copy/上传路径，输入插件缺失报可操作错误；使用已有工具缓存，缺工具按锁定版本补齐，不任意下载最新二进制。用`video-1.mp4`生成真正RTSP服务，不用VideoPlayer直读MP4冒充协议验收。
-- [ ] GREEN同命令；实流独立预览及重连PASS；请求/实际尺寸、状态序列、包依赖审计记录。review后commit `feat: expose standalone Unity RTSP preview on Windows`。
+- [x] RED：`RtspPreviewTests.PreviewWithoutInferencePackage`在只装input包的干净项目播放真实TCP H.264流；`ConnectionLossReconnectsWithoutBlockingControls`断开受控服务器后状态重连、恢复generation递增。
+- [x] Run `pwsh -NoProfile -File tools/test/run_rtsp_fixture.ps1 -Platform Windows -Output out/input/task4`；没有RtspFrameSource时FAIL。受控服务器版本/来源/配置和MP4hash保存，仅本机监听；停止只本脚本创建PID，不碰其他服务。
+- [x] 实现RtspFrameSource WindowsPoll/Copy/上传路径，输入插件缺失报可操作错误；使用已有工具缓存，缺工具按锁定版本补齐，不任意下载最新二进制。用`video-1.mp4`生成真正RTSP服务，不用VideoPlayer直读MP4冒充协议验收。
+- [x] GREEN同命令；实流独立预览及重连PASS；请求/实际尺寸、状态序列、包依赖审计记录。review后commit `feat: expose standalone Unity RTSP preview on Windows`。
 
 ### Task5: Android MediaCodec/PRIVATE AHB实际能力gate
 

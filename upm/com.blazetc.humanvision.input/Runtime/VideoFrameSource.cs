@@ -29,7 +29,7 @@ namespace HumanVision.Input
         {
             retirement = new SourceRetirement();
             timeline = new SourceGeneration(retirement);
-            registration = new InputRetirementRegistration(retirement, OnRetirementProgress);
+            registration = new InputRetirementRegistration(retirement, OnRetirementProgress, () => HasPendingWorkerRetirement);
         }
 
         protected void CheckThread() { retirement.CheckThread(); }
@@ -64,14 +64,20 @@ namespace HumanVision.Input
 
         protected void Publish(Texture input, int degrees, bool verticalMirror, long pts, ulong generation)
         {
+            Publish(input, degrees, verticalMirror, pts, generation, FrameTimestampKind.UnityObserved,
+                InputMonotonicClock.NowUs, FrameClockDomain.InputMonotonic, 0, FrameTextureNormalizer.EncodingFor(input));
+        }
+
+        protected void Publish(Texture input, int degrees, bool verticalMirror, long pts, ulong generation,
+            FrameTimestampKind kind, long sourceTimestampUs, FrameClockDomain clockDomain, ulong clockId, FrameColorSpace encoding)
+        {
             CheckThread();
             if (generation != timeline.Generation || State == InputSourceState.Stopped ||
                 State == InputSourceState.Closing || State == InputSourceState.Error) return;
-            var observed = InputMonotonicClock.NowUs;
             int w = degrees % 180 == 0 ? input.width : input.height;
             int h = degrees % 180 == 0 ? input.height : input.width;
             if (normalizer != null && (w != width || h != height || degrees != rotation ||
-                verticalMirror != vertical || DisplayMirror != mirror || outputEncoding != FrameTextureNormalizer.EncodingFor(input)))
+                verticalMirror != vertical || DisplayMirror != mirror || outputEncoding != encoding))
             {
                 BeginOutput();
                 generation = timeline.Generation;
@@ -84,7 +90,7 @@ namespace HumanVision.Input
                 rotation = degrees;
                 vertical = verticalMirror;
                 mirror = DisplayMirror;
-                outputEncoding = FrameTextureNormalizer.EncodingFor(input);
+                outputEncoding = encoding;
             }
             var texture = normalizer.Prepare(input, degrees);
             if (token == 0)
@@ -93,16 +99,18 @@ namespace HumanVision.Input
             }
             var frame = new HumanVisionTextureFrame(timeline.SourceId, generation, ++sequence,
                 texture, InputMonotonicClock.NowUs, pts, degrees, DisplayMirror,
-                FrameRowOrigin.UnityBottomLeft, outputEncoding, FrameTimestampKind.UnityObserved,
-                token, observed, FrameClockDomain.InputMonotonic, 0);
+                FrameRowOrigin.UnityBottomLeft, outputEncoding, kind,
+                token, sourceTimestampUs, clockDomain, clockId);
             normalizer.Update(input, degrees, verticalMirror, DisplayMirror);
             frame.PublishedTimestampUs = InputMonotonicClock.NowUs;
             if (timeline.TryPublish(in frame)) State = InputSourceState.Streaming;
         }
 
-        private void OnRetirementProgress()
+        protected virtual bool HasPendingWorkerRetirement => false;
+        protected void WatchWorkerRetirement() { InputRetirementPump.Watch(registration); }
+        protected virtual void OnRetirementProgress()
         {
-            if (State == InputSourceState.Closing && PendingRetirementCount == 0) State = InputSourceState.Stopped;
+            if (State == InputSourceState.Closing && PendingRetirementCount == 0 && !HasPendingWorkerRetirement) State = InputSourceState.Stopped;
         }
 
         protected void PollRetirement()

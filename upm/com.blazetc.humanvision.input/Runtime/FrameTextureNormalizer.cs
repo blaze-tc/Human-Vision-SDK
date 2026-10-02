@@ -93,9 +93,11 @@ namespace HumanVision.Input
     {
         internal readonly SourceRetirement Owner;
         internal readonly Action OnProgress;
+        internal readonly Func<bool> HasPendingWorker;
         internal InputRetirementRegistration Next;
         internal bool Queued;
-        internal InputRetirementRegistration(SourceRetirement owner, Action onProgress) { Owner = owner; OnProgress = onProgress; }
+        internal InputRetirementRegistration(SourceRetirement owner, Action onProgress, Func<bool> hasPendingWorker)
+        { Owner = owner; OnProgress = onProgress; HasPendingWorker = hasPendingWorker; }
     }
 
     /// <summary>Persistent main-thread polling continues after source disable/destroy.</summary>
@@ -132,7 +134,7 @@ namespace HumanVision.Input
                 var next = current.Next;
                 current.Owner.Poll();
                 current.OnProgress();
-                if (current.Owner.PendingResourceCount == 0)
+                if (current.Owner.PendingResourceCount == 0 && !current.HasPendingWorker())
                 {
                     if (previous == null) head = next;
                     else previous.Next = next;

@@ -1,32 +1,31 @@
-# Current: unified-input Task3 verified; Task4 next (2026-10-02)
+# Current: unified-input Task4 verified; Android capability gate next (2026-10-02)
 
-Approved 11-task input plan executes sequentially in the existing isolated worktree.
-Task1 committed242956f; Task2 committedb6c1d32. Task3 independent Windows RTSP
-C ABI/plugin now passes fresh SpecPASS/QualityPASS after one focused review-fix round.
-Actual qualified v143/Ninja build and final CTest8/8; errors/Close/copy/clock/legacy
-ABI tested. Root architecture checker actualexit0. DLL9a3cb144 has eight input
-exports and no inference/SDK/Host dependencies; pinned FFmpeg DLLs/937headers verified.
-Color primaries and exact pixel/metadata copy tests strengthened; no open findings.
+Tasks1-3 are committed242956f, b6c1d32 and99a19c0. Task4 independent Unity Windows
+RTSP source passes fresh SpecPASS/QualityPASS after one focused review-fix round.
+Actual H.264/TCP fixture final8/8 tests and all Unity child exits0; shared Core11/11
+and UnitySources18/18 regressions pass. Architecture checker actualexit0/PASS.
+The allocator-failure double-free was reproduced through actual Fail/Close and fixed
+transactionally; targeted RED→GREEN and full real-stream regression both retained.
+All55 frozen source/artifact hashes match; all34 protected R4 file hashes unchanged.
 
-Native Close is cancellation-only; ReleaseBUSY preserves handle until worker/copy
-retirement. New clock is explicitly independent; Windows output is CPU RGBA/top-left,
-unknown color stays unknown. Shared FFmpeg nonprinting callback prevents credential
-output. Existing HV_Rtsp code/export signatures remain untouched. The local Ninja
-stale-header object incident is closed with bounded reconstruction/header rebuild
-proof; original overwritten fault binary/dump unavailable, no exact-stack claim.
-[Task3 commands, evidence and limits](reports/2026-10-02-unified-input-task3.md).
-[Task2 independent preview and bounded camera probe](reports/2026-10-02-unified-input-task2.md).
+No-model preview, actual orientation/mirror, reconnect generation, stale-image
+clearing and asynchronous native/source-copy retirement are verified in the Editor.
+Warm50 publications/2s measured0 managed Update allocations only; separate native
+and managed clocks do not establish sensor age or skeleton performance.
+[Task4 commands, evidence and limits](reports/2026-10-02-unified-input-task4.md).
+[Task3 standalone native ABI](reports/2026-10-02-unified-input-task3.md).
+[Task2 independent Unity sources](reports/2026-10-02-unified-input-task2.md).
 [Task1 contracts and clocks](reports/2026-10-01-unified-input-task1.md).
 [Approved sequential plan](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
 
-Task4 Unity RTSP source/controlled real H264TCP playback/reconnect is next;
-Task3 loopback tests validate real failed TCP attempts, not successful RTSP protocol.
-Android hardware decode/GPU producer/adapter/three packaged demos are later tasks.
-Task2 input-only camera source~30publicationFPS is not skeleton FPS or sensor age.
-Actual external copy fences and native Task5-8 ownership gates remain mandatory.
-Camera raw skeleton~11FPS; >=25/30 fresh complete observation goal remainsFAIL.
-No final physical acceptance, main merge or Release. M3 remains sole active milestone;
-all34existing protected R4 files/caches and user Unity project preserved.
+MilestoneB Tasks3/4 verified. Task5 next: actual Snapdragon888 MediaCodec PRIVATE
+AHB and Vulkan enabled-capability gate. No Task6 import/color implementation before
+Task5 review/commit and devicePASS. Independent native input must not link inference
+libraries or route Android through CPU RGBA. Mandatory external GPU sync/ownership
+and source-copy retirement remain unchanged; Tasks6-11 remain unimplemented.
+Camera raw skeleton~11FPS; >=25 interim/30 fresh complete observation frames/s FAIL.
+User Unity project and caches preserved. No final physical acceptance, main merge
+or Release. M3 remains sole active milestone outside this approved input subplan.
 
 # Current YOLO-M3: bounded execution/resolution trial complete (2026-10-01)
 
