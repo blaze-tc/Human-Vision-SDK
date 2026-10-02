@@ -1,31 +1,35 @@
-# Current: unified-input Task4 verified; Android capability gate next (2026-10-02)
+# Current: unified-input Task5 verified; Vulkan image import next (2026-10-02)
 
-Tasks1-3 are committed242956f, b6c1d32 and99a19c0. Task4 independent Unity Windows
-RTSP source passes fresh SpecPASS/QualityPASS after one focused review-fix round.
-Actual H.264/TCP fixture final8/8 tests and all Unity child exits0; shared Core11/11
-and UnitySources18/18 regressions pass. Architecture checker actualexit0/PASS.
-The allocator-failure double-free was reproduced through actual Fail/Close and fixed
-transactionally; targeted RED→GREEN and full real-stream regression both retained.
-All55 frozen source/artifact hashes match; all34 protected R4 file hashes unchanged.
+Tasks1-4 committed242956f, b6c1d32,99a19c0 ande1f5c73. Task5 independent Android
+hardware input capability gate passes fresh SpecPASS/QualityPASS after one focused
+review-fix round. Native API26/ARM64 build/import closure audit exit0; Windows23/23
+actual tests PASS including old8 regressions,4 policy and11 declaration tests.
+Architecture/public-surface checks exit0/PASS. Frozen13 sources/73 artifacts match;
+all34 protected preexisting R4 files remain unchanged, user project/caches retained.
 
-No-model preview, actual orientation/mirror, reconnect generation, stale-image
-clearing and asynchronous native/source-copy retirement are verified in the Editor.
-Warm50 publications/2s measured0 managed Update allocations only; separate native
-and managed clocks do not establish sensor age or skeleton performance.
-[Task4 commands, evidence and limits](reports/2026-10-02-unified-input-task4.md).
-[Task3 standalone native ABI](reports/2026-10-02-unified-input-task3.md).
-[Task2 independent Unity sources](reports/2026-10-02-unified-input-task2.md).
-[Task1 contracts and clocks](reports/2026-10-01-unified-input-task1.md).
+Actual Snapdragon888 MediaCodec PRIVATE AHB query gate PASS. Initial Unity default
+logical-device FAIL is preserved; input-only preinit now explicitly requests the
+necessary physically supported capabilities, preserving Unity's request. Actual
+successful same-physical/same-Unity-device enabled proof, AHB externalFormat506 and
+sync-fd import/export support confirmed on3 images. Conflicting/duplicate feature
+chains reject before physical queries/create; focused RED6/11→GREEN11/11 retained.
+APK d854cee8 equals installed-base; nativeb485413e and all input-only entries verified.
+AImage/AHB/fd counts retire to0; actualfd-1 alreadycomplete only, no positivefdwait.
+[Task5 exact commands, device evidence and limits](reports/2026-10-02-unified-input-task5.md).
+[Task4 real H264TCP preview](reports/2026-10-02-unified-input-task4.md).
+[Task3 independent native ABI](reports/2026-10-02-unified-input-task3.md).
+[Task2 sources](reports/2026-10-02-unified-input-task2.md).
 [Approved sequential plan](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
 
-MilestoneB Tasks3/4 verified. Task5 next: actual Snapdragon888 MediaCodec PRIVATE
-AHB and Vulkan enabled-capability gate. No Task6 import/color implementation before
-Task5 review/commit and devicePASS. Independent native input must not link inference
-libraries or route Android through CPU RGBA. Mandatory external GPU sync/ownership
-and source-copy retirement remain unchanged; Tasks6-11 remain unimplemented.
+5/11 input tasks verified. Task6 next: actual AHB import/cache/GPU color conversion.
+Before any actual sampling/FOREIGN_EXT ownership, qualify+enable the missing foreign
+queue extension and safe acquire/return synchronization. Task5 is query-only with
+three images, not production RTSP texture output or full GPU ownership proof.
+Task7 full three-slot/sync lifecycle remains serial; Tasks8-11 adapter/packages/demos/
+acceptance remain later. No decoded CPU image/readback/inference fallback route.
 Camera raw skeleton~11FPS; >=25 interim/30 fresh complete observation frames/s FAIL.
-User Unity project and caches preserved. No final physical acceptance, main merge
-or Release. M3 remains sole active milestone outside this approved input subplan.
+No final physical acceptance, main merge or Release. M3 remains sole active SDK
+milestone outside this approved input subplan; no inference optimization claim.
 
 # Current YOLO-M3: bounded execution/resolution trial complete (2026-10-01)
 

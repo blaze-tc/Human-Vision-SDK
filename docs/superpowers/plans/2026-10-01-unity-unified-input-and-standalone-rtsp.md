@@ -94,10 +94,10 @@ Task1审查ruling：设计要求时间戳时钟域优先于上述简写字段列
 **Files:** Create `native/input/src/android/mediacodec_source.cpp`, `native/input/src/android/ahb_capabilities.cpp`, `native/input/include/android_input_gpu.h`, `tests/input/test_android_input_capabilities.cpp`, input包 `Tests/PlayMode/AndroidInputCapabilityProbe.cs`; Extend `tools/package/build_input_native.ps1` Android参数；Create `tools/test/collect_android_input_gate.ps1`。
 **Interfaces:** Task3压缩H.264 packets；`AndroidDecodedImage`内部lease携带AImage/AHB、acquire-fd、generation、PTS/本地时间。`ProbeDecodedBuffer(AHardwareBuffer*,VkPhysicalDevice,InputGpuCapabilities*)`查询实际AHB format/externalFormat、sampled/YCbCr/features和sync-fd，decoder/AImageReader PRIVATE usage组合必须真机可用。
 
-- [ ] RED：能力单测`MissingExternalFormatFailsExplicitly`/`MissingSyncFdCannotAdmit`；真实MediaCodec→AImageReader PRIVATE + GPU sampled probe未实现时不能标记PASS。
-- [ ] Run `pwsh -NoProfile -File tools/package/build_input_native.ps1 -Platform Android -ApiLevel 26 -RunTests`；API26 ARM64符号/依赖审计，不链接ncnn/ORT/humanvision。
-- [ ] 实现异步MediaCodec hardware output Surface，AImageReader acquireLatestImageAsync；无CPU image planes/RGBA staging。先查询codec支持与实际buffer属性，不能把RGBA/TRANSFER_DST或任意usage写死。
-- [ ] Run `pwsh -NoProfile -File tools/test/collect_android_input_gate.ps1 -Gate Capabilities -Serial e7c07019 -Output out/input/task5-device`。Snapdragon888实流打印actual codec/format/externalFormat/usage/features/fence能力（分别验证physical支持和Unity logical device实际启用的YCbCr/sync能力），不含URL凭据。缺能力FAIL停止C，不走软件/CPU。review并提交Task5能力结果后，只有PASS进入Task6。
+- [x] RED：能力单测`MissingExternalFormatFailsExplicitly`/`MissingSyncFdCannotAdmit`；真实MediaCodec→AImageReader PRIVATE + GPU sampled probe未实现时不能标记PASS。
+- [x] Run `pwsh -NoProfile -File tools/package/build_input_native.ps1 -Platform Android -ApiLevel 26 -RunTests`；API26 ARM64符号/依赖审计，不链接ncnn/ORT/humanvision。
+- [x] 实现异步MediaCodec hardware output Surface，AImageReader acquireLatestImageAsync；无CPU image planes/RGBA staging。先查询codec支持与实际buffer属性，不能把RGBA/TRANSFER_DST或任意usage写死。
+- [x] Run `pwsh -NoProfile -File tools/test/collect_android_input_gate.ps1 -Gate Capabilities -Serial e7c07019 -Output out/input/task5-device`。Snapdragon888实流打印actual codec/format/externalFormat/usage/features/fence能力（分别验证physical支持和Unity logical device实际启用的YCbCr/sync能力），不含URL凭据。缺能力FAIL停止C，不走软件/CPU。review并提交Task5能力结果后，只有PASS进入Task6。
 
 ### Task6: Unity Vulkan解码buffer导入与GPU色彩转换
 

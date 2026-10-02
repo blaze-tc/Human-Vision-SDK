@@ -10,7 +10,9 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#ifdef _WIN32
 #include <libswscale/swscale.h>
+#endif
 }
 namespace hvinput {
 int64_t NowUs();
@@ -30,6 +32,7 @@ struct Session {
   std::mutex mutex;
   std::condition_variable wake;
   std::thread worker;
+  std::atomic<bool> worker_done{false};
   std::string error;
   std::vector<uint8_t> latest, scratch;
   HV_InputFrameInfo info{};
@@ -37,7 +40,9 @@ struct Session {
   void Run() noexcept;
   void Decode();
   void SetError(const char *stage, int code);
+#ifdef _WIN32
   void Publish(AVFrame *, SwsContext *&, AVRational, int64_t received_us);
+#endif
 };
 } // namespace hvinput
 struct HV_InputSessionOpaque : hvinput::Session {};

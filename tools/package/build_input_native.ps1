@@ -1,10 +1,77 @@
-param([ValidateSet('Windows')][string]$Platform='Windows',[switch]$RunTests,
+param([ValidateSet('Windows','Android')][string]$Platform='Windows',[switch]$RunTests,
+      [ValidateSet(26)][int]$ApiLevel=26,
+      [string]$AndroidNdk='D:/Developer/2022.3.61t4/Editor/Data/PlaybackEngines/AndroidPlayer/NDK',
       [string]$VisualStudio='D:/Microsoft Visual Studio',
       [string]$MsvcIncludePrefix='注意: 包含文件:  ')
 $ErrorActionPreference='Stop'
 $repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $cmake="$VisualStudio/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
 $ninja="$VisualStudio/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe"
+if($Platform -eq 'Android') {
+    $build=Join-Path $repo 'out/input-native/android'
+    New-Item -ItemType Directory -Force $build | Out-Null
+    $common=& git -C $repo rev-parse --path-format=absolute --git-common-dir
+    $main=Split-Path $common -Parent
+    $verify=@'
+import sys,pathlib,runpy,hashlib,zipfile,json
+repo,main,build=map(pathlib.Path,sys.argv[1:])
+lock=runpy.run_path(str(repo/'tools/setup/prepare_live_dependencies.py'))['PACKAGES']
+path=next((r/'out/ffmpeg-android.jar' for r in (repo,main) if (r/'out/ffmpeg-android.jar').is_file()),None)
+if path is None or hashlib.sha256(path.read_bytes()).hexdigest()!=lock['ffmpeg-android.jar'][1]: raise RuntimeError('Locked Android FFmpeg cache missing or invalid')
+receipt={'archive_sha256':lock['ffmpeg-android.jar'][1],'libraries':{}}
+with zipfile.ZipFile(path) as jar:
+ for entry in jar.namelist():
+  leaf=pathlib.PurePosixPath(entry).name
+  if leaf.endswith('.so') and 'jni' not in leaf:
+   target=repo/'out/live-deps/ffmpeg-android'/leaf
+   digest=hashlib.sha256(jar.read(entry)).hexdigest()
+   if not target.is_file() or hashlib.sha256(target.read_bytes()).hexdigest()!=digest: raise RuntimeError('Unqualified Android library: '+leaf)
+   receipt['libraries'][leaf]=digest
+(build/'ffmpeg-provenance.json').write_text(json.dumps(receipt,indent=2))
+'@
+    & py -3.13 -c $verify $repo $main $build
+    if($LASTEXITCODE -ne 0){throw 'Android dependency provenance failed'}
+    & $cmake --fresh -S "$repo/native/input" -B $build -G Ninja "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_TOOLCHAIN_FILE=$AndroidNdk/build/cmake/android.toolchain.cmake" -DANDROID_ABI=arm64-v8a "-DANDROID_PLATFORM=android-$ApiLevel" -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+    if($LASTEXITCODE -ne 0){throw 'Input Android configure failed'}
+    & $cmake --build $build
+    if($LASTEXITCODE -ne 0){throw 'Input Android build failed'}
+    $readelf="$AndroidNdk/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-readelf.exe"
+    & $readelf -h -d -Ws "$build/libhumanvision_input.so" > "$build/dependency-symbol-audit.txt"
+    if($LASTEXITCODE -ne 0){throw 'Android audit failed'}
+    $audit=Get-Content "$build/dependency-symbol-audit.txt" -Raw
+    if($audit -notmatch 'AArch64' -or $audit -match 'onnxruntime|ncnn|libhumanvision\.so|runtime_host|sws_scale|AImage_getPlaneData|AHardwareBuffer_lock'){throw 'Input Android independence/CPU-path audit failed'}
+    $nm="$AndroidNdk/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-nm.exe"
+    $required=& $nm -D --undefined-only "$build/libhumanvision_input.so"
+    $system=@{}
+    foreach($library in @('libc.so','libm.so','libdl.so','libandroid.so','libmediandk.so','liblog.so')){
+      foreach($line in (& $nm -D --defined-only "$AndroidNdk/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/lib/aarch64-linux-android/$ApiLevel/$library")){
+        if($line -match '\s([A-Za-z_]\w*)(?:@.*)?$'){$system[$matches[1]]=$true}
+      }
+    }
+    foreach($library in @('libavformat.so','libavcodec.so','libavutil.so','libswresample.so')) {
+      foreach($line in (& $nm -D --defined-only "$repo/out/live-deps/ffmpeg-android/$library")) {if($line -match '\s([A-Za-z_]\w*)(?:@.*)?$'){$system[$matches[1]]=$true}}
+    }
+    $unresolved=@($required | ForEach-Object {if($_ -match '\sU\s+(\w+)'){if(-not $system.ContainsKey($matches[1])){$matches[1]}}})
+    if($unresolved.Count){throw "API26 unresolved imports: $($unresolved -join ',')"}
+    $closure=@("$build/libhumanvision_input.so")+@('libavformat.so','libavcodec.so','libavutil.so','libswresample.so' | ForEach-Object {"$repo/out/live-deps/ffmpeg-android/$_"})
+    $closureReceipt=@()
+    foreach($library in $closure) {
+      $required=& $nm -D --undefined-only $library
+      $unresolved=@($required | ForEach-Object {if($_ -match '\sU\s+(\w+)'){if(-not $system.ContainsKey($matches[1])){$matches[1]}}})
+      if($unresolved.Count){throw "API26 dependency unresolved imports ($library): $($unresolved -join ',')"}
+      $elf=& $readelf -h -d $library
+      if($LASTEXITCODE -ne 0 -or ($elf -join "`n") -notmatch 'AArch64'){throw "Invalid ARM64 dependency: $library"}
+      $closureReceipt+=@{path=$library;sha256=(Get-FileHash $library).Hash;strongImportsResolvedApi=26;elf=($elf -join "`n")}
+    }
+    $closureReceipt | ConvertTo-Json -Depth 5 | Set-Content "$build/api26-closure-audit.json"
+    if($RunTests){
+      # Build and execute actual Windows policy tests plus all unchanged ABI/session regressions.
+      & pwsh -NoProfile -File $PSCommandPath -Platform Windows -RunTests -VisualStudio $VisualStudio -MsvcIncludePrefix $MsvcIncludePrefix
+      if($LASTEXITCODE -ne 0){throw 'Input host tests failed'}
+    }
+    Get-FileHash "$build/libhumanvision_input.so" -Algorithm SHA256
+    exit 0
+}
 $dev="$VisualStudio/Common7/Tools/VsDevCmd.bat"
 $environment=& cmd.exe /d /c "call `"$dev`" -no_logo -arch=x64 -host_arch=x64 -vcvars_ver=14.44 >nul && set"
 if($LASTEXITCODE -ne 0){throw 'v143 environment initialization failed'}
@@ -15,6 +82,14 @@ $env:VSLANG='1033'
 # prefix explicitly with -MsvcIncludePrefix to preserve header dependencies.
 $build=Join-Path $repo 'out/input-native/windows'
 New-Item -ItemType Directory -Force $build | Out-Null
+# Host declaration tests use the same qualified NDK Vulkan type declarations.
+# Copy only its two Vulkan headers, so NDK libc headers cannot shadow MSVC's.
+$vulkanHeaders=Join-Path $repo 'out/input-native/vulkan-host-headers/vulkan'
+New-Item -ItemType Directory -Force $vulkanHeaders | Out-Null
+foreach($header in @('vulkan_core.h','vk_platform.h')){
+    Copy-Item -LiteralPath "$AndroidNdk/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/include/vulkan/$header" -Destination $vulkanHeaders -Force
+}
+Get-FileHash "$vulkanHeaders/vulkan_core.h","$vulkanHeaders/vk_platform.h" -Algorithm SHA256 | ConvertTo-Json | Set-Content "$build/vulkan-header-provenance.json"
 $common=& git -C $repo rev-parse --path-format=absolute --git-common-dir
 if($LASTEXITCODE -ne 0){throw 'Cannot locate cached dependency provenance'}
 $main=Split-Path $common -Parent

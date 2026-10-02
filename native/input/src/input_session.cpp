@@ -2,7 +2,11 @@
 #include <cstring>
 #include <memory>
 #include <new>
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <unistd.h>
+#endif
 namespace hvinput {
 static const auto origin = std::chrono::steady_clock::now();
 int64_t NowUs() {
@@ -12,7 +16,13 @@ int64_t NowUs() {
 }
 uint64_t ClockId() {
   return static_cast<uint64_t>(origin.time_since_epoch().count()) ^
-         (static_cast<uint64_t>(GetCurrentProcessId()) << 32);
+         (static_cast<uint64_t>(
+#ifdef _WIN32
+           GetCurrentProcessId()
+#else
+           getpid()
+#endif
+          ) << 32);
 }
 int Session::Interrupt(void *p) {
   auto *s = static_cast<Session *>(p);
@@ -44,6 +54,7 @@ void Session::Run() noexcept {
     wake.wait_for(lock, std::chrono::milliseconds(reconnect_delay_ms),
                   [this] { return stop.load(); });
   }
+  worker_done = true;
 }
 } // namespace hvinput
 namespace {
@@ -51,8 +62,12 @@ template <class T> bool Valid(T *p) {
   return p && p->size == sizeof(T) && p->version == HV_INPUT_ABI_VERSION;
 }
 bool Retired(HV_InputHandle h) {
+#ifdef _WIN32
   return h->active_copies == 0 &&
          WaitForSingleObject(h->worker.native_handle(), 0) == WAIT_OBJECT_0;
+#else
+  return h->active_copies == 0 && h->worker_done;
+#endif
 }
 struct CopyScope {
   hvinput::Session &session;
@@ -101,7 +116,11 @@ HV_INPUT_API int HV_INPUT_CALL HV_Input_Open(const HV_InputOptions *o,
     s->info.timestamp_kind = HV_INPUT_TIME_LOCAL_DECODE;
     s->info.row_origin = HV_INPUT_ROW_TOP_LEFT;
     s->info.color_space = HV_INPUT_COLOR_SRGB;
+#ifdef _WIN32
     s->info.decode_mode = HV_INPUT_DECODE_CPU_RGBA;
+#else
+    s->info.decode_mode = 0; // GPU PRIVATE source; no CPU RGBA contract.
+#endif
     hvinput::InstallSafeLog();
     s->worker = std::thread(&hvinput::Session::Run, s.get());
     *out = s.release();
