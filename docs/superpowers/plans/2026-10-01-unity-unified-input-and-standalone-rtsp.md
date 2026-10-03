@@ -134,10 +134,10 @@ Task1审查ruling：设计要求时间戳时钟域优先于上述简写字段列
 **Files:** Create Unity `Assets/HumanVision/Demo/Input/HumanVisionInputAdapter.cs`, `Tests/EditMode/InputAdapterTests.cs`；Modify Demo `VideoPlayerFrameSource.cs`, `Live/HumanVisionCameraManager.cs`, `Live/HumanVisionLiveSource.cs`；对应UPM Demo同功能镜像。
 **Interfaces:** Task1/8。`HumanVisionInputAdapter.Bind(IHumanVisionFrameSource source)`/`Detach()`；只消费generation/actual geometry/Texture，调用既有提交/骨骼API。FramePreview无需adapter/manager。旧StartCamera、GetColorImageTex、Video路径方法保留签名并转发新source；旧RTSP导出保持。
 
-- [ ] RED：`UprightPreviewAndInferenceShareCoordinateContract`对asymmetric标记只做一次旋转/镜像，native top-row normalization显式一次；`UnsupportedPortraitPreviewContinuesButInferenceFails`；`AdapterDetachKeepsPreviewRunning`；`SlowInferenceNeverThrottlesPreview`。
-- [ ] Run `pwsh -NoProfile -File tools/test/run_input_tests.ps1 -Phase Adapter -Output out/input/task9`；缺适配器FAIL。明确NCNNfail-fast/profile选择不变；ORT兼容模式仅显式既有路径，不优化/静默切换。
-- [ ] 实现adapter/compat wrappers，并用独立preview Texture和已验证GPU输入行契约，lease结束按Task8copy-only退休。禁每帧JSON/Task/分配；模型MaxBodies设置与source无关，Region仍bbox/pelvis assignment。
-- [ ] GREEN实际Windows/Android conditional compilation及公共API反射测试；分别编译真正UPM来源，不能用Unity-source测试替代旧CPU-only UPM GPU迁移。未批准R4代码不混入包；review后commit `feat: adapt unified Unity frames to stable skeleton APIs`。
+- [x] RED：`UprightPreviewAndInferenceShareCoordinateContract`对asymmetric标记只做一次旋转/镜像，native top-row normalization显式一次；`UnsupportedPortraitPreviewContinuesButInferenceFails`；`AdapterDetachKeepsPreviewRunning`；`SlowInferenceNeverThrottlesPreview`。
+- [x] Run `pwsh -NoProfile -File tools/test/run_input_tests.ps1 -Phase Adapter -Output out/input/task9`；缺适配器FAIL。明确NCNNfail-fast/profile选择不变；ORT兼容模式仅显式既有路径，不优化/静默切换。
+- [x] 实现adapter/compat wrappers，并用独立preview Texture和已验证GPU输入行契约，lease结束按Task8copy-only退休。禁每帧JSON/Task/分配；模型MaxBodies设置与source无关，Region仍bbox/pelvis assignment。
+- [x] GREEN实际Windows/Android conditional compilation及公共API反射测试；分别编译真正UPM来源，不能用Unity-source测试替代旧CPU-only UPM GPU迁移。未批准R4代码不混入包；review后commit `feat: adapt unified Unity frames to stable skeleton APIs`。
 
 ### Task10: 独立输入包、三个演示场景与干净导入
 

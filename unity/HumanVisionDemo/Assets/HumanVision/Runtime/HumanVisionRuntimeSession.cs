@@ -149,6 +149,13 @@ namespace HumanVision
         }
         public bool CopyRegions(long sequence, int[] indices, out long revision)
         { revision = _native.Revision; if (sequence != ResultSequence || indices.Length < BodyCount) return false; Array.Copy(_regions, indices, BodyCount); return true; }
+        internal bool SubmitUnifiedGpuFrame(Texture preview,RenderTexture target,in HumanVision.Input.HumanVisionTextureFrame frame,
+            long timestampUs,HumanVisionAndroidFrameCopyFence fence) {
+            if(_gpuBridge==null)throw new InvalidOperationException("The selected runtime does not accept GPU input.");
+            bool accepted=_gpuBridge.SubmitCopy(preview,target,in frame,timestampUs,fence);
+            if(accepted)_submitted++;
+            return accepted;
+        }
         public void RefreshStats()
         {
             if (UsesGpuFrames) {

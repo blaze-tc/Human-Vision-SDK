@@ -14,6 +14,9 @@
 #endif
 
 #include <android/hardware_buffer.h>
+#if defined(HV_ANDROID_GPU_GATE) && !defined(HV_ANDROID_ADAPTER_TEST)
+#include <android/log.h>
+#endif
 #include <unistd.h>
 #include <vulkan/vulkan_android.h>
 
@@ -72,6 +75,7 @@ struct AndroidSlot {
   VkFormat format = VK_FORMAT_UNDEFINED;
   uint32_t width = 0, height = 0;
   bool destination_initialized = false;
+  bool command_writes_destination = false;
   bool submitted = false;
   bool export_pending = false;
   const std::atomic<bool>* device_live = nullptr;
@@ -150,7 +154,7 @@ public:
 
   UnityVulkanBridgeDispatch MakeDispatch() noexcept {
     return {this, Create, Drain, Access, PrepareSource, Release, QueueAccess, Blit,
-            Color, Submit, Export, Complete, Cancel, RetireSourceViews};
+            Color, Submit, Export, Complete, Cancel, RetireSourceViews, RecordSourceRetirement};
   }
 
   bool Configure(const AhbSelection &selection,
@@ -191,6 +195,7 @@ public:
     if (bridge_.IsQuarantined() || !texture || !device_live_.load(std::memory_order_acquire) ||
         source_lease_texture_.load(std::memory_order_acquire)) return false;
     source_image_.store(0, std::memory_order_release);
+    multi_source_.store(false, std::memory_order_release);
     source_retiring_.store(false, std::memory_order_release);
     source_lease_generation_.store(bridge_.Generation(), std::memory_order_release);
     source_lease_token_.fetch_add(1, std::memory_order_acq_rel);
@@ -253,6 +258,7 @@ public:
       configuration_event_inflight_.store(false, std::memory_order_release);
   }
 public:
+  std::atomic<bool> multi_source_{false};
   bool SourceRequiresRetention() const noexcept { return bridge_.IsQuarantined(); }
   static void UNITY_INTERFACE_API RenderEvent(int event_id, void *data) noexcept {
     if (event_id == 1) Get().ConfigurationEvent(data);
@@ -340,6 +346,14 @@ public:
       return BridgeResult::Closed;
     }
     return bridge_.Prepare(s, out);
+  }
+  BridgeResult PrepareCopy(const HV_AndroidGpuSubmissionV1& s, uint64_t source_id,
+      uint64_t source_generation, void** out, HV_AndroidGpuFrameCopyTicketV2& ticket) noexcept {
+    if (source_retiring_.load() || !device_live_.load() || !source_lease_texture_.load()) return BridgeResult::Closed;
+    if (bridge_.IsClosed()) return Prepare(s, out); // measurement: no submitted frame ticket
+    if (source_lease_generation_.load() != bridge_.Generation()) return BridgeResult::Closed;
+    multi_source_.store(true, std::memory_order_release);
+    return bridge_.PrepareCopy(s, source_id, source_generation, out, ticket);
   }
   void Status(HV_AndroidGpuBridgeStatusV1 &s) noexcept {
     bridge_.GetStatus(s);
@@ -673,6 +687,7 @@ private:
     source_lease_texture_.store(nullptr, std::memory_order_release);
     source_lease_generation_.store(0, std::memory_order_release);
     source_image_.store(0, std::memory_order_release);
+    multi_source_.store(false, std::memory_order_release);
     source_lease_token_.fetch_add(1, std::memory_order_acq_rel);
     std::lock_guard<std::mutex> pending(source_requests_mutex_);
     for (auto& request : source_requests_) request = {};
@@ -772,7 +787,8 @@ private:
       if (!request.slot || request.bridge_generation != bridge_.Generation() ||
           request.lease_token != source_lease_token_.load(std::memory_order_acquire) ||
           !source_lease_texture_.load(std::memory_order_acquire) ||
-          reinterpret_cast<uintptr_t>(request.image) != source_image_.load(std::memory_order_acquire) ||
+          (!multi_source_.load(std::memory_order_acquire) &&
+           reinterpret_cast<uintptr_t>(request.image) != source_image_.load(std::memory_order_acquire)) ||
           !request.slot->Alive()) continue;
       std::unique_lock<std::mutex> source(request.slot->source_mutex);
       bool found = false;
@@ -1368,11 +1384,13 @@ private:
     auto *slot = S(cache);
     if (!slot || !slot->Alive())
       return SourcePreparation::Unsupported;
-    if (!self || self->source_lease_texture_.load(std::memory_order_acquire) != access.texture ||
+    if (!self || (!self->multi_source_.load(std::memory_order_acquire) &&
+        self->source_lease_texture_.load(std::memory_order_acquire) != access.texture) ||
         self->source_lease_generation_.load(std::memory_order_acquire) != self->bridge_.Generation())
       return SourcePreparation::Unsupported;
     uintptr_t expected_image = 0;
-    if (!self->source_image_.compare_exchange_strong(expected_image, access.image,
+    if (!self->multi_source_.load(std::memory_order_acquire) &&
+        !self->source_image_.compare_exchange_strong(expected_image, access.image,
                                                      std::memory_order_acq_rel) &&
         expected_image != access.image) {
       self->runtime_error_.store(2, std::memory_order_release);
@@ -1436,11 +1454,15 @@ private:
     // AccessQueue may invoke the callback synchronously. Do not hold the drain
     // mutex across the Unity call; the admitted callback count prevents
     // teardown from observing a false zero in either schedule.
+#if defined(HV_ANDROID_GPU_GATE) && !defined(HV_ANDROID_ADAPTER_TEST)
+    __android_log_print(ANDROID_LOG_INFO, "HVTask9", "queue_access flush=1 queue=%p", reinterpret_cast<void*>(self.device_context_.graphics_queue));
+#endif
     self.vulkan_->AccessQueue(&QueueCallback, 0, data, true);
     return true;
   }
   static bool Begin(AndroidSlot &s, const UnityTextureAccess& access,
                     const BridgeBarrier *b, uint32_t n) noexcept {
+    s.command_writes_destination = false;
 #if defined(HV_ANDROID_R4_PARITY)
     if (s.submitted && s.parity) {
       if (vkGetFenceStatus(s.device, s.submission_fence) != VK_SUCCESS) return false;
@@ -1459,8 +1481,14 @@ private:
         v.oldLayout = static_cast<VkImageLayout>(access.native_layout);
         v.srcAccessMask = static_cast<VkAccessFlags>(access.native_access);
       }
-      if (i == 1 && !s.destination_initialized)
+      if (i == 1 && !s.destination_initialized) {
+        // This SDK-allocated, never-written exclusive image discards contents
+        // on its first use. Later copies reacquire the real EXTERNAL release.
         v.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        v.srcAccessMask = 0;
+        v.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        v.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      }
       vkCmdPipelineBarrier(s.command,
                            i == 0 ? static_cast<VkPipelineStageFlags>(
                                         access.native_stage)
@@ -1505,7 +1533,8 @@ private:
         access.diagnostic_generation, access.diagnostic_source_id, access.diagnostic_slot)) return false;
 #endif
     EndBarriers(*s, access, b);
-    return vkEndCommandBuffer(s->command) == VK_SUCCESS;
+    s->command_writes_destination = vkEndCommandBuffer(s->command) == VK_SUCCESS;
+    return s->command_writes_destination;
   }
   static bool Color(void *p, const UnityVulkanSlotCache &c,
                     const UnityTextureAccess &access, const BridgeBarrier *b,
@@ -1547,7 +1576,16 @@ private:
         access.diagnostic_generation, access.diagnostic_source_id, access.diagnostic_slot)) return false;
 #endif
     EndBarriers(*s, access, b);
-    return vkEndCommandBuffer(s->command) == VK_SUCCESS;
+    s->command_writes_destination = vkEndCommandBuffer(s->command) == VK_SUCCESS;
+    return s->command_writes_destination;
+  }
+  static bool RecordSourceRetirement(void*, const UnityVulkanSlotCache& cache) noexcept {
+    auto* slot = S(cache);
+    if (slot) slot->command_writes_destination = false;
+    if (!slot || !slot->Alive() || vkResetCommandBuffer(slot->command, 0) != VK_SUCCESS) return false;
+    VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    return vkBeginCommandBuffer(slot->command, &begin) == VK_SUCCESS && vkEndCommandBuffer(slot->command) == VK_SUCCESS;
   }
   static bool Submit(void *, const UnityVulkanDeviceContext &dc,
                      const UnityVulkanSlotCache &c) noexcept {
@@ -1560,8 +1598,13 @@ private:
     si.signalSemaphoreCount = 1;
     si.pSignalSemaphores = &s->semaphore;
     const bool ok = vkQueueSubmit(Q(dc), 1, &si, s->submission_fence) == VK_SUCCESS;
+#if defined(HV_ANDROID_GPU_GATE) && !defined(HV_ANDROID_ADAPTER_TEST)
+    __android_log_print(ANDROID_LOG_INFO, "HVTask9", "vk_submit queue=%p fence=%p command=%p ok=%u", reinterpret_cast<void*>(Q(dc)), reinterpret_cast<void*>(s->submission_fence), reinterpret_cast<void*>(s->command), unsigned(ok));
+#endif
     if (ok) {
-      s->destination_initialized = true;
+      // A source-only fence covers earlier Unity normalization on this queue,
+      // but never transitions or initializes this untouched AHB destination.
+      if (s->command_writes_destination) s->destination_initialized = true;
       s->submitted = true;
       s->export_pending = true;
     }
@@ -1725,6 +1768,16 @@ BridgeResult PrepareUnityVulkanFrame(const HV_AndroidGpuSubmissionV1 &s,
                                      void **out) noexcept {
   return AndroidProducer::Get().Prepare(s, out);
 }
+BridgeResult PrepareUnityVulkanFrameCopy(const HV_AndroidGpuSubmissionV1& s, uint64_t id,
+    uint64_t generation, void** event, HV_AndroidGpuFrameCopyTicketV2& ticket) noexcept {
+  return AndroidProducer::Get().PrepareCopy(s, id, generation, event, ticket);
+}
+BridgeResult CancelUnityVulkanFrameCopy(const HV_AndroidGpuFrameCopyTicketV2& ticket) noexcept {
+  return AndroidProducer::Get().GateBridge()->CancelCopy(ticket);
+}
+BridgeResult PollUnityVulkanFrameCopy(const HV_AndroidGpuFrameCopyTicketV2& ticket, uint32_t& outcome) noexcept {
+  return AndroidProducer::Get().GateBridge()->PollCopy(ticket, outcome);
+}
 void GetUnityVulkanProducerStatus(HV_AndroidGpuBridgeStatusV1 &s) noexcept {
   AndroidProducer::Get().Status(s);
 }
@@ -1823,6 +1876,10 @@ BridgeResult RetireUnityVulkanSourceCopies(uint64_t, HV_AndroidGpuSourceRetireme
 BridgeResult PollUnityVulkanSourceRetirement(const HV_AndroidGpuSourceRetirementV2&) noexcept { return BridgeResult::Closed; }
 bool UnityVulkanSourceRequiresRetention() noexcept { return false; }
 void ShutdownUnityVulkanProducer() noexcept {}
+BridgeResult PrepareUnityVulkanFrameCopy(const HV_AndroidGpuSubmissionV1&, uint64_t,
+    uint64_t, void**, HV_AndroidGpuFrameCopyTicketV2&) noexcept { return BridgeResult::Closed; }
+BridgeResult CancelUnityVulkanFrameCopy(const HV_AndroidGpuFrameCopyTicketV2&) noexcept { return BridgeResult::Closed; }
+BridgeResult PollUnityVulkanFrameCopy(const HV_AndroidGpuFrameCopyTicketV2&, uint32_t&) noexcept { return BridgeResult::Closed; }
 BridgeResult PrepareUnityVulkanFrame(const HV_AndroidGpuSubmissionV1 &,
                                      void **out) noexcept {
   if (out)

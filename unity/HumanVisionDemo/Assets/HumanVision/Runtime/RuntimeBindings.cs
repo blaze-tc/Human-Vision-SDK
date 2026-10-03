@@ -70,6 +70,13 @@ namespace HumanVision.Interop
         internal static extern int HV_RuntimeRecordSourceFrameV2(IntPtr handle, uint rateLimited);
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
         internal static extern int HV_RuntimeSetCaptureProvenanceV2(IntPtr handle, uint provenance);
+        [DllImport(Library, CallingConvention=CallingConvention.Cdecl)]
+        internal static extern int HV_RuntimePrepareAndroidGpuFrameCopy(IntPtr runtime, ref AndroidGpuSubmissionClockNative frame,
+            ulong sourceId, ulong sourceGeneration, out IntPtr eventData, ref AndroidGpuFrameCopyTicketNative ticket);
+        [DllImport(Library, CallingConvention=CallingConvention.Cdecl)]
+        internal static extern int HV_AndroidGpuPollFrameCopy(ref AndroidGpuFrameCopyTicketNative ticket,out uint outcome);
+        [DllImport(Library, CallingConvention=CallingConvention.Cdecl)]
+        internal static extern int HV_AndroidGpuCancelUnissuedFrameCopy(ref AndroidGpuFrameCopyTicketNative ticket);
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
         internal static extern int HV_RuntimePrepareAndroidGpuFrame(IntPtr handle, ref AndroidGpuSubmissionNative frame, out IntPtr renderEventData);
         [DllImport("humanvision", CallingConvention = CallingConvention.Cdecl, EntryPoint = "HV_RuntimePrepareAndroidGpuFrame")]

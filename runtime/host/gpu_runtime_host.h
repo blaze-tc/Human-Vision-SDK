@@ -97,6 +97,10 @@ public:
     bool CompleteRetirement(const HV_AndroidGpuSourceRetirementV2&) noexcept;
     gpu::BridgeResult Prepare(void* owner,const HV_AndroidGpuSubmissionV1&,void**,
                               PrepareFn,DimensionsFn) noexcept;
+    using PrepareCopyFn = gpu::BridgeResult (*)(const HV_AndroidGpuSubmissionV1&, uint64_t,
+        uint64_t, void**, HV_AndroidGpuFrameCopyTicketV2&) noexcept;
+    gpu::BridgeResult PrepareCopy(void*, const HV_AndroidGpuSubmissionV1&, uint64_t, uint64_t,
+        void**, HV_AndroidGpuFrameCopyTicketV2&, PrepareCopyFn, DimensionsFn) noexcept;
 private:
     mutable std::mutex mutex_;
     void* owner_=nullptr;

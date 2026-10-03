@@ -252,4 +252,15 @@ gpu::BridgeResult GpuSourceLeaseCoordinator::Prepare(void* owner,
         dimensions(owner,static_cast<uint32_t>(submission.width),static_cast<uint32_t>(submission.height));
     return result;
 }
+gpu::BridgeResult GpuSourceLeaseCoordinator::PrepareCopy(void* owner,
+    const HV_AndroidGpuSubmissionV1& submission, uint64_t source_id, uint64_t generation,
+    void** event, HV_AndroidGpuFrameCopyTicketV2& ticket, PrepareCopyFn prepare, DimensionsFn dimensions) noexcept {
+    std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+    if (!lock.owns_lock()) return gpu::BridgeResult::Busy;
+    if (!owner || owner_ != owner || retirement_generation_ || !prepare || !dimensions) return gpu::BridgeResult::Closed;
+    const auto result = prepare(submission, source_id, generation, event, ticket);
+    if (result == gpu::BridgeResult::Ok) dimensions(owner, submission.width, submission.height);
+    return result;
+}
+
 }

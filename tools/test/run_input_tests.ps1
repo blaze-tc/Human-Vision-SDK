@@ -12,6 +12,11 @@ $outputPath = [IO.Path]::GetFullPath((Join-Path $repo $Output))
 $allowedOutput = [IO.Path]::GetFullPath((Join-Path $repo 'out/input')) + [IO.Path]::DirectorySeparatorChar
 if (-not $outputPath.StartsWith($allowedOutput, [StringComparison]::OrdinalIgnoreCase)) { throw 'Output must be inside this checkout out/input directory.' }
 if (-not (Test-Path -LiteralPath $Unity -PathType Leaf)) { throw "Unity executable missing: $Unity" }
+if($Phase -eq 'Adapter') {
+    & "$PSScriptRoot/task9_managed_verify.ps1" -Kind canonical -Output "$Output-adapter"
+    & "$PSScriptRoot/task9_managed_verify.ps1" -Kind upm -Output "$Output-adapter"
+    return
+}
 if ($Phase -notin @('Core','UnitySources')) { throw "Phase $Phase is not implemented yet; no tests ran." }
 $project = Join-Path $outputPath 'project'
 foreach ($directory in @($project, (Join-Path $project 'Assets'), (Join-Path $project 'Packages'), (Join-Path $project 'ProjectSettings'))) {
@@ -31,7 +36,7 @@ foreach ($package in @('com.unity.test-framework@1.1.33', 'com.unity.ext.nunit@1
 @{ dependencies = $dependencies; testables = @('com.blazetc.humanvision.input') } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $project 'Packages/manifest.json') -Encoding utf8
 "m_EditorVersion: 2021.3.45f1`nm_EditorVersionWithRevision: 2021.3.45f1 (0da89fac8e79)" | Set-Content -LiteralPath (Join-Path $project 'ProjectSettings/ProjectVersion.txt') -Encoding utf8
 
-$coreNames = @('AndroidInitializationFailureRemainsActionable', 'OldGenerationCannotPublish', 'ClosingWaitsForCopyNotInference', 'FrameMetadataUsesActualGeometry', 'InputAssemblyHasNoInferenceReferences', 'EveryOutstandingCopyMustCompleteBeforeResourceRetires', 'ForeignOrRetiredResourceCannotAcquireLease', 'TextureCannotHaveTwoIndependentDestroyOwners', 'PublicationTimelineRejectsInvalidValuesAndPreservesLatest', 'PublicationTimelineContinuesAcrossGenerations', 'TimestampContractDeclaresIndependentClockAndSourceObservation', 'SourceObservationValidityRespectsClockDomain') | ForEach-Object { "HumanVision.Input.Tests.FrameContractTests.$_" }
+$coreNames = @('AndroidInitializationFailureRemainsActionable', 'OldGenerationCannotPublish', 'ClosingWaitsForCopyNotInference', 'FrameMetadataUsesActualGeometry', 'InputAssemblyHasNoInferenceReferences', 'EveryOutstandingCopyMustCompleteBeforeResourceRetires', 'ForeignOrRetiredResourceCannotAcquireLease', 'TextureCannotHaveTwoIndependentDestroyOwners', 'PublicationTimelineRejectsInvalidValuesAndPreservesLatest', 'PublicationTimelineContinuesAcrossGenerations', 'TimestampContractDeclaresIndependentClockAndSourceObservation', 'SourceObservationValidityRespectsClockDomain', 'CopyLeaseReuseWaitsForExactRetirementAcknowledgment') | ForEach-Object { "HumanVision.Input.Tests.FrameContractTests.$_" }
     $selections = @(@{ platform='EditMode'; filter=$TestFilter; expected=$(if($TestFilter -eq 'HumanVision.Input.Tests.FrameContractTests'){$coreNames}else{@($TestFilter)}) })
 if ($Phase -eq 'UnitySources') {
     $fixture = 'E:/Project/Human Vision SDK/video-1.mp4'

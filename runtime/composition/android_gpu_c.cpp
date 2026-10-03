@@ -94,6 +94,45 @@ HV_Result HV_CALL HV_RuntimeEndAndroidGpuSourceLease(HV_RuntimeHandle runtime) {
 #endif
 }
 
+HV_Result HV_CALL HV_RuntimePrepareAndroidGpuFrameCopy(HV_RuntimeHandle runtime,
+    const HV_AndroidGpuSubmissionV1* submission, uint64_t source_id, uint64_t generation,
+    void** event, HV_AndroidGpuFrameCopyTicketV2* ticket) {
+    if (event) *event = nullptr;
+    if (!runtime || !submission || !event || !ticket || ticket->struct_size != sizeof(*ticket) ||
+        ticket->api_version != 2 || !source_id || !generation ||
+        submission->struct_size < sizeof(*submission) || submission->api_version != HV_ANDROID_GPU_API_V1 ||
+        !submission->unity_texture || submission->width <= 0 || submission->height <= 0 ||
+        submission->frame_id <= 0 || submission->timestamp_us < 0 ||
+        (submission->rotation_degrees != 0 && submission->rotation_degrees != 90 &&
+         submission->rotation_degrees != 180 && submission->rotation_degrees != 270) || submission->mirrored > 1)
+        return HV_ERR_INVALID_ARGUMENT;
+#if defined(__ANDROID__)
+    static_cast<humanvision::runtime::RuntimeSession*>(runtime)->RecordGpuCaptureAttempt();
+    HV_AndroidGpuFrameCopyTicketV2 next{};
+    const auto result = humanvision::runtime::GpuSourceLeaseCoordinator::Instance().PrepareCopy(
+        runtime, *submission, source_id, generation, event, next, humanvision::gpu::PrepareUnityVulkanFrameCopy,
+        [](void* owner, uint32_t w, uint32_t h) noexcept {
+            static_cast<humanvision::runtime::RuntimeSession*>(owner)->RecordGpuDimensions(w, h);
+        });
+    if (result == humanvision::gpu::BridgeResult::Ok) *ticket = next;
+    if (result == humanvision::gpu::BridgeResult::DroppedNoSlot)
+        static_cast<humanvision::runtime::RuntimeSession*>(runtime)->RecordGpuNoSlotDrop();
+    return humanvision::gpu::AndroidBridgeResultCode(result);
+#else
+    return Unsupported(runtime);
+#endif
+}
+HV_Result HV_CALL HV_AndroidGpuCancelUnissuedFrameCopy(const HV_AndroidGpuFrameCopyTicketV2* ticket) {
+    if (!ticket || ticket->struct_size != sizeof(*ticket) || ticket->api_version != 2) return HV_ERR_INVALID_ARGUMENT;
+    return humanvision::gpu::AndroidBridgeResultCode(humanvision::gpu::CancelUnityVulkanFrameCopy(*ticket));
+}
+HV_Result HV_CALL HV_AndroidGpuPollFrameCopy(const HV_AndroidGpuFrameCopyTicketV2* ticket, uint32_t* outcome) {
+    if (outcome) *outcome = 0;
+    if (!ticket || !outcome || ticket->struct_size != sizeof(*ticket) || ticket->api_version != 2)
+        return HV_ERR_INVALID_ARGUMENT;
+    return humanvision::gpu::AndroidBridgeResultCode(humanvision::gpu::PollUnityVulkanFrameCopy(*ticket, *outcome));
+}
+
 HV_Result HV_CALL HV_RuntimePrepareAndroidGpuFrame(HV_RuntimeHandle runtime,
     const HV_AndroidGpuSubmissionV1* submission, void** out_render_event_data) {
     if (out_render_event_data) *out_render_event_data = nullptr;

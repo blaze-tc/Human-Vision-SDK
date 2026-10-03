@@ -143,6 +143,7 @@ struct UnityVulkanBridgeDispatch {
                               const UnityVulkanSlotCache &) noexcept = nullptr;
   void (*cancel_and_drain_events)(void *) noexcept = nullptr;
   void (*retire_source_views)(void *, UnityVulkanSlotCache &) noexcept = nullptr;
+  bool (*record_source_retirement)(void *, const UnityVulkanSlotCache&) noexcept = nullptr;
 };
 
 class UnityVulkanBridge {
@@ -159,6 +160,10 @@ public:
     std::atomic<bool> queue_pending{false};
     std::atomic<bool> texture_accessed{false};
     std::atomic<bool> source_copy_pending{false};
+    bool drop_only = false;
+    std::atomic<bool> copy_unproven{false};
+    HV_AndroidGpuFrameCopyTicketV2 copy_ticket{};
+    std::atomic<uint64_t> ticket_reservation{0};
     UnityTextureAccess access{};
     std::array<BridgeBarrier, 4> barriers{};
   };
@@ -177,6 +182,10 @@ public:
   BridgeResult PollSourceRetirement(uint64_t token) noexcept;
   BridgeResult Prepare(const HV_AndroidGpuSubmissionV1 &,
                        void **event_data) noexcept;
+  BridgeResult PrepareCopy(const HV_AndroidGpuSubmissionV1&, uint64_t source_id,
+                           uint64_t source_generation, void**, HV_AndroidGpuFrameCopyTicketV2&) noexcept;
+  BridgeResult CancelCopy(const HV_AndroidGpuFrameCopyTicketV2&) noexcept;
+  BridgeResult PollCopy(const HV_AndroidGpuFrameCopyTicketV2&, uint32_t& outcome) noexcept;
   BridgeResult Render(void *event_identity) noexcept;
   // Native worker only. The borrowed AHB and fd stay valid until RetireConsumer.
   SlotResult ClaimConsumer(ConsumerFrame&) noexcept;
@@ -211,6 +220,7 @@ private:
   static void DrainSlot(void *, uint32_t, AhbSlotState, SlotResources &,
                         SyncFd &) noexcept;
   void RetireWithoutSubmission(const SlotToken &) noexcept;
+  void RetireSourceWithoutCopy(EventRecord&) noexcept;
   BridgeResult ExecuteQueue(EventRecord *) noexcept;
   bool Enter() const noexcept;
   void Leave() const noexcept;

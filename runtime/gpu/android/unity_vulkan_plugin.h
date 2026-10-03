@@ -25,6 +25,10 @@ bool UnityVulkanSourceRequiresRetention() noexcept;
 void ShutdownUnityVulkanProducer() noexcept;
 BridgeResult PrepareUnityVulkanFrame(const HV_AndroidGpuSubmissionV1 &,
                                      void **) noexcept;
+BridgeResult PrepareUnityVulkanFrameCopy(const HV_AndroidGpuSubmissionV1&, uint64_t,
+    uint64_t, void**, HV_AndroidGpuFrameCopyTicketV2&) noexcept;
+BridgeResult CancelUnityVulkanFrameCopy(const HV_AndroidGpuFrameCopyTicketV2&) noexcept;
+BridgeResult PollUnityVulkanFrameCopy(const HV_AndroidGpuFrameCopyTicketV2&, uint32_t&) noexcept;
 void GetUnityVulkanProducerStatus(HV_AndroidGpuBridgeStatusV1 &) noexcept;
 void *UnityVulkanRenderEventFunction() noexcept;
 const char *UnityVulkanProducerDiagnostic() noexcept;

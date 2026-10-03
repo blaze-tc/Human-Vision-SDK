@@ -1,40 +1,27 @@
-# Current: unified-input Task8 verified; continuous SDK adapter next (2026-10-02)
+# Current: unified-input Task9 verified; three usable Demos next (2026-10-03)
 
-Tasks1-7 committed242956f,b6c1d32,99a19c0,e1f5c73,a60a3fe,4d1823d,a0d6e10.
-Task8 fresh Spec/Quality PASS after one initialization-test fix. Source-copy
-retirement uses additive24-byte V2 token/fence state and retains already-copied
-AHB/ConsumerFrame ownership. V1 and old synchronous End remain unchanged.
-Generation token is Close/detach-only; continuous per-frame copy tickets remain
-Task9. Both native plugins' initializer chain has representative deterministic
-both-order coverage plus one actual successful combined physical load order.
+9/11 tasks verified with separate commits and fresh spec/quality review. Task9
+adds the unified SDK adapter, three reusable GPU normalization targets and exact
+per-submission copy tickets; preview is independent of inference and detach.
+Original gates pass native92/92, canonical6/6 and actual UPM6/6 and both Android
+IL2CPP/Vulkan builds. Four review findings then receive scoped fixes and affected
+validation; exact new evidence is in the Task9 report. Old APKs do not qualify the
+changed native bytes. V1 and explicit backend selection stay stable.
+Existing dirty R4 changes and caches remain preserved outside reviewed commits.
 
-Qualified host86/86, canonical+CPU-onlyUPM3/3 each, API26/506-import guard-OFF
-closure/export audit PASS. Test-only fix has behavioralRED and focused clean2/2
-GREEN; no unchanged APK/native/managed/device matrix rerun. Original immutable
-148 artifacts and new23 fix artifacts retain failures and exact source bindings.
-Minor managed retained-reference assertion and legacy warning qualification are
-recorded for final review. Builds are not claimed warning-free.
-
-Actual Snapdragon888 input/private SDK-copy gate: two realGPUcopies, source token
-ready while realConsumerFrame held, old admission rejected, new admission pending
-then newcopy complete after release;247 releaseFD pairs balanced, terminal input
-and SDK resource counts/copyerrors0. Close129.837ms is lifecycle latency, not
-main-thread call timing. Physical fixture is no-inference; public model/continuous
-adapter and skeleton output are not certified. Positive acquireFD hardware remains
-unqualified; API26 native does not certify API26-28 hardware-codec runtime.
-[Task8 evidence and limits](reports/2026-10-02-unified-input-task8.md).
-[Task7 lifecycle](reports/2026-10-02-unified-input-task7.md).
+Actual Snapdragon888 controlled RTSP gate has visible seven-person bones in a
+sample,298 real source-copy fence acknowledgments and terminal resources/errors0.
+Fresh complete observation FPS7.858103; ageP50/P95206.107/311.822ms. Output
+sampling60.0844FPS and25FPS source are not fresh skeleton FPS. GUI draw intervals
+and failed screenrecord do not certify smooth display. 25/30 goals remain FAIL.
+[Task9 evidence and limits](reports/2026-10-03-unified-input-task9.md).
 [Approved sequential plan](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
 
-8/11 input tasks verified. Task9 next: native per-submission copy tickets and
-unified SDK adapter; Task10 three usable Camera/Video/RTSP Demos and clean package
-imports; Task11 physical acceptance/maintenance delivery. Temporary diagnostic
-RTSP publisher/USB reverse is removed after tests; reopening alone has no stream.
-Visible preview/status now identifies no recognition. Camera raw skeleton~11FPS;
-25 interim/30 fresh complete observation frames/s remain unmet. No model/Renderer/
-ORT optimization, fallback, final physical acceptance, main merge or Release.
-User Unity project/caches and existing R4 dirty edits retained; M3 remains sole
-active SDK milestone.
+Task10 next: actual Camera/Video/RTSP scenes, common navigation/settings, prior
+tested skeleton renderer, independent no-model input preview and clean package
+imports. Task11: physical acceptance and maintenance. Temporary diagnostic RTSP
+publishers are removed after collection; diagnostics are not final demos.
+No performance acceptance, main merge or Release; sole SDK milestone remains M3.
 
 # Current YOLO-M3: bounded execution/resolution trial complete (2026-10-01)
 

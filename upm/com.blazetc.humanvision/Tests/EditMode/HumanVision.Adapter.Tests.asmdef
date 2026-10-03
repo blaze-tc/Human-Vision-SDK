@@ -1,0 +1,27 @@
+{
+  "name": "HumanVision.Tests.EditMode",
+  "rootNamespace": "HumanVision.Tests",
+  "references": [
+    "HumanVision.Runtime",
+    "HumanVision.Demo",
+    "HumanVision.Input"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": true,
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "nunit.framework.dll"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

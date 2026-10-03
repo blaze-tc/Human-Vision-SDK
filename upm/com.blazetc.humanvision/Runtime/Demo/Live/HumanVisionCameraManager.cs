@@ -78,6 +78,7 @@ namespace HumanVision
                 if (!TryInitializeRuntime(ResolveRuntimeProfile())) return false;
                 long revision = ++_revision;
                 _bridge.StopFrames();
+                if(_bridge.UnifiedRetirementPending){Status="Retiring source copies; preview continues. Apply again after completion.";return false;}
                 Array.Clear(_slots, 0, _slots.Length);
                 if (!_manager.TrySetMaxBodies(Settings.people) ||
                     !_manager.TrySetRegions(Settings.useRegions ? Settings.regions : Array.Empty<Rect>(), revision)) {
@@ -86,6 +87,7 @@ namespace HumanVision
                 _slots = new HumanVisionBody[Settings.people];
                 _assignments = new int[Settings.people];
                 _regionsEnabled = Settings.useRegions;
+                if (_source.FrameSource != null) _bridge.BindUnifiedSource(_source.FrameSource);
                 Status = "Settings applied";
                 return true;
             } catch (Exception e) { Status = e.Message; return false; }
@@ -119,9 +121,11 @@ namespace HumanVision
         }
         public void StartCamera()
         {
-            if (!ApplySettings()) return;
-            try { _source.Open(Settings); Status = "Camera requested"; }
-            catch (Exception e) { Status = e.Message; }
+            try {
+                _source.Open(Settings);
+                if (!ApplySettings()) return;
+                Status = "Camera requested";
+            } catch (Exception e) { Status = e.Message; }
         }
         public void StopCamera() { if (_source != null) _source.Close(); Array.Clear(_slots, 0, _slots.Length); }
         public void SaveSettings()
@@ -161,7 +165,7 @@ namespace HumanVision
         public bool TryGetSampledBodyByRegionIndex(int index, out HumanVisionBody body)
         {
             body = null;
-            if (!IsReady || !_source.HasRecentFrame) return false;
+            if (!IsReady || !_source.HasRecentFrame || !_bridge.CanPresentResult(_manager.SourceFrameId)) return false;
             for (int i = 0; i < _manager.SampledBodyCount; i++) {
                 var candidate = _manager.SampledBodies[i];
                 if (candidate.RegionIndex == index) { body = candidate; return true; }

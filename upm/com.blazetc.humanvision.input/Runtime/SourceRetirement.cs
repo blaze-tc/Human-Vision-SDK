@@ -25,6 +25,9 @@ namespace HumanVision.Input
             this.identity = identity;
         }
 
+        /// <summary>True only after this exact lease identity was consumed or cancelled.</summary>
+        public bool IsRetired => owner == null || owner.IsCopyRetired(slot, identity);
+
         public void RetireAfter(ISourceCopyFence fence)
         {
             if (owner == null) throw new InvalidOperationException("No source copy lease was acquired.");
@@ -166,6 +169,12 @@ namespace HumanVision.Input
             ValidateCopy(slot, identity);
             if (copies[slot].Fence != null) throw new InvalidOperationException("A queued GPU copy cannot be cancelled. Poll its fence.");
             CompleteCopy(slot);
+        }
+
+        internal bool IsCopyRetired(int slot, ulong identity)
+        {
+            CheckThread();
+            return slot < 0 || slot >= copies.Length || identity == 0 || copies[slot].Identity != identity;
         }
 
         private void ValidateCopy(int slot, ulong identity)

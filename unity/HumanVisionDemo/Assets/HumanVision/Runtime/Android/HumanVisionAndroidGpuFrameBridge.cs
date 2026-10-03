@@ -195,6 +195,44 @@ namespace HumanVision
             return true;
         }
 
+        internal static void NormalizeNativeRows(Texture source,RenderTexture target,HumanVision.Input.FrameRowOrigin origin)
+            =>Graphics.Blit(source,target,origin==HumanVision.Input.FrameRowOrigin.UnityBottomLeft?new Vector2(1,-1):Vector2.one,
+                origin==HumanVision.Input.FrameRowOrigin.UnityBottomLeft?new Vector2(0,1):Vector2.zero);
+        internal bool SubmitCopy(Texture preview, RenderTexture target, in HumanVision.Input.HumanVisionTextureFrame frame,
+            long timestampUs, HumanVisionAndroidFrameCopyFence fence)
+        {
+            if (_leasedTexture == IntPtr.Zero) Begin(target);
+            var submission = new AndroidGpuSubmissionClockNative {
+                Size=56,Version=1,Texture=target.GetNativeTexturePtr(),Width=frame.Width,Height=frame.Height,
+                FrameId=frame.FrameId,TimestampUs=timestampUs,RotationDegrees=0,Mirrored=0,
+                // Publication availability is explicitly distinct from sensor/decode time.
+                CaptureSteadyUs=RuntimeBindings.HV_RuntimeClockUs()-Math.Max(0,(long)(Time.realtimeSinceStartupAsDouble*1000000.0)-timestampUs)
+            };
+            var ticket=new AndroidGpuFrameCopyTicketNative{Size=64,Version=2};
+            int result=RuntimeBindings.HV_RuntimePrepareAndroidGpuFrameCopy(_runtime,ref submission,frame.SourceId,frame.Generation,out IntPtr eventData,ref ticket);
+            if(result==1){
+                if(eventData!=IntPtr.Zero){_commands.Clear();_commands.IssuePluginEventAndData(_renderEvent,1,eventData);Graphics.ExecuteCommandBuffer(_commands);}
+                return false; // No normalization command has been executed.
+            }
+            Check(result,"reserve source frame copy");
+            if(eventData==IntPtr.Zero||ticket.Reservation==0)throw new InvalidOperationException("Native copy reservation is missing.");
+            fence.Bind(ticket,preview,target);
+            bool executeAttempted=false;
+            try {
+                _commands.Clear();
+                executeAttempted=true;
+                NormalizeNativeRows(preview,target,frame.RowOrigin);
+                _commands.IssuePluginEventAndData(_renderEvent,0,eventData);
+                executeAttempted=true;
+                Graphics.ExecuteCommandBuffer(_commands);
+            } catch {
+                if(!executeAttempted)Check(RuntimeBindings.HV_AndroidGpuCancelUnissuedFrameCopy(ref fence.Token),"cancel unissued source copy");
+                // An Execute attempt with unknown completion retains both strong owners.
+                throw;
+            }
+            return true;
+        }
+
         internal string Diagnostics
         {
             get

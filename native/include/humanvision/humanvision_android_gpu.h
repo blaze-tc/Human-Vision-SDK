@@ -88,6 +88,29 @@ HV_API HV_Result HV_CALL HV_AndroidGpuRetireSourceCopies(
 HV_API HV_Result HV_CALL HV_AndroidGpuPollSourceRetirement(
     const HV_AndroidGpuSourceRetirementV2* token);
 
+/* Per-submission copy acknowledgment. Poll consumes an exact reservation once.
+ * COPIED requires the actual native submission fence; DROPPED_UNSUBMITTED
+ * means no SDK AHB copy/inference publication. Previously queued Unity source
+ * normalization may still require its real retirement fence. Neither outcome
+ * waits inference. */
+#define HV_ANDROID_GPU_FRAME_COPIED 1u
+#define HV_ANDROID_GPU_FRAME_DROPPED_UNSUBMITTED 2u
+typedef struct HV_AndroidGpuFrameCopyTicketV2 {
+    uint32_t struct_size, api_version;
+    uint64_t source_id, source_generation, bridge_generation;
+    int64_t frame_id;
+    uint64_t reservation, event_identity;
+    uint32_t slot, flags;
+} HV_AndroidGpuFrameCopyTicketV2;
+HV_API HV_Result HV_CALL HV_RuntimePrepareAndroidGpuFrameCopy(
+    HV_RuntimeHandle runtime, const HV_AndroidGpuSubmissionV1* submission,
+    uint64_t source_id, uint64_t source_generation, void** out_render_event_data,
+    HV_AndroidGpuFrameCopyTicketV2* out_ticket);
+/* Cancel only before any Unity normalization/event command was executed. */
+HV_API HV_Result HV_CALL HV_AndroidGpuCancelUnissuedFrameCopy(const HV_AndroidGpuFrameCopyTicketV2* ticket);
+HV_API HV_Result HV_CALL HV_AndroidGpuPollFrameCopy(
+    const HV_AndroidGpuFrameCopyTicketV2* ticket, uint32_t* out_outcome);
+
 HV_API HV_Result HV_CALL HV_RuntimePrepareAndroidGpuFrame(
     HV_RuntimeHandle runtime,
     const HV_AndroidGpuSubmissionV1* submission,

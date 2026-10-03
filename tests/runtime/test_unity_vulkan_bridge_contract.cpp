@@ -97,8 +97,9 @@ struct FakeVulkan {
 
   UnityVulkanBridgeDispatch Dispatch() {
     return {this, Create, Drain, Access, PrepareSource, Release, Queue, Blit,
-            Color, Submit, Export, Complete, Cancel};
+            Color, Submit, Export, Complete, Cancel, nullptr, Empty};
   }
+  static bool Empty(void*, const UnityVulkanSlotCache&) noexcept { return true; }
   static bool Create(void *p, uint32_t index,
                      const UnityVulkanDeviceContext &device,
                      const SlotContract &, const AhbSelection &selection,
@@ -303,6 +304,90 @@ HV_AndroidGpuSubmissionV1 Submission(int64_t frame) {
           frame * 1000,
           0,
           0};
+}
+
+TEST(UnityVulkanBridgeContract, FrameCopyTicketRequiresActualFenceAndNotInference) {
+  FakeVulkan vk;
+  vk.complete = false;
+  UnityVulkanBridge bridge(vk.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  void* event = nullptr;
+  HV_AndroidGpuFrameCopyTicketV2 ticket{};
+  ASSERT_EQ(bridge.PrepareCopy(Submission(1), 17, 23, &event, ticket), BridgeResult::Ok);
+  uint32_t outcome = 0;
+  EXPECT_EQ(bridge.PollCopy(ticket, outcome), BridgeResult::Busy);
+  ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+  ConsumerFrame held;
+  ASSERT_EQ(bridge.ClaimConsumer(held), SlotResult::Ok);
+  EXPECT_EQ(bridge.PollCopy(ticket, outcome), BridgeResult::Busy);
+  vk.complete = true;
+  EXPECT_EQ(bridge.PollCopy(ticket, outcome), BridgeResult::Ok);
+  EXPECT_EQ(outcome, HV_ANDROID_GPU_FRAME_COPIED);
+  EXPECT_TRUE(held.claimed);
+  EXPECT_EQ(bridge.PollCopy(ticket, outcome), BridgeResult::Invalid);
+  ASSERT_EQ(bridge.RetireConsumer(held, CompletionProof::GpuQuiescent), SlotResult::Ok);
+}
+
+TEST(UnityVulkanBridgeContract, FrameCopyTicketAcknowledgesUnsubmittedDropAndRejectsForeignIdentity) {
+  FakeVulkan vk;
+  vk.source_preparation = SourcePreparation::Warmed;
+  vk.complete = false;
+  UnityVulkanBridge bridge(vk.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  void* event = nullptr;
+  HV_AndroidGpuFrameCopyTicketV2 ticket{};
+  ASSERT_EQ(bridge.PrepareCopy(Submission(1), 17, 23, &event, ticket), BridgeResult::Ok);
+  auto foreign = ticket; ++foreign.source_generation;
+  uint32_t outcome = 0;
+  EXPECT_EQ(bridge.PollCopy(foreign, outcome), BridgeResult::Invalid);
+  EXPECT_EQ(bridge.Render(event), BridgeResult::Busy);
+  EXPECT_EQ(bridge.PollCopy(ticket, outcome), BridgeResult::Busy);
+  EXPECT_EQ(outcome, 0u);
+  ConsumerFrame absent;
+  EXPECT_NE(bridge.ClaimConsumer(absent), SlotResult::Ok);
+  vk.complete = true;
+  EXPECT_EQ(bridge.PollCopy(ticket, outcome), BridgeResult::Ok);
+  EXPECT_EQ(outcome, HV_ANDROID_GPU_FRAME_DROPPED_UNSUBMITTED);
+  EXPECT_GT(vk.completion_checks, 0u);
+}
+
+TEST(UnityVulkanBridgeContract, FrameCopyTicketPreventsRecordReuseUntilExactAcknowledgment) {
+  FakeVulkan vk;
+  UnityVulkanBridge bridge(vk.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  for (int frame = 1; frame != 25; ++frame) {
+    void* event = nullptr;
+    HV_AndroidGpuFrameCopyTicketV2 ticket{};
+    ASSERT_EQ(bridge.PrepareCopy(Submission(frame * 200), 17, 23, &event, ticket), BridgeResult::Ok);
+    ASSERT_EQ(bridge.Render(event), BridgeResult::Ok);
+    ConsumerFrame consumer;
+    ASSERT_EQ(bridge.ClaimConsumer(consumer), SlotResult::Ok);
+    ASSERT_EQ(bridge.RetireConsumer(consumer, CompletionProof::GpuQuiescent), SlotResult::Ok);
+    void* blocked_event = nullptr;
+    HV_AndroidGpuFrameCopyTicketV2 blocked_ticket{};
+    EXPECT_EQ(bridge.PrepareCopy(Submission(frame * 200 + 1), 17, 23, &blocked_event, blocked_ticket), BridgeResult::DroppedNoSlot);
+    EXPECT_EQ(blocked_event, nullptr);
+    uint32_t outcome = 0;
+    ASSERT_EQ(bridge.PollCopy(ticket, outcome), BridgeResult::Ok);
+    ASSERT_EQ(outcome, HV_ANDROID_GPU_FRAME_COPIED);
+    EXPECT_EQ(bridge.Render(event), BridgeResult::Closed);
+  }
+}
+
+TEST(UnityVulkanBridgeContract, CancelUnissuedCopyDoesNotWaitGpuAndLateEventCannotExecute) {
+  FakeVulkan vk;
+  vk.complete = false;
+  UnityVulkanBridge bridge(vk.Dispatch());
+  ASSERT_TRUE(bridge.Initialize(Device(), Selection(HV_ANDROID_GPU_COPY_BLIT), Contract()));
+  void* event = nullptr;
+  HV_AndroidGpuFrameCopyTicketV2 ticket{};
+  ASSERT_EQ(bridge.PrepareCopy(Submission(1), 17, 23, &event, ticket), BridgeResult::Ok);
+  EXPECT_EQ(bridge.CancelCopy(ticket), BridgeResult::Ok);
+  EXPECT_EQ(bridge.Render(event), BridgeResult::Closed);
+  uint32_t outcome = 0;
+  EXPECT_EQ(bridge.PollCopy(ticket, outcome), BridgeResult::Ok);
+  EXPECT_EQ(outcome, HV_ANDROID_GPU_FRAME_DROPPED_UNSUBMITTED);
+  EXPECT_EQ(vk.completion_checks, 0u);
 }
 
 TEST(UnityVulkanBridgeContract, RetireSourceDoesNotWaitInference) {

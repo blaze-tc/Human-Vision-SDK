@@ -3,7 +3,8 @@
   "rootNamespace": "HumanVision.Demo",
   "references": [
     "HumanVision.Runtime",
-    "UnityEngine.UI"
+    "UnityEngine.UI",
+    "HumanVision.Input"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

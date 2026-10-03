@@ -783,6 +783,41 @@ TEST(UnityVulkanAndroidAdapter,
   EXPECT_EQ(g.unity_access_calls, before_queue);
   EXPECT_FALSE(g.access_from_queue);
 }
+TEST(UnityVulkanAndroidAdapter, SourceOnlyRetirementDoesNotInitializeFirstDestinationCopy) {
+  using namespace humanvision::gpu;
+  g=AdapterFacts{};UnityVulkanSlotCache cache{};
+  ASSERT_TRUE(AndroidProducer::TestCreate(0,Device(),Contract(HV_ANDROID_GPU_COPY_BLIT),Selection(HV_ANDROID_GPU_COPY_BLIT),cache));
+  auto dispatch=AndroidProducer::Get().MakeDispatch();
+  ASSERT_TRUE(dispatch.record_source_retirement(dispatch.context,cache));
+  ASSERT_TRUE(dispatch.submit_signal(dispatch.context,Device(),cache));
+  EXPECT_TRUE(g.barriers.empty());
+  SyncFd fd;ASSERT_TRUE(dispatch.export_sync_fd(dispatch.context,Device(),cache,fd));
+  g.fence_complete=false;
+  EXPECT_FALSE(dispatch.submission_complete(dispatch.context,Device(),cache));
+  g.fence_complete=true;
+  ASSERT_TRUE(dispatch.submission_complete(dispatch.context,Device(),cache));
+  UnityTextureAccess access{};access.image=900;access.width=320;access.height=240;
+  access.native_layout=VK_IMAGE_LAYOUT_GENERAL;access.native_stage=VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+  auto barriers=Barriers(access.image,cache.image);
+  ASSERT_TRUE(AndroidProducer::TestBlit(cache,access,barriers.data()));
+  ASSERT_EQ(g.barriers.size(),4u);
+  EXPECT_EQ(g.barriers[1].barrier.oldLayout,VK_IMAGE_LAYOUT_UNDEFINED);
+  EXPECT_EQ(g.barriers[1].barrier.srcAccessMask,0u);
+  EXPECT_EQ(g.barriers[1].barrier.srcQueueFamilyIndex,VK_QUEUE_FAMILY_IGNORED);
+  EXPECT_EQ(g.barriers[1].barrier.dstQueueFamilyIndex,VK_QUEUE_FAMILY_IGNORED);
+  ASSERT_TRUE(dispatch.submit_signal(dispatch.context,Device(),cache));
+  ASSERT_TRUE(dispatch.export_sync_fd(dispatch.context,Device(),cache,fd));
+  ASSERT_TRUE(dispatch.submission_complete(dispatch.context,Device(),cache));
+  g.barriers.clear();ASSERT_TRUE(dispatch.record_source_retirement(dispatch.context,cache));
+  ASSERT_TRUE(dispatch.submit_signal(dispatch.context,Device(),cache));
+  ASSERT_TRUE(dispatch.export_sync_fd(dispatch.context,Device(),cache,fd));
+  ASSERT_TRUE(dispatch.submission_complete(dispatch.context,Device(),cache));
+  ASSERT_TRUE(AndroidProducer::TestBlit(cache,access,barriers.data()));
+  EXPECT_EQ(g.barriers[1].barrier.oldLayout,VK_IMAGE_LAYOUT_GENERAL);
+  EXPECT_EQ(g.barriers[1].barrier.srcQueueFamilyIndex,VK_QUEUE_FAMILY_EXTERNAL);
+  EXPECT_EQ(g.barriers[1].barrier.dstQueueFamilyIndex,5u);
+  AndroidProducer::TestDrain(0,cache);
+}
 TEST(UnityVulkanAndroidAdapter, BlitUsesEntireObservedSourceExtentAndScaledDestination) {
   g=AdapterFacts{}; auto selection=Selection(HV_ANDROID_GPU_COPY_BLIT); humanvision::gpu::UnityVulkanSlotCache cache{};
   ASSERT_TRUE(AndroidProducer::TestCreate(0,Device(),Contract(HV_ANDROID_GPU_COPY_BLIT),selection,cache));
@@ -795,8 +830,8 @@ TEST(UnityVulkanAndroidAdapter, BlitUsesEntireObservedSourceExtentAndScaledDesti
             static_cast<VkImageLayout>(a.native_layout));
   EXPECT_EQ(g.barriers[0].barrier.srcAccessMask, a.native_access);
   EXPECT_EQ(g.barriers[1].barrier.srcQueueFamilyIndex,
-            VK_QUEUE_FAMILY_EXTERNAL);
-  EXPECT_EQ(g.barriers[1].barrier.dstQueueFamilyIndex, 5u);
+            VK_QUEUE_FAMILY_IGNORED);
+  EXPECT_EQ(g.barriers[1].barrier.dstQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED);
   EXPECT_EQ(g.barriers[2].barrier.srcQueueFamilyIndex, 5u);
   EXPECT_EQ(g.barriers[2].barrier.dstQueueFamilyIndex,
             VK_QUEUE_FAMILY_EXTERNAL);
@@ -1130,4 +1165,32 @@ TEST(UnityVulkanAndroidAdapter, QueuedOldConfigurationCannotAliasNewLeaseRequest
   EXPECT_EQ(g.unity_access_calls, before + 1);
   EXPECT_EQ(HV_RuntimeEndAndroidGpuSourceLease(&runtime), HV_OK);
   UnityPluginUnload();
+}
+
+TEST(UnityVulkanAndroidAdapter, V2AdmitsThreeActualImagesAndReusesBoundedViewsWhileV1StaysStrict) {
+ using namespace humanvision::gpu;
+ g=AdapterFacts{};InstallAndCreateUnityDevice();
+ vulkan_api.AccessTexture=UnityAccessTexture;vulkan_api.AccessQueue=UnityAccessQueue;
+ ASSERT_TRUE(ConfigureUnityVulkanProducer(Selection(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT),Contract(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT)));
+ humanvision::runtime::RuntimeSession runtime;
+ ASSERT_EQ(HV_RuntimeBeginAndroidGpuSourceLease(&runtime,reinterpret_cast<void*>(1)),HV_OK);
+ int copied=0, dropped=0;int steady_views=-1;
+ for(int frame=1;frame<=60;frame++) {
+  HV_AndroidGpuSubmissionV1 submission{sizeof(submission),1,reinterpret_cast<void*>(uintptr_t(1+frame%3)),320,240,frame,1000+frame,0,0};
+  void* event=nullptr;HV_AndroidGpuFrameCopyTicketV2 ticket{};
+  ASSERT_EQ(PrepareUnityVulkanFrameCopy(submission,17,23,&event,ticket),BridgeResult::Ok);
+  reinterpret_cast<UnityRenderingEventAndData>(UnityVulkanRenderEventFunction())(0,event);
+  AndroidProducer::TestQuiesceSourceWorker();
+  uint32_t outcome=0;
+  ASSERT_EQ(PollUnityVulkanFrameCopy(ticket,outcome),BridgeResult::Ok);
+  if(outcome==HV_ANDROID_GPU_FRAME_COPIED)copied++;else if(outcome==HV_ANDROID_GPU_FRAME_DROPPED_UNSUBMITTED)dropped++;
+  ConsumerFrame consumer;
+  if(UnityVulkanProducerBridge()->ClaimConsumer(consumer)==SlotResult::Ok)ASSERT_EQ(UnityVulkanProducerBridge()->RetireConsumer(consumer,CompletionProof::GpuQuiescent),SlotResult::Ok);
+  if(frame==30)steady_views=g.view_creates;
+ }
+ EXPECT_GT(copied,0) << "actual source views=" << g.view_creates << ", dropped=" << dropped;EXPECT_GT(dropped,0);EXPECT_EQ(g.view_creates,steady_views);
+ HV_AndroidGpuSubmissionV1 legacy{sizeof(legacy),1,reinterpret_cast<void*>(2),320,240,61,2000,0,0};void* event=nullptr;
+ EXPECT_EQ(PrepareUnityVulkanFrame(legacy,&event),BridgeResult::Closed);
+ EXPECT_EQ(HV_RuntimeEndAndroidGpuSourceLease(&runtime),HV_OK);EXPECT_EQ(g.view_creates,g.view_destroys);EXPECT_EQ(g.ahb_live,0);
+ UnityPluginUnload();
 }

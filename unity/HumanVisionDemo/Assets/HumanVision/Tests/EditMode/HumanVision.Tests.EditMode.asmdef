@@ -4,7 +4,8 @@
   "references": [
     "HumanVision.Runtime",
     "HumanVision.Demo",
-    "HumanVision.Editor"
+    "HumanVision.Editor",
+    "HumanVision.Input"
   ],
   "includePlatforms": [
     "Editor"

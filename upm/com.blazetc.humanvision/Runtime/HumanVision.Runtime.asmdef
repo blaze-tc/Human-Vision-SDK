@@ -1,7 +1,9 @@
 {
   "name": "HumanVision.Runtime",
   "rootNamespace": "HumanVision",
-  "references": [],
+  "references": [
+    "HumanVision.Input"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": true,

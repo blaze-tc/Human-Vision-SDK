@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <chrono>
 #include <limits>
+#if defined(__ANDROID__) && defined(HV_ANDROID_GPU_GATE)
+#include <android/log.h>
+#endif
 
 namespace humanvision::gpu {
 void UnityVulkanBridge::RecordSuccessfulCopy() noexcept {
@@ -183,6 +186,7 @@ BridgeResult UnityVulkanBridge::PollSourceRetirement(uint64_t token) noexcept {
     if (active_calls_.load(std::memory_order_acquire)) return BridgeResult::Busy;
     for (uint32_t i = 0; i < records_.size(); ++i) {
         auto& record = records_[i];
+        if (record.ticket_reservation.load(std::memory_order_acquire)) return BridgeResult::Busy;
         if (record.queue_pending.load(std::memory_order_acquire) ||
             record.texture_accessed.load(std::memory_order_acquire)) return BridgeResult::Busy;
         if (record.source_copy_pending.load(std::memory_order_acquire)) {
@@ -330,6 +334,14 @@ BridgeResult UnityVulkanBridge::Prepare(const HV_AndroidGpuSubmissionV1& submiss
                                                          submission.timestamp_us, token,capture_steady_us));
     if (result != BridgeResult::Ok) return result;
     auto& record = records_[token.index];
+    // A freed inference slot does not authorize overwriting an unacknowledged
+    // source-copy reservation or resetting its actual submission fence.
+    if (record.ticket_reservation.load(std::memory_order_acquire)) {
+        RetireWithoutSubmission(token);
+        return BridgeResult::DroppedNoSlot;
+    }
+    record.source_copy_pending.store(false, std::memory_order_release);
+    record.copy_unproven.store(false, std::memory_order_release); record.drop_only = false;
     const uint64_t reservation = next_reservation_.fetch_add(1, std::memory_order_relaxed);
     record.token = token; record.unity_texture = submission.unity_texture;
     record.submitted_width = static_cast<uint32_t>(submission.width);
@@ -341,6 +353,83 @@ BridgeResult UnityVulkanBridge::Prepare(const HV_AndroidGpuSubmissionV1& submiss
     submitted_frames_.fetch_add(1, std::memory_order_relaxed);
     *event_data = EncodeIdentity(token.index, reservation);
     return BridgeResult::Ok;
+}
+BridgeResult UnityVulkanBridge::PrepareCopy(const HV_AndroidGpuSubmissionV1& s,
+    uint64_t source_id, uint64_t source_generation, void** event,
+    HV_AndroidGpuFrameCopyTicketV2& ticket) noexcept {
+    ticket = {};
+    if (!source_id || !source_generation) return BridgeResult::Invalid;
+    const auto result = Prepare(s, event);
+    if (result != BridgeResult::Ok) return result;
+    uint32_t index; uint64_t reservation;
+    if (!DecodeIdentity(*event, index, reservation)) return BridgeResult::Invalid;
+    ticket = {sizeof(ticket), 2, source_id, source_generation, records_[index].generation,
+              s.frame_id, reservation, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(*event)), index, 0};
+    records_[index].copy_unproven.store(true, std::memory_order_release);
+    records_[index].copy_ticket = ticket;
+    records_[index].ticket_reservation.store(reservation, std::memory_order_release);
+#if defined(__ANDROID__) && defined(HV_ANDROID_GPU_GATE)
+    __android_log_print(ANDROID_LOG_INFO, "HVTask9", "ticket source=%llu generation=%llu frame=%lld reservation=%llu event=%llu slot=%u bridge=%llu", (unsigned long long)source_id, (unsigned long long)source_generation, (long long)s.frame_id, (unsigned long long)reservation, (unsigned long long)ticket.event_identity, index, (unsigned long long)ticket.bridge_generation);
+#endif
+    return BridgeResult::Ok;
+}
+BridgeResult UnityVulkanBridge::CancelCopy(const HV_AndroidGpuFrameCopyTicketV2& ticket) noexcept {
+    if (!Enter()) return BridgeResult::Closed;
+    struct Guard { const UnityVulkanBridge* b; ~Guard(){b->Leave();} } guard{this};
+    if (ticket.struct_size != sizeof(ticket) || ticket.api_version != 2 || ticket.flags || ticket.slot >= records_.size()) return BridgeResult::Invalid;
+    auto& record = records_[ticket.slot];
+    if (record.ticket_reservation.load() != ticket.reservation || record.copy_ticket.source_id != ticket.source_id ||
+        record.copy_ticket.source_generation != ticket.source_generation || record.copy_ticket.frame_id != ticket.frame_id ||
+        record.copy_ticket.bridge_generation != ticket.bridge_generation || record.copy_ticket.event_identity != ticket.event_identity)
+        return BridgeResult::Invalid;
+    uint64_t reservation = ticket.reservation;
+    if (!record.reservation_id.compare_exchange_strong(reservation, 0) || !record.pending.exchange(false)) return BridgeResult::Invalid;
+    record.drop_only = true; record.copy_unproven.store(false, std::memory_order_release);
+    RetireWithoutSubmission(record.token);
+    return BridgeResult::Ok;
+}
+BridgeResult UnityVulkanBridge::PollCopy(const HV_AndroidGpuFrameCopyTicketV2& ticket, uint32_t& outcome) noexcept {
+    outcome = 0;
+    if (ticket.struct_size != sizeof(ticket) || ticket.api_version != 2 || ticket.flags ||
+        !ticket.source_id || !ticket.source_generation || !ticket.reservation || ticket.slot >= records_.size())
+        return BridgeResult::Invalid;
+    std::unique_lock<std::mutex> control(control_mutex_, std::try_to_lock);
+    if (!control.owns_lock()) return BridgeResult::Busy;
+    auto& record = records_[ticket.slot];
+    if (record.ticket_reservation.load(std::memory_order_acquire) != ticket.reservation ||
+        record.copy_ticket.source_id != ticket.source_id ||
+        record.copy_ticket.source_generation != ticket.source_generation ||
+        record.copy_ticket.bridge_generation != ticket.bridge_generation ||
+        record.copy_ticket.frame_id != ticket.frame_id ||
+        record.copy_ticket.event_identity != ticket.event_identity) return BridgeResult::Invalid;
+    if (quarantined_.load()) return BridgeResult::Closed;
+    // Enter/queue guards cover the dequeue-to-submit gap. A pending callback
+    // must not be mistaken for an unsubmitted drop.
+    if (active_calls_.load(std::memory_order_acquire) || record.pending.load(std::memory_order_acquire) ||
+        record.queue_pending.load(std::memory_order_acquire) || record.texture_accessed.load(std::memory_order_acquire))
+        return BridgeResult::Busy;
+    if (record.copy_unproven.load(std::memory_order_acquire)) return BridgeResult::Busy;
+    const bool real_submission = record.source_copy_pending.load(std::memory_order_acquire);
+    if (real_submission) {
+        if (!dispatch_.submission_complete(dispatch_.context, device_, slots_[ticket.slot])) return BridgeResult::Busy;
+        record.source_copy_pending.store(false, std::memory_order_release);
+        outcome = record.drop_only ? HV_ANDROID_GPU_FRAME_DROPPED_UNSUBMITTED : HV_ANDROID_GPU_FRAME_COPIED;
+    } else outcome = HV_ANDROID_GPU_FRAME_DROPPED_UNSUBMITTED;
+#if defined(__ANDROID__) && defined(HV_ANDROID_GPU_GATE)
+    __android_log_print(ANDROID_LOG_INFO, "HVTask9", "ack source=%llu generation=%llu frame=%lld reservation=%llu slot=%u outcome=%u real_fence=%u", (unsigned long long)ticket.source_id, (unsigned long long)ticket.source_generation, (long long)ticket.frame_id, (unsigned long long)ticket.reservation, ticket.slot, outcome, unsigned(real_submission));
+#endif
+    record.ticket_reservation.store(0, std::memory_order_release);
+    return BridgeResult::Ok;
+}
+
+void UnityVulkanBridge::RetireSourceWithoutCopy(EventRecord& record) noexcept {
+    if (!record.ticket_reservation.load(std::memory_order_acquire)) { RetireWithoutSubmission(record.token); return; }
+    // Unity normalization may already be queued. Flush it, then submit a real
+    // fence even when no SDK AHB copy is admitted. A failed proof retains owners.
+    record.drop_only = true;
+    record.queue_pending.store(true, std::memory_order_release);
+    if (!dispatch_.queue_access(dispatch_.context, &UnityVulkanBridge::QueueEvent, &record))
+        record.queue_pending.store(false, std::memory_order_release);
 }
 void UnityVulkanBridge::RetireWithoutSubmission(const SlotToken& token) noexcept {
     auto& recovery = recovery_[token.index]; recovery.token = token; recovery.kind.store(1, std::memory_order_release);
@@ -359,7 +448,7 @@ BridgeResult UnityVulkanBridge::Render(void* identity) noexcept {
     if (record.generation != ring_.Generation()) return BridgeResult::Closed;
     if (!dispatch_.access_texture(dispatch_.context, record.unity_texture, record.access)) {
         copy_errors_.fetch_add(1,std::memory_order_relaxed);last_error_.store(1);
-        RetireWithoutSubmission(record.token); return BridgeResult::GpuError;
+        RetireSourceWithoutCopy(record); return BridgeResult::GpuError;
     }
     record.access.diagnostic_generation = record.token.generation;
     record.access.diagnostic_source_id = record.token.frame_id;
@@ -383,7 +472,7 @@ BridgeResult UnityVulkanBridge::Render(void* identity) noexcept {
     if (!source_valid || (!source_contract_signature_.compare_exchange_strong(
             expected_signature, signature, std::memory_order_acq_rel) && expected_signature != signature)) {
         dispatch_.release_texture(dispatch_.context, record.unity_texture, record.access);
-        RetireWithoutSubmission(record.token);
+        RetireSourceWithoutCopy(record);
         copy_errors_.fetch_add(1,std::memory_order_relaxed);last_error_.store(2);
         CloseAdmission();
         return BridgeResult::Closed;
@@ -393,7 +482,7 @@ BridgeResult UnityVulkanBridge::Render(void* identity) noexcept {
     if (prepared != SourcePreparation::Ready) {
         dispatch_.release_texture(dispatch_.context, record.unity_texture,
                                   record.access);
-        RetireWithoutSubmission(record.token);
+        RetireSourceWithoutCopy(record);
         if (prepared == SourcePreparation::Unsupported) { copy_errors_.fetch_add(1,std::memory_order_relaxed);last_error_.store(3); CloseAdmission(); }
         return prepared == SourcePreparation::Warmed ? BridgeResult::Busy
                                                       : BridgeResult::GpuError;
@@ -412,13 +501,13 @@ BridgeResult UnityVulkanBridge::Render(void* identity) noexcept {
         device_.graphics_queue_family, device_.graphics_queue_family};
     if (!accepting_calls_.load(std::memory_order_acquire)) {
         dispatch_.release_texture(dispatch_.context, record.unity_texture, record.access);
-        record.texture_accessed.store(false); RetireWithoutSubmission(record.token); return BridgeResult::Closed;
+        record.texture_accessed.store(false); RetireSourceWithoutCopy(record); return BridgeResult::Closed;
     }
     record.queue_pending.store(true, std::memory_order_release);
     if (!dispatch_.queue_access(dispatch_.context, &UnityVulkanBridge::QueueEvent, &record)) {
         copy_errors_.fetch_add(1,std::memory_order_relaxed);last_error_.store(4);
         record.queue_pending.store(false); dispatch_.release_texture(dispatch_.context, record.unity_texture, record.access);
-        record.texture_accessed.store(false); RetireWithoutSubmission(record.token); return BridgeResult::GpuError;
+        record.texture_accessed.store(false); RetireSourceWithoutCopy(record); return BridgeResult::GpuError;
     }
     return BridgeResult::Ok;
 }
@@ -563,12 +652,27 @@ BridgeResult UnityVulkanBridge::ExecuteQueue(EventRecord* record) noexcept {
         if (record->texture_accessed.exchange(false, std::memory_order_acq_rel))
             dispatch_.release_texture(dispatch_.context, record->unity_texture, record->access);
     };
-    if (!record->queue_pending.exchange(false, std::memory_order_acq_rel) ||
-        !accepting_calls_.load(std::memory_order_acquire) || record->generation != ring_.Generation()) {
-        release();
-        return BridgeResult::Closed;
+    if (!record->queue_pending.exchange(false, std::memory_order_acq_rel)) {
+        release(); return BridgeResult::Closed;
+    }
+    if (!accepting_calls_.load(std::memory_order_acquire) || record->generation != ring_.Generation()) {
+        if (!record->ticket_reservation.load(std::memory_order_acquire)) { release(); return BridgeResult::Closed; }
+        record->drop_only = true;
     }
     auto& slot = slots_[record->token.index];
+    if (record->drop_only) {
+        release();
+        if (!dispatch_.record_source_retirement ||
+            !dispatch_.record_source_retirement(dispatch_.context, slot) ||
+            !dispatch_.submit_signal(dispatch_.context, device_, slot)) return BridgeResult::GpuError;
+        record->source_copy_pending.store(true, std::memory_order_release);
+        record->copy_unproven.store(false, std::memory_order_release);
+        auto& recovery = recovery_[record->token.index]; recovery.token = record->token;
+        SyncFd fd;
+        if (dispatch_.export_sync_fd(dispatch_.context, device_, slot, fd)) recovery.fd = std::move(fd);
+        recovery.kind.store(2, std::memory_order_release);
+        return BridgeResult::Ok;
+    }
     const bool recorded = selection_.path == HV_ANDROID_GPU_COPY_BLIT ?
         dispatch_.record_blit(dispatch_.context, slot, record->access, record->barriers.data(), 4) :
         dispatch_.record_color(dispatch_.context, slot, record->access, record->barriers.data(), 4, true);
@@ -585,6 +689,7 @@ BridgeResult UnityVulkanBridge::ExecuteQueue(EventRecord* record) noexcept {
         return BridgeResult::GpuError;
     }
     record->source_copy_pending.store(true, std::memory_order_release);
+    record->copy_unproven.store(false, std::memory_order_release);
     auto& recovery = recovery_[record->token.index]; recovery.token = record->token;
     SyncFd fd;
     if (!dispatch_.export_sync_fd(dispatch_.context, device_, slot, fd)) {

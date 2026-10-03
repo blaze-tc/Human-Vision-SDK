@@ -74,3 +74,26 @@ TEST(AndroidGpuAbi, AdditiveRetirementTokenPreservesV1AndRejectsInvalidStorage) 
  EXPECT_EQ(HV_AndroidGpuPollSourceRetirement(&token),HV_ERR_INVALID_ARGUMENT);
  EXPECT_EQ(HV_AndroidGpuRetireSourceCopies(0,&token),HV_ERR_INVALID_ARGUMENT);
 }
+
+TEST(AndroidGpuAbi, FrameCopyTicketPreservesExactEnvelopeAndRejectsInvalidSubmission) {
+ static_assert(sizeof(HV_AndroidGpuFrameCopyTicketV2)==64);
+ static_assert(offsetof(HV_AndroidGpuFrameCopyTicketV2,source_id)==8);
+ static_assert(offsetof(HV_AndroidGpuFrameCopyTicketV2,source_generation)==16);
+ static_assert(offsetof(HV_AndroidGpuFrameCopyTicketV2,frame_id)==32);
+ static_assert(offsetof(HV_AndroidGpuFrameCopyTicketV2,reservation)==40);
+ static_assert(offsetof(HV_AndroidGpuFrameCopyTicketV2,event_identity)==48);
+ static_assert(std::is_same_v<decltype(&HV_AndroidGpuPollFrameCopy),HV_Result(HV_CALL*)(const HV_AndroidGpuFrameCopyTicketV2*,uint32_t*)>);
+ humanvision::runtime::RuntimeSession runtime;
+ HV_AndroidGpuFrameCopyTicketV2 ticket{sizeof(ticket),2,17,23,31,41,53,67,1,0};auto before=ticket;
+ HV_AndroidGpuSubmissionV1 submission{sizeof(submission),1,&runtime,640,360,1,1,0,0};void* event=&runtime;
+ for(int fault=0;fault<8;fault++){auto invalid=submission;
+  switch(fault){case 0:invalid.struct_size=8;break;case 1:invalid.api_version=2;break;case 2:invalid.width=0;break;case 3:invalid.height=-1;break;case 4:invalid.unity_texture=nullptr;break;case 5:invalid.rotation_degrees=45;break;case 6:invalid.mirrored=2;break;case 7:invalid.timestamp_us=-1;break;}
+  EXPECT_EQ(HV_RuntimePrepareAndroidGpuFrameCopy(&runtime,&invalid,17,23,&event,&ticket),HV_ERR_INVALID_ARGUMENT);
+  EXPECT_EQ(event,nullptr);EXPECT_EQ(std::memcmp(&ticket,&before,sizeof(ticket)),0);
+ }
+ EXPECT_EQ(HV_RuntimePrepareAndroidGpuFrameCopy(&runtime,&submission,17,23,&event,&ticket),HV_ANDROID_GPU_ERR_UNSUPPORTED_PLATFORM);
+ EXPECT_EQ(std::memcmp(&ticket,&before,sizeof(ticket)),0);
+ uint32_t outcome=99;ticket.api_version=1;
+ EXPECT_EQ(HV_AndroidGpuPollFrameCopy(&ticket,&outcome),HV_ERR_INVALID_ARGUMENT);EXPECT_EQ(outcome,0u);
+ EXPECT_EQ(HV_AndroidGpuCancelUnissuedFrameCopy(&ticket),HV_ERR_INVALID_ARGUMENT);
+}

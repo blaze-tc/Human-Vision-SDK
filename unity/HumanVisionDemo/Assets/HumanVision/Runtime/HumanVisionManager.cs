@@ -164,6 +164,11 @@ namespace HumanVision
             try { return !(_session is HumanVisionRuntimeSession runtime) || runtime.TryRetireGpuSourceCopies(out retirement); }
             catch (Exception exception) { ReportError(exception.Message); throw; }
         }
+        internal bool SubmitUnifiedGpuFrame(Texture preview,RenderTexture target,in HumanVision.Input.HumanVisionTextureFrame frame,
+            long timestampUs,HumanVisionAndroidFrameCopyFence fence) {
+            if(!(_session is HumanVisionRuntimeSession runtime))return false;
+            return runtime.SubmitUnifiedGpuFrame(preview,target,in frame,timestampUs,fence);
+        }
         public bool SubmitAndroidGpuFrame(RenderTexture texture, int rotationDegrees, bool mirrored, long frameId, long timestampUs)
         {
             try { bool accepted = (_session as HumanVisionRuntimeSession)?.SubmitGpuFrame(texture, rotationDegrees, mirrored, frameId, timestampUs) ?? false;

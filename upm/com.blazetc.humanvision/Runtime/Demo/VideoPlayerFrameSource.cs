@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.UI;
 using UnityEngine.Video;
+using HumanVision.Input;
 
 namespace HumanVision.Demo
 {
@@ -192,9 +193,38 @@ namespace HumanVision.Demo
     [DefaultExecutionOrder(-50)]
     [DisallowMultipleComponent]
     [RequireComponent(typeof(VideoPlayer))]
-    public sealed class VideoPlayerFrameSource : MonoBehaviour
+    public sealed class VideoPlayerFrameSource : MonoBehaviour, IAndroidFrameSubmission
     {
         private const int ReadbackPoolSize = 3;
+        private IHumanVisionFrameSource _unifiedSource;
+        private VideoFrameSource _ownedUnifiedVideo;
+        private HumanVisionInputAdapter _inputAdapter;
+        private long _unifiedPreviewLastId = -1;
+        private int _unifiedPreviewCount;
+        private float _unifiedPreviewStart, _unifiedPreviewFps;
+        public bool UnifiedRetirementPending=>_inputAdapter!=null&&_inputAdapter.RetirementPending;
+        public void BindUnifiedSource(IHumanVisionFrameSource source) {
+            if(source==null)throw new ArgumentNullException(nameof(source));
+            DetachUnifiedSource();_unifiedSource=source;
+            if(manager==null)manager=GetComponent<HumanVisionManager>();
+            if(_inputAdapter==null){_inputAdapter=GetComponent<HumanVisionInputAdapter>();if(_inputAdapter==null)_inputAdapter=gameObject.AddComponent<HumanVisionInputAdapter>();}
+            _inputAdapter.manager=manager;_unifiedPreviewLastId = -1; _unifiedPreviewCount = 0; _unifiedPreviewFps = 0; _unifiedPreviewStart = Time.unscaledTime;
+            _inputAdapter.Bind(source);_livePreview=true;
+        }
+        public void DetachUnifiedSource(){if(_inputAdapter!=null)_inputAdapter.Detach();_unifiedSource=null;}
+        private void LateUpdate(){
+            if (_unifiedSource != null && _unifiedSource.TryGetLatestFrame(_unifiedPreviewLastId, out var published)) {
+                _unifiedPreviewLastId = published.FrameId; ++_unifiedPreviewCount;
+                float elapsed = Time.unscaledTime - _unifiedPreviewStart;
+                if (elapsed >= 1f) { _unifiedPreviewFps = _unifiedPreviewCount / elapsed; _unifiedPreviewCount = 0; _unifiedPreviewStart = Time.unscaledTime; }
+            }
+
+            if(_unifiedSource==null)return;
+            var texture=_unifiedSource.CurrentTexture;
+            if(texture!=null){if(SourceWidth!=texture.width||SourceHeight!=texture.height){SourceWidth=texture.width;SourceHeight=texture.height;VideoLayoutChanged?.Invoke();}PresentLiveTexture(texture);}
+            LastError=!string.IsNullOrEmpty(_unifiedSource.LastError)?_unifiedSource.LastError:_inputAdapter.LastError;
+        }
+
 
         [Header("Scene references")]
         [SerializeField] private HumanVisionManager manager;
@@ -228,6 +258,7 @@ namespace HumanVision.Demo
         private bool _externalRowsBottomUp;
         private Texture _liveTexture;
         private double _nextLiveSubmitTime;
+        private GpuFrameAdmissionPolicy _gpuAdmission;
         private long _livePendingFrameId = -1;
         private double _livePendingTime;
         public bool LivePreview => _livePreview;
@@ -236,13 +267,15 @@ namespace HumanVision.Demo
         public double ResultAgeMilliseconds => manager == null || manager.SourceTimestampUs <= 0 ? 0 :
             Math.Max(0, Time.realtimeSinceStartupAsDouble * 1000 - manager.SourceTimestampUs / 1000d);
 
+        internal static bool UseLivePreview(bool smoothPreview, bool gpuFrames) => smoothPreview || gpuFrames;
+
         public void ConfigureLiveInput(bool smoothPreview, int analysisWidth = 1280, int analysisHeight = 720)
         {
             StopCurrentVideo();
-            _livePreview = smoothPreview;
+            _livePreview = UseLivePreview(smoothPreview, manager != null && manager.UsesAndroidGpuFrames);
             _externalInput = true;
             LastError = string.Empty;
-            if (!_rowOrderReady && !_rowProbePending && SystemInfo.supportsAsyncGPUReadback) BeginRowOrderProbe();
+            if (manager != null && !manager.UsesAndroidGpuFrames && !_rowOrderReady && !_rowProbePending && SystemInfo.supportsAsyncGPUReadback) BeginRowOrderProbe();
             maxAnalysisWidth = Math.Max(64, analysisWidth); maxAnalysisHeight = Math.Max(64, analysisHeight);
             _liveTexture = null; _nextLiveSubmitTime = 0; _livePendingFrameId = -1;
         }
@@ -261,17 +294,19 @@ namespace HumanVision.Demo
         public int SourceHeight { get; private set; }
         public long ReadbackDrops { get; private set; }
         public long ReadbackErrors { get; private set; }
+        public long FullFrameReadbackRequests { get; private set; }
+        public int MaxOverlayLagFrames => maxOverlayLagFrames;
         public string CurrentVideoPath { get; private set; }
         public string LastError { get; private set; }
-        public bool IsPlaying => _videoPlayer != null && _videoPlayer.isPlaying;
+        public bool IsPlaying => _unifiedSource != null ? _unifiedSource.State == InputSourceState.Streaming : _videoPlayer != null && _videoPlayer.isPlaying;
         public bool IsStillImage { get; private set; }
-        public double VideoFrameRate => !IsStillImage && _videoPlayer != null ? _videoPlayer.frameRate : 0d;
+        public double VideoFrameRate => _unifiedSource != null ? _unifiedPreviewFps : !IsStillImage && _videoPlayer != null ? _videoPlayer.frameRate : 0d;
         public int PresentationDelayFrames => presentationDelayFrames;
-        public long LatestSubmittedFrameId => _latestSubmittedFrameId;
-        public long PresentationFrameId => _presentationFrameId;
-        public Texture PresentationTexture => _livePreview ? _liveTexture : (targetDisplay != null ? targetDisplay.texture : _renderTexture);
+        public long LatestSubmittedFrameId => _unifiedSource!=null&&_inputAdapter!=null?_inputAdapter.LatestSubmittedFrameId:_latestSubmittedFrameId;
+        public long PresentationFrameId => _unifiedSource != null && _inputAdapter != null ? _inputAdapter.LatestPreviewFrameId : _presentationFrameId;
+        public Texture PresentationTexture => _unifiedSource!=null?_unifiedSource.CurrentTexture:_livePreview ? _liveTexture : (targetDisplay != null ? targetDisplay.texture : _renderTexture);
 
-        public void StopFrames() { StopCurrentVideo(); _liveTexture = null; _livePendingFrameId = -1; _nextLiveSubmitTime = 0; }
+        public void StopFrames() { DetachUnifiedSource();if(_ownedUnifiedVideo!=null)_ownedUnifiedVideo.Close();StopCurrentVideo(); _liveTexture = null; _livePendingFrameId = -1; _nextLiveSubmitTime = 0; }
 
         // Measure actual GPU row order once for live input, instead of assuming Vulkan and
         // OpenGL return the same layout. The marker never enters preview or inference.
@@ -303,8 +338,37 @@ namespace HumanVision.Demo
         }
 
         public bool SubmitExternalTexture(Texture texture, long timestampUs)
+            => SubmitExternalTexture(texture, timestampUs, 0, false);
+
+        public bool SubmitExternalTexture(Texture texture, long timestampUs, int rotationDegrees = 0, bool mirrored = false)
+            => SubmitExternalTexture(texture, timestampUs, rotationDegrees, mirrored, null);
+
+        public bool SubmitExternalTexture(Texture texture, long timestampUs, int rotationDegrees, bool mirrored, Texture previewTexture)
         {
             if (texture == null || manager == null || !manager.IsInitialized) return false;
+            if (Application.platform == RuntimePlatform.Android && previewTexture != null &&
+                HumanVisionAndroidFrameRoute.Select(manager.ActiveRuntimeProfile) == HumanVisionAndroidFrameRoute.FramePath.Gpu)
+                return SubmitExternalGpuTexture(texture as RenderTexture, timestampUs, rotationDegrees, mirrored, previewTexture);
+            if (Application.platform == RuntimePlatform.Android)
+                return HumanVisionAndroidFrameRoute.Submit(manager.ActiveRuntimeProfile, this,
+                    texture, timestampUs, rotationDegrees, mirrored);
+            return SubmitExternalCpuTexture(texture, timestampUs);
+        }
+
+        bool IAndroidFrameSubmission.SubmitGpuFrame(Texture texture, long timestampUs, int rotationDegrees, bool mirrored)
+            => SubmitExternalGpuTexture(texture as RenderTexture, timestampUs, rotationDegrees, mirrored);
+        bool IAndroidFrameSubmission.SubmitCpuFrame(Texture texture, long timestampUs)
+            => SubmitExternalCpuTexture(texture, timestampUs);
+
+        private AsyncGPUReadbackRequest _lastUnifiedReadback;
+        internal long LatestQueuedFrameId {get;private set;}=-1;
+        internal bool TrySubmitUnifiedCpuFrame(Texture texture,long timestampUs,out AsyncGPUReadbackRequest request) {
+            bool accepted=SubmitExternalCpuTexture(texture,timestampUs);
+            request=accepted?_lastUnifiedReadback:default;
+            return accepted;
+        }
+        private bool SubmitExternalCpuTexture(Texture texture, long timestampUs)
+        {
             if (_livePreview) PresentLiveTexture(texture);
             if (!SystemInfo.supportsAsyncGPUReadback) { SetError("Async GPU readback is unavailable."); return false; }
             if (!_rowOrderReady) return false;
@@ -318,7 +382,7 @@ namespace HumanVision.Demo
             }
             var size = AnalysisRenderTextureGeometry.CalculateTargetSize(texture.width, texture.height,
                 maxAnalysisWidth, maxAnalysisHeight);
-            if (_renderTexture == null || SourceWidth != size.x || SourceHeight != size.y) {
+            if (_renderTexture == null || _renderTexture.width != size.x || _renderTexture.height != size.y) {
                 StopCurrentVideo();
                 AllocateReadbackResources(size.x, size.y);
                 VideoLayoutChanged?.Invoke();
@@ -337,13 +401,39 @@ namespace HumanVision.Demo
                 _livePendingFrameId = slot.FrameId; _livePendingTime = Time.realtimeSinceStartupAsDouble;
                 _nextLiveSubmitTime = _livePendingTime + 1.0 / 30.0;
             } else CapturePresentationFrame(slot.FrameId);
+            ++FullFrameReadbackRequests;
             slot.Request = AsyncGPUReadback.RequestIntoNativeArray(ref slot.Buffer, _renderTexture,
                 0, TextureFormat.RGBA32, slot.Completion);
+            _lastUnifiedReadback=slot.Request;LatestQueuedFrameId=slot.FrameId;
+            return true;
+        }
+
+        private bool SubmitExternalGpuTexture(RenderTexture texture, long timestampUs, int rotationDegrees, bool mirrored, Texture previewTexture = null)
+        {
+            if (texture == null) { SetError("NCNN Vulkan input requires the oriented RenderTexture."); return false; }
+            _livePreview = true;
+            PresentLiveTexture(previewTexture != null ? previewTexture : texture);
+            double now = Time.realtimeSinceStartupAsDouble;
+            if (SourceWidth != texture.width || SourceHeight != texture.height) _gpuAdmission.Reset();
+            if (!_gpuAdmission.CanSubmit(now)) { manager.RecordSourceArrival(true); return false; }
+            manager.RecordSourceArrival(false);
+            if (SourceWidth != texture.width || SourceHeight != texture.height) {
+                SourceWidth = texture.width; SourceHeight = texture.height;
+                VideoLayoutChanged?.Invoke();
+            }
+            long frameId = ++_nextSubmissionFrameId;
+            bool accepted = manager.SubmitAndroidGpuFrame(texture, rotationDegrees, mirrored, frameId, timestampUs);
+            if (!accepted) { if (!string.IsNullOrEmpty(manager.LastError)) SetError(manager.LastError); return false; }
+            _gpuAdmission.RecordAccepted();
+            _acceptReadbacks = true;
+            _latestSubmittedFrameId = _presentationFrameId = frameId;
+            PresentationFrameChanged?.Invoke();
             return true;
         }
 
         public bool CanPresentResult(long resultFrameId)
         {
+            if(_unifiedSource!=null&&_inputAdapter!=null)return _inputAdapter.CanPresentResult(resultFrameId);
             if (_livePreview) return _acceptReadbacks && resultFrameId >= _minimumUsableResultFrameId &&
                 manager != null && manager.ResultSequence > 0 && ResultAgeMilliseconds <= maxLiveResultAgeMilliseconds;
             return _presentationFrameId >= _minimumUsableResultFrameId &&
@@ -386,6 +476,7 @@ namespace HumanVision.Demo
 
         private void OnDisable()
         {
+            DetachUnifiedSource();if(_ownedUnifiedVideo!=null)_ownedUnifiedVideo.Close();
             _acceptReadbacks = false;
             UnsubscribeManager();
             if (_videoPlayer != null)
@@ -412,6 +503,13 @@ namespace HumanVision.Demo
             SubscribeManager();
         }
 
+        internal void BindManager(HumanVisionManager visionManager)
+        {
+            UnsubscribeManager();
+            manager = visionManager;
+            SubscribeManager();
+        }
+
         public bool PlayRelativeVideo(string relativeStreamingAssetsPath)
         {
             if (string.IsNullOrWhiteSpace(relativeStreamingAssetsPath))
@@ -426,6 +524,20 @@ namespace HumanVision.Demo
 
         public bool PlayUrl(string path)
         {
+            string unifiedExtension=string.IsNullOrEmpty(path)?string.Empty:Path.GetExtension(path).ToLowerInvariant();
+            if(unifiedExtension!=".png"&&unifiedExtension!=".jpg"&&unifiedExtension!=".jpeg") {
+                if(string.IsNullOrWhiteSpace(path)||!File.Exists(path)){SetError("Video file was not found: "+path);return false;}
+                StopFrames();CurrentVideoPath=Path.GetFullPath(path);
+                if(_ownedUnifiedVideo==null){_ownedUnifiedVideo=GetComponent<VideoFrameSource>();if(_ownedUnifiedVideo==null)_ownedUnifiedVideo=gameObject.AddComponent<VideoFrameSource>();}
+                _ownedUnifiedVideo.Open(new HumanVisionSourceSettings{Kind=InputKind.Video,Location=CurrentVideoPath});
+                BindUnifiedSource(_ownedUnifiedVideo);
+                LastError=_ownedUnifiedVideo.LastError;return _ownedUnifiedVideo.State!=InputSourceState.Error;
+            }
+            if (Application.platform == RuntimePlatform.Android && manager != null && manager.UsesAndroidGpuFrames)
+            {
+                SetError("android-ncnn-vulkan requires the live oriented camera texture. Select an ORT mode in Project Settings for file input.");
+                return false;
+            }
             if (_videoPlayer == null)
             {
                 SetError("VideoPlayerFrameSource has not completed Awake.");
@@ -593,17 +705,17 @@ namespace HumanVision.Demo
                     ReadbackRowNormalizer.CopyBottomUpToTopDown(
                         slot.Buffer,
                         slot.TopLeftBuffer,
-                        SourceHeight,
-                        SourceWidth * 4);
+                        slot.Height,
+                        slot.Width * 4);
                     submissionBuffer = slot.TopLeftBuffer;
                 }
 
                 IntPtr data = (IntPtr)NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(submissionBuffer);
                 if (manager.SubmitFrame(
                     data,
-                    SourceWidth,
-                    SourceHeight,
-                    SourceWidth * 4,
+                    slot.Width,
+                    slot.Height,
+                    slot.Width * 4,
                     HumanVisionPixelFormat.Rgba32,
                     slot.FrameId,
                     slot.TimestampUs,
@@ -622,8 +734,8 @@ namespace HumanVision.Demo
         private void AllocateReadbackResources(int width, int height)
         {
             ReleaseReadbackResources();
-            SourceWidth = width;
-            SourceHeight = height;
+            SourceWidth = _unifiedSource?.CurrentTexture != null ? _unifiedSource.CurrentTexture.width : width;
+            SourceHeight = _unifiedSource?.CurrentTexture != null ? _unifiedSource.CurrentTexture.height : height;
             _normalizeReadbackRows = _externalInput ? _externalRowsBottomUp : SystemInfo.graphicsUVStartsAtTop;
             int byteCount = checked(width * height * 4);
             for (int index = 0; index < _slots.Length; index++)
@@ -640,6 +752,8 @@ namespace HumanVision.Demo
                         NativeArrayOptions.UninitializedMemory);
                 }
                 _slots[index].Busy = false;
+                _slots[index].Width = width;
+                _slots[index].Height = height;
             }
 
             _renderTexture = new RenderTexture(
@@ -812,6 +926,7 @@ namespace HumanVision.Demo
 
         private void StopCurrentVideo()
         {
+            _gpuAdmission.Reset();
             _acceptReadbacks = false;
             if (_videoPlayer != null)
             {
@@ -927,6 +1042,7 @@ namespace HumanVision.Demo
 
         private sealed class ReadbackSlot
         {
+            internal int Width, Height;
             internal NativeArray<byte> Buffer;
             internal NativeArray<byte> TopLeftBuffer;
             internal AsyncGPUReadbackRequest Request;

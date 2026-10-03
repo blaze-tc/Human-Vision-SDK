@@ -13,6 +13,39 @@ namespace HumanVision.Input.Tests
         }
 
         [Test]
+        public void CopyLeaseReuseWaitsForExactRetirementAcknowledgment()
+        {
+            var property = typeof(SourceCopyLease).GetProperty("IsRetired");
+            Assert.That(property, Is.Not.Null, "Consumer cannot safely reuse a fence while its old lease is still retained.");
+            var retirement = new SourceRetirement(2, 1);
+            var source = new SourceGeneration(retirement);
+            var generation = source.BeginGeneration();
+            var texture = new Texture2D(8, 4);
+            try {
+                var token = retirement.Register(generation, texture, () => { });
+                var frame = Frame(source, generation, 1, texture, token);
+                Assert.That(source.TryPublish(in frame), Is.True);
+                Assert.That(source.TryAcquireSourceCopyLease(in frame, out var lease), Is.True);
+                var duplicate = lease;
+                var fence = new CopyFence();
+                lease.RetireAfter(fence);
+                Assert.That(property.GetValue(lease), Is.False);
+                fence.IsComplete = true;
+                Assert.That(property.GetValue(lease), Is.False, "Native completion alone is not lease consumption.");
+                retirement.Poll();
+                Assert.That(property.GetValue(duplicate), Is.True);
+                retirement.Poll();
+                Assert.That(source.TryAcquireSourceCopyLease(in frame, out var replacement), Is.True);
+                Assert.That(property.GetValue(replacement), Is.False);
+                Assert.That(property.GetValue(lease), Is.True, "An old copied lease must not alias the reused slot.");
+                replacement.Dispose();
+                Assert.That(property.GetValue(replacement), Is.True);
+                source.Close(); source.BeginGeneration();
+                Assert.That(property.GetValue(lease), Is.True);
+            } finally { UnityEngine.Object.DestroyImmediate(texture); }
+        }
+
+        [Test]
         public void AndroidInitializationFailureRemainsActionable()
         {
             if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Vulkan) Assert.Ignore("This negative capability case uses the qualified D3D host.");
