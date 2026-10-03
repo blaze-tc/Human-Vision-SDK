@@ -12,6 +12,9 @@
 #include <unistd.h>
 #endif
 namespace hvinput {
+#ifdef HV_INPUT_ERROR_TESTS
+void RunReconnectTestHook(Session &);
+#endif
 static const auto origin = std::chrono::steady_clock::now();
 int64_t NowUs() {
   return std::chrono::duration_cast<std::chrono::microseconds>(
@@ -36,7 +39,25 @@ void Session::SetError(const char *stage, int code) {
   char detail[AV_ERROR_MAX_STRING_SIZE]{};
   av_strerror(code, detail, sizeof(detail));
   std::lock_guard<std::mutex> lock(mutex);
+  if (gpu_error_recorded)
+    return;
   error = std::string(stage) + ": " + detail;
+}
+void Session::SetGpuError(const char *stage, const char *detail) {
+  std::lock_guard<std::mutex> lock(mutex);
+  if (!gpu_error_recorded) {
+    error = std::string(stage) + ": " + detail;
+    gpu_error_recorded = true;
+  }
+  state = HV_INPUT_FAILED;
+  stop = true;
+}
+bool Session::SetDecoderState(uint32_t next) {
+  std::lock_guard<std::mutex> lock(mutex);
+  if (gpu_error_recorded || stop)
+    return false;
+  state = next;
+  return true;
 }
 void Session::Run() noexcept {
   while (!stop) {
@@ -53,7 +74,12 @@ void Session::Run() noexcept {
     }
     if (stop)
       break;
-    state = HV_INPUT_RECONNECTING;
+#ifdef HV_INPUT_ERROR_TESTS
+    // Deterministic regression seam; absent from every production target.
+    RunReconnectTestHook(*this);
+#endif
+    if (!SetDecoderState(HV_INPUT_RECONNECTING))
+      break;
     std::unique_lock<std::mutex> lock(mutex);
     wake.wait_for(lock, std::chrono::milliseconds(reconnect_delay_ms),
                   [this] { return stop.load(); });

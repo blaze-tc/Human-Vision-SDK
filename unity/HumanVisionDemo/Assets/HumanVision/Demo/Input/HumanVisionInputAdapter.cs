@@ -75,7 +75,11 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
             free.Lease=lease;
             bool accepted=false;
             try {
-                long timestamp=(long)(Time.realtimeSinceStartupAsDouble*1000000)-Math.Max(0,InputMonotonicClock.NowUs-frame.PublishedTimestampUs);
+                long unityNowUs=(long)(Time.realtimeSinceStartupAsDouble*1000000);
+                long inputNowUs=InputMonotonicClock.NowUs;
+                long timestamp=manager.UsesRuntimeProfile&&!manager.UsesAndroidGpuFrames
+                    ? InputTimestampMapping.ToUnity(in frame,inputNowUs,unityNowUs)
+                    : unityNowUs-Math.Max(0,inputNowUs-frame.PublishedTimestampUs);
                 if(manager.UsesAndroidGpuFrames) {
                     if(free.Target==null){free.Target=new RenderTexture(frame.Width,frame.Height,0,RenderTextureFormat.ARGB32,RenderTextureReadWrite.Linear);free.Target.Create();}
                     gpuActive=true;free.GpuPath=true;

@@ -33,10 +33,13 @@ inline CapabilityFailure AdmitDecodedBuffer(const InputGpuCapabilities& c) {
 #ifdef __ANDROID__
 #include <android/hardware_buffer.h>
 #include <media/NdkImage.h>
+#include <media/NdkImageReader.h>
 #include <vulkan/vulkan.h>
 namespace hvinput {
 struct AndroidDecodedImage {
   AImage* image = nullptr;
+  // Reader domain value only; ownership stays with the decoder Resources.
+  AImageReader* reader = nullptr;
   AHardwareBuffer* buffer = nullptr;
   int acquire_fd = -1;
   bool image_counted = false;

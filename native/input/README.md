@@ -21,7 +21,27 @@ Android production RTSP now publishes three fixed Unity-owned RGBA output slots.
 `RtspFrameSource` owns native worker, generation and texture lifetimes on the main
 thread. It initializes each Unity target with Unity rendering before native bind.
 There is one serialized converter command/fence, not three parallel conversions.
-The AHB import cache is independent of output slots. Pending decoded frames are
+The AHB import cache is independent of output slots. It admits a fixed domain of
+64 AHB object identities following the API26-era AOSP BufferQueue policy. This
+is not an allocation-ID API or a guarantee that every vendor/future decoder has
+64 buffers; a 65th retained object fails explicitly with its full cache snapshot.
+An existing object reuses its import until callback removal or contract/generation
+replacement; no LRU or per-frame import recreation is used. A fixed known-import
+registry reserves the source-reader/object pair before import, coalesces repeated
+removals and counts unknown callbacks without consuming positions. Callback only
+compares raw identity values; it never dereferences a reader or destroys Vulkan
+resources. The decoder owns/deletes its reader, whose listener/looper is quiesced
+before that reader domain can be reused; callback/decoded/cache AHB references
+retain object identity through their respective lifetimes. Removed busy imports
+keep their references and resources until the real GPU fence completes.
+
+Listener registration fails explicitly if unavailable. A once-at-stop diagnostic
+reports cache imports/resources and extra AHB reference balance after worker and
+GPU retirement. Decoder image/lease/fd counters remain a separate ownership
+domain. Cache/Vulkan errors preserve their first stage and result through decoder
+interruption and reconnect; Vulkan result values are not formatted as FFmpeg errno.
+
+Pending decoded frames are
 latest-only; no-free-slot drops are counted. The compressed application backlog
 retains one packet; decoder pressure or transport failure recreates the reader,
 decoder and RTSP session and waits for a real keyframe. Healthy admitted P/B

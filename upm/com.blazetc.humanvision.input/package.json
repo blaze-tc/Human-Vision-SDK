@@ -10,5 +10,12 @@
   "dependencies": {
     "com.unity.ugui": "1.0.0",
     "com.unity.modules.video": "1.0.0"
-  }
+  },
+  "samples": [
+    {
+      "displayName": "InputPreview",
+      "description": "Standalone video, camera and RTSP preview without inference or models.",
+      "path": "Samples~/InputPreview"
+    }
+  ]
 }

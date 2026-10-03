@@ -1,0 +1,7 @@
+{
+  "name": "HumanVision.Demo.PlayModeTests",
+  "references": ["HumanVision.Runtime", "HumanVision.Demo", "HumanVision.Input", "UnityEngine.UI"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll"]
+}

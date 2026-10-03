@@ -11,7 +11,7 @@ namespace HumanVision.Editor
     public static class HumanVisionCameraDemoBuilder
     {
         [MenuItem("HumanVision/Create Live Camera Demo")]
-        public static void CreateScene() { CreatePair(false); }
+        public static void CreateScene() { HumanVisionUnifiedDemoBuilder.CreateScenes(); }
         [MenuItem("HumanVision/Create Camera Settings Scene")]
         public static void CreateSettingsScene() { CreatePair(true); }
         private static void CreatePair(bool openSettings)

@@ -3,7 +3,8 @@
   "rootNamespace": "HumanVision.Editor",
   "references": [
     "HumanVision.Runtime",
-    "HumanVision.Demo"
+    "HumanVision.Demo",
+    "HumanVision.Input"
   ],
   "includePlatforms": [
     "Editor"

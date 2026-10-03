@@ -3,7 +3,8 @@
   "references": [
     "HumanVision.Runtime",
     "HumanVision.Demo",
-    "UnityEngine.UI"
+    "UnityEngine.UI",
+    "HumanVision.Input"
   ],
   "includePlatforms": [
     "Editor"

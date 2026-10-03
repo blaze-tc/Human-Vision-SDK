@@ -13,8 +13,9 @@ namespace HumanVision.Editor
     public sealed class HumanVisionModelInstaller : IPreprocessBuildWithReport
     {
         public int callbackOrder => -100;
-        [Serializable] private sealed class Index { public Entry[] files; }
+        [Serializable] private sealed class Index { public string version; public Entry[] files; }
         [Serializable] private sealed class Entry { public string path; public string sha256; }
+        [Serializable] private sealed class StageReceipt { public int schema_version; public string stage_id; public bool local_evaluation_only; public string index_sha256; }
         static HumanVisionModelInstaller() { EditorApplication.delayCall += Prepare; }
         [MenuItem("HumanVision/Install Packaged Models")]
         public static void Prepare()
@@ -24,6 +25,7 @@ namespace HumanVision.Editor
             string models = Path.Combine(package.resolvedPath, "RuntimeData");
             if (!Directory.Exists(models)) throw new BuildFailedException("HumanVision UPM model directory is missing. Reinstall the complete package.");
             string target = "Assets/StreamingAssets/HumanVision/Runtime";
+            if (PreserveExplicitStage(target)) return;
             Directory.CreateDirectory(target);
             bool changed = false;
             string indexPath = Path.Combine(models, "index.json");
@@ -46,6 +48,43 @@ namespace HumanVision.Editor
             string targetIndex = Path.Combine(target, "index.json");
             if (!File.Exists(targetIndex) || Hash(targetIndex) != Hash(indexPath)) { File.Copy(indexPath, targetIndex, true); changed = true; }
             if (changed) AssetDatabase.Refresh();
+        }
+        private static bool PreserveExplicitStage(string target)
+        {
+            string receiptPath = Path.Combine(target, "staged-runtime.json");
+            if (!File.Exists(receiptPath)) return false;
+            try {
+                var receipt = JsonUtility.FromJson<StageReceipt>(File.ReadAllText(receiptPath));
+                if (receipt == null || receipt.schema_version != 1 || receipt.stage_id != "local-qualified-runtime" ||
+                    !receipt.local_evaluation_only || !ValidHash(receipt.index_sha256))
+                    throw new InvalidDataException("Unsupported explicit local runtime stage receipt.");
+                string indexPath = Path.Combine(target, "index.json");
+                if (!File.Exists(indexPath) || !string.Equals(Hash(indexPath), receipt.index_sha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Explicit local runtime index is missing or differs from its receipt hash.");
+                var index = JsonUtility.FromJson<Index>(File.ReadAllText(indexPath));
+                if (index == null || string.IsNullOrEmpty(index.version) || index.files == null || index.files.Length == 0)
+                    throw new InvalidDataException("Explicit local runtime index is empty or invalid.");
+                string root = Path.GetFullPath(target) + Path.DirectorySeparatorChar;
+                var names = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var entry in index.files) {
+                    if (entry == null || string.IsNullOrEmpty(entry.path) || Path.IsPathRooted(entry.path) || entry.path.Contains("..") ||
+                        entry.path.Contains(":") || entry.path.Contains("\\") || !ValidHash(entry.sha256) || !names.Add(entry.path))
+                        throw new InvalidDataException("Explicit local runtime contains an unsafe or duplicate indexed path.");
+                    string file = Path.GetFullPath(Path.Combine(target, entry.path));
+                    if (!file.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !File.Exists(file) ||
+                        !string.Equals(Hash(file), entry.sha256, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("Explicit local runtime file is missing or differs from its index: " + entry.path);
+                }
+                return true;
+            } catch (Exception error) {
+                throw new BuildFailedException("Explicit local runtime stage validation failed: " + error.Message + " Re-stage the verified runtime. Existing files were preserved.");
+            }
+        }
+        private static bool ValidHash(string value)
+        {
+            if (value == null || value.Length != 64) return false;
+            foreach (char c in value) if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return false;
+            return true;
         }
         // Git can rewrite text newlines in a subfolder package. Accept only an
         // exact indexed hash after newline conversion; weights stay byte-strict.

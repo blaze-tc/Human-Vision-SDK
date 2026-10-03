@@ -73,6 +73,14 @@ namespace HumanVision.Demo
             SetVerticesDirty();
         }
 
+        public void ConfigureStyle(float lineWidth, float pointDiameter)
+        {
+            if (float.IsNaN(lineWidth) || float.IsInfinity(lineWidth) || lineWidth < 1 || lineWidth > 64 ||
+                float.IsNaN(pointDiameter) || float.IsInfinity(pointDiameter) || pointDiameter < 1 || pointDiameter > 128)
+                throw new System.ArgumentOutOfRangeException("Skeleton sizes must be finite and within the supported range.");
+            boneThickness = lineWidth; jointSize = pointDiameter * .5f; SetVerticesDirty();
+        }
+
         protected override void OnPopulateMesh(VertexHelper vertexHelper)
         {
             vertexHelper.Clear();

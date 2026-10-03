@@ -1,0 +1,8 @@
+{
+  "audit": "tools/test/verify_android_native.py",
+  "native_sha256": "fef5fda3952d21e68b40052cc8804adcd99bc9d961429daf868afd3650bbbd96",
+  "abi": "arm64-v8a",
+  "api_level": 26,
+  "ncnn_vulkan_symbols_verified": true,
+  "gpu_gate": false
+}

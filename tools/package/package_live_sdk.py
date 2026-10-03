@@ -1,7 +1,8 @@
-"""Create an independent Unity import package from compiled native artifacts.
+"""Create an independent Unity import package from the admitted UPM payload.
 
 This serializes assets; it does not launch Unity or execute tests.
 """
+import argparse
 import hashlib
 import gzip
 import io
@@ -24,6 +25,7 @@ def metadata(path):
     header = f'fileFormatVersion: 2\nguid: {guid}\n'
     if path.endswith(('.dll', '.so')):
         android = path.endswith('.so')
+        preload = android and Path(path).name in ('libhumanvision.so', 'libhumanvision_input.so')
         platform = ('Android: Android\n    second:\n      enabled: 1\n      settings:\n        CPU: ARM64'
                     if android else 'Standalone: Win64\n    second:\n      enabled: 1\n      settings:\n        CPU: x86_64')
         return header + f'''PluginImporter:
@@ -32,7 +34,7 @@ def metadata(path):
   iconMap: {{}}
   executionOrder: {{}}
   defineConstraints: []
-  isPreloaded: 0
+  isPreloaded: {int(preload)}
   isOverridable: 0
   isExplicitlyReferenced: 0
   validateReferences: 1
@@ -60,73 +62,114 @@ def metadata(path):
     return header + importer + ':\n  externalObjects: {}\n' + extra + '  userData:\n  assetBundleName:\n  assetBundleVariant:\n'
 
 
-def main():
-    OUTPUT.mkdir(parents=True, exist_ok=True)
-    assets = {}
-    def add(source, path):
-        source = Path(source)
-        meta = source.with_name(source.name + '.meta')
-        assets[path] = (source.read_bytes(), meta.read_bytes() if meta.exists() else metadata(path).encode())
-    def text(path, value): assets[path] = (value.encode('utf-8'), metadata(path).encode())
-    for section in ('Runtime', 'Demo'):
-        for source in (SOURCE / section).rglob('*'):
-            if source.is_file() and source.suffix in ('.cs', '.asmdef', '.shader'):
-                if source.name in ('HumanVisionDemoBootstrap.cs', 'HumanVisionHud.cs'): continue
-                add(source, 'Assets/HumanVision/' + source.relative_to(SOURCE).as_posix())
-    # Include editor tools as a unit, without tests or vendor assemblies.
-    for source in (SOURCE / 'Editor').glob('*.cs'):
-        if source.name not in ('HumanVisionCameraDemoBuilder.cs', 'HumanVisionAndroidBuildSettings.cs'): continue
-        add(source, 'Assets/HumanVision/Editor/' + source.name)
-    for name in ('humanvision.dll', 'humanvision_onnxruntime.dll', 'hv_dml.dll'):
-        add(ROOT / 'build/windows-live/bin/Release' / name, 'Assets/Plugins/x86_64/' + name)
-    for name in ('avformat-61.dll', 'avcodec-61.dll', 'avutil-59.dll', 'swscale-8.dll', 'swresample-5.dll'):
-        add(ROOT / 'out/live-deps/ffmpeg-windows' / name, 'Assets/Plugins/x86_64/' + name)
-    add(ROOT / 'build/android-live/bin/Release/libhumanvision.so', 'Assets/Plugins/Android/arm64-v8a/libhumanvision.so')
-    add(ROOT / 'out/live-deps/ort-android/lib/libonnxruntime.so', 'Assets/Plugins/Android/arm64-v8a/libonnxruntime.so')
-    for name in ('libavformat.so', 'libavcodec.so', 'libavutil.so', 'libswscale.so', 'libswresample.so'):
-        add(ROOT / 'out/live-deps/ffmpeg-android' / name, 'Assets/Plugins/Android/arm64-v8a/' + name)
-    text('Assets/Plugins/Android/HumanVisionPermissions.androidlib/AndroidManifest.xml', '''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.humanvision.permissions">
-  <uses-permission android:name="android.permission.CAMERA" />
-  <uses-permission android:name="android.permission.INTERNET" />
-  <uses-feature android:name="android.hardware.camera.any" android:required="false" />
-</manifest>
-''')
-    text('Assets/Plugins/Android/HumanVisionPermissions.androidlib/project.properties', 'android.library=true\ntarget=android-24\n')
-    runtime_index = {'version': VERSION, 'files': []}
-    for section in ('modelpacks', 'profiles'):
-        for source in sorted((ROOT / section).rglob('*')):
-            if not source.is_file(): continue
-            relative = source.relative_to(ROOT).as_posix()
-            add(source, 'Assets/StreamingAssets/HumanVision/Runtime/' + relative)
-            runtime_index['files'].append({'path': relative, 'sha256': hashlib.sha256(source.read_bytes()).hexdigest()})
-    text('Assets/StreamingAssets/HumanVision/Runtime/index.json', json.dumps(runtime_index, indent=2) + '\n')
-    for source in sorted((ROOT/'docs/maintenance').rglob('*.md')):
-        add(source, 'Assets/HumanVision/Documentation/maintenance/' + source.relative_to(ROOT/'docs/maintenance').as_posix())
-    for source in sorted((ROOT/'docs/diagnostics').rglob('*.md')):
-        add(source, 'Assets/HumanVision/Documentation/diagnostics/' + source.relative_to(ROOT/'docs/diagnostics').as_posix())
-    add(ROOT / 'docs/SDK_040_USER_GUIDE.md', 'Assets/HumanVision/README.md')
-    add(ROOT / 'out/hv-ort-dml/ORT_LICENSE', 'Assets/HumanVision/Licenses/ONNXRuntime.txt')
-    add(ROOT / 'out/live-deps/ffmpeg-7.1/COPYING.LGPLv2.1', 'Assets/HumanVision/Licenses/FFmpeg-LGPL-2.1.txt')
-    for project in ('mmdetection', 'mmpose'):
-        add(ROOT / 'tools/reference/vendor' / project / 'LICENSE', 'Assets/HumanVision/Licenses/' + project + '.txt')
-    for name in ('LICENSE.txt', 'LICENSE-CODE.txt', 'ThirdPartyNotices.txt'):
-        add(ROOT / 'out/directml-1.15.4' / name, 'Assets/HumanVision/Licenses/DirectML-' + name)
-    text('Assets/HumanVision/Licenses/DEPENDENCIES.md', '''# Third-party provenance
+SDK_ROOT_FILES = ('.gitattributes', 'package.json', 'README.md', 'UPM_INSTALLATION.md',
+                  'android-gpu-bridge-symbols.json')
+ANDROID_SETTINGS = 'Editor/HumanVisionAndroidBuildSettings.cs'
+AUDIT_FALLBACK = 'Path.Combine(Directory.GetParent(Application.dataPath).FullName, "android-gpu-bridge-symbols.json")'
+OFFLINE_AUDIT_FALLBACK = 'Path.Combine(Application.dataPath, "HumanVision", "android-gpu-bridge-symbols.json")'
 
-ONNX Runtime 1.23.0: https://github.com/microsoft/onnxruntime/tree/v1.23.0
-Windows private ORT copy changes DirectML delay import to hv_dml.dll and is unsigned.
-DirectML 1.15.4: https://www.nuget.org/packages/Microsoft.AI.DirectML/1.15.4
-FFmpeg 7.1 binaries: ByteDeco JavaCPP presets 1.5.11, non-GPL classifiers.
-Build scripts: https://github.com/bytedeco/javacpp-presets/tree/1.5.11/ffmpeg
-FFmpeg source: https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz
-These are dynamically linked replaceable libraries. No FFmpeg JNI library is used.
-Model origins/export parameters/hashes are included in Documentation.
-OpenMMLab: https://github.com/open-mmlab/mmdetection and https://github.com/open-mmlab/mmpose
-This is a user-testing preview, not a claim of model redistribution clearance or hardware acceptance.
-''')
+
+def offline_path(relative):
+    for source, target in (('Runtime/Plugins', 'Assets/Plugins'),
+                           ('RuntimeData', 'Assets/StreamingAssets/HumanVision/Runtime'),
+                           ('Runtime/Demo', 'Assets/HumanVision/Demo'),
+                           ('Samples~/UnifiedInput', 'Assets/HumanVision/Samples/UnifiedInput')):
+        if relative == source or relative.startswith(source + '/'):
+            return target + relative[len(source):]
+    return 'Assets/HumanVision/' + relative
+
+
+def offline_meta(relative, meta, folder=False):
+    # Avoid UPM/StreamingAssets data GUID collisions across the two layouts.
+    if relative == 'RuntimeData' or relative.startswith('RuntimeData/'):
+        value = metadata(offline_path(relative))
+        if folder:
+            value = value.replace('DefaultImporter:', 'folderAsset: yes\nDefaultImporter:')
+        return value.encode()
+    return meta
+
+
+def sdk_folders(root, selected):
+    """Only source-owned folders containing an admitted asset carry metadata."""
+    sdk = root / 'upm/com.blazetc.humanvision'
+    folders = {}
+    for relative in selected:
+        for parent in (sdk / relative).parents:
+            if parent == sdk:
+                break
+            meta = parent.with_name(parent.name + '.meta')
+            if meta.is_file():
+                folders[parent.relative_to(sdk).as_posix()] = meta.read_bytes()
+    return folders
+
+
+def offline_bytes(relative, data):
+    if relative != ANDROID_SETTINGS:
+        return data
+    old, new = AUDIT_FALLBACK.encode(), OFFLINE_AUDIT_FALLBACK.encode()
+    if data.count(old) != 1:
+        raise ValueError('Reviewed Android validator audit fallback must occur exactly once.')
+    return data.replace(old, new)
+
+
+def sdk_assets(root):
+    """Read admitted UPM bytes before writing; no canonical/build/model fallback."""
+    sdk = root / 'upm/com.blazetc.humanvision'
+    input_descriptor = json.loads((root / 'upm/com.blazetc.humanvision.input/package.json').read_text())
+    descriptor = json.loads((sdk / 'package.json').read_text())
+    if descriptor['version'] != VERSION or descriptor['dependencies'].get('com.blazetc.humanvision.input') != input_descriptor['version']:
+        raise ValueError('SDK version or explicit input dependency differs from admitted package.')
+    required = SDK_ROOT_FILES + (ANDROID_SETTINGS, 'Editor/HumanVisionAndroidRuntimeSettings.cs',
+        'Editor/HumanVisionAndroidRuntimeModeRegistry.cs', 'Editor/HumanVisionAndroidRuntimeBuildValidator.cs',
+        'Editor/HumanVisionModelInstaller.cs', 'Editor/HumanVision.Editor.asmdef', 'RuntimeData/index.json',
+        'Runtime/Plugins/Android/arm64-v8a/libhumanvision.so')
+    for relative in required:
+        if not (sdk / relative).is_file():
+            raise FileNotFoundError('Missing admitted SDK asset: ' + relative)
+    audit = json.loads((sdk / 'android-gpu-bridge-symbols.json').read_text())
+    native_hash = hashlib.sha256((sdk / 'Runtime/Plugins/Android/arm64-v8a/libhumanvision.so').read_bytes()).hexdigest()
+    if audit.get('native_sha256') != native_hash or audit.get('abi') != 'arm64-v8a' or audit.get('api_level') != 26 or audit.get('ncnn_vulkan_symbols_verified') is not True or audit.get('gpu_gate') is not False:
+        raise ValueError('Admitted production native SHA-256/bridge audit mismatch.')
+    files = [sdk / relative for relative in SDK_ROOT_FILES]
+    for section in ('Runtime', 'Editor', 'RuntimeData', 'Documentation', 'Licenses', 'Samples~/UnifiedInput'):
+        files.extend(source for source in sorted((sdk / section).rglob('*'))
+                     if source.is_file() and not source.name.endswith('.meta'))
+    assets = {}
+    for source in files:
+        relative = source.relative_to(sdk).as_posix()
+        if source.name.startswith(('libavcodec', 'libavformat', 'libavutil', 'libswresample', 'libswscale',
+                                   'avcodec-', 'avformat-', 'avutil-', 'swresample-', 'swscale-')):
+            raise ValueError('Shared FFmpeg payload must be owned solely by input: ' + relative)
+        meta = source.with_name(source.name + '.meta')
+        assets[relative] = (source.read_bytes(), meta.read_bytes() if meta.exists() else metadata('UPM/' + relative).encode())
+    # Verify the named layout translation before creating any output files.
+    offline_bytes(ANDROID_SETTINGS, assets[ANDROID_SETTINGS][0])
+    return assets
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--source-root', type=Path, default=ROOT)
+    parser.add_argument('--output', type=Path, default=OUTPUT)
+    args = parser.parse_args()
+    root, output = args.source_root, args.output
+    selected = sdk_assets(root)
+    assets = {}
+    for relative, (data, meta) in selected.items():
+        path = offline_path(relative)
+        assets[path] = (offline_bytes(relative, data), offline_meta(relative, meta))
+    for relative, meta in sdk_folders(root, selected).items():
+        assets[offline_path(relative)] = (b'', offline_meta(relative, meta, folder=True))
+    input_root = root / 'upm/com.blazetc.humanvision.input'
+    for source in sorted((input_root / 'Runtime').rglob('*')):
+        if source.is_file() and not source.name.endswith('.meta'):
+            path = 'Assets/HumanVisionInput/' + source.relative_to(input_root).as_posix()
+            meta = source.with_name(source.name + '.meta')
+            assets[path] = (source.read_bytes(), meta.read_bytes() if meta.exists() else metadata(path).encode())
+    output.mkdir(parents=True, exist_ok=True)
     manifest = {path: hashlib.sha256(data).hexdigest() for path, (data, _) in sorted(assets.items())}
-    (OUTPUT / 'asset-sha256.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    package = OUTPUT / ('HumanVisionSDK-' + VERSION + '.unitypackage')
+    (output / 'asset-sha256.json').write_text(json.dumps(manifest, indent=2) + '\n')
+    package = output / ('HumanVisionSDK-' + VERSION + '.unitypackage')
     # Unity 2021's importer returns zero assets when gzip FNAME is the outer
     # .unitypackage filename. Match Unity ExportPackage's inner tar filename.
     with package.open('wb') as raw, gzip.GzipFile(filename='archtemp.tar', mode='wb',
@@ -142,15 +185,15 @@ This is a user-testing preview, not a claim of model redistribution clearance or
             for leaf, payload in (('asset', data), ('asset.meta', meta), ('pathname', path.encode())):
                 info = tarfile.TarInfo(guid + '/' + leaf); info.size = len(payload); info.mode = 0o644
                 tar.addfile(info, io.BytesIO(payload))
-    shutil.copy2(ROOT / 'docs/SDK_040_USER_GUIDE.md', OUTPUT / 'README.md')
-    shutil.copy2(ROOT / 'docs/plans/040-v2/2026-09-10-humanvision-040-master-v2.md', OUTPUT / 'IMPLEMENTATION_PLAN.md')
-    archive = OUTPUT / ('HumanVisionSDK-' + VERSION + '.zip')
+    (output / 'README.md').write_bytes(selected['README.md'][0])
+    shutil.copy2(root / 'docs/plans/040-v2/2026-09-10-humanvision-040-master-v2.md', output / 'IMPLEMENTATION_PLAN.md')
+    archive = output / ('HumanVisionSDK-' + VERSION + '.zip')
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as bundle:
-        for path in (package, OUTPUT / 'README.md', OUTPUT / 'asset-sha256.json', OUTPUT / 'IMPLEMENTATION_PLAN.md'):
+        for path in (package, output / 'README.md', output / 'asset-sha256.json', output / 'IMPLEMENTATION_PLAN.md'):
             bundle.write(path, path.name)
-        for path in (ROOT / 'native/include/humanvision').glob('*.h'):
+        for path in (root / 'native/include/humanvision').glob('*.h'):
             bundle.write(path, 'NativeHeaders/' + path.name)
-    (OUTPUT / 'SHA256SUMS.txt').write_text('\n'.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name for p in (package, archive)) + '\n')
+    (output / 'SHA256SUMS.txt').write_text('\n'.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name for p in (package, archive)) + '\n')
     print(f'Created {len(assets)} assets: {package}\n{archive}\nNo Unity import or runtime tests executed.')
 
 if __name__ == '__main__': main()

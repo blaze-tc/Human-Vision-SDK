@@ -34,12 +34,16 @@ struct Session {
   std::thread worker;
   std::atomic<bool> worker_done{false};
   std::string error;
+  // Protected by mutex; retain the first native GPU failure through decoder close.
+  bool gpu_error_recorded = false;
   std::vector<uint8_t> latest, scratch;
   HV_InputFrameInfo info{};
   static int Interrupt(void *);
   void Run() noexcept;
   void Decode();
   void SetError(const char *stage, int code);
+  void SetGpuError(const char *stage, const char *detail);
+  bool SetDecoderState(uint32_t next);
 #ifdef _WIN32
   void Publish(AVFrame *, SwsContext *&, AVRational, int64_t received_us);
 #endif

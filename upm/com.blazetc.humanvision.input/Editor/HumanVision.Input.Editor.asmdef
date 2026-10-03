@@ -1,0 +1,5 @@
+{
+  "name": "HumanVision.Input.Editor",
+  "references": ["HumanVision.Input", "UnityEngine.UI"],
+  "includePlatforms": ["Editor"]
+}

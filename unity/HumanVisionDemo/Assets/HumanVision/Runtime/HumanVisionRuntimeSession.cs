@@ -118,7 +118,10 @@ namespace HumanVision
             bool changed = previous != _native.BodySequence || _lastHand != _native.HandSequence;
             BodyCount = (int)count; CopyBodies(Bodies, BodyCount, true); _lastHand = _native.HandSequence;
             var sampledStats = _native;
-            Check(RuntimeBindings.HV_RuntimeCopy(_handle, (long)(Time.realtimeSinceStartupAsDouble * 1000000), _buffer, 8, out count, ref sampledStats), "sampled snapshot");
+            // CPU observations use native steady-clock microseconds. GPU keeps its existing sampling route.
+            long sampleTimeUs = UsesGpuFrames ? (long)(Time.realtimeSinceStartupAsDouble * 1000000) : RuntimeBindings.HV_RuntimeClockUs();
+            if (!UsesGpuFrames && sampleTimeUs < 0) throw new InvalidOperationException("Invalid runtime monotonic sample clock.");
+            Check(RuntimeBindings.HV_RuntimeCopy(_handle, sampleTimeUs, _buffer, 8, out count, ref sampledStats), "sampled snapshot");
             SampledCount = (int)count; CopyBodies(SampledBodies, SampledCount, false);
             RefreshStats(); return changed;
         }

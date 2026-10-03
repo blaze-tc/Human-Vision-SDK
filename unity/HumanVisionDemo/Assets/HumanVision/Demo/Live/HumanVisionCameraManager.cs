@@ -26,7 +26,7 @@ namespace HumanVision
         public string Status { get; private set; } = "Initializing";
         public bool IsReady => _manager != null && _manager.IsInitialized;
         public string ActiveRuntimeProfile => string.IsNullOrEmpty(_activeRuntimeProfile) ? "not initialized" : _activeRuntimeProfile;
-        public string InputStatus => _source != null ? _source.Status : "Stopped";
+        public string InputStatus => _unifiedBinding ? (_bridge.IsPlaying ? "Streaming" : "Stopped") : _source != null ? _source.Status : "Stopped";
         public string RuntimeDiagnostics => _manager != null ? _manager.RuntimeDiagnostics : "not initialized";
         public long ResultSequence => _manager != null ? _manager.ResultSequence : 0;
         public event Action<long> SkeletonUpdated;
@@ -37,6 +37,7 @@ namespace HumanVision
         private int[] _assignments = Array.Empty<int>();
         private long _revision;
         private bool _regionsEnabled;
+        private bool _unifiedBinding;
         private string _runtimeRoot;
         private string _activeRuntimeProfile = "";
 
@@ -63,14 +64,36 @@ namespace HumanVision
         }
         private void OnEnable()
         {
-            if (_manager != null) _manager.ResultUpdated += OnResult;
+            if (_manager != null) { _manager.ResultUpdated -= OnResult; _manager.ResultUpdated += OnResult; }
         }
         private void OnDisable()
         {
             if (_manager != null) _manager.ResultUpdated -= OnResult;
             StopCamera();
         }
-        private void OnDestroy() { if (Instance == this) Instance = null; }
+        private void OnDestroy() { UnbindUnifiedInput(); if (Instance == this) Instance = null; }
+        internal void BindUnifiedInput(HumanVisionCameraSettings settings, long revision)
+        {
+            settings.Validate();
+            Settings = settings;
+            if (_slots.Length != settings.people) {
+                _slots = new HumanVisionBody[settings.people];
+                _assignments = new int[settings.people];
+            } else Array.Clear(_slots, 0, _slots.Length);
+            _revision = revision; _regionsEnabled = settings.useRegions;
+            _activeRuntimeProfile = _manager.ActiveRuntimeProfile;
+            _unifiedBinding = true;
+            _manager.ResultUpdated -= OnResult;
+            _manager.ResultUpdated += OnResult;
+            Status = "Unified input bound";
+            OnResult(_manager.ResultSequence);
+        }
+        internal void UnbindUnifiedInput()
+        {
+            if (_manager != null) _manager.ResultUpdated -= OnResult;
+            _unifiedBinding = false;
+            Array.Clear(_slots, 0, _slots.Length);
+        }
         public bool ApplySettings()
         {
             try {
@@ -152,6 +175,7 @@ namespace HumanVision
         private void OnResult(long sequence)
         {
             Array.Clear(_slots, 0, _slots.Length);
+            if (_unifiedBinding && !Fresh) return;
             if (!_manager.TryCopyRegionAssignments(_assignments, out long revision) || revision != _revision) return;
             for (int i = 0; i < _manager.BodyCount; i++) {
                 int slot = (_regionsEnabled || _manager.UsesRuntimeProfile) ? _assignments[i] : i;
@@ -159,7 +183,7 @@ namespace HumanVision
             }
             SkeletonUpdated?.Invoke(sequence);
         }
-        private bool Fresh => IsReady && _source.HasRecentFrame && _bridge.CanPresentResult(_manager.SourceFrameId);
+        private bool Fresh => IsReady && (_unifiedBinding ? _bridge.UnifiedHasRecentFrame : _source.HasRecentFrame) && _bridge.CanPresentResult(_manager.SourceFrameId);
         public Texture GetColorImageTex() => _bridge != null ? _bridge.PresentationTexture : null;
         public int GetColorImageWidth() => GetColorImageTex() != null ? GetColorImageTex().width : 0;
         public int GetColorImageHeight() => GetColorImageTex() != null ? GetColorImageTex().height : 0;
@@ -175,7 +199,7 @@ namespace HumanVision
         public bool TryGetSampledBodyByRegionIndex(int index, out HumanVisionBody body)
         {
             body = null;
-            if (!IsReady || !_source.HasRecentFrame || !_bridge.CanPresentResult(_manager.SourceFrameId)) return false;
+            if (!Fresh) return false;
             for (int i = 0; i < _manager.SampledBodyCount; i++) {
                 var candidate = _manager.SampledBodies[i];
                 if (candidate.RegionIndex == index) { body = candidate; return true; }

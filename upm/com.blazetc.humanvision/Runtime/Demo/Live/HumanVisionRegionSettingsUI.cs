@@ -24,7 +24,36 @@ namespace HumanVision
         private void Start() { RefreshDevices(); }
         private void RefreshDevices() { _devices = WebCamTexture.devices; }
         private HumanVisionSceneControls _controls;
+        private GUIStyle _regionLabel;
+        private float DisplayScale {
+            get {
+                float value = preview != null && preview.canvas != null ? preview.canvas.scaleFactor : 1;
+                return value > 0 && !float.IsNaN(value) && !float.IsInfinity(value) ? value : 1;
+            }
+        }
+        internal float RegionLineWidth => 3 * DisplayScale;
+        private bool IsPointerOverControls(Vector2 guiPosition)
+        {
+            if (_controls != null && _controls.IsPointerOverControls(guiPosition)) return true;
+            var canvas = preview != null ? preview.canvas : null;
+            if (canvas == null) return false;
+            var camera = canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
+            var screenPosition = new Vector2(guiPosition.x, Screen.height - guiPosition.y);
+            var graphics = GraphicRegistry.GetGraphicsForCanvas(canvas);
+            for (int i = 0; i < graphics.Count; i++) {
+                var graphic = graphics[i];
+                if (graphic == null || !graphic.isActiveAndEnabled || !graphic.raycastTarget ||
+                    !RectTransformUtility.RectangleContainsScreenPoint(graphic.rectTransform, screenPosition, camera) ||
+                    !graphic.Raycast(screenPosition, camera)) continue;
+                var selectable = graphic.GetComponentInParent<Selectable>();
+                if (selectable != null && selectable.IsActive() && selectable.IsInteractable()) return true;
+                var scroll = graphic.GetComponentInParent<ScrollRect>();
+                if (scroll != null && scroll.isActiveAndEnabled && (scroll.horizontal || scroll.vertical)) return true;
+            }
+            return false;
+        }
         public bool Editing => _editing;
+        public void SetEditing(bool value) { _editing = value; if (!value) _dragIndex = -1; }
         public void DrawSettings()
         {
             if (manager == null) return;
@@ -88,23 +117,26 @@ namespace HumanVision
             Rect image = new Rect(bottomLeft.x, Screen.height - topRight.y, topRight.x - bottomLeft.x, topRight.y - bottomLeft.y);
             if (image.width < 1 || image.height < 1) return;
             Event e = Event.current;
+            float scale = DisplayScale, lineWidth = RegionLineWidth;
+            if (_regionLabel == null) _regionLabel = new GUIStyle(GUI.skin.label);
+            _regionLabel.fontSize = Mathf.Max(1, Mathf.RoundToInt(16 * scale));
             for (int i = 0; i < settings.regions.Length; i++) {
                 Rect r = settings.regions[i];
                 Rect screen = new Rect(image.x + r.x * image.width, image.y + r.y * image.height,
                     r.width * image.width, r.height * image.height);
                 Color old = GUI.color;
                 GUI.color = Color.HSVToRGB((i * .137f) % 1, .8f, 1);
-                GUI.DrawTexture(new Rect(screen.x, screen.y, screen.width, 2), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(screen.x, screen.yMax - 2, screen.width, 2), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(screen.x, screen.y, 2, screen.height), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(screen.xMax - 2, screen.y, 2, screen.height), Texture2D.whiteTexture);
-                GUI.Label(new Rect(screen.x + 5, screen.y + 5, 120, 24), RegionNames[i]);
-                float handleSize = 28 * HumanVisionMobileGui.Scale;
+                GUI.DrawTexture(new Rect(screen.x, screen.y, screen.width, lineWidth), Texture2D.whiteTexture);
+                GUI.DrawTexture(new Rect(screen.x, screen.yMax - lineWidth, screen.width, lineWidth), Texture2D.whiteTexture);
+                GUI.DrawTexture(new Rect(screen.x, screen.y, lineWidth, screen.height), Texture2D.whiteTexture);
+                GUI.DrawTexture(new Rect(screen.xMax - lineWidth, screen.y, lineWidth, screen.height), Texture2D.whiteTexture);
+                GUI.Label(new Rect(screen.x + 5 * scale, screen.y + 5 * scale, 120 * scale, 24 * scale), RegionNames[i], _regionLabel);
+                float handleSize = 28 * scale;
                 Rect handle = new Rect(screen.xMax - handleSize, screen.yMax - handleSize, handleSize, handleSize);
                 if (_editing) GUI.DrawTexture(handle, Texture2D.whiteTexture);
                 GUI.color = old;
                 if (_editing && e.type == EventType.MouseDown && e.button == 0 && screen.Contains(e.mousePosition) &&
-                    (_controls == null || !_controls.IsPointerOverControls(e.mousePosition))) {
+                    !IsPointerOverControls(e.mousePosition)) {
                     _dragIndex = i; _resize = handle.Contains(e.mousePosition); _dragStart = e.mousePosition; _original = r; e.Use();
                 }
             }

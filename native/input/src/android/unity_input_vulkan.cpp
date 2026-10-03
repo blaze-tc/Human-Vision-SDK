@@ -1,5 +1,7 @@
 #include "input_vulkan_private.h"
 #include "input_image_cache.h"
+#include "input_buffer_registry.h"
+#include "input_vulkan_proc_loader.h"
 #include "input_target_owner.h"
 #include "input_yuv_shader.h"
 #include "humanvision_input.h"
@@ -11,6 +13,7 @@
 #include <media/NdkImageReader.h>
 #include <array>
 #include <condition_variable>
+#include <cstdio>
 #include <cstring>
 #include <mutex>
 #include <unistd.h>
@@ -34,25 +37,29 @@ struct Api {
   auto* u=InputUnityVulkan();if(!u)return false;unity=u->Instance();if(!unity.device||!InputForeignEnabled())return false;
   auto gd=reinterpret_cast<PFN_vkGetDeviceProcAddr>(unity.getInstanceProcAddr(unity.instance,"vkGetDeviceProcAddr"));
   if(!gd)return false;
-#define LOAD(name) name=reinterpret_cast<PFN_vk##name>(gd(unity.device,"vk" #name));if(!name)name=reinterpret_cast<PFN_vk##name>(unity.getInstanceProcAddr(unity.instance,"vk" #name));if(!name)return false;
+#define LOAD(name) name=reinterpret_cast<PFN_vk##name>(LoadInputVulkanProc("vk" #name,[&](const char* n){return gd(unity.device,n);},[&](const char* n){return unity.getInstanceProcAddr(unity.instance,n);}));if(!name)return false;
  INPUT_VK_FUNCTIONS(LOAD)
 #undef LOAD
   return true;
  }
 } api;
+InputBufferRegistry buffer_registry;
 struct Imported {
+ const void* reader=nullptr;
  VkImage image=VK_NULL_HANDLE;VkDeviceMemory memory=VK_NULL_HANDLE;
  VkSamplerYcbcrConversion conversion=VK_NULL_HANDLE;VkSampler sampler=VK_NULL_HANDLE;VkImageView view=VK_NULL_HANDLE;
  VkDescriptorSetLayout set_layout=VK_NULL_HANDLE;VkDescriptorPool descriptor_pool=VK_NULL_HANDLE;VkDescriptorSet descriptor=VK_NULL_HANDLE;
  VkPipelineLayout layout=VK_NULL_HANDLE;VkPipeline pipeline=VK_NULL_HANDLE;
  bool reference=false;
 };
-struct Counters {uint64_t creates=0,destroys=0,submits=0,completes=0,positive_waits=0,already_complete=0,exports=0,ownership_acquires=0,ownership_returns=0,queue_callbacks=0,target_views_created=0,target_views_destroyed=0,source_views_created=0,source_views_destroyed=0,pipelines_created=0,pipelines_destroyed=0,descriptor_pools_created=0,descriptor_pools_destroyed=0,errors=0;} counters;
+struct Counters {uint64_t creates=0,destroys=0,submits=0,completes=0,positive_waits=0,already_complete=0,exports=0,ownership_acquires=0,ownership_returns=0,queue_callbacks=0,target_views_created=0,target_views_destroyed=0,source_views_created=0,source_views_destroyed=0,pipelines_created=0,pipelines_destroyed=0,descriptor_pools_created=0,descriptor_pools_destroyed=0,cache_ref_acquires=0,cache_ref_releases=0,errors=0;} counters;
 uint64_t completed_token=0;
 void ProductionError(const char*,VkResult);
 void Error(const char* stage,VkResult code=VK_ERROR_UNKNOWN){++counters.errors;ProductionError(stage,code);__android_log_print(ANDROID_LOG_ERROR,"HVInputGate","color_result=FAIL stage=%s code=%d",stage,code);}
 void DestroyResource(CacheEntry& e){
  auto* r=static_cast<Imported*>(e.resource);if(!r)return;auto d=api.unity.device;
+ // Registry mutex is released before any Vulkan/AHB destruction.
+ buffer_registry.Unregister(r->reader,e.buffer);
  if(r->pipeline){api.DestroyPipeline(d,r->pipeline,nullptr);++counters.pipelines_destroyed;}
  if(r->layout)api.DestroyPipelineLayout(d,r->layout,nullptr);
  if(r->descriptor_pool){api.DestroyDescriptorPool(d,r->descriptor_pool,nullptr);++counters.descriptor_pools_destroyed;}
@@ -62,14 +69,17 @@ void DestroyResource(CacheEntry& e){
  if(r->conversion)api.DestroySamplerYcbcrConversion(d,r->conversion,nullptr);
  if(r->image)api.DestroyImage(d,r->image,nullptr);
  if(r->memory)api.FreeMemory(d,r->memory,nullptr);
- if(r->reference)AHardwareBuffer_release(static_cast<AHardwareBuffer*>(e.buffer));
+ if(r->reference){AHardwareBuffer_release(static_cast<AHardwareBuffer*>(e.buffer));++counters.cache_ref_releases;}
  delete r;e.resource=nullptr;
 }
 struct Importer:ImageImporter {
+ const void* source_reader=nullptr;
  bool Complete(uint64_t token)override{return token<=completed_token;}
  void Destroy(CacheEntry& e)override{DestroyResource(e);++counters.destroys;}
  bool Create(CacheEntry& e)override {
-  auto resource=std::make_unique<Imported>();e.resource=resource.get();auto d=api.unity.device;
+  InputBufferReservation reservation(buffer_registry,source_reader,e.buffer);
+  if(!reservation){Error("known AHB registry domain or identity");return false;}
+  auto resource=std::make_unique<Imported>();resource->reader=source_reader;e.resource=resource.get();auto d=api.unity.device;
   const auto check=[&](VkResult v,const char* stage){if(v==VK_SUCCESS)return true;Error(stage,v);return false;};
   bool success=false;
   const auto work=[&]()->bool {
@@ -117,16 +127,16 @@ struct Importer:ImageImporter {
    VkComputePipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};pipeline.stage={VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,nullptr,0,VK_SHADER_STAGE_COMPUTE_BIT,module,"main",nullptr};pipeline.layout=resource->layout;
    auto result=api.CreateComputePipelines(d,api.unity.pipelineCache,1,&pipeline,nullptr,&resource->pipeline);api.DestroyShaderModule(d,module,nullptr);
    if(!check(result,"create cached YCbCr pipeline"))return false;++counters.pipelines_created;
-   AHardwareBuffer_acquire(static_cast<AHardwareBuffer*>(e.buffer));resource->reference=true;
-   __android_log_print(ANDROID_LOG_INFO,"HVInputGate","ahb_import_created buffer=%p external_format=%llu width=%u height=%u model=%u range=%u descriptors=%u",e.buffer,(unsigned long long)c.external_format,c.width,c.height,c.model,c.range,descriptor_budget);
+   AHardwareBuffer_acquire(static_cast<AHardwareBuffer*>(e.buffer));resource->reference=true;++counters.cache_ref_acquires;
+   __android_log_print(ANDROID_LOG_INFO,"HVInputGate","ahb_import_created buffer=%p reader=%p external_format=%llu width=%u height=%u model=%u range=%u descriptors=%u",e.buffer,source_reader,(unsigned long long)c.external_format,c.width,c.height,c.model,c.range,descriptor_budget);
    return true;
   };
-  success=work();resource.release();if(!success){DestroyResource(e);return false;}++counters.creates;return true;
+  success=work();resource.release();if(!success){DestroyResource(e);return false;}if(!reservation.Commit()){Error("known AHB registry reservation lost");DestroyResource(e);return false;}++counters.creates;return true;
  }
 } importer;
 InputImageCache cache(importer);
-std::mutex mutex,removed_mutex;std::condition_variable retired;
-std::array<AHardwareBuffer*,16> removed{};
+std::mutex mutex;std::condition_variable retired;
+Counters session_baseline{};BufferRegistryStats registry_baseline{};bool terminal_reported=false;
 AndroidDecodedImage image_storage, active_storage;
 InputFrameRing frame_ring;
 bool production=false;int output_slot=-1;
@@ -140,12 +150,28 @@ bool enabled=false,initialized=false,closing=false,paused=false,inflight=false;
 void ReturnImage(AndroidDecodedImage*& p){if(p){if(production&&!inflight)frame_ring.Cancel(output_slot);p->Reset();p=nullptr;retired.notify_all();}}
 
 HV_InputHandle owner=nullptr;void* unity_texture=nullptr;uint32_t target_width=0,target_height=0;uint64_t target_generation=0;
-void ProductionError(const char* stage,VkResult code){if(production&&owner){owner->SetError(stage,int(code));owner->state=HV_INPUT_FAILED;owner->stop=true;}}
+void ProductionErrorText(const char* stage,const char* detail){
+ if(production&&owner)owner->SetGpuError(stage,detail);
+}
+void ProductionError(const char* stage,VkResult code){char detail[64]{};std::snprintf(detail,sizeof(detail),"Vulkan result %d",int(code));ProductionErrorText(stage,detail);}
 int rotation=0;bool mirror=false;uint64_t token=0;
 VkCommandPool command_pool=VK_NULL_HANDLE;VkCommandBuffer command=VK_NULL_HANDLE;VkFence fence=VK_NULL_HANDLE;
 VkSemaphore wait_semaphore=VK_NULL_HANDLE,release_semaphore=VK_NULL_HANDLE;
 VkImageView target_view=VK_NULL_HANDLE;VkImage last_target=VK_NULL_HANDLE;
 UnityVulkanImage target{};CacheEntry* source_entry=nullptr;bool target_dirty=false,retire_target=false;int fail_target_view=0;
+void LogContract(const char* label,int slot,const ImageContract& c){
+ __android_log_print(ANDROID_LOG_ERROR,"HVInputGate","ahb_cache_contract label=%s slot=%d external_format=%llu format=%u features=%u model=%u range=%u x_chroma=%u y_chroma=%u width=%u height=%u components=%u,%u,%u,%u",label,slot,(unsigned long long)c.external_format,c.format,c.features,c.model,c.range,c.x_chroma,c.y_chroma,c.width,c.height,c.components[0],c.components[1],c.components[2],c.components[3]);
+}
+void ReportCacheFailure(){
+ const auto& f=cache.LastFailure();const auto removal_state=buffer_registry.Inspect();const uint32_t notifications=removal_state.pending;
+ const int fence_status=fence?int(api.GetFenceStatus(api.unity.device,fence)):int(VK_NOT_READY);
+ __android_log_print(ANDROID_LOG_ERROR,"HVInputGate","ahb_cache_failure reason=%s buffer=%p reader=%p generation=%llu matched_slot=%u generation_changed=%d contract_diff=0x%x live=%u removed=%u complete=%u pinned=%u token=%llu completed_token=%llu inflight=%d active=%p pending=%p output_slot=%d source_entry=%p fence=%p fence_status=%d removed_notifications=%u snapshot_before_collect=1",CacheFailureName(f.reason),f.buffer,pending?pending->reader:nullptr,(unsigned long long)f.generation,f.matched_slot,f.generation_changed,f.contract_diff,f.live,f.removed,f.complete,f.pinned,(unsigned long long)token,(unsigned long long)completed_token,inflight,active,pending,output_slot,source_entry,fence,fence_status,notifications);
+ LogContract("requested",-1,f.contract);
+ for(uint32_t i=0;i<f.slots.size();++i){const auto& s=f.slots[i];const auto& e=s.entry;__android_log_print(ANDROID_LOG_ERROR,"HVInputGate","ahb_cache_slot index=%u buffer=%p reader=%p generation=%llu live=%d removed=%d complete=%d last_fence=%llu resource=%p",i,e.buffer,e.live&&e.resource?static_cast<Imported*>(e.resource)->reader:nullptr,(unsigned long long)e.generation,e.live,e.removed,s.complete,(unsigned long long)e.last_fence,e.resource);if(e.buffer)LogContract("cached",int(i),e.contract);}
+ for(int i=0;i<3;++i){const auto& s=frame_ring.Slot(i);__android_log_print(ANDROID_LOG_ERROR,"HVInputGate","ahb_cache_output_slot index=%d state=%d generation=%llu sequence=%llu fence=%llu observed=%d rgba_texture=%p rgba_image=%p",i,int(s.state),(unsigned long long)s.generation,(unsigned long long)s.sequence,(unsigned long long)s.fence,s.observed,output_textures[i],output_images[i]);}
+ // Create already reports its actual first Vulkan stage/result. Never replace it.
+ if(f.reason!=CacheFailure::CreateFailed){++counters.errors;char detail[160]{};std::snprintf(detail,sizeof(detail),"%s (live=%u removed=%u complete=%u pinned=%u)",CacheFailureName(f.reason),f.live,f.removed,f.complete,f.pinned);ProductionErrorText("AHB import cache",detail);}
+}
 bool InitializeResources(){
  if(initialized)return true;if(!api.Load()){Error("successful enabled input Vulkan capabilities");return false;}
  auto d=api.unity.device;VkCommandPoolCreateInfo pool{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,nullptr,VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,api.unity.queueFamilyIndex};
@@ -175,7 +201,7 @@ void Poll(){
   __android_log_print(ANDROID_LOG_INFO,"HVInputGate","gpu_color_completed sequence=%llu generation=%llu pts_us=%lld received_us=%lld decoded_us=%lld cpu_image_readbacks=0 target_width=%u target_height=%u applied_rotation=%d applied_mirror=%d source_matrix=%u source_range=%u transfer=%u primaries=%u color_space=%u",(unsigned long long)token,(unsigned long long)active->generation,(long long)active->pts_us,(long long)active->received_us,(long long)active->decoded_us,target_width,target_height,rotation,mirror,active->matrix,active->color_range,active->transfer,active->primaries,0u);
   ReturnImage(active);retired.notify_all();
  }
- {std::lock_guard<std::mutex> lock(removed_mutex);for(auto& b:removed)if(b){cache.Remove(b);b=nullptr;}}
+ BufferIdentity removed;while(buffer_registry.TakeRemoved(removed))cache.Remove(removed.buffer);
  if(closing)cache.RemoveAll();cache.Collect();if(production)frame_ring.Collect(completed_token);
 }
 struct SyncFdBackend:InputSyncFdBackend {
@@ -211,16 +237,29 @@ void UNITY_INTERFACE_API SubmitOnUnityQueue(int,void*){
  __android_log_print(ANDROID_LOG_INFO,"HVInputGate","gpu_color_submitted sequence=%llu buffer=%p acquire_wait=%s release_fd=%d ownership=FOREIGN_EXT_to_Unity_to_FOREIGN_EXT serialized_access_queue=1",(unsigned long long)token,active->buffer,waited?"imported_sync_fd":"actual_minus_one_already_complete",active->release_fd);
 }
 }
-bool BeginInputGpu(HV_InputHandle h){std::lock_guard<std::mutex> lock(mutex);if(owner||active||pending||inflight)return false;owner=h;production=true;enabled=true;closing=paused=false;output_slot=-1;published_frame={};frame_ring.Begin(1);return true;}
+bool BeginInputGpu(HV_InputHandle h){std::lock_guard<std::mutex> lock(mutex);if(owner||active||pending||inflight)return false;owner=h;session_baseline=counters;registry_baseline=buffer_registry.Inspect();terminal_reported=false;production=true;enabled=true;closing=paused=false;output_slot=-1;published_frame={};frame_ring.Begin(1);return true;}
 void CloseInputGpu(HV_InputHandle h){std::lock_guard<std::mutex> lock(mutex);if(!production||owner!=h)return;closing=paused=true;frame_ring.Close();published_frame={};ReturnImage(pending);retire_target=true;}
-bool InputGpuRetired(HV_InputHandle h){std::lock_guard<std::mutex> lock(mutex);return !production||owner!=h||(!active&&!pending&&!inflight&&!retire_target&&cache.Live()==0);}
+bool InputGpuRetired(HV_InputHandle h){
+ std::lock_guard<std::mutex> lock(mutex);const bool done=!production||owner!=h||(!active&&!pending&&!inflight&&!retire_target&&cache.Live()==0);
+ // Report once only after the decoder has deleted its reader/quiesced callbacks
+ // and real GPU retirement released cache objects. Never from a removal callback.
+ if(done&&production&&owner==h&&h->stop&&h->worker_done&&!terminal_reported){
+  const auto s=buffer_registry.Inspect();
+  __android_log_print(ANDROID_LOG_INFO,"HVInputGate","input_cache_retired owner=%p supported_object_limit=%u creates=%llu destroys=%llu cache_ref_acquires=%llu cache_ref_releases=%llu cache_owned_refs=%llu cache_live=%u registry_live=%u registry_reserved=%u registry_pending=%u known_notifications=%llu duplicate_notifications=%llu unknown_notifications=%llu submits=%llu completes=%llu source_views_created=%llu source_views_destroyed=%llu pipelines_created=%llu pipelines_destroyed=%llu descriptor_pools_created=%llu descriptor_pools_destroyed=%llu target_views_created=%llu target_views_destroyed=%llu",
+   h,kInputDecoderBufferCapacity,(unsigned long long)(counters.creates-session_baseline.creates),(unsigned long long)(counters.destroys-session_baseline.destroys),(unsigned long long)(counters.cache_ref_acquires-session_baseline.cache_ref_acquires),(unsigned long long)(counters.cache_ref_releases-session_baseline.cache_ref_releases),(unsigned long long)(counters.cache_ref_acquires-counters.cache_ref_releases),cache.Live(),s.live,s.reserved,s.pending,
+   (unsigned long long)(s.known_notifications-registry_baseline.known_notifications),(unsigned long long)(s.duplicate_notifications-registry_baseline.duplicate_notifications),(unsigned long long)(s.unknown_notifications-registry_baseline.unknown_notifications),(unsigned long long)(counters.submits-session_baseline.submits),(unsigned long long)(counters.completes-session_baseline.completes),
+   (unsigned long long)(counters.source_views_created-session_baseline.source_views_created),(unsigned long long)(counters.source_views_destroyed-session_baseline.source_views_destroyed),(unsigned long long)(counters.pipelines_created-session_baseline.pipelines_created),(unsigned long long)(counters.pipelines_destroyed-session_baseline.pipelines_destroyed),(unsigned long long)(counters.descriptor_pools_created-session_baseline.descriptor_pools_created),(unsigned long long)(counters.descriptor_pools_destroyed-session_baseline.descriptor_pools_destroyed),(unsigned long long)(counters.target_views_created-session_baseline.target_views_created),(unsigned long long)(counters.target_views_destroyed-session_baseline.target_views_destroyed));
+  terminal_reported=true;
+ }
+ return done;
+}
 void DetachInputGpu(HV_InputHandle h){std::lock_guard<std::mutex> lock(mutex);if(owner==h&&production){owner=nullptr;production=false;enabled=false;frame_ring.Close();}}
 void PrepareInputGpuGeneration(Session* h){std::lock_guard<std::mutex> lock(mutex);if(production&&owner==h&&!h->stop){closing=paused=false;published_frame={};}}
 int PollInputGpuMetadata(HV_InputHandle h,uint64_t after,HV_InputFrameInfo* f){std::lock_guard<std::mutex> lock(mutex);if(!h||h!=owner||!f)return HV_INPUT_INVALID;if(closing||published_frame.frame.sequence<=after||!published_frame.frame.sequence)return HV_INPUT_NO_FRAME;*f=published_frame.frame;return 0;}
 bool InputGpuProduction(Session* h){std::lock_guard<std::mutex> lock(mutex);return production&&owner==h;}
 bool ColorProbeEnabled(){std::lock_guard<std::mutex> lock(mutex);return enabled;}
 bool QueueColorImage(AndroidDecodedImage& image){std::lock_guard<std::mutex> lock(mutex);if(!enabled||closing||paused)return false;if(production){if(pending){ReturnImage(pending);++decoded_drops;}image_storage.TakeFrom(image);pending=&image_storage;return true;}if(pending||active)return false;image_storage.TakeFrom(image);pending=&image_storage;return true;}
-void NotifyRemovedBuffer(AHardwareBuffer* buffer){std::lock_guard<std::mutex> lock(removed_mutex);for(auto& b:removed)if(!b){b=buffer;return;}Error("buffer removed notification capacity");}
+void NotifyRemovedBuffer(AImageReader* reader,AHardwareBuffer* buffer){buffer_registry.Notify(reader,buffer);}
 void DrainColorImagesBeforeReaderClose(){std::unique_lock<std::mutex> lock(mutex);if(!enabled)return;closing=true;paused=true;if(production){frame_ring.Close();published_frame={};}ReturnImage(pending);retired.wait(lock,[]{return !active;});}
 void ConfigureInputCopyProbeEvent();
 void ConfigureInputRenderEvent(){ConfigureInputCopyProbeEvent();auto* u=InputUnityVulkan();if(!u)return;UnityVulkanPluginEventConfig config{kUnityVulkanRenderPass_EnsureOutside,kUnityVulkanGraphicsQueueAccess_DontCare,kUnityVulkanEventConfigFlag_EnsurePreviousFrameSubmission|kUnityVulkanEventConfigFlag_ModifiesCommandBuffersState};u->ConfigureEvent(event_id,&config);}
@@ -261,7 +300,7 @@ last_target=target.image;target_dirty=false;++counters.target_views_created;__an
  AHardwareBuffer_Desc desc{};AHardwareBuffer_describe(pending->buffer,&desc);contract.width=desc.width;contract.height=desc.height;
  if(pending->matrix==1)contract.model=VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;else if(pending->matrix==2)contract.model=VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
  if(pending->color_range==1)contract.range=VK_SAMPLER_YCBCR_RANGE_ITU_FULL;else if(pending->color_range==2)contract.range=VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
- source_entry=cache.Acquire(pending->buffer,pending->generation,contract);if(!source_entry){Error("acquire reusable AHB import");ReturnImage(pending);return;}
+ importer.source_reader=pending->reader;source_entry=cache.Acquire(pending->buffer,pending->generation,contract);if(!source_entry){ReportCacheFailure();ReturnImage(pending);return;}
  if(production){active_storage.TakeFrom(*pending);pending=nullptr;active=&active_storage;}else{active=pending;pending=nullptr;}submit=true;
  }
  // Flush Unity's AccessTexture layout transition first; only this callback may submit.

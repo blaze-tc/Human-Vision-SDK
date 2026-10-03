@@ -203,6 +203,16 @@ namespace HumanVision.Demo
         private int _unifiedPreviewCount;
         private float _unifiedPreviewStart, _unifiedPreviewFps;
         public bool UnifiedRetirementPending=>_inputAdapter!=null&&_inputAdapter.RetirementPending;
+        internal bool UnifiedHasRecentFrame {
+            get {
+                if (_unifiedSource == null || _unifiedSource.State != InputSourceState.Streaming ||
+                    _inputAdapter == null || !_unifiedSource.TryGetLatestFrame(-1, out var frame) ||
+                    frame.SourceId != _inputAdapter.SourceId || frame.Generation != _inputAdapter.SourceGeneration) return false;
+                long now = InputMonotonicClock.NowUs;
+                return frame.PublishedTimestampUs >= 0 && frame.PublishedTimestampUs <= now &&
+                    now - frame.PublishedTimestampUs < 1000000;
+            }
+        }
         public void BindUnifiedSource(IHumanVisionFrameSource source) {
             if(source==null)throw new ArgumentNullException(nameof(source));
             DetachUnifiedSource();_unifiedSource=source;
@@ -254,6 +264,10 @@ namespace HumanVision.Demo
         private bool _acceptReadbacks;
         private bool _normalizeReadbackRows;
         private bool _livePreview;
+#if HV_TOPDOWN_EVAL
+        // Exact held-frame diagnostic only; caller binds preview and result IDs.
+        internal Func<long, bool> EvaluationCanPresentHeldResult;
+#endif
         private bool _externalInput, _rowOrderReady, _rowProbePending;
         private bool _externalRowsBottomUp;
         private Texture _liveTexture;
@@ -265,7 +279,9 @@ namespace HumanVision.Demo
         [Tooltip("Maximum source age of a visible live skeleton. This does not increase inference FPS.")]
         [Range(100, 10000)] public float maxLiveResultAgeMilliseconds = 3000;
         public double ResultAgeMilliseconds => manager == null || manager.SourceTimestampUs <= 0 ? 0 :
-            Math.Max(0, Time.realtimeSinceStartupAsDouble * 1000 - manager.SourceTimestampUs / 1000d);
+            manager.UsesRuntimeProfile && !manager.UsesAndroidGpuFrames
+                ? (HumanVision.Interop.RuntimeBindings.HV_RuntimeClockUs() - manager.SourceTimestampUs) / 1000d
+                : Math.Max(0, Time.realtimeSinceStartupAsDouble * 1000 - manager.SourceTimestampUs / 1000d);
 
         internal static bool UseLivePreview(bool smoothPreview, bool gpuFrames) => smoothPreview || gpuFrames;
 
@@ -434,6 +450,10 @@ namespace HumanVision.Demo
         public bool CanPresentResult(long resultFrameId)
         {
             if(_unifiedSource!=null&&_inputAdapter!=null)return _inputAdapter.CanPresentResult(resultFrameId);
+#if HV_TOPDOWN_EVAL
+            if (EvaluationCanPresentHeldResult != null)
+                return _acceptReadbacks && EvaluationCanPresentHeldResult(resultFrameId);
+#endif
             if (_livePreview) return _acceptReadbacks && resultFrameId >= _minimumUsableResultFrameId &&
                 manager != null && manager.ResultSequence > 0 && ResultAgeMilliseconds <= maxLiveResultAgeMilliseconds;
             return _presentationFrameId >= _minimumUsableResultFrameId &&
@@ -710,6 +730,15 @@ namespace HumanVision.Demo
                     submissionBuffer = slot.TopLeftBuffer;
                 }
 
+                long submissionTimestampUs = slot.TimestampUs;
+                if (manager.UsesRuntimeProfile && !manager.UsesAndroidGpuFrames)
+                {
+                    // Main-thread pair retains time already spent in the source/copy queue.
+                    long unityNowUs = (long)(Time.realtimeSinceStartupAsDouble * 1000000);
+                    long nativeNowUs = HumanVision.Interop.RuntimeBindings.HV_RuntimeClockUs();
+                    try { submissionTimestampUs = InputTimestampMapping.Map(slot.TimestampUs, unityNowUs, nativeNowUs); }
+                    catch (ArgumentException error) { SetError(error.Message); return; }
+                }
                 IntPtr data = (IntPtr)NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(submissionBuffer);
                 if (manager.SubmitFrame(
                     data,
@@ -718,7 +747,7 @@ namespace HumanVision.Demo
                     slot.Width * 4,
                     HumanVisionPixelFormat.Rgba32,
                     slot.FrameId,
-                    slot.TimestampUs,
+                    submissionTimestampUs,
                     slot.Buffer.Length))
                 {
                     _latestSubmittedFrameId = Math.Max(_latestSubmittedFrameId, slot.FrameId);

@@ -1,27 +1,41 @@
-# Current: unified-input Task9 verified; three usable Demos next (2026-10-03)
+# Current: unified-input Task10 verified; Task11 acceptance next (2026-10-03)
 
-9/11 tasks verified with separate commits and fresh spec/quality review. Task9
-adds the unified SDK adapter, three reusable GPU normalization targets and exact
-per-submission copy tickets; preview is independent of inference and detach.
-Original gates pass native92/92, canonical6/6 and actual UPM6/6 and both Android
-IL2CPP/Vulkan builds. Four review findings then receive scoped fixes and affected
-validation; exact new evidence is in the Task9 report. Old APKs do not qualify the
-changed native bytes. V1 and explicit backend selection stay stable.
-Existing dirty R4 changes and caches remain preserved outside reviewed commits.
+10/11 tasks implemented and verified; Task10 final evidence and source reviews
+pass, with its separate verified commit. Task11 acceptance is next. Subsequent
+implementers and reviewers use GPT-6.1 Sol high per the user instruction.
+Three Camera/Video/RTSP Demos, shared recognition settings, per-mode source
+settings, independent no-model input preview and regenerated local packages are
+implemented. Existing stable API/overlay and post-inference Region assignment
+remain. Region borders use the display reference; controls shield pointer input.
+A new GameObject/LineRenderer renderer and CPU inference-region masking are not
+part of this implementation.
 
-Actual Snapdragon888 controlled RTSP gate has visible seven-person bones in a
-sample,298 real source-copy fence acknowledgments and terminal resources/errors0.
-Fresh complete observation FPS7.858103; ageP50/P95206.107/311.822ms. Output
-sampling60.0844FPS and25FPS source are not fresh skeleton FPS. GUI draw intervals
-and failed screenrecord do not certify smooth display. 25/30 goals remain FAIL.
-[Task9 evidence and limits](reports/2026-10-03-unified-input-task9.md).
+Fresh final Combined Windows/Android builds pass. Exact immutable source1221
+files and195scoped changes/20sole-owner migration deletions are qualified. Actual
+Input Android APK has no SDK/model payload; eight exact native dependencies in
+Combined and six in Input. Native cache supports64object identities/explicit65
+failure, focused15/15 passes after old17object runtime RED. The independent
+Input APK sustains real Snapdragon888 RTSP194.859s then mirror/reopen119.213s;
+7526GPU submissions/completions are contiguous and client resource balances
+return to zero separately from decoder leases/fds. Physical exposure15/14objects,
+rotation0only and unknowncallback snapshots are explicit evidence limitations.
+The25FPSsource/request30HUD is not skeleton inference30FPS acceptance.
+
+The actual open userUnityproject imports final immutablev9packages; current
+VideoDemo shows upright video, four sampled skeletons/facadeusers and Console0.
+Fresh actual1280x720capture confirms display binding, source1024x576 and readable
+uGUI. Existing userRegions/resources/settings and unrelatedR4work/caches remain
+preserved; protected historical status tail177838bytes is unchanged.
+[Task10 evidence and limits](reports/2026-10-03-unified-input-task10.md).
+[Task9 recognition evidence](reports/2026-10-03-unified-input-task9.md).
 [Approved sequential plan](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
 
-Task10 next: actual Camera/Video/RTSP scenes, common navigation/settings, prior
-tested skeleton renderer, independent no-model input preview and clean package
-imports. Task11: physical acceptance and maintenance. Temporary diagnostic RTSP
-publishers are removed after collection; diagnostics are not final demos.
-No performance acceptance, main merge or Release; sole SDK milestone remains M3.
+Task11 has not started. It collects actual Video/Camera/RTSP complete observation
+FPS/age/drops/thermal and physical direction/motion evidence. Earlier Android
+seven-body freshFPS7.858103 remains below25/30; output sampling60FPS does not
+replace inference observations. Thirty fresh complete observation frames/s and
+final userphysical acceptance remain outstanding. No main merge or Release;
+sole SDK milestone remains M3.
 
 # Current YOLO-M3: bounded execution/resolution trial complete (2026-10-01)
 

@@ -1,0 +1,32 @@
+{
+  "source": "FFmpeg7.1 JavaCPP presets1.5.11 non-GPL classifiers",
+  "source_url": "https://github.com/bytedeco/javacpp-presets/tree/1.5.11/ffmpeg",
+  "license": "LGPL-2.1-or-later",
+  "source_build_tool": "tools/package/build_input_native.ps1",
+  "files": {
+    "Runtime/Plugins/x86_64/avcodec-61.dll": "f0c5373f00734d0090471c75a49caf282912e6b085c4c29976ec36df3c9c586e",
+    "Runtime/Plugins/x86_64/avcodec-61.dll.meta": "37b60c8f21ec03d988602a0607958a9e9eeaf623a0f4548f4567bc177da4a6af",
+    "Runtime/Plugins/x86_64/avformat-61.dll": "e83cbe9d42a18a1b5876df63ac1fb76aecac80171d203d77f701229cdcac1178",
+    "Runtime/Plugins/x86_64/avformat-61.dll.meta": "0a7adf5b469826b9c8a8772338039f462d289fce140c9df89c027ef400863e4c",
+    "Runtime/Plugins/x86_64/avutil-59.dll": "347bbd018541f9ac48e7b1a60edeebba15d67702b9ffa5e213ae19b2ee5855a3",
+    "Runtime/Plugins/x86_64/avutil-59.dll.meta": "2a44c5dbe5d37848bf0387722eed05aa7c30f8214d26d15b4be02fd7281c92b9",
+    "Runtime/Plugins/x86_64/humanvision_input.dll": "8d5ef622212bcfb40d999021bb0e6e98c31978cb08762f0aaf3ed810473322d4",
+    "Runtime/Plugins/x86_64/humanvision_input.dll.meta": "3f2145ff0f943912da02317f2696db7755743b60139c8f846a613e001ad049a4",
+    "Runtime/Plugins/x86_64/swresample-5.dll": "a70c2133966a8f454b093e446d0e3d6a3ab4b5deec9e2ba6e6997e53061b7e36",
+    "Runtime/Plugins/x86_64/swresample-5.dll.meta": "4d76b9a86bed34e6817f6dd7178e900458d86cc737bac0d4106c15c7c5d140f9",
+    "Runtime/Plugins/x86_64/swscale-8.dll": "f5b62dc7555a163dd76cf60a59845d3a16f21d7f981ea643282fda1aa6c29e8c",
+    "Runtime/Plugins/x86_64/swscale-8.dll.meta": "dda03bd12770c5c4e00a4cb8f9cc99478440a205f82c6076cc8222af3eb1d6bc",
+    "Runtime/Plugins/Android/arm64-v8a/libavcodec.so": "6808f8e77223680a1e2ac195178032300e55d950dede4aa2fa91009987d96296",
+    "Runtime/Plugins/Android/arm64-v8a/libavcodec.so.meta": "e7074c19391a4dcf4a51f3747853790b3f086d6aa2e13a5037fdc7fa905f8043",
+    "Runtime/Plugins/Android/arm64-v8a/libavformat.so": "cb9b15ab4c136d40d67b32fbf31f4c155c150e7d43c37174307503595905abd7",
+    "Runtime/Plugins/Android/arm64-v8a/libavformat.so.meta": "b287d499bca97626b1ed1b184b7428d7034f721b53922483bbefc2536cefb94f",
+    "Runtime/Plugins/Android/arm64-v8a/libavutil.so": "92136c3c0535b9817f6f72d45d272476ac83d5211785c7e1f06f7ec65954d9ef",
+    "Runtime/Plugins/Android/arm64-v8a/libavutil.so.meta": "c0ed11897780e5bf3a5e3d5176da47581134722a4c4081bb9f0a30c7414619a8",
+    "Runtime/Plugins/Android/arm64-v8a/libhumanvision_input.so": "d3968a4f12d1cf7882c04312c7f0ad095c4a18b894846e2beafb758e9f582628",
+    "Runtime/Plugins/Android/arm64-v8a/libhumanvision_input.so.meta": "625f38056b240c9d3592dca3db9421e076b790470a0443dd4893fe4af16d7485",
+    "Runtime/Plugins/Android/arm64-v8a/libswresample.so": "8cadca3419da79d3919a9498bee8619696b15faba03cf43bbcfda0a1aec7b5a3",
+    "Runtime/Plugins/Android/arm64-v8a/libswresample.so.meta": "19acc4b6112ec0da7c9184284cb0839bda2dc87c18bbdb5c17981f1d1f597fb9",
+    "Runtime/Plugins/Android/arm64-v8a/libswscale.so": "aaae7e3a11b68c0306056fa3d463d94069d250f9a1f83dd1f67a5e9074d17aff",
+    "Runtime/Plugins/Android/arm64-v8a/libswscale.so.meta": "bb57be47bd4bbfb2928799a9f0715584b6c5a34a48f5c92f326664f172974fa5"
+  }
+}

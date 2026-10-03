@@ -17,6 +17,13 @@ if($Phase -eq 'Adapter') {
     & "$PSScriptRoot/task9_managed_verify.ps1" -Kind upm -Output "$Output-adapter"
     return
 }
+if($Phase -eq 'Package') {
+    & py -3.13 "$repo/tools/package/check_input_package.py" --root "$repo/upm/com.blazetc.humanvision.input"
+    if($LASTEXITCODE -ne 0){throw 'Input package boundary check failed.'}
+    & "$PSScriptRoot/task10_verify.ps1" -Kind Input -Output "$Output-clean-input"
+    & "$PSScriptRoot/task10_verify.ps1" -Kind Combined -Output "$Output-clean-combined"
+    return
+}
 if ($Phase -notin @('Core','UnitySources')) { throw "Phase $Phase is not implemented yet; no tests ran." }
 $project = Join-Path $outputPath 'project'
 foreach ($directory in @($project, (Join-Path $project 'Assets'), (Join-Path $project 'Packages'), (Join-Path $project 'ProjectSettings'))) {
@@ -27,6 +34,7 @@ $runPath = Join-Path $outputPath $runId
 New-Item -ItemType Directory -Path $runPath | Out-Null
 # Reuse pinned test framework dependencies from an existing cache, read-only.
 $dependencies = @{ 'com.blazetc.humanvision.input' = ('file:' + ((Join-Path $repo 'upm/com.blazetc.humanvision.input') -replace '\\','/')) }
+$dependencies['com.unity.modules.screencapture'] = '1.0.0'
 $cacheRoots = @((Join-Path $repo 'unity/HumanVisionDemo/Library/PackageCache'), 'E:/UnityProject/Human-Vision-SDK-Test/Library/PackageCache')
 foreach ($package in @('com.unity.test-framework@1.1.33', 'com.unity.ext.nunit@1.0.6')) {
     $cached = $cacheRoots | ForEach-Object { Join-Path $_ $package } | Where-Object { Test-Path (Join-Path $_ 'package.json') } | Select-Object -First 1

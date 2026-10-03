@@ -11,7 +11,7 @@ bool InputForeignEnabled();
 void ConfigureInputRenderEvent();
 bool ColorProbeEnabled();
 bool QueueColorImage(AndroidDecodedImage&);
-void NotifyRemovedBuffer(AHardwareBuffer*);
+void NotifyRemovedBuffer(AImageReader*,AHardwareBuffer*);
 void DrainColorImagesBeforeReaderClose();
 void InputRenderEvent(int);
 void ShutdownInputColor();
