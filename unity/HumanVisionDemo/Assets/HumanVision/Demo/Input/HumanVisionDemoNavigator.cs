@@ -63,8 +63,8 @@ namespace HumanVision.Demo
         {
             CloseRecognitionSource();
             while (Bridge.UnifiedRetirementPending) yield return null;
-            // Android resolves only baked Project Settings metadata. PC retains the existing explicit CPU profile.
-            string profile = Application.platform == RuntimePlatform.Android ? "auto" : "cpu";
+            // Android resolves only baked Project Settings metadata; PC uses the shared explicit choice.
+            string profile = Shared.RuntimeProfileFor(Application.platform);
             if (!Manager.TryInitialize(new HumanVisionConfig { MaxBodies = Shared.MaxBodies, RuntimeRoot = runtimeRoot, Profile = profile })) {
                 Status = Manager.LastError; yield break;
             }
@@ -80,6 +80,10 @@ namespace HumanVision.Demo
             if (initializing) { Status = "Recognition is initializing; wait before applying settings."; return; }
             try {
                 SharedPanel?.ReadInto(Shared); Shared.Validate(); SyncRegions();
+                if (!Manager.IsInitialized || (Application.platform != RuntimePlatform.Android &&
+                    Manager.ActiveRuntimeProfile != Shared.RuntimeProfileFor(Application.platform))) {
+                    StartCoroutine(ReinitializeRecognition()); return;
+                }
                 if (Contract != null) {
                     var selected = AnalysisContract.Load(runtimeRoot, Manager.ActiveRuntimeProfile, Shared.MaxBodies);
                     if (selected.ModelPackId != Contract.ModelPackId) { StartCoroutine(ReinitializeRecognition()); return; }

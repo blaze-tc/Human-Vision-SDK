@@ -15,6 +15,12 @@ namespace HumanVision.Demo
         public int DetectorWidth = 320, DetectorHeight = 320;
         public int PoseWidth = 192, PoseHeight = 256;
         public int DetectionCadence = 4;
+        public bool UseWindowsCpu;
+
+        public string RuntimeProfileFor(RuntimePlatform platform)
+        {
+            return platform == RuntimePlatform.Android ? "auto" : UseWindowsCpu ? "windows-pc-cpu" : "windows-pc-directml";
+        }
 
         public void ResizeRegions(int count)
         {

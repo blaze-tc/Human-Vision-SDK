@@ -31,7 +31,16 @@ namespace HumanVision.Demo
                 foreach (var entry in profile.body_by_capacity) if (entry != null && entry.max_people >= capacity) { selected = entry.modelPack; break; }
             if (selected == null) throw new InvalidDataException("Profile has no ModelPack for the requested people count.");
             ValidateName(selected);
-            var pack = JsonUtility.FromJson<Pack>(File.ReadAllText(Path.Combine(root, "modelpacks", selected, "manifest.json")));
+            string packRoot = Path.Combine(root, "modelpacks", selected);
+            string manifest = Path.Combine(packRoot, "manifest.json"), modelpack = Path.Combine(packRoot, "modelpack.json");
+            bool hasManifest = File.Exists(manifest), hasModelpack = File.Exists(modelpack);
+            if (hasManifest && hasModelpack)
+                throw new InvalidDataException("ModelPack " + selected + " has both manifest.json and modelpack.json; keep exactly one manifest.");
+            if (!hasManifest && !hasModelpack)
+                throw new InvalidDataException("ModelPack " + selected + " is missing manifest.json or modelpack.json; stage the selected ModelPack.");
+            // Native initialization validates schema, hashes, decoding and preprocessing.
+            // The Demo reads the admitted pack's geometry without changing its model contract.
+            var pack = JsonUtility.FromJson<Pack>(File.ReadAllText(hasManifest ? manifest : modelpack));
             if (pack == null || pack.pack_id != selected || pack.models == null) throw new InvalidDataException("ModelPack contract is invalid.");
             var result = new AnalysisContract { ProfileId = profileId, ModelPackId = selected, DetectionCadence = Math.Max(1, profile.detector?.cadence_interval_frames ?? 1) };
             foreach (var model in pack.models) {

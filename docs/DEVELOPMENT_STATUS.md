@@ -1,41 +1,23 @@
-# Current: unified-input Task10 verified; Task11 acceptance next (2026-10-03)
+# Current: formal binding restored; ordinary object renderer correction active (2026-10-03)
 
-10/11 tasks implemented and verified; Task10 final evidence and source reviews
-pass, with its separate verified commit. Task11 acceptance is next. Subsequent
-implementers and reviewers use GPT-6.1 Sol high per the user instruction.
-Three Camera/Video/RTSP Demos, shared recognition settings, per-mode source
-settings, independent no-model input preview and regenerated local packages are
-implemented. Existing stable API/overlay and post-inference Region assignment
-remain. Region borders use the display reference; controls shield pointer input.
-A new GameObject/LineRenderer renderer and CPU inference-region masking are not
-part of this implementation.
+Task1-10 remain verified. Task11 and physical30FPS acceptance remain open.
+Fresh independent binding-v2 spec/quality PASS; current user Unity imports
+immutablev10 with exact prior Windows DirectML/hands-disabled profiles and
+local accepted AndroidYOLO640 data, retaining current native/Input libraries.
+Actual profile tests3/3, object tests6/6, plane tests8/8 and real JSON/settings
+persistence pass. Shared UI DirectML-to-CPU-to-DirectML works. Source25FPS
+video reports median24.85 native FPS and local ageP50 87.30/P95 117.32ms in
+120 sampled diagnostics; this is not physical complete-observation acceptance.
+Capacity4/userRegions/caches are preserved. Earlier invalid Task11 evidence
+remains invalid and frozen; no private diagnostic phone reruns.
 
-Fresh final Combined Windows/Android builds pass. Exact immutable source1221
-files and195scoped changes/20sole-owner migration deletions are qualified. Actual
-Input Android APK has no SDK/model payload; eight exact native dependencies in
-Combined and six in Input. Native cache supports64object identities/explicit65
-failure, focused15/15 passes after old17object runtime RED. The independent
-Input APK sustains real Snapdragon888 RTSP194.859s then mirror/reopen119.213s;
-7526GPU submissions/completions are contiguous and client resource balances
-return to zero separately from decoder leases/fds. Physical exposure15/14objects,
-rotation0only and unknowncallback snapshots are explicit evidence limitations.
-The25FPSsource/request30HUD is not skeleton inference30FPS acceptance.
-
-The actual open userUnityproject imports final immutablev9packages; current
-VideoDemo shows upright video, four sampled skeletons/facadeusers and Console0.
-Fresh actual1280x720capture confirms display binding, source1024x576 and readable
-uGUI. Existing userRegions/resources/settings and unrelatedR4work/caches remain
-preserved; protected historical status tail177838bytes is unchanged.
-[Task10 evidence and limits](reports/2026-10-03-unified-input-task10.md).
-[Task9 recognition evidence](reports/2026-10-03-unified-input-task9.md).
-[Approved sequential plan](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
-
-Task11 has not started. It collects actual Video/Camera/RTSP complete observation
-FPS/age/drops/thermal and physical direction/motion evidence. Earlier Android
-seven-body freshFPS7.858103 remains below25/30; output sampling60FPS does not
-replace inference observations. Thirty fresh complete observation frames/s and
-final userphysical acceptance remain outstanding. No main merge or Release;
-sole SDK milestone remains M3.
+The user clarified MeshRenderer/LineRenderer should be normally enabled scene
+objects. A bounded dedicated-camera simplification of the reviewed command-
+buffer renderer is active, unverified and uncommitted; do not claim it complete.
+No Release/main merge until final physical acceptance.
+[Binding correction and limits](reports/2026-10-03-production-demo-binding-correction.md).
+[Task10 evidence](reports/2026-10-03-unified-input-task10.md).
+[Approved unified input plan](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
 
 # Current YOLO-M3: bounded execution/resolution trial complete (2026-10-01)
 
