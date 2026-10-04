@@ -1,25 +1,24 @@
-# Current: formal renderer and Android deployment guard corrected (2026-10-04)
+# Current: formal Android Demo APK built; Task11 physical gate open (2026-10-04)
 
-Task1-10 remain verified; Task11 and physical30FPS acceptance remain open.
-Renderer correction771f0b2 uses enabled MeshRenderer/LineRenderer objects on the
-preview image plane. Formal PC video and isolated renderer checks are recorded
-in the renderer report; the sampled25FPS video is not30FPS hardware acceptance.
-The Android deployment guard now admits the already approved YOLO640 FP32
-one-body-model pack and retains strict TopDown/explicit ORT routes. Fresh
-independent spec/quality PASS, canonical and UPM real Unity30/30 each, existing
-Android regression19/19 each, Windows/Android managed compilation and architecture
-checks pass. Immutablev13 package421 files verified; its only four-file delta
-fromv12 is the guard/new test pair/package hash index. All11 current installed
-runtime files retain their qualified hashes. Current user's actual selected
-model admission passes; that project's API24 still fails the full API26 build
-requirement. A fresh isolated formal Android build will use API26/ARM64/IL2CPP/
-Vulkan-only and the corrected formal object renderer, preserving user settings.
+Task1-10 remain verified. Renderer771f0b2 and selected Android model guard9d75379
+are reviewed and committed. A fresh isolated Unity2021.3.45f1 formal three-scene
+Development APK built successfully (exit0/errors0/warnings0), with API26/ARM64/
+IL2CPP/Vulkan-only, baked android-ncnn-vulkan and enabled MeshRenderer/LineRenderer
+objects. Independent build/deployment closure PASS: all421 package files,
+all11 indexed runtime files, exact approved YOLO640 FP32 and unchanged native
+SDK/Input hashes. APK4a521d82de38377c2fbd997f7b2732baeda94041f53edd67b5b08be7300ac868.
 
-No native/model/input/performance change, automatic fallback, private diagnostic
-rerun, main merge or Release. Invalid Task11 records remain invalid and frozen.
-[Android guard correction and limits](reports/2026-10-04-android-model-build-guard-correction.md).
-[Object renderer correction](reports/2026-10-04-object-skeleton-renderer-correction.md).
-[Binding correction](reports/2026-10-03-production-demo-binding-correction.md).
+Device installation is pending behind the connected phone's lock screen;
+the user has been asked to unlock/allow installation. No device admission,
+Android skeleton appearance, timing or30FPS PASS. Additive formal-Demo observation
+instrumentation is under independent review; old private records remain invalid.
+Current user PC project runs official Video with its four-person/region settings
+preserved; fresh v13 appearance proof exists. Source25FPS cannot certify30FPS.
+No native/model/input/performance change, fallback, main merge or Release.
+
+[Formal Android build and physical limits](reports/2026-10-04-formal-unified-demo-android-build.md).
+[Android deployment guard correction](reports/2026-10-04-android-model-build-guard-correction.md).
+[Enabled object renderer correction](reports/2026-10-04-object-skeleton-renderer-correction.md).
 [Approved unified input plan](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
 
 # Current YOLO-M3: bounded execution/resolution trial complete (2026-10-01)
