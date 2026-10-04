@@ -1,27 +1,25 @@
-# Current: formal runtime and enabled object renderer corrected (2026-10-04)
+# Current: formal renderer and Android deployment guard corrected (2026-10-04)
 
-Task1-10 remain verified. Task11 and physical30FPS acceptance remain open.
-Binding correction7c88f42 restores the accepted PC DirectML/hands-disabled
-selection and explicit CPU choice. The formal unified Demo now uses enabled
-MeshRenderer points and LineRenderer bones rendered by an ordinary dedicated
-Camera, with image-plane preview mapping, reusable pools and owned layer masks.
-V3/V4 independent spec/quality PASS; isolated real D3D11 tests23/23. Actual user
-Unity immutablev12 tests object15/15, plane8/8, profile3/3 pass. The previously
-failing untagged-camera test fixture is corrected without weakening guards.
-Current formal video screenshot shows aligned upright skeleton objects. A local
-15s sampled PC run reports median25.051 native FPS and age P50/P95 (nearest rank)
-73.373/96.041ms;
-25FPS source/HUD samples are not physical complete-observation30FPS acceptance.
-Capacity4/userRegions/caches/native/Input/model weights are preserved.
+Task1-10 remain verified; Task11 and physical30FPS acceptance remain open.
+Renderer correction771f0b2 uses enabled MeshRenderer/LineRenderer objects on the
+preview image plane. Formal PC video and isolated renderer checks are recorded
+in the renderer report; the sampled25FPS video is not30FPS hardware acceptance.
+The Android deployment guard now admits the already approved YOLO640 FP32
+one-body-model pack and retains strict TopDown/explicit ORT routes. Fresh
+independent spec/quality PASS, canonical and UPM real Unity30/30 each, existing
+Android regression19/19 each, Windows/Android managed compilation and architecture
+checks pass. Immutablev13 package421 files verified; its only four-file delta
+fromv12 is the guard/new test pair/package hash index. All11 current installed
+runtime files retain their qualified hashes. Current user's actual selected
+model admission passes; that project's API24 still fails the full API26 build
+requirement. A fresh isolated formal Android build will use API26/ARM64/IL2CPP/
+Vulkan-only and the corrected formal object renderer, preserving user settings.
 
-Next: close the Android build guard's older TopDown-only contract so the already
-approved local YOLO640 profile can build the corrected formal Demo. Then resume
-Task11 Camera/Video/RTSP physical verification with valid clock/raw evidence.
-No new model/backend/performance change, private diagnostic rerun, main merge
-or Release. Earlier invalid Task11 records remain invalid and frozen.
-[Object renderer correction and limits](reports/2026-10-04-object-skeleton-renderer-correction.md).
+No native/model/input/performance change, automatic fallback, private diagnostic
+rerun, main merge or Release. Invalid Task11 records remain invalid and frozen.
+[Android guard correction and limits](reports/2026-10-04-android-model-build-guard-correction.md).
+[Object renderer correction](reports/2026-10-04-object-skeleton-renderer-correction.md).
 [Binding correction](reports/2026-10-03-production-demo-binding-correction.md).
-[Task10 evidence](reports/2026-10-03-unified-input-task10.md).
 [Approved unified input plan](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
 
 # Current YOLO-M3: bounded execution/resolution trial complete (2026-10-01)
