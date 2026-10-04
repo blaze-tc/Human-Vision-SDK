@@ -4,6 +4,7 @@
   "references": [
     "HumanVision.Runtime",
     "HumanVision.Demo",
+    "UnityEngine.UI",
     "HumanVision.Input"
   ],
   "includePlatforms": [

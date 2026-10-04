@@ -42,6 +42,8 @@ namespace HumanVision.Demo
         [SerializeField, Min(1f)] private float jointSize = 56f;
 
         private readonly int[] _digits = new int[12];
+        internal HumanVisionSkeletonOverlayer ObjectSkeleton;
+        internal static Color32 BodyColor(int slot) => BodyColors[slot % BodyColors.Length];
 
         public override Texture mainTexture => Texture2D.whiteTexture;
 
@@ -79,6 +81,7 @@ namespace HumanVision.Demo
                 float.IsNaN(pointDiameter) || float.IsInfinity(pointDiameter) || pointDiameter < 1 || pointDiameter > 128)
                 throw new System.ArgumentOutOfRangeException("Skeleton sizes must be finite and within the supported range.");
             boneThickness = lineWidth; jointSize = pointDiameter * .5f; SetVerticesDirty();
+            if (ObjectSkeleton != null) { ObjectSkeleton.lineWidthPixels = lineWidth; ObjectSkeleton.jointDiameterPixels = pointDiameter; }
         }
 
         protected override void OnPopulateMesh(VertexHelper vertexHelper)
@@ -113,6 +116,7 @@ namespace HumanVision.Demo
             Vector2 bottomRight = ToOverlay(new Vector2(sourceBox.xMax, sourceBox.yMax), videoRect);
             DrawRectangle(vertexHelper, topLeft, bottomRight, boxThickness, bodyColor);
 
+            if (ObjectSkeleton == null) {
             HumanVisionJoint[] joints = body.Joints;
             for (int boneIndex = 0; boneIndex < Coco17Skeleton.Bones.Length; boneIndex++)
             {
@@ -139,6 +143,7 @@ namespace HumanVision.Demo
                 }
 
                 AddCircle(vertexHelper, ToOverlay(anchor, videoRect), jointSize, bodyColor);
+            }
             }
 
             if (body.TrackId >= 0)

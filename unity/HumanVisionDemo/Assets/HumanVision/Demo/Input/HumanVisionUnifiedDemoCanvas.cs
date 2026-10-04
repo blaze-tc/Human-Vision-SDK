@@ -15,6 +15,11 @@ namespace HumanVision.Demo
             var safe = InputPreviewCanvas.Root(navigator.transform, out preview);
             var bones = new GameObject("Existing HumanVision Skeleton Renderer", typeof(RectTransform), typeof(CanvasRenderer), typeof(HumanVisionOverlay));
             bones.transform.SetParent(preview.transform, false); InputPreviewCanvas.Stretch((RectTransform)bones.transform); overlay = bones.GetComponent<HumanVisionOverlay>();
+            var skeleton = new GameObject("Skeleton Objects (image plane)").AddComponent<HumanVisionSkeletonOverlayer>();
+            skeleton.transform.SetParent(navigator.transform, false); skeleton.preview = preview;
+            skeleton.manager = navigator.GetComponent<HumanVisionCameraManager>();
+            skeleton.foregroundCamera = Object.FindObjectOfType<Camera>();
+            skeleton.Bind(navigator.Manager, navigator.Bridge, navigator.Shared); overlay.ObjectSkeleton = skeleton;
             var navigation = InputPreviewCanvas.Row(InputPreviewCanvas.Panel(safe, "Navigation", new Vector2(0, .88f), Vector2.one));
             foreach (InputKind kind in System.Enum.GetValues(typeof(InputKind))) {
                 var captured = kind; InputPreviewCanvas.Button(navigation, kind.ToString(), () => navigator.SwitchTo(captured));

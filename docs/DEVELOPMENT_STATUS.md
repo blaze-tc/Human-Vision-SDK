@@ -1,21 +1,26 @@
-# Current: formal binding restored; ordinary object renderer correction active (2026-10-03)
+# Current: formal runtime and enabled object renderer corrected (2026-10-04)
 
 Task1-10 remain verified. Task11 and physical30FPS acceptance remain open.
-Fresh independent binding-v2 spec/quality PASS; current user Unity imports
-immutablev10 with exact prior Windows DirectML/hands-disabled profiles and
-local accepted AndroidYOLO640 data, retaining current native/Input libraries.
-Actual profile tests3/3, object tests6/6, plane tests8/8 and real JSON/settings
-persistence pass. Shared UI DirectML-to-CPU-to-DirectML works. Source25FPS
-video reports median24.85 native FPS and local ageP50 87.30/P95 117.32ms in
-120 sampled diagnostics; this is not physical complete-observation acceptance.
-Capacity4/userRegions/caches are preserved. Earlier invalid Task11 evidence
-remains invalid and frozen; no private diagnostic phone reruns.
+Binding correction7c88f42 restores the accepted PC DirectML/hands-disabled
+selection and explicit CPU choice. The formal unified Demo now uses enabled
+MeshRenderer points and LineRenderer bones rendered by an ordinary dedicated
+Camera, with image-plane preview mapping, reusable pools and owned layer masks.
+V3/V4 independent spec/quality PASS; isolated real D3D11 tests23/23. Actual user
+Unity immutablev12 tests object15/15, plane8/8, profile3/3 pass. The previously
+failing untagged-camera test fixture is corrected without weakening guards.
+Current formal video screenshot shows aligned upright skeleton objects. A local
+15s sampled PC run reports median25.051 native FPS and age P50/P95 (nearest rank)
+73.373/96.041ms;
+25FPS source/HUD samples are not physical complete-observation30FPS acceptance.
+Capacity4/userRegions/caches/native/Input/model weights are preserved.
 
-The user clarified MeshRenderer/LineRenderer should be normally enabled scene
-objects. A bounded dedicated-camera simplification of the reviewed command-
-buffer renderer is active, unverified and uncommitted; do not claim it complete.
-No Release/main merge until final physical acceptance.
-[Binding correction and limits](reports/2026-10-03-production-demo-binding-correction.md).
+Next: close the Android build guard's older TopDown-only contract so the already
+approved local YOLO640 profile can build the corrected formal Demo. Then resume
+Task11 Camera/Video/RTSP physical verification with valid clock/raw evidence.
+No new model/backend/performance change, private diagnostic rerun, main merge
+or Release. Earlier invalid Task11 records remain invalid and frozen.
+[Object renderer correction and limits](reports/2026-10-04-object-skeleton-renderer-correction.md).
+[Binding correction](reports/2026-10-03-production-demo-binding-correction.md).
 [Task10 evidence](reports/2026-10-03-unified-input-task10.md).
 [Approved unified input plan](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
 
