@@ -1,3 +1,14 @@
+# Current: Region candidate admission repaired; Android gate pending (2026-10-04)
+
+Full-frame YOLO now admits bounded pack/plugin candidates before Region assignment;
+public people capacity, no-Region subset, TopDown ROI budget and Host guards remain.
+Real seven-person tensor regression: RED four failures/six; GREEN6/6;
+full configured host Release CTest365/365; independent Spec PASS/Quality PASS.
+Host build includes unrelated dirty sources, not a qualified Android shipping
+closure. No new APK installed, temporal stability or30FPS acceptance claim.
+Task11 remains open. High/Medium/Low quality selection is pending separately.
+See [Region repair evidence](reports/2026-10-04-region-candidate-budget-correction.md).
+
 # Current: Camera and true RTSP measured; Task11 remains open (2026-10-04)
 
 Independent Spec PASS / Quality PASS for bounded manager measurements and reports.

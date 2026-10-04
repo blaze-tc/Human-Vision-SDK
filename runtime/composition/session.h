@@ -7,6 +7,10 @@
 #include "core/stats_collector.h"
 
 namespace humanvision::runtime {
+namespace detail {
+// Shared internal configuration boundary for the composition root.
+HV_PipelineConfigV1 BuildGpuPipelineConfig(const RuntimeProfile&,const char* asset_root);
+}
 // The composition root registers built-ins; the generic Host never names them.
 class RuntimeSession {
 public:

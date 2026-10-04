@@ -9,12 +9,25 @@
 #include "plugins/backend/ort/ort_plugin.h"
 #include "plugins/backend/ncnn/ncnn_vulkan_backend.h"
 #include "gpu/android/unity_vulkan_plugin.h"
+#include <algorithm>
 #include <cmath>
 #include <chrono>
 #include <iomanip>
 #include <sstream>
 
 namespace humanvision::runtime {
+namespace detail {
+HV_PipelineConfigV1 BuildGpuPipelineConfig(const RuntimeProfile& profile,const char* asset_root){
+ int candidate_capacity=profile.max_people;
+ // Full-frame YOLO candidates reach Region assignment before public truncation.
+ // TopDown's capacity still bounds its actual pose ROI work.
+ if(profile.gpu_pack->pipeline_id=="pipeline.yolo.pose")
+  candidate_capacity=std::min({int(HV_MAX_PEOPLE),profile.gpu_pack->max_people,
+                             int(profile.gpu_body->api.v1.max_people)});
+ return {sizeof(HV_PipelineConfigV1),HV_PLUGIN_API_V1,candidate_capacity,0,
+     profile.gpu_pack->manifest_json.c_str(),asset_root,profile.json.c_str()};
+}
+}
 RuntimeSession::~RuntimeSession(){
  input_.Stop();if(worker_.joinable())worker_.join();if(gpu_)gpu_->Stop();
  std::string ignored;
@@ -35,8 +48,7 @@ bool RuntimeSession::Start(const std::filesystem::path& root,const std::string& 
   if(!source){bridge_source_=std::make_unique<BridgeGpuConsumerSource>(gpu::UnityVulkanProducerBridge());source=bridge_source_.get();}
   if(!source||(!gpu_test_source&&!gpu::UnityVulkanProducerBridge())){error="Android Vulkan producer bridge unavailable";return false;}
   const auto asset_root=profile_->gpu_pack->root.u8string();
-  HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,capacity,0,
-      profile_->gpu_pack->manifest_json.c_str(),asset_root.c_str(),profile_->json.c_str()};
+  const auto config=detail::BuildGpuPipelineConfig(*profile_,asset_root.c_str());
   gpu_=std::make_unique<GpuRuntimeHost>(*source);
   services_.Configure(capacity,nullptr,0,0);
   stats_.struct_size=sizeof(stats_);stats_.api_version=HV_API_VERSION_040;
