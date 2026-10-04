@@ -10,6 +10,14 @@ namespace HumanVision.Demo
         private Text recognitionStatus, compactStatus;
         private HumanVisionInputAdapter adapter;
         private float nextStatus;
+        private readonly DemoObservationRate observationRate = new DemoObservationRate();
+        private HumanVisionManager observedManager;
+        private System.Action<long> resultUpdatedHandler;
+        private InputPreviewControls observedInput;
+        private IHumanVisionFrameSource observedSource;
+        private ulong observedSourceId, observedGeneration;
+        private string observedProfile;
+        private bool observationReady, observedRuntime, observedGpu;
         public static void Build(HumanVisionDemoNavigator navigator, out RawImage preview, out HumanVisionOverlay overlay)
         {
             var safe = InputPreviewCanvas.Root(navigator.transform, out preview);
@@ -45,10 +53,84 @@ namespace HumanVision.Demo
             view.compactStatus.fontSize = 16; view.compactStatus.resizeTextForBestFit = false;
             view.recognitionStatus = InputPreviewCanvas.Label(content, "Recognition initializing", 230);
             view.recognitionStatus.fontSize = 16; view.recognitionStatus.resizeTextForBestFit = false;
+            view.OnEnable();
             InputPreviewCanvas.Button(navigation, "Settings: show / hide", () => panel.gameObject.SetActive(!panel.gameObject.activeSelf));
+        }
+        private void OnEnable()
+        {
+            if (navigator != null) SyncObservationContext(Time.realtimeSinceStartupAsDouble);
+        }
+        private void OnDisable()
+        {
+            BindObservedManager(null);
+            if (observedInput != null) {
+                observedInput.SourceClosing -= OnSourceClosing;
+                observedInput.SourceOpened -= OnSourceOpened;
+            }
+            observedManager = null; observedInput = null; observedSource = null;
+            observationReady = false;
+            observationRate.Reset(Time.realtimeSinceStartupAsDouble, 0);
+        }
+        private void BindObservedManager(HumanVisionManager manager)
+        {
+            if (observedManager != null) observedManager.ResultUpdated -= resultUpdatedHandler;
+            observedManager = manager; resultUpdatedHandler = null;
+            if (manager == null) return;
+            // Capture identity only on binding, never allocate a closure in the
+            // per-frame context check. A retained old-manager callback is ignored.
+            resultUpdatedHandler = sequence => {
+                if (ReferenceEquals(observedManager, manager) && isActiveAndEnabled) OnResultUpdated(sequence);
+            };
+            manager.ResultUpdated += resultUpdatedHandler;
+        }
+        private void OnSourceClosing()
+        {
+            observationReady = false;
+            observationRate.Reset(Time.realtimeSinceStartupAsDouble, observedManager != null ? observedManager.ResultSequence : 0);
+        }
+        private void OnSourceOpened(IHumanVisionFrameSource source) => OnSourceClosing();
+        private bool SyncObservationContext(double now)
+        {
+            var manager = navigator.Manager; var input = navigator.Input;
+            bool changed = observedManager != manager || observedInput != input;
+            if (observedManager != manager) BindObservedManager(manager);
+            if (observedInput != input) {
+                if (observedInput != null) { observedInput.SourceClosing -= OnSourceClosing; observedInput.SourceOpened -= OnSourceOpened; }
+                observedInput = input;
+                if (observedInput != null) { observedInput.SourceClosing += OnSourceClosing; observedInput.SourceOpened += OnSourceOpened; }
+            }
+            var source = input != null ? input.Source : null;
+            HumanVisionTextureFrame frame = default;
+            bool ready = manager != null && manager.IsInitialized && source != null &&
+                source.State == InputSourceState.Streaming && source.TryGetLatestFrame(-1, out frame);
+            string profile = manager != null ? manager.ActiveRuntimeProfile : null;
+            bool runtime = manager != null && manager.UsesRuntimeProfile, gpu = manager != null && manager.UsesAndroidGpuFrames;
+            changed |= observationReady != ready || observedSource != source || observedSourceId != frame.SourceId ||
+                observedGeneration != frame.Generation || observedProfile != profile || observedRuntime != runtime || observedGpu != gpu;
+            long sequence = manager != null ? manager.ResultSequence : 0;
+            if (changed || !ready || sequence < observationRate.LastSequence) observationRate.Reset(now, sequence);
+            observationReady = ready; observedSource = source; observedSourceId = frame.SourceId; observedGeneration = frame.Generation;
+            observedProfile = profile; observedRuntime = runtime; observedGpu = gpu;
+            return ready;
+        }
+        private void OnResultUpdated(long sequence)
+        {
+            double now = Time.realtimeSinceStartupAsDouble;
+            long baseline = observationRate.LastSequence;
+            bool newBody = observedManager != null && observedManager == navigator.Manager &&
+                sequence == observedManager.ResultSequence && sequence > baseline;
+            if (!SyncObservationContext(now) || !newBody) return;
+            // Context transitions clear the old rate, but this known new event
+            // was delivered after the previous baseline and must count once.
+            if (observationRate.LastSequence != baseline) observationRate.Reset(now, baseline);
+            observationRate.Observe(sequence, now);
         }
         private void Update()
         {
+            if (navigator == null) return;
+            double now = Time.realtimeSinceStartupAsDouble;
+            SyncObservationContext(now);
+            double deliveryFps = observationRate.Read(now);
             if (Time.unscaledTime < nextStatus) return; nextStatus = Time.unscaledTime + .25f;
             var manager = navigator.Manager; var contract = navigator.Contract;
             if (adapter == null) adapter = navigator.GetComponent<HumanVisionInputAdapter>();
@@ -58,7 +140,8 @@ namespace HumanVision.Demo
                 ? "Ready | " + manager.BodyCount + "/" + manager.MaxBodies + " bodies" : "Recognition unavailable | Open Settings";
             recognitionStatus.text = navigator.Status + "\nSource: " + inputError + "\nRecognition: " + recognitionError + "\n" + (manager.IsInitialized ?
                 "Profile: " + manager.ActiveRuntimeProfile + "; raw / sampled / capacity: " + manager.BodyCount + "/" + manager.SampledBodyCount + "/" + manager.MaxBodies +
-                "\nRaw fresh complete FPS: " + manager.Stats.InferenceFps.ToString("F2") +
+                "\nManager raw result delivery FPS: " + deliveryFps.ToString("F2") + " (whole frames; includes empty/partial bodies)" +
+                "\nNative reported inference FPS: " + manager.Stats.InferenceFps.ToString("F2") + " (coverage unqualified)" +
                 "\nPreview refresh FPS: " + navigator.Bridge.VideoFrameRate.ToString("F2") +
                 "\nOutput sampling/render FPS: unavailable" +
                 "\nNative result frame: " + manager.SourceFrameId + "; local age: " + navigator.Bridge.ResultAgeMilliseconds.ToString("F0") + " ms" : "Recognition unavailable; preview remains independent.") +

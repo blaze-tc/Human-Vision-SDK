@@ -1,3 +1,17 @@
+# Current: reviewed manager observation HUD correction; Task11 open (2026-10-04)
+
+Bounded diagnostic correction independently SpecPASS/QualityPASS after actual
+source-transition/old-manager callback RED -> final11/11UnityGREEN; paired
+Windows/Android managed compilation and6/6 arithmetic tests pass. Manager raw
+result delivery FPS counts known whole-frame notifications, including empty
+and partial bodies, separately from unqualified native reported inference FPS.
+No native/model/performance/scheduling/rendering change or30FPS acceptance.
+Qualified local425-filev14 imported into actual current userUnity: realVideo1
+HUD23.97 manager/24.64 native/24.83 previewFPS; console0errors, four regions/
+capacity4 and scene bytes preserved. This snapshot is not performance acceptance.
+Android prior15.675/15.9 completeFPS remain30FAIL; Camera/RTSP still pending.
+See [HUD correction](reports/2026-10-04-demo-observation-rate-hud-correction.md).
+
 # Current: formal Android Video measured; Task11 and30FPS remain open (2026-10-04)
 
 Additional same-APK original HD Video2 run:1920x1080/29.970Hz source,
