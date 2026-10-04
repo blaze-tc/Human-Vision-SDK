@@ -1,5 +1,12 @@
 # Current: formal Android Video measured; Task11 and30FPS remain open (2026-10-04)
 
+Additional same-APK original HD Video2 run:1920x1080/29.970Hz source,
+actual publication29.8FPS;636 complete manager frames/40s=15.9FPS, VALIDmanager/
+INCONCLUSIVE native/30FAIL; histogram0:1,6:52,7:583. Local age100.6115/134.0155ms,
+reportedPose median60.0349ms; no causal comparison/all-seven motion acceptance.
+Video1 phone settings restored/app stopped; Camera availability still pending.
+See [HD Video2 evidence](reports/2026-10-04-formal-demo-hd-video-observation.md).
+
 Task1-10 remain complete; separate renderer771f0b2/model guard9d75379 are reviewed.
 Additive official-Demo recorder/analyzer independently SpecPASS/QualityPASS,
 focused26/26 tests and10 numerical probes PASS; managed Windows/Android compile
