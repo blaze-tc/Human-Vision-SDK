@@ -1,3 +1,16 @@
+# Current: metadata import fixed; reviewed Android v15 installed (2026-10-04)
+
+Format-only correction preserves GUIDs/normalized C# bytes. Actual fresh Unity
+import clean for both newmeta/TestCS;11/11tests PASS, fresh Android BuildSucceeded
+0errors/0warnings and OSexit0. Independent SpecPASS/QualityPASS. Qualified425
+files/14 unchanged native-runtime APK entries. Installedbase hash36b6b189e70f608d
+767a7f891bcd1aa0a3209e0aae14d873efb399552997a0b9 matches82971249-byteAPK.
+Device appearance attempt NOTQUALIFIED: screenAsleep then showingkeyguard;
+appstopped, no unlockbypass. UserUnitySDKv15 actualVideoPlay/scenebytes/fourregions
+preserved; one UnitySkills REST Threadabort duringreload retained, notSDKfailure.
+Android15.675/15.9FPS remain30FAIL; Camerahuman/RTSP device and Task11 open.
+See [metadata/build evidence](reports/2026-10-04-demo-rate-metadata-import-correction.md).
+
 # Current: reviewed manager observation HUD correction; Task11 open (2026-10-04)
 
 Bounded diagnostic correction independently SpecPASS/QualityPASS after actual
