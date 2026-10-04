@@ -1,3 +1,25 @@
+# Current: Camera and true RTSP measured; Task11 remains open (2026-10-04)
+
+Independent Spec PASS / Quality PASS for bounded manager measurements and reports.
+Camera fixed run: 673 complete observations / 40s = 16.825 FPS; source 29.525 FPS;
+publication-to-receipt age P50/P95 99.374/100.7746ms. Mixed detected bodies,
+capacity4; first interactive run remains INVALID, never filtered for acceptance.
+True H.264/TCP RTSP through MediaCodec/AHB/Vulkan: 591/40s = 14.775 FPS;
+source publications18.075 FPS; local publication age99.899/133.676ms. Capacity8,
+mixed zero/single/multi-body frames all counted. Publisher25FPS cannot prove30.
+Both manager measurements VALID; native continuous coverage INCONCLUSIVE;
+30FPS FAIL. Static visible skeletons do not prove continuous motion accuracy.
+No source/model/native/profile/performance code change. Same reviewed v15 APK
+36b6b189e70f608d767a7f891bcd1aa0a3209e0aae14d873efb399552997a0b9.
+Original active phone settings restored byte exactly (capacity4/four regions);
+test-created backup differences retained. Owned app/helpers stopped and only
+owned RTSP reverse removed. Current user Unity project left untouched this run.
+RTSP post-run screenrecord failed; motion footage/semantics, native counters,
+sustained performance and final device acceptance remain open. No main/Release.
+
+[Camera evidence](reports/2026-10-04-formal-demo-camera-observation.md).
+[RTSP evidence](reports/2026-10-04-formal-demo-rtsp-observation.md).
+
 # Current: metadata import fixed; reviewed Android v15 installed (2026-10-04)
 
 Format-only correction preserves GUIDs/normalized C# bytes. Actual fresh Unity
