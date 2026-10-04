@@ -1,24 +1,32 @@
-# Current: formal Android Demo APK built; Task11 physical gate open (2026-10-04)
+# Current: formal Android Video measured; Task11 and30FPS remain open (2026-10-04)
 
-Task1-10 remain verified. Renderer771f0b2 and selected Android model guard9d75379
-are reviewed and committed. A fresh isolated Unity2021.3.45f1 formal three-scene
-Development APK built successfully (exit0/errors0/warnings0), with API26/ARM64/
-IL2CPP/Vulkan-only, baked android-ncnn-vulkan and enabled MeshRenderer/LineRenderer
-objects. Independent build/deployment closure PASS: all421 package files,
-all11 indexed runtime files, exact approved YOLO640 FP32 and unchanged native
-SDK/Input hashes. APK4a521d82de38377c2fbd997f7b2732baeda94041f53edd67b5b08be7300ac868.
+Task1-10 remain complete; separate renderer771f0b2/model guard9d75379 are reviewed.
+Additive official-Demo recorder/analyzer independently SpecPASS/QualityPASS,
+focused26/26 tests and10 numerical probes PASS; managed Windows/Android compile
+PASS against frozen public v13. Actual observer APK built exit0/errors0/warnings0,
+installed pulled hash6e49568884eec09d659b871b8d234856b53e445bc2aa5a5c76c5c80337b207fe.
+API26/ARM64/IL2CPP/Vulkan, approved YOLO640 FP32 and SDK/Input natives unchanged.
 
-Device installation is pending behind the connected phone's lock screen;
-the user has been asked to unlock/allow installation. No device admission,
-Android skeleton appearance, timing or30FPS PASS. Additive formal-Demo observation
-instrumentation is under independent review; old private records remain invalid.
-Current user PC project runs official Video with its four-person/region settings
-preserved; fresh v13 appearance proof exists. Source25FPS cannot certify30FPS.
-No native/model/input/performance change, fallback, main merge or Release.
+Actual Snapdragon888 Video60.026581s: half-open10-50s627 complete manager raw
+observations/40s=15.675FPS; source25FPS; local publication-to-result receipt age
+P50/P95100.106/133.6298ms. Manager measurement VALID, native full coverage
+INCONCLUSIVE (native fresh/GPU/decoder counters unavailable); target30FPS FAIL.
+Mixed zero/single/multi-body frames all counted; no all-seven motion/coverage
+or sensor-capture-to-display claim. Reported Pose median60.554ms dominates;
+native inference_fps0 is not used as result FPS. Public drops/readbacks0 only,
+unavailable native counters remain unqualified. Thermals40.1->42.9C are snapshots,
+observer-overhead and sustained performance acceptance remain unqualified.
 
-[Formal Android build and physical limits](reports/2026-10-04-formal-unified-demo-android-build.md).
-[Android deployment guard correction](reports/2026-10-04-android-model-build-guard-correction.md).
-[Enabled object renderer correction](reports/2026-10-04-object-skeleton-renderer-correction.md).
+Bare actual screenshot shows seven upright enabled MeshRenderer/LineRenderer
+skeletons; public separate phone Video style3/9 reference canvas units.
+Current user PC clean Play/four-region settings preserved. Camera human test
+awaits availability; real controlled RTSP qualification still pending.
+No model/backend/performance change, CPU readback, fallback, main merge or Release.
+
+[Actual formal observation evidence](reports/2026-10-04-formal-demo-observation-recorder.md).
+[Formal Android build](reports/2026-10-04-formal-unified-demo-android-build.md).
+[Android deployment guard](reports/2026-10-04-android-model-build-guard-correction.md).
+[Enabled object renderer](reports/2026-10-04-object-skeleton-renderer-correction.md).
 [Approved unified input plan](superpowers/plans/2026-10-01-unity-unified-input-and-standalone-rtsp.md).
 
 # Current YOLO-M3: bounded execution/resolution trial complete (2026-10-01)

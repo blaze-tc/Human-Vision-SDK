@@ -1,5 +1,14 @@
 # Formal unified Demo Android player build
 
+Update (2026-10-04): the installation-pending state below is historical. The
+bare APK was subsequently installed with exact pulled APK hash verification,
+and the real video showed seven upright enabled object skeletons. A separate
+additive observer APK completed an actual run:15.675 complete manager result
+frames/s,30FPS FAIL. See [the newer observation report](2026-10-04-formal-demo-observation-recorder.md)
+for provenance, local age, unchanged native/model hashes and remaining limits.
+The phone's public Video line/point values were changed from9/27 to3/9 reference
+canvas units (scaled display pixels); this did not change SDK defaults.
+
 After guard commit `9d75379`, a fresh isolated Unity2021.3.45f1 project built the
 official Video, Camera and RTSP scenes with immutable local package v13. It uses
 the approved YOLO640 FP32 Android profile, current GPU bridge/native libraries
