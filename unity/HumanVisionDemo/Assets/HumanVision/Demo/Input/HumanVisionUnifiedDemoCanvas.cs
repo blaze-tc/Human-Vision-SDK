@@ -27,7 +27,7 @@ namespace HumanVision.Demo
             skeleton.transform.SetParent(navigator.transform, false); skeleton.preview = preview;
             skeleton.manager = navigator.GetComponent<HumanVisionCameraManager>();
             skeleton.foregroundCamera = Object.FindObjectOfType<Camera>();
-            skeleton.Bind(navigator.Manager, navigator.Bridge, navigator.Shared); overlay.ObjectSkeleton = skeleton;
+            skeleton.Bind(navigator.Manager, navigator.Bridge, navigator.ActiveShared ?? navigator.Shared); overlay.ObjectSkeleton = skeleton;
             var navigation = InputPreviewCanvas.Row(InputPreviewCanvas.Panel(safe, "Navigation", new Vector2(0, .88f), Vector2.one));
             foreach (InputKind kind in System.Enum.GetValues(typeof(InputKind))) {
                 var captured = kind; InputPreviewCanvas.Button(navigation, kind.ToString(), () => navigator.SwitchTo(captured));
@@ -45,7 +45,9 @@ namespace HumanVision.Demo
             var shared = navigator.SharedSettingsPrefab != null ? Object.Instantiate(navigator.SharedSettingsPrefab, content) : new GameObject("Shared settings", typeof(RectTransform), typeof(HumanVisionSharedSettingsPanel));
             shared.transform.SetParent(content, false);
             var sharedContent = InputPreviewCanvas.Column(shared.transform);
-            shared.AddComponent<LayoutElement>().preferredHeight = 570;
+            var sharedLayout = shared.AddComponent<VerticalLayoutGroup>();
+            sharedLayout.childControlWidth = sharedLayout.childControlHeight = true;
+            sharedLayout.childForceExpandHeight = false;
             navigator.SharedPanel = shared.GetComponent<HumanVisionSharedSettingsPanel>(); navigator.SharedPanel.Build(navigator, sharedContent);
             var view = navigator.gameObject.AddComponent<HumanVisionUnifiedDemoCanvas>(); view.navigator = navigator;
             view.adapter = navigator.GetComponent<HumanVisionInputAdapter>();
@@ -145,7 +147,9 @@ namespace HumanVision.Demo
                 "\nPreview refresh FPS: " + navigator.Bridge.VideoFrameRate.ToString("F2") +
                 "\nOutput sampling/render FPS: unavailable" +
                 "\nNative result frame: " + manager.SourceFrameId + "; local age: " + navigator.Bridge.ResultAgeMilliseconds.ToString("F0") + " ms" : "Recognition unavailable; preview remains independent.") +
-                (contract == null ? "" : "\nAnalysis detector " + (contract.DetectorWidth == 0 ? "integrated" : contract.DetectorWidth + "x" + contract.DetectorHeight) + "; body " + contract.PoseWidth + "x" + contract.PoseHeight + "; cadence " + contract.DetectionCadence) +
+                (contract == null ? "" : "\nActive model input " + contract.PoseWidth + "x" + contract.PoseHeight + "; ModelPack " + contract.ModelPackId +
+                "\nAnalysis detector " + (contract.DetectorWidth == 0 ? "integrated" : contract.DetectorWidth + "x" + contract.DetectorHeight) + "; body " + contract.PoseWidth + "x" + contract.PoseHeight + "; cadence " + contract.DetectionCadence) +
+                "\n" + navigator.QualityAvailability + "; saved draft: " + (navigator.Shared == null ? "unavailable" : navigator.Shared.InputQuality.ToString()) +
                 "\n30 fresh complete observations/s remains unaccepted.";
             recognitionStatus.GetComponent<LayoutElement>().preferredHeight = Mathf.Max(230, recognitionStatus.preferredHeight);
         }

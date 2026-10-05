@@ -1,3 +1,15 @@
+# Current: Q3 shared quality selector and Happytime RTSP presets verified (2026-10-05)
+
+Q1 committed4169b6d; Q2 committed18f73ae. Q3 shared UGUI quality draft/save/Apply,
+preflight before retirement, explicit default recovery and transient build-PC
+host RTSP camera/video presets verified. Final source split Unity142+36 cases PASS,0skip; combined177/178FAIL due
+pre-existing NativeCollection diagnostics at GC timing is retained.
+Android conditional managed compile and independent Spec/Quality review PASS.
+Existing six NativeCollection diagnostic messages match retained Q2 baseline;
+no leak-free claim. Actual user Unity/package/APK/device gates belong to Q4.
+Task11, Region/motion and30fresh complete observation FPS remain open.
+No main merge/push/Release. See [Q3 evidence](reports/2026-10-05-model-input-quality-q3.md).
+
 # Current: Q2 three-quality profile integration verified; shared selector next (2026-10-05)
 
 Q1 committed4169b6d. Q2 indexed actual512x288/640x384/960x576 contracts, same-mode
