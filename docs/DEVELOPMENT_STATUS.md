@@ -1,4 +1,4 @@
-# Current: integration preview 4 release preparation verified (2026-10-05)
+# Current: integration preview 4 published (2026-10-05)
 
 The user accepted the tested visible demo and explicitly authorized main merge,
 Git publication and downloadable Unity packages. This authorization supersedes
@@ -29,8 +29,21 @@ Large combined/ZIP transfers failed before publication; final downloads use two
 smaller unitypackages, Input first then SDK. Their disjoint GUID partitions cover
 the complete 248 offline asset groups; RED 2 -> GREEN 15/15, fresh duplicate builds
 byte-identical. Sequential real Unity Input/SDK import and native/model
-initialization PASS. Refreshed tagged/downloaded artifact gates precede public
-Release; historical combined evidence is retained.
+initialization PASS. Final real remote Git installation at `a201e0f` verifies
+all 452 cache bytes, 20 installed runtime hashes, three demos and native/model
+initialization. All eight final assets uploaded and were downloaded into a
+separate directory with matching SHA256 before public publication.
+
+Main was fast-forwarded without force. The immutable `v0.4.0-preview.4` tag
+points to `a201e0f44aa68a3f831f248b67400bd5fd7358c9`; the public prerelease was
+published at 2026-10-05 13:32:44 UTC. Subsequent main changes record publication
+evidence only and do not retag or replace the tested artifacts.
+Download [preview 4](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.4),
+or follow [Git/offline installation and game integration](UPM_INSTALLATION.md).
+For offline installation import Input first, wait for compilation, then SDK.
+The [publication receipt](reports/2026-10-05-preview4-publication.json) records
+all eight public asset URLs, sizes and exact downloaded SHA256 values.
+Historical combined and failed-transfer evidence is retained.
 
 See [preview 4 evidence](reports/2026-10-05-preview4-release-verification.md).
 Current modelpacks retain local-evaluation/license restrictions and disabled

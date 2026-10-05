@@ -1,0 +1,58 @@
+{
+  "result": "PASS",
+  "verified_at": "2026-10-05T13:32:44.812801+00:00",
+  "source_commit": "a201e0f44aa68a3f831f248b67400bd5fd7358c9",
+  "remote_refs_at_publication": {
+    "refs/heads/main": "a201e0f44aa68a3f831f248b67400bd5fd7358c9",
+    "refs/tags/v0.4.0-preview.4": "6de6062770faaf0badff690cfa210362e5c18c59",
+    "refs/tags/v0.4.0-preview.4^{}": "a201e0f44aa68a3f831f248b67400bd5fd7358c9"
+  },
+  "release_id": 403665844,
+  "url": "https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.4",
+  "draft": false,
+  "prerelease": true,
+  "published_at": "2026-10-05T13:32:44Z",
+  "assets": {
+    "HumanVisionInput-0.1.0-preview.2.unitypackage": {
+      "sha256": "94b04fb1fac466c716e58789a072412cb22f833d2eeda5c9fe79d1570dd13fc7",
+      "size": 39661506,
+      "url": "https://github.com/blaze-tc/Human-Vision-SDK/releases/download/v0.4.0-preview.4/HumanVisionInput-0.1.0-preview.2.unitypackage"
+    },
+    "com.blazetc.humanvision.input-0.1.0-preview.2.tgz": {
+      "sha256": "14b8247896b5fa7531e01534df01aaa44551d496611bb9daebb2d8578d7e1e58",
+      "size": 39660695,
+      "url": "https://github.com/blaze-tc/Human-Vision-SDK/releases/download/v0.4.0-preview.4/com.blazetc.humanvision.input-0.1.0-preview.2.tgz"
+    },
+    "com.blazetc.humanvision-0.4.0-preview.4.tgz": {
+      "sha256": "c9bec909aaf8c58d85f33d5607555c4454303f1b929317cc5b721d3a085a3172",
+      "size": 72098052,
+      "url": "https://github.com/blaze-tc/Human-Vision-SDK/releases/download/v0.4.0-preview.4/com.blazetc.humanvision-0.4.0-preview.4.tgz"
+    },
+    "asset-sha256.json": {
+      "sha256": "50511f83b65582b1270c4125fd7a7a2e867c53b47dafcfc0c542ea33a3e15843",
+      "size": 60383,
+      "url": "https://github.com/blaze-tc/Human-Vision-SDK/releases/download/v0.4.0-preview.4/asset-sha256.json"
+    },
+    "HumanVisionSDK-0.4.0-preview.4.unitypackage": {
+      "sha256": "2bb37622477a189aaa06b62063e7c46c4948f29a166d36c787080aab41da4417",
+      "size": 72107598,
+      "url": "https://github.com/blaze-tc/Human-Vision-SDK/releases/download/v0.4.0-preview.4/HumanVisionSDK-0.4.0-preview.4.unitypackage"
+    },
+    "README.md": {
+      "sha256": "e29f87119b2ff9cebf6dd092295c00f3e064e35fd32e9460e27ddfd0c814da5e",
+      "size": 3742,
+      "url": "https://github.com/blaze-tc/Human-Vision-SDK/releases/download/v0.4.0-preview.4/README.md"
+    },
+    "source-snapshot.json": {
+      "sha256": "3765bd7ff4d1494c7b3c4e8bdb315339d61a9d2ec994b818d705f2db97651af4",
+      "size": 308606,
+      "url": "https://github.com/blaze-tc/Human-Vision-SDK/releases/download/v0.4.0-preview.4/source-snapshot.json"
+    },
+    "SHA256SUMS.txt": {
+      "sha256": "79fa8bd43a487bbba71aaaf1013c7c48d91fc7b0092aec11312d2676c05f033e",
+      "size": 702,
+      "url": "https://github.com/blaze-tc/Human-Vision-SDK/releases/download/v0.4.0-preview.4/SHA256SUMS.txt"
+    }
+  },
+  "qualification": "Integration preview; 30 fresh complete observation FPS remains OPEN; genuine hand inference disabled; existing model license flags preserved."
+}

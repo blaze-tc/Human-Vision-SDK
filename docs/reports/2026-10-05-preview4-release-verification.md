@@ -1,5 +1,36 @@
 # Integration preview 4 release verification (2026-10-05)
 
+## Final public publication: PASS
+
+The public prerelease is
+[v0.4.0-preview.4](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.4),
+GitHub release ID `403665844`, published 2026-10-05 13:32:44 UTC with
+`draft=false`, `prerelease=true`. Main was fast-forwarded without force to
+`a201e0f44aa68a3f831f248b67400bd5fd7358c9`. The final annotated tag object
+`6de6062770faaf0badff690cfa210362e5c18c59` peels to that commit and remains
+immutable after publication. Later documentation-only main commits record
+results, not changes to the tagged source or published artifacts.
+
+The final isolated remote-3 Unity project resolves both actual Git URLs to
+`a201e0f`: SDK325 + Input127 = all 452 cache files byte-exact, no missing/extra
+files. Model/native initialization exits 0; all 20 installed runtime hashes,
+three generated demos and accepted half-size defaults PASS. Independent final
+spec/code-quality review and source/provenance review PASS, no blocking findings.
+The final source-snapshot SHA256 is
+`3765bd7ff4d1494c7b3c4e8bdb315339d61a9d2ec994b818d705f2db97651af4`.
+Final TGZ/unitypackage bytes equal the actual-imported split candidates9/10.
+
+All eight final assets were uploaded with matching GitHub server digests, then
+downloaded into `out/releases/v0.4.0-preview.4-split-remote-download` and verified
+against the local final-3 bytes and SHA256SUMS. Only after this 8/8 PASS and live
+main/tag checks was the draft published. The
+[public receipt](2026-10-05-preview4-publication.json) lists exact asset hashes,
+sizes and download URLs. No large combined unitypackage/ZIP is publicly shipped;
+the complete offline installation is Input first, followed by SDK. Historical
+FAIL/PENDING lanes below remain evidence of the corrections, not final failures.
+Task 11 / 30 fresh complete observation FPS remains OPEN; genuine hand inference
+is disabled and existing model-license restrictions remain unchanged.
+
 ## Authorization and scope
 
 The user tested the visible demo, accepted the effect and explicitly requested
