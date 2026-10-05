@@ -30,6 +30,7 @@ namespace HumanVision.Editor
         internal static AndroidBuildEnvironment CaptureEnvironment(HumanVisionAndroidRuntimeModeDescriptor descriptor)
         {
             var graphicsApis = PlayerSettings.GetGraphicsAPIs(BuildTarget.Android);
+            ValidateQualityProfiles(Path.Combine(Application.streamingAssetsPath, "HumanVision", "Runtime"), descriptor);
             bool validatedPack = descriptor.RequiresNcnn && ValidateNcnnModelPack(
                 Path.Combine(Application.streamingAssetsPath, "HumanVision", "Runtime"), descriptor.ProfileId);
             return new AndroidBuildEnvironment
@@ -62,6 +63,17 @@ namespace HumanVision.Editor
         [Serializable] private sealed class ProfileBody { public string pipeline; public string modelPack; }
         [Serializable] private sealed class ProfileHands { public bool enabled; }
         [Serializable] private sealed class ProfileBackend { public string[] preference; public bool allow_fallback = true; }
+        internal static string[] ValidateQualityProfiles(string runtimeRoot, HumanVisionAndroidRuntimeModeDescriptor descriptor)
+        {
+            try
+            {
+                var catalog = global::HumanVision.HumanVisionModelInputQualities.Load(runtimeRoot);
+                var profiles = catalog.ProfilesForMode(descriptor.Id);
+                foreach (string profile in profiles) ValidateNcnnModelPack(runtimeRoot, profile);
+                return profiles;
+            }
+            catch (Exception error) { throw new BuildFailedException("Model input quality validation failed: " + error.Message); }
+        }
         internal static bool ValidateNcnnModelPack(string runtimeRoot, string profileId)
         {
             try {
@@ -231,11 +243,17 @@ namespace HumanVision.Editor
         public void OnPostGenerateGradleAndroidProject(string path)
         {
             var descriptor = HumanVisionAndroidRuntimeModeRegistry.Resolve(HumanVisionAndroidRuntimeSettings.instance.RuntimeModeId);
-            WriteSelectionMetadata(FindApplicationManifest(path), descriptor);
+            WriteSelectionMetadata(FindApplicationManifest(path), descriptor, Path.Combine(Application.streamingAssetsPath, "HumanVision", "Runtime"));
         }
 
         public static void WriteSelectionMetadata(string manifestPath, HumanVisionAndroidRuntimeModeDescriptor descriptor)
         {
+            WriteSelectionMetadata(manifestPath, descriptor, Path.Combine(Application.streamingAssetsPath, "HumanVision", "Runtime"));
+        }
+
+        public static void WriteSelectionMetadata(string manifestPath, HumanVisionAndroidRuntimeModeDescriptor descriptor, string runtimeRoot)
+        {
+            var profiles = HumanVisionAndroidBuildSettings.ValidateQualityProfiles(runtimeRoot, descriptor);
             var document = new XmlDocument();
             document.Load(manifestPath);
             var manifest = document.DocumentElement;
@@ -244,6 +262,17 @@ namespace HumanVision.Editor
                 throw new BuildFailedException("Generated Android application manifest has no application element.");
             WriteMetadata(document, application, global::HumanVision.HumanVisionAndroidRuntimeSelection.RuntimeModeMetadataKey, descriptor.Id);
             WriteMetadata(document, application, global::HumanVision.HumanVisionAndroidRuntimeSelection.ProfileIdMetadataKey, descriptor.ProfileId);
+            // IDs come from the validated exact family and contain no JSON escape characters.
+            string qualityProfiles = "[" + string.Join(",", profiles.Select(profile => "\"" + profile + "\"")) + "]";
+            if (profiles.Length != 0)
+                WriteMetadata(document, application, global::HumanVision.HumanVisionAndroidRuntimeSelection.QualityProfilesMetadataKey, qualityProfiles);
+            else
+            {
+                // A later legacy/ORT build must not inherit a prior NCNN allowlist.
+                foreach (var stale in application.ChildNodes.OfType<XmlElement>().Where(element => element.Name == "meta-data" &&
+                    element.GetAttribute("name", AndroidNamespace) == global::HumanVision.HumanVisionAndroidRuntimeSelection.QualityProfilesMetadataKey).ToArray())
+                    application.RemoveChild(stale);
+            }
             document.Save(manifestPath);
         }
 

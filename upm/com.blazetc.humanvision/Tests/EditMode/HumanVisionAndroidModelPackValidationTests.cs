@@ -44,7 +44,8 @@ namespace HumanVision.Tests
         [Test] public void EnvironmentDerivesAssetsFromValidatedSelectedYoloPack()
         {
             string staged = Path.Combine(Application.streamingAssetsPath, "HumanVision", "Runtime");
-            if (Directory.Exists(staged)) Assert.Ignore("Environment test requires an isolated project without an installed Runtime directory.");
+            string backup = Directory.Exists(staged) ? Path.Combine(Path.GetDirectoryName(staged), "Runtime-environment-" + Guid.NewGuid().ToString("N")) : null;
+            if (backup != null) Directory.Move(staged, backup);
             Directory.CreateDirectory(staged);
             try
             {
@@ -56,7 +57,7 @@ namespace HumanVision.Tests
                 Assert.That(environment.GetType().GetProperty("HasNcnnModelPackAssets").GetValue(environment), Is.True);
                 Assert.That(environment.GetType().GetProperty("HasNcnnModelPackSha256Index").GetValue(environment), Is.True);
             }
-            finally { Directory.Delete(staged, true); }
+            finally { Directory.Delete(staged, true); if (backup != null) Directory.Move(backup, staged); }
         }
 
         [Test] public void ExplicitOrtSelectionDoesNotRequireNcnnClosure()

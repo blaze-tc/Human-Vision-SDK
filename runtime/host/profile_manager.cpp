@@ -28,7 +28,7 @@ std::shared_ptr<const RuntimeProfile> ProfileManager::Resolve(const std::string&
             throw std::runtime_error("Unsupported profile schema or identity");
         auto result = std::make_shared<RuntimeProfile>();
         result->id = id; result->json = json.dump(); result->max_people = max_people;
-        if (id == "android-ncnn-vulkan") {
+        if (detail::IsAndroidGpuProfile(id)) {
             const bool per_frame=json.value("local_evaluation_only",false)&&json.value("frame_policy",std::string{})=="every_frame";
             if(!per_frame) {
             const auto& detector = json.at("detector");

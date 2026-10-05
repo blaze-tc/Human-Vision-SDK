@@ -202,6 +202,7 @@ target_sources(humanvision_native_tests PRIVATE
     ../runtime/test_plugin_abi_v2.cpp
     ../runtime/test_plugin_abi_v3.cpp
     ../runtime/test_runtime_gpu_composition.cpp
+    ../runtime/test_android_quality_gpu_route.cpp
     ../runtime/test_android_gpu_abi.cpp)
 target_sources(humanvision_native_tests PRIVATE
     ../runtime/test_ncnn_input_contract.cpp

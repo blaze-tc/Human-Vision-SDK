@@ -1,3 +1,13 @@
+# Current: Q2 three-quality profile integration verified; shared selector next (2026-10-05)
+
+Q1 committed4169b6d. Q2 indexed actual512x288/640x384/960x576 contracts, same-mode
+baked allowlist and exact three GPU routes are verified. Complete Unity142/142,
+native380/380 and affected Android API26/ARM64 build/audit PASS. No physical
+inference or30FPS claim. Q3 common selector/Apply plus user Happytime RTSP quick
+camera/video presets is next; Q4 qualified user-project/package/device gate pending.
+Task11 and Region/motion Android acceptance remain open. No main merge/Release.
+See [Q2 evidence](reports/2026-10-05-model-input-quality-q2.md).
+
 # Current: quality Q1 fixed960 admission; shipping and selector pending (2026-10-05)
 
 Q1: exact960x576 native YOLO admission and offline local numerical/semantic

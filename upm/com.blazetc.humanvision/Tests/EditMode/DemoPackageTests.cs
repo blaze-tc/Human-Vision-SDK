@@ -108,8 +108,9 @@ namespace HumanVision.Tests
                 if (saved != null) File.Delete(staged);
                 File.WriteAllText(host, "{}");
                 var descriptor = EditorType("HumanVisionAndroidRuntimeModeRegistry").GetMethod("Resolve").Invoke(null, new object[] { "android-ncnn-vulkan" });
-                var environment = EditorType("HumanVisionAndroidBuildSettings").GetMethod("CaptureEnvironment", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, new[] { descriptor });
-                Assert.That(environment.GetType().GetProperty("HasProfile").GetValue(environment), Is.False);
+                var error = Assert.Throws<TargetInvocationException>(() => EditorType("HumanVisionAndroidBuildSettings").GetMethod("CaptureEnvironment", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, new[] { descriptor }));
+                Assert.That(error.InnerException.GetType().FullName, Is.EqualTo("UnityEditor.Build.BuildFailedException"));
+                Assert.That(error.InnerException.Message, Does.Contain("validation failed"));
             } finally { File.Delete(host); if (saved != null) File.WriteAllText(staged, saved); }
         }
     }

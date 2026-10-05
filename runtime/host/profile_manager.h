@@ -2,8 +2,15 @@
 #include "host/model_pack_manager.h"
 #include "host/plugin_registry.h"
 #include "host/backend_factory.h"
+#include <string_view>
 
 namespace humanvision::runtime {
+namespace detail {
+inline bool IsAndroidGpuProfile(std::string_view id) noexcept {
+    return id == "android-ncnn-vulkan" || id == "android-ncnn-vulkan-quality-low" ||
+           id == "android-ncnn-vulkan-quality-high";
+}
+}
 struct PipelineSelection {
     std::shared_ptr<const PluginModule> plugin;
     std::shared_ptr<const ModelPack> pack;

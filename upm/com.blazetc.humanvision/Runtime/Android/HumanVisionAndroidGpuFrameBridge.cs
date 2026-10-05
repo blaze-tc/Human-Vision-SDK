@@ -15,7 +15,8 @@ namespace HumanVision
     internal static class HumanVisionAndroidFrameRoute
     {
         internal enum FramePath { Gpu, Cpu }
-        internal static bool UsesGpu(string profile) => profile == "android-ncnn-vulkan";
+        internal static bool UsesGpu(string profile) => profile == "android-ncnn-vulkan" ||
+            profile == "android-ncnn-vulkan-quality-low" || profile == "android-ncnn-vulkan-quality-high";
 
         internal static FramePath Select(string profile)
         {

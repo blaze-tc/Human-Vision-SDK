@@ -36,7 +36,7 @@ RuntimeSession::~RuntimeSession(){
 }
 bool RuntimeSession::Start(const std::filesystem::path& root,const std::string& profile,int capacity,std::string& error,
                            HV_QueryPluginV3Fn gpu_pipeline_query,GpuConsumerSource* gpu_test_source){
- if(profile=="android-ncnn-vulkan"){
+ if(detail::IsAndroidGpuProfile(profile)){
   if (!gpu_pipeline_query) gpu_pipeline_query=HV_QueryTopDownGpuPipelineV3;
   factory_=std::make_unique<BackendFactory>(std::vector<std::shared_ptr<const PluginModule>>{},false);
   if(!factory_->RegisterV3(HV_QueryNcnnVulkanPluginV3,error))return false;
