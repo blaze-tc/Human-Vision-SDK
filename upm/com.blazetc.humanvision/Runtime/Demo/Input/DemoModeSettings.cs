@@ -11,7 +11,7 @@ namespace HumanVision.Demo
         public string RtspComputerHost = "";
         public bool Mirror;
         public int RequestedWidth = 1280, RequestedHeight = 720, RequestedFramesPerSecond = 30;
-        public float LineWidth = 9, PointDiameter = 27;
+        public float LineWidth = 4.5f, PointDiameter = 13.5f;
         public void Validate()
         {
             if (Version != 1 || RequestedWidth < 64 || RequestedHeight < 64 || RequestedWidth > 4096 ||
