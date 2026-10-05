@@ -17,12 +17,15 @@ Fresh clean-checkout native regression: 376/376 PASS. Architecture Python tests:
 when the real plugin is installed), plus that case passing in a separate
 native-absent installation. The original failure log is retained.
 
-Final package closure: 450 files, 248 GUIDs, 20 runtime-index entries, eight
+Final package closure: 452 files, 249 GUIDs, 20 runtime-index entries, eight
 Android SOs and nine Windows DLLs. Corrected .unitypackage actually imports in
 Unity 2021.3.45f1; local UPM installation initializes Windows models and generates
 three demos. Offline native/model initialization and independent spec/code-quality
-review PASS. Remote Git import and uploaded/downloaded artifact
-hash verification follow the authorized main/tag push before Release publication.
+review PASS. Actual remote Git initialization PASS, but byte verification found
+54 Input text files converted by Git autocrlf. Package-local file attributes
+fix this without runtime changes: RED 2 -> GREEN 13/13 packaging cases. Root
+authority is now LF-stable. The fresh remote byte-closure and uploaded/downloaded
+artifact gates must pass before Release publication; initial failure is retained.
 
 See [preview 4 evidence](reports/2026-10-05-preview4-release-verification.md).
 Current modelpacks retain local-evaluation/license restrictions and disabled

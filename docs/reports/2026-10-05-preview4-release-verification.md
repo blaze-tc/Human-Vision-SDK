@@ -16,8 +16,9 @@ The clean release branch starts at `b523f13`; its payload is reconstructed from
 the immutable Q4 device-tested snapshot, not an older mutable UPM tree. Only
 accepted half-thickness defaults, reviewed deferred RTSP reopen, and release
 metadata/licenses are added. `tools/package/release-preview4-authority.json`
-pins the complete 450-file/248-GUID source closure; its SHA256 is
-`7c99e9db14e446aecbeeda21a78c4a3ff1926bb779c46528d991962918d80b8b`.
+pins the final 452-file/249-GUID source closure; its LF-stable SHA256 is
+`6b7da9a09731501f4436bd37599b38f483dad741d560e0a5eeff584721d1c5f5`.
+The earlier 450-file closure is retained in historical candidate receipts.
 
 Twenty runtime-index entries, eight Android SOs and nine Windows DLLs were
 validated, including strong native import dependency closure. Android SDK SO:
@@ -62,8 +63,9 @@ Commands run in `.worktrees/release-0.4.0-preview.4`:
   entries. Unity's own exported format supplied the oracle; two expected RED
   tests preceded the fix. Folder entries now contain metadata/pathname only;
   regular files contain asset bytes. Failed candidates and import log remain.
-- Final candidates 5 and 6 contain eight byte-identical output files. The
-  combined package has 247 exact mapped assets. The package ZIP contains the
+- Original 450-file candidates 5 and 6 contain eight byte-identical output files.
+  Their combined package has 247 mapped assets; current candidate8 has 248.
+  The package ZIP contains the
   two UPM TGZs, combined `.unitypackage`, README and receipts, not loose UPM trees.
 - Clean local UPM installation: actual 20 installed runtime hashes verified,
   three official demos generated, defaults 4.5/13.5 checked, real Windows CPU
@@ -79,6 +81,36 @@ project is not modified by these release verification lanes. GPU device/FPS
 acceptance and RTSP reopen physical validation are not re-certified here.
 
 ## Publication sequence and receipts
+
+### Actual remote Git byte-gate correction
+
+Main was fast-forwarded to release commit `ba8a92f`; the initial annotated
+preview tag points to that commit. The Release remains an unpublished draft.
+Actual remote Git installation resolves both packages to that commit and passes
+20 installed hashes, three generated demos and Windows CPU initialization.
+Strict cache verification nevertheless fails: SDK325 files are exact; 54 of
+Input125 text files are converted LF to CRLF. Every differing pair is equal
+after line-ending normalization; native/model bytes remain exact. The retained
+`out/release-verification/remote-git-initial-byte-failure.json` records the FAIL
+separately from runtime initialization PASS.
+
+UPM's package subtree checkout does not retain root Git attributes. The minimal
+fix adds Input `.gitattributes` (`* -text`) and its deterministic metadata, updates
+only its asset index and the authority, and adds two regression tests. RED:
+missing attribute and 54 byte changes with `core.autocrlf=true`; GREEN: 13/13,
+all 452 package files preserved. Original runtime/native/model bytes are unchanged.
+The root authority JSON is explicitly normalized to LF before commit, matching
+its tracked attributes. Candidate8 package archives match candidate7 exactly;
+only authority/provenance receipts changed. Evidence is under
+`out/release-git-byte-fix-20261005/`.
+Actual candidate7 Assets import and model initialization both exit 0 in
+`out/release-unity-assets-fixed-7`; its archive equals current candidate8.
+
+Correct the tag created during this unpublished draft only with an explicit
+lease on its known old tag object, after the fix commit and nonforce main push.
+Retain before/after references. Re-run actual remote Git cache verification in a
+new isolated project before publishing; never treat normalized equality as
+the strict byte gate passing. Final archives are rebuilt against the fix commit.
 
 Both isolated installations have passed offline model initialization. Independent
 review verdict: Spec PASS / Code quality PASS / local release artifact PASS,

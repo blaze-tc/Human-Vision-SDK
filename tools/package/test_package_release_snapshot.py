@@ -3,13 +3,16 @@ import gzip
 import io
 import json
 from pathlib import Path
+import shutil
+import subprocess
 import tarfile
 import tempfile
 import unittest
 
 from package_release_snapshot import (file_hashes, sha256, verify_file_closure,
                                       write_tgz, verify_tgz, validate_guids,
-                                      verify_unitypackage, write_unitypackage, input_path)
+                                      verify_unitypackage, write_unitypackage, input_path,
+                                      ROOT, PACKAGES)
 
 
 class SnapshotGuards(unittest.TestCase):
@@ -87,6 +90,41 @@ class SnapshotGuards(unittest.TestCase):
                          'Assets/HumanVisionInput/Samples/InputPreview/InputPreview.unity')
         self.assertEqual(input_path('Runtime/Plugins/x86_64/humanvision_input.dll'),
                          'Assets/Plugins/x86_64/humanvision_input.dll')
+
+    def test_each_git_package_has_local_byte_preservation_attributes(self):
+        # Unity's package-only checkout loses the repository-root attributes.
+        for name in PACKAGES:
+            with self.subTest(package=name):
+                attributes = ROOT / 'upm' / name / '.gitattributes'
+                self.assertTrue(attributes.is_file(), str(attributes))
+                self.assertIn('* -text', attributes.read_text().splitlines())
+
+    def test_package_only_git_checkout_preserves_complete_byte_closure(self):
+        for name in PACKAGES:
+            with self.subTest(package=name):
+                source = ROOT / 'upm' / name
+                fixture = self.root / name
+                shutil.copytree(source, fixture)
+                expected = file_hashes(fixture)
+
+                def git(autocrlf, *args):
+                    subprocess.run(['git', '-C', str(fixture), '-c',
+                                    'core.autocrlf=' + autocrlf, *args],
+                                   check=True, capture_output=True)
+
+                # Build the index from the pinned archive bytes, then reproduce
+                # Unity's Windows subtree checkout without parent attributes.
+                git('false', 'init')
+                git('false', 'add', '.')
+                exported = self.root / (name + '-checkout')
+                exported.mkdir()
+                git('true', 'checkout-index', '--all',
+                    '--prefix=' + exported.as_posix() + '/')
+                actual = file_hashes(exported)
+                changed = sorted(path for path in set(expected) | set(actual)
+                                 if expected.get(path) != actual.get(path))
+                self.assertEqual(changed, [],
+                                 'Git autocrlf changed package bytes: ' + ', '.join(changed))
 
     def test_folder_exports_metadata_and_pathname_without_regular_asset(self):
         meta = b'fileFormatVersion: 2\nguid: ' + b'1' * 32 + b'\nfolderAsset: yes\nDefaultImporter:\n'

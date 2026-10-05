@@ -80,6 +80,14 @@
       }
     },
     "com.blazetc.humanvision.input": {
+      ".gitattributes": {
+        "baseline": null,
+        "release": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da"
+      },
+      ".gitattributes.meta": {
+        "baseline": null,
+        "release": "7e6e9007718b454234ef7a81aef42d496a5688bc1f2c1f375890b579bf0e5e98"
+      },
       "Documentation~.meta": {
         "baseline": null,
         "release": "8084eca1dc150c36562370b65287c0a947217ca2e39fef6433460de3ae2c3ef7"
@@ -130,7 +138,7 @@
       },
       "asset-sha256.json": {
         "baseline": null,
-        "release": "e2df54291a84318e24d5e3141c0c23e8c0ccbc349fb4b4a4e2b2750409d7944e"
+        "release": "c1038360c9273a124fc340569b29866f00a2742a1dbd5d2a73992c695c775c55"
       },
       "asset-sha256.json.meta": {
         "baseline": null,
@@ -1785,6 +1793,8 @@
       "package.json.meta": "b0ef7fb3f8bca292ed1c7b716fde75272cc1d7a51dad965b4121f8801082e1d2"
     },
     "com.blazetc.humanvision.input": {
+      ".gitattributes": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da",
+      ".gitattributes.meta": "7e6e9007718b454234ef7a81aef42d496a5688bc1f2c1f375890b579bf0e5e98",
       "Documentation~.meta": "8084eca1dc150c36562370b65287c0a947217ca2e39fef6433460de3ae2c3ef7",
       "Documentation~/INPUT_GUIDE.md": "1e3cdec03a6d5cc7105b5482c8c3a31926b192d1e0a85d0a5214c9989d556f2f",
       "Documentation~/INPUT_GUIDE.md.meta": "8d7c9947bf6418d74906e4031382b8b5f7f5a1d375cb18c3e79f19ca6a89c072",
@@ -1904,7 +1914,7 @@
       "Tests/PlayMode/RtspPreviewTests.cs.meta": "1c9e89b13960a7a378de7510caba58ab130cc8fac3cbc9dc37cfd7a213e224ca",
       "Tests/PlayMode/UnitySourceLifecycleTests.cs": "5873a81d89726f4828e63c76608068dd64249860056ec7dda0267147683b5ca7",
       "Tests/PlayMode/UnitySourceLifecycleTests.cs.meta": "3342d5947aea933e517c43b0c8de238f7fc7f36d8c03c26836cc1f6611a50937",
-      "asset-sha256.json": "e2df54291a84318e24d5e3141c0c23e8c0ccbc349fb4b4a4e2b2750409d7944e",
+      "asset-sha256.json": "c1038360c9273a124fc340569b29866f00a2742a1dbd5d2a73992c695c775c55",
       "asset-sha256.json.meta": "2d627b354df1e9f6029ae58d1232411b6754506dc0064ce5d645c31bcb85dc31",
       "native-payload.json": "0b63cb330f5daeceaa12b4a89b387a2f7474ff724cd729b9ef746d9b9f7f0bbb",
       "native-payload.json.meta": "7614cc138d2acdc55fabec59a493049a6c0cd6876956ada9759d6a390fe6b547",
