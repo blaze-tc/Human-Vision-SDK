@@ -52,7 +52,7 @@
       },
       "README.md": {
         "baseline": "eae246a10c842751ad0389015c1ee4677c9fdf955eb5c538c0ad2ac1233421d4",
-        "release": "bed192df6e2201ced361cfefef37c3957eb4e32d297d7b306b35197ae54a23be"
+        "release": "60dfb1575c6a6ce4970305ce99b20ea2f39d34e7eca87ad713e159b892be2f86"
       },
       "Runtime/Demo/Input/DemoModeSettings.cs": {
         "baseline": "2376d813f7350fbbef3b77beb2a8a3710693ab7d55f8528f1bd988cca9f6111b",
@@ -68,11 +68,11 @@
       },
       "UPM_INSTALLATION.md": {
         "baseline": "e5402fb59a2e1b9712500815b957c14378524a4af531444135b27776bd4f1886",
-        "release": "b733345e9de99e9774b8906e1a9e284c46f9209d60463f7f6e4cec6de6e1d453"
+        "release": "e29f87119b2ff9cebf6dd092295c00f3e064e35fd32e9460e27ddfd0c814da5e"
       },
       "asset-sha256.json": {
         "baseline": "c104fc36e06d2748605745337e8af0de7168711af5c30248af16f0a6abc2aa10",
-        "release": "cf12231b4c946b7ff0e3214be5f2c52db839374f1c3201e682205e72ba7405ad"
+        "release": "36e4c3a24f994be2dcc26deb7b51e29d8b5ab2afbe91a297f47ed630974a254d"
       },
       "package.json": {
         "baseline": "f12a70cded88bacc5b600f7d1ce5c953407390f11170d0b94b5d527d0e761176",
@@ -102,7 +102,7 @@
       },
       "README.md": {
         "baseline": null,
-        "release": "693f2d479e033021cee62a713c3d0eaf69a61b6d9158b75a5756513e5c4fef53"
+        "release": "2a604b168c22f3ed3838032f1606673aae3ed07d112fbeb8ac5ed5e72d46793a"
       },
       "README.md.meta": {
         "baseline": null,
@@ -138,7 +138,7 @@
       },
       "asset-sha256.json": {
         "baseline": null,
-        "release": "c1038360c9273a124fc340569b29866f00a2742a1dbd5d2a73992c695c775c55"
+        "release": "f00374577a830fc9ab2ab4c1cfa17c4bcba27b04b8a1e012ae20aa436f16316e"
       },
       "asset-sha256.json.meta": {
         "baseline": null,
@@ -1558,7 +1558,7 @@
       "Licenses/nlohmann-json-MIT.txt": "86b998c792894ccb911a1cb7994f7a9652894e7a094c0b5e45be2f553f45cf14",
       "Licenses/nlohmann-json-MIT.txt.meta": "c35a72efc63c6e0d4301dd836119d940abc62674d2d474403f2142bbd8708c7b",
       "Models.meta": "534398d781bdc8dbf51328a9d54c95f5f45126bbec34a0313f1ff9cdf0c4211f",
-      "README.md": "bed192df6e2201ced361cfefef37c3957eb4e32d297d7b306b35197ae54a23be",
+      "README.md": "60dfb1575c6a6ce4970305ce99b20ea2f39d34e7eca87ad713e159b892be2f86",
       "README.md.meta": "d8e357ec232439832bfdd249c70293be470ccf8d2532fa6c396b3167e951cbc4",
       "Runtime.meta": "b2acb491c7181617f9e09ac5c3ee0bbddfc424e7a9cdb753a4f7feebf17dc3f9",
       "Runtime/Android.meta": "01384114a721182c232e0a4a210bb5c3a126da1357cfa3d21bc0581647a1b3ce",
@@ -1783,11 +1783,11 @@
       "Tests/PlayMode/HumanVision.Demo.PlayModeTests.asmdef.meta": "7366f69086ec3d2102e45487404fda6adb771adf8079c5d73a49adf9191cec52",
       "Tests/PlayMode/UnifiedDemoUiTests.cs": "983fc5f80d48b271099a2cf578a86749fe6c6170f4dd2131ee5b70d0df5be98a",
       "Tests/PlayMode/UnifiedDemoUiTests.cs.meta": "7c5c2e62a2da150202d9eea47b0de2d594aa63d0777fe50b351c5f2b27290908",
-      "UPM_INSTALLATION.md": "b733345e9de99e9774b8906e1a9e284c46f9209d60463f7f6e4cec6de6e1d453",
+      "UPM_INSTALLATION.md": "e29f87119b2ff9cebf6dd092295c00f3e064e35fd32e9460e27ddfd0c814da5e",
       "UPM_INSTALLATION.md.meta": "7b41213ad0bded0acefa6c3b3a9ba5e4cbf1e7c8ef565504acdb4f10d6fee0d6",
       "android-gpu-bridge-symbols.json": "a84e709a731606543bee38ec31efb2ece48970926ce1343af8b02ae5635a9ec6",
       "android-gpu-bridge-symbols.json.meta": "1cd7db0af670ca073fae57b492d039b5b9faf9f179fc3799779372acc2fb8753",
-      "asset-sha256.json": "cf12231b4c946b7ff0e3214be5f2c52db839374f1c3201e682205e72ba7405ad",
+      "asset-sha256.json": "36e4c3a24f994be2dcc26deb7b51e29d8b5ab2afbe91a297f47ed630974a254d",
       "asset-sha256.json.meta": "63639b175f12b4daa6042061e15d27e309a21e991015467d9cb1eed329f04bb9",
       "package.json": "07fba3bbb2f29de4db2f059b3eb4e2aac58fdf722c4c23e6c1d74f6f00cdbef8",
       "package.json.meta": "b0ef7fb3f8bca292ed1c7b716fde75272cc1d7a51dad965b4121f8801082e1d2"
@@ -1808,7 +1808,7 @@
       "Licenses/FFmpeg-LGPL-2.1.txt.meta": "265a9667b18f826c14a40bd6b61a2f18faa350ab78e1b2c2a351727274f925ac",
       "Licenses/Unity-Plugin-API-LICENSE.md": "dc34d09c3c3a5057244ba4e6cbb871105ec42cd1130617aceeddb9219da922d1",
       "Licenses/Unity-Plugin-API-LICENSE.md.meta": "061d85eea7198a90dc2e4377f98599c3948cb24919cea5c5f20a6baa48c3579b",
-      "README.md": "693f2d479e033021cee62a713c3d0eaf69a61b6d9158b75a5756513e5c4fef53",
+      "README.md": "2a604b168c22f3ed3838032f1606673aae3ed07d112fbeb8ac5ed5e72d46793a",
       "README.md.meta": "0bd87cab4de9602d239d5d87f1aaa72f8a2daa7671a2cd505d0da8937dba4473",
       "Runtime.meta": "7db575aac0c47edab61ddd3423431347edcd9bfa447c9727e2e5b5a0d0a0e13e",
       "Runtime/AndroidRtspGpuSource.cs": "c61c394b27233e67fd5446ff2a1b7f42098d4a2906247c349f73ef4e333c87ad",
@@ -1914,7 +1914,7 @@
       "Tests/PlayMode/RtspPreviewTests.cs.meta": "1c9e89b13960a7a378de7510caba58ab130cc8fac3cbc9dc37cfd7a213e224ca",
       "Tests/PlayMode/UnitySourceLifecycleTests.cs": "5873a81d89726f4828e63c76608068dd64249860056ec7dda0267147683b5ca7",
       "Tests/PlayMode/UnitySourceLifecycleTests.cs.meta": "3342d5947aea933e517c43b0c8de238f7fc7f36d8c03c26836cc1f6611a50937",
-      "asset-sha256.json": "c1038360c9273a124fc340569b29866f00a2742a1dbd5d2a73992c695c775c55",
+      "asset-sha256.json": "f00374577a830fc9ab2ab4c1cfa17c4bcba27b04b8a1e012ae20aa436f16316e",
       "asset-sha256.json.meta": "2d627b354df1e9f6029ae58d1232411b6754506dc0064ce5d645c31bcb85dc31",
       "native-payload.json": "0b63cb330f5daeceaa12b4a89b387a2f7474ff724cd729b9ef746d9b9f7f0bbb",
       "native-payload.json.meta": "7614cc138d2acdc55fabec59a493049a6c0cd6876956ada9759d6a390fe6b547",

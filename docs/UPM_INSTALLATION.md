@@ -21,9 +21,12 @@ SDK 的版本依赖不会自动查找同仓库另一个 Git 子目录，因此�
 
 [Release 下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.4)：
 
-- `HumanVisionSDK-Input-0.4.0-preview.4.unitypackage`：Assets > Import Package > Custom Package，一次导入 SDK 和 Input。
+- `HumanVisionInput-0.1.0-preview.2.unitypackage`：先用 Assets > Import Package > Custom Package 导入 Input。
+- `HumanVisionSDK-0.4.0-preview.4.unitypackage`：随后导入 SDK，包含模型、骨骼与 Demo。
 - 两个 `.tgz`：Package Manager > Add package from tarball，先 Input、后 SDK。
-- `HumanVisionSDK-Input-0.4.0-preview.4.zip`：两个 UPM tarball、导入包、安装说明和校验信息。
+
+两个本地导入包与 Git 安装的两包结构一致，合起来提供完整 SDK 功能。
+较小的独立下载降低大文件网络传输失败的概率；历史合并包保留为本地验证产物。
 
 Git、tarball、Assets 导入选择一种，更换方式前移除原 SDK/Input，避免重复脚本、
 GUID、原生库。保留游戏和厂商资源，不手工修改 `Library/PackageCache`。

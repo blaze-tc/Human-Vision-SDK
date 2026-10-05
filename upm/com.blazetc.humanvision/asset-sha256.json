@@ -41,7 +41,7 @@
   "Licenses/mmpose.txt": "d125421b289cd79bf03e8590858fa81c22dc95e2753b20bf80e6a3cc80a893f9",
   "Licenses/ncnn-LICENSE.txt": "7c974bac98848df46be1af5bdaa3c3c9c01f6082a90f55caeb7f60c6208aa255",
   "Licenses/nlohmann-json-MIT.txt": "86b998c792894ccb911a1cb7994f7a9652894e7a094c0b5e45be2f553f45cf14",
-  "README.md": "bed192df6e2201ced361cfefef37c3957eb4e32d297d7b306b35197ae54a23be",
+  "README.md": "60dfb1575c6a6ce4970305ce99b20ea2f39d34e7eca87ad713e159b892be2f86",
   "Runtime/Android/HumanVisionAndroidFrameCopyFence.cs": "f0898e4a59974d1b55a3bc558610562c3190dcbc2c3bc5efd9a95504d1dcedb3",
   "Runtime/Android/HumanVisionAndroidGpuFrameBridge.cs": "f95580b289d7df6afdbd4a1f832f947f8fad48e05136b5fe8551638fc5094e0b",
   "Runtime/Android/HumanVisionAndroidRuntimeSelection.cs": "e73d695495c14857b97554df5f9272e04ba0683d24abeedbb2ef8990ee00c850",
@@ -142,7 +142,7 @@
   "Tests/EditMode/SharedQualityUiTests.cs": "a88b60aa914144df2033d1652a9f79747ef01754ef0c8dee22076ae83fccda65",
   "Tests/PlayMode/HumanVision.Demo.PlayModeTests.asmdef": "e37fc12e44c5cca6d8304f5dadfe6488286a8c35f4cc1cbccd58e6ff3797a578",
   "Tests/PlayMode/UnifiedDemoUiTests.cs": "983fc5f80d48b271099a2cf578a86749fe6c6170f4dd2131ee5b70d0df5be98a",
-  "UPM_INSTALLATION.md": "b733345e9de99e9774b8906e1a9e284c46f9209d60463f7f6e4cec6de6e1d453",
+  "UPM_INSTALLATION.md": "e29f87119b2ff9cebf6dd092295c00f3e064e35fd32e9460e27ddfd0c814da5e",
   "android-gpu-bridge-symbols.json": "a84e709a731606543bee38ec31efb2ece48970926ce1343af8b02ae5635a9ec6",
   "package.json": "07fba3bbb2f29de4db2f059b3eb4e2aac58fdf722c4c23e6c1d74f6f00cdbef8"
 }

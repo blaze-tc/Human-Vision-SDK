@@ -8,6 +8,10 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
+
+import package_release_snapshot as packaging
+from package_live_sdk import metadata
 
 from package_release_snapshot import (file_hashes, sha256, verify_file_closure,
                                       write_tgz, verify_tgz, validate_guids,
@@ -22,6 +26,69 @@ class SnapshotGuards(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def split_fixture(self):
+        for package, files in zip(PACKAGES, (
+                {'UPM_INSTALLATION.md': b'Input first, then SDK', 'Runtime/SDK.cs': b'sdk',
+                 'Runtime/Plugins/x86_64/sdk.dll': b'sdk-native'},
+                {'Runtime/Input.cs': b'input', 'Runtime/Plugins/x86_64/input.dll': b'input-native',
+                 'Samples~/Preview/Preview.unity': b'input-scene'})):
+            for name, data in files.items():
+                path = self.root / 'upm' / package / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+                Path(str(path) + '.meta').write_text(metadata(package + '/' + name))
+        return self.root
+
+    def test_split_archives_disjoint_guid_partitions_and_exact_full_payload(self):
+        root = self.split_fixture()
+        expected, translations = packaging.offline_assets(root)
+        partitions, actual_translations = packaging.split_offline_assets(root)
+        self.assertEqual(actual_translations, translations)
+        self.assertEqual(set(partitions), set(PACKAGES))
+        sdk, inp = (partitions[name] for name in PACKAGES)
+        self.assertTrue(sdk)
+        self.assertTrue(inp)
+        self.assertFalse(set(sdk) & set(inp))
+        self.assertFalse({packaging.guid(meta) for data, meta in sdk.values()} &
+                         {packaging.guid(meta) for data, meta in inp.values()})
+        self.assertEqual({**inp, **sdk}, expected)
+        self.assertIn('Assets/Plugins', inp)
+        self.assertIn('Assets/Plugins/x86_64', inp)
+        self.assertIn('Assets/HumanVisionInput/Samples/Preview/Preview.unity', inp)
+        for name, assets in partitions.items():
+            path = self.root / (name + '.unitypackage')
+            write_unitypackage(path, assets)
+            verify_unitypackage(path, assets)
+            with tarfile.open(path, 'r:gz') as archive:
+                for member in archive:
+                    if member.name.endswith('/asset.meta'):
+                        meta = archive.extractfile(member).read()
+                        if packaging.is_folder_meta(meta):
+                            self.assertNotIn(member.name.removesuffix('.meta'), archive.getnames())
+
+    def test_release_has_exact_eight_public_artifacts_with_split_unitypackages(self):
+        root = self.split_fixture()
+        source = root / 'tools/package'
+        source.mkdir(parents=True)
+        for name in ('package_release_snapshot.py', 'package_live_sdk.py', 'check_input_package.py'):
+            (source / name).write_bytes((ROOT / 'tools/package' / name).read_bytes())
+        (source / 'release-preview4-authority.json').write_text('{}\n')
+        with patch.object(packaging, 'validate_snapshot', return_value={}), \
+                patch.object(packaging.subprocess, 'check_output', return_value='fixed-head\n'):
+            packaging.build(root, root / 'release', {'baseline_external_asset_guids': []})
+        expected = {
+            'com.blazetc.humanvision-0.4.0-preview.4.tgz',
+            'com.blazetc.humanvision.input-0.1.0-preview.2.tgz',
+            'HumanVisionSDK-0.4.0-preview.4.unitypackage',
+            'HumanVisionInput-0.1.0-preview.2.unitypackage',
+            'README.md', 'asset-sha256.json', 'source-snapshot.json', 'SHA256SUMS.txt'}
+        self.assertEqual({path.name for path in (root / 'release').iterdir()}, expected)
+        sums = (root / 'release/SHA256SUMS.txt').read_text().splitlines()
+        self.assertEqual({line.split('  ')[1] for line in sums}, expected - {'SHA256SUMS.txt'})
+        for line in sums:
+            digest, name = line.split('  ')
+            self.assertEqual(digest, sha256((root / 'release' / name).read_bytes()))
 
     def test_mutable_manifest_cannot_admit_changed_source(self):
         (self.root / 'source.cs').write_bytes(b'reviewed')

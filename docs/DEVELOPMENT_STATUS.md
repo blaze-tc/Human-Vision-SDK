@@ -24,8 +24,13 @@ three demos. Offline native/model initialization and independent spec/code-quali
 review PASS. Actual remote Git initialization PASS, but byte verification found
 54 Input text files converted by Git autocrlf. Package-local file attributes
 fix this without runtime changes: RED 2 -> GREEN 13/13 packaging cases. Root
-authority is now LF-stable. The fresh remote byte-closure and uploaded/downloaded
-artifact gates must pass before Release publication; initial failure is retained.
+authority is now LF-stable. Corrected real Git byte-closure PASS at `506f3bd`.
+Large combined/ZIP transfers failed before publication; final downloads use two
+smaller unitypackages, Input first then SDK. Their disjoint GUID partitions cover
+the complete 248 offline asset groups; RED 2 -> GREEN 15/15, fresh duplicate builds
+byte-identical. Sequential real Unity Input/SDK import and native/model
+initialization PASS. Refreshed tagged/downloaded artifact gates precede public
+Release; historical combined evidence is retained.
 
 See [preview 4 evidence](reports/2026-10-05-preview4-release-verification.md).
 Current modelpacks retain local-evaluation/license restrictions and disabled

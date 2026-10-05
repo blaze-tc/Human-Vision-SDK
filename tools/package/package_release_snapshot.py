@@ -14,7 +14,6 @@ import re
 import subprocess
 import sys
 import tarfile
-import zipfile
 
 from package_live_sdk import metadata, offline_path, offline_bytes, offline_meta
 
@@ -282,6 +281,31 @@ def offline_assets(root):
     return assets, translations
 
 
+def split_offline_assets(root):
+    """Partition the complete offline layout, assigning shared folders to Input.
+
+    Input is imported first. Each GUID appears in exactly one archive, including
+    generated shared native-plugin ancestors; the union retains every byte of
+    the existing complete offline export.
+    """
+    assets, translations = offline_assets(root)
+    owners = {item['destination']: item['package'] for item in translations}
+    # Visit Input first so a shared generated ancestor has a single stable owner.
+    for package in reversed(PACKAGES):
+        for item in translations:
+            if item['package'] != package:
+                continue
+            for parent in Path(item['destination']).parents:
+                name = parent.as_posix()
+                if name in assets:
+                    owners.setdefault(name, package)
+    if set(owners) != set(assets):
+        raise ValueError('Split offline asset ownership closure differs')
+    partitions = {package: {name: value for name, value in assets.items()
+                            if owners[name] == package} for package in PACKAGES}
+    return partitions, translations
+
+
 def add_member(archive, name, payload):
     info = tarfile.TarInfo(name)
     info.size, info.mode, info.mtime = len(payload), 0o644, 0
@@ -366,7 +390,8 @@ def write_json(path, value):
 
 def build(root, output, authority):
     validation = validate_snapshot(root, authority)
-    assets, translations = offline_assets(root)
+    partitions, translations = split_offline_assets(root)
+    assets = {name: value for partition in partitions.values() for name, value in partition.items()}
     ids = {guid(meta) for data, meta in assets.values()}
     references = {value.decode() for name, (data, meta) in assets.items()
                   if Path(name).suffix in ('.unity', '.prefab', '.asset')
@@ -384,10 +409,13 @@ def build(root, output, authority):
         write_tgz(path, files)
         verify_tgz(path, files)
         generated.append(path)
-    path = output / ('HumanVisionSDK-Input-' + VERSION + '.unitypackage')
-    write_unitypackage(path, assets)
-    verify_unitypackage(path, assets)
-    generated.append(path)
+    unity_names = ('HumanVisionSDK-' + VERSION + '.unitypackage',
+                   'HumanVisionInput-' + INPUT_VERSION + '.unitypackage')
+    for package, name in zip(PACKAGES, unity_names):
+        path = output / name
+        write_unitypackage(path, partitions[package])
+        verify_unitypackage(path, partitions[package])
+        generated.append(path)
     (output / 'README.md').write_bytes((root / 'upm' / PACKAGES[0] / 'UPM_INSTALLATION.md').read_bytes())
     write_json(output / 'asset-sha256.json', {name: {'kind': 'folder' if is_folder_meta(meta) else 'file',
                                                    'asset': None if is_folder_meta(meta) else sha256(data),
@@ -399,21 +427,15 @@ def build(root, output, authority):
                   'packaging_source_sha256': {name: sha256((root / 'tools/package' / name).read_bytes()) for name in
                                              ('package_release_snapshot.py', 'package_live_sdk.py', 'check_input_package.py')},
                   'validation': validation, 'unity_layout_translation': translations,
+                  'unity_import_order': list(reversed(unity_names)),
+                  'unity_archive_partitions': {
+                      name: {'package': package, 'assets': len(partitions[package]),
+                             'guids': sorted(guid(meta) for data, meta in partitions[package].values())}
+                      for package, name in zip(PACKAGES, unity_names)},
                   'source_snapshot_note': 'Exact package bytes are pinned independently of Git HEAD; the commit identifies the checkout used.',
                   'hardware_fps_acceptance': False, 'distribution_qualified': False}
     write_json(output / 'source-snapshot.json', provenance)
     generated += [output / 'README.md', output / 'asset-sha256.json', output / 'source-snapshot.json']
-    path = output / ('HumanVisionSDK-Input-' + VERSION + '.zip')
-    payload = {p.name: p.read_bytes() for p in generated}
-    with zipfile.ZipFile(path, 'x', zipfile.ZIP_DEFLATED, compresslevel=6) as bundle:
-        for name, data in sorted(payload.items()):
-            info = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
-            info.compress_type, info.external_attr = zipfile.ZIP_DEFLATED, 0o100644 << 16
-            bundle.writestr(info, data, compresslevel=6)
-    with zipfile.ZipFile(path) as bundle:
-        if len(bundle.namelist()) != len(payload) or {name: bundle.read(name) for name in bundle.namelist()} != payload:
-            raise ValueError('ZIP byte closure differs')
-    generated.append(path)
     (output / 'SHA256SUMS.txt').write_text(''.join(sha256(p.read_bytes()) + '  ' + p.name + '\n' for p in sorted(generated)), encoding='utf-8')
     return {'validation': validation, 'artifacts': {p.name: sha256(p.read_bytes()) for p in generated}, 'unity_assets': len(assets)}
 

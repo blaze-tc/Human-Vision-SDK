@@ -18,8 +18,11 @@ For body skeletons explicitly add the SDK URL:
 https://github.com/blaze-tc/Human-Vision-SDK.git?path=upm/com.blazetc.humanvision#v0.4.0-preview.4
 ```
 
-Use a clean Git UPM import or the combined SDK/Input unitypackage; do not install
-both. For Git UPM, import the InputPreview sample in Package Manager first,
+For offline preview, import HumanVisionInput-0.1.0-preview.2.unitypackage into a
+clean project. Wait for compilation, then import
+HumanVisionSDK-0.4.0-preview.4.unitypackage if you need body skeletons.
+Choose Git UPM or the offline unitypackages; do not install both.
+For Git UPM, import the InputPreview sample in Package Manager first,
 then build preview with HumanVision > Input > Create standalone preview. Choose your own
 camera, local video or RTSP URL. No media or user camera address is bundled.
 The SDK's official builder creates Camera, Video and RTSP demos from

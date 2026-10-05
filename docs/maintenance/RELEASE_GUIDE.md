@@ -17,13 +17,20 @@ py -3.13 tools/test/verify_upm_git_newlines.py
 py -3.13 tools/package/package_release_snapshot.py --output out/releases/v0.4.0-preview.4-final
 ```
 
-The output directory must be new. Both `.tgz` files and the combined `.unitypackage`
-contain the same reviewed source/native/models. Offline directory groups must match
+The output directory must be new. The eight public files are two `.tgz` archives,
+`HumanVisionInput-0.1.0-preview.2.unitypackage`,
+`HumanVisionSDK-0.4.0-preview.4.unitypackage`, README, asset index, source snapshot
+and SHA256SUMS. Import Input first, then SDK. The two unitypackage GUID partitions
+must be disjoint and their union must contain every reviewed asset byte exactly.
+The historical combined unitypackage/ZIP remain local evidence, not public assets.
+Both installation forms contain the same reviewed source/native/models.
+Offline directory groups must match
 Unity ExportPackage: folder `asset.meta` plus `pathname`, without a file `asset`.
 Test real Unity imports; a serializer checking its own archives is insufficient.
 `tools/test/ReleaseSnapshotImportCheck.cs` verifies installed runtime hashes, generates
 the three demos and initializes the actual Windows CPU native/model route in a
-separate project. Validate both local/Git UPM and the actual downloaded unitypackage.
+separate project. Validate local/Git UPM and actual sequential imports of the two
+downloaded unitypackages. Input-only compilation must succeed before adding SDK.
 
 The existing package_live_sdk/package_upm/verify_package_isolation scripts below
 describe the older preview.3 reconstruction. They are not authoritative for this

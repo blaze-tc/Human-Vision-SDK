@@ -17,7 +17,7 @@ the immutable Q4 device-tested snapshot, not an older mutable UPM tree. Only
 accepted half-thickness defaults, reviewed deferred RTSP reopen, and release
 metadata/licenses are added. `tools/package/release-preview4-authority.json`
 pins the final 452-file/249-GUID source closure; its LF-stable SHA256 is
-`6b7da9a09731501f4436bd37599b38f483dad741d560e0a5eeff584721d1c5f5`.
+`56d1a8393f3dbe8da023446f1feda03088be70907bca2d20599ff70dcb019fcd`.
 The earlier 450-file closure is retained in historical candidate receipts.
 
 Twenty runtime-index entries, eight Android SOs and nine Windows DLLs were
@@ -65,7 +65,7 @@ Commands run in `.worktrees/release-0.4.0-preview.4`:
   regular files contain asset bytes. Failed candidates and import log remain.
 - Original 450-file candidates 5 and 6 contain eight byte-identical output files.
   Their combined package has 247 mapped assets; current candidate8 has 248.
-  The package ZIP contains the
+  The historical package ZIP contains the
   two UPM TGZs, combined `.unitypackage`, README and receipts, not loose UPM trees.
 - Clean local UPM installation: actual 20 installed runtime hashes verified,
   three official demos generated, defaults 4.5/13.5 checked, real Windows CPU
@@ -111,6 +111,59 @@ lease on its known old tag object, after the fix commit and nonforce main push.
 Retain before/after references. Re-run actual remote Git cache verification in a
 new isolated project before publishing; never treat normalized equality as
 the strict byte gate passing. Final archives are rebuilt against the fix commit.
+
+### Corrected remote source gate: PASS
+
+The corrective release commit is `506f3bd54a577b2ff664010ced7a0071d88875ef`.
+Main was fast-forwarded without force. While the Release remained an unpublished
+draft, the locally created tag was corrected with a lease on the known old
+object `10666954f072e4a3590e773df524a7f27fad9302`; its first corrected annotated object is
+`8aca20f2946e0ebbb9775ce9348d994eddd530d4`, peeling to the corrective commit.
+Both before/after references remain in the verification receipts.
+
+The fresh `out/release-unity-remote-2` project resolves both tagged URLs as Git
+dependencies at `506f3bd`, initializes successfully (exit 0), verifies all 20
+installed runtime hashes and generates three demos. Every cache file is checked:
+SDK325 + Input127 = 452 byte-exact files, no missing/extra files. Independent
+review confirms PASS; `remote-git-import.json` and the refreshed review packet
+bind the actual lock, cache and log evidence. The initial byte FAIL is preserved.
+
+Earlier artifacts in `out/releases/v0.4.0-preview.4-final-2` have provenance bound
+to `506f3bd` and the LF-stable authority. TGZs and `.unitypackage` match the
+actual-imported candidate7/8 bytes. Upload and downloaded-artifact verification
+are subsequent external gates; public publication is not yet asserted here.
+
+### Final download shape: two complete Unity packages
+
+Six earlier draft assets uploaded and downloaded with matching SHA256. The large
+combined unitypackage/ZIP transfer later failed with an SSL write timeout. An
+owned retry was stopped when switching to smaller complete import packages; no
+partial transfer or initial six-file result is claimed as final publication.
+The large combined files and failed transfer evidence remain local.
+
+The final public output contains exactly eight files: SDK/Input TGZs,
+`HumanVisionInput-0.1.0-preview.2.unitypackage`,
+`HumanVisionSDK-0.4.0-preview.4.unitypackage`, README, asset index, source snapshot
+and SHA256SUMS. There is no combined unitypackage or ZIP in the final public set.
+Import Input first, then SDK. Input has 72 groups (56 files/16 folders), SDK176
+(147 files/29 folders); GUID and path partitions are disjoint and their union is
+the complete 248-group offline payload. Shared generated plugin folders occur
+exactly once, in Input. Every actual asset/meta byte is retained; native, models,
+C#, versions and GUIDs are unchanged. Only package instructions and their hash
+indexes change, so historical TGZ hashes are not claimed for the new final set.
+
+Split packaging RED: two expected failures (old combined output shape and absent
+partition function). GREEN: 15/15 tests. Fresh candidates9/10: all eight files
+byte-identical; exact extracted union, source/native/GUID closure and architecture
+checks PASS. `out/release-verification/split-assets/receipt.json` binds the evidence.
+Real sequential Input-only compilation/import, SDK import and native/model
+initialization all exit 0 in `out/release-unity-assets-split`; all 20 installed
+hashes, three demos and accepted defaults PASS. Next are postcommit provenance
+rebuild, the refreshed remote
+Git gate and final uploaded/downloaded asset verification before publication.
+Independent split review: Spec PASS / Code quality PASS / actual local artifact
+PASS, with no remaining blocking findings. Review and hash packet retain each
+historical failed lane and qualify the subsequent external gates separately.
 
 Both isolated installations have passed offline model initialization. Independent
 review verdict: Spec PASS / Code quality PASS / local release artifact PASS,

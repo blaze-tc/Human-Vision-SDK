@@ -4,7 +4,7 @@
 Requires Unity 2021.3 or later. Install into a clean project, or remove a previous
 Assets/HumanVision, Assets/HumanVisionInput and HumanVision native plugin installation
 before changing installation methods. Back up project settings and saved presets first.
-Choose Git UPM **or** the combined unitypackage; installing both creates duplicate
+Choose Git UPM **or** the two offline unitypackages; installing both creates duplicate
 scripts, GUIDs and native libraries. No Library cleanup is required.
 
 For Git UPM, add Input first, then SDK, using these two tag-pinned dependencies
@@ -18,8 +18,12 @@ in Packages/manifest.json:
 The SDK's exact Input version is 0.1.0-preview.2. Unity cannot discover a second
 Git subdirectory from the SDK's version dependency; explicitly add both URLs.
 Input alone provides camera/video/RTSP preview without models or inference.
-For offline import, import HumanVisionSDK-Input-0.4.0-preview.4.unitypackage into
-a clean project. The two release tgz files are the alternative local UPM archives.
+For offline import into a clean project, import
+**HumanVisionInput-0.1.0-preview.2.unitypackage first**, then
+**HumanVisionSDK-0.4.0-preview.4.unitypackage**. Wait for Input compilation before
+importing SDK. Input alone supports standalone preview; both packages provide
+the complete SDK installation. The two release tgz files are the alternative
+local UPM archives, also installed Input first, then SDK.
 
 Create the official Camera, Video and RTSP demos with
 **HumanVision > Create unified demos in dedicated folder**. The other official

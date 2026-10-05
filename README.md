@@ -14,7 +14,8 @@ https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvisi
 
 [Installation and game integration](docs/UPM_INSTALLATION.md) ·
 [Download Release](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.4).
-The combined unitypackage is an alternative to UPM, not an additional installation.
+The two local unitypackages are an alternative to UPM. Import Input first, then
+SDK; choose one installation method per project.
 Android requires ARM64/API26/Vulkan. The current bundled profiles do not enable
 real hand endpoint inference; **30 fresh complete Android observation FPS remains
 unmet**. User acceptance of the visible demo is recorded separately from that goal.
