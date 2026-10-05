@@ -111,14 +111,14 @@ def validate_fp16_input_log(path,g):
     if actual!=expected: raise ValueError('actual FP32 transfer/FP16 input/FP32 output contract mismatch')
 
 
-def validate_execution(directory,gpu_mode,fixture):
+def validate_execution(directory,gpu_mode,fixture,*,runner_recipe_override=None):
     evidence=json.loads((directory/'execution.json').read_text())
     if not isinstance(evidence,dict): raise ValueError('execution metadata must be an object')
     if not isinstance(evidence.get('stages'),dict): raise ValueError('execution stages must be an object')
     if evidence.get('schema_version')!=1 or evidence.get('state')!='SUCCESS' or evidence.get('gpu_mode')!=gpu_mode: raise ValueError('execution is absent, failed, or wrong precision')
     if not evidence.get('serial') or not evidence.get('device_fingerprint') or evidence.get('completed_ns',0)<=evidence.get('started_ns',0): raise ValueError('device identity or completion missing')
     if evidence['runner_sha256']!=sha(directory/'runner'): raise ValueError('runner hash mismatch')
-    runner_source,runner_cmake=runner_recipe(gpu_mode)
+    runner_source,runner_cmake=runner_recipe(gpu_mode) if runner_recipe_override is None else runner_recipe_override
     if evidence['runner_source_sha256']!=sha(runner_source): raise ValueError('runner source hash mismatch')
     if evidence['runner_cmake_sha256']!=sha(runner_cmake): raise ValueError('runner build recipe hash mismatch')
     if evidence['model_hashes']!=MODEL_HASHES: raise ValueError('model hash mismatch')
@@ -253,7 +253,7 @@ def main():
     raise SystemExit(0 if report['passed'] else 1)
 
 
-def compare_directory(directory,gpu_mode='gpu'):
+def compare_directory(directory,gpu_mode='gpu',*,runner_recipe_override=None):
     """Always produce a failure result for malformed/missing evidence."""
     try:
         if gpu_mode not in ('gpu','gpu-fp32','gpu-fp32-packed16','gpu-fp32-sgemm','gpu-fp16packed-input16','gpu-fp32-no-local-memory'): raise ValueError('unknown precision candidate')
@@ -262,7 +262,7 @@ def compare_directory(directory,gpu_mode='gpu'):
         g=record['geometry']
         if sha(directory/'input.fp32')!=record['input_sha256']: raise ValueError('fixture input hash mismatch')
         if (directory/'input.fp32').stat().st_size!=g['width']*g['height']*3*4: raise ValueError('fixture input byte count mismatch')
-        evidence=validate_execution(directory,gpu_mode,record)
+        evidence=validate_execution(directory,gpu_mode,record,runner_recipe_override=runner_recipe_override)
         n=sum((g['width']//s)*(g['height']//s) for s in (8,16,32))
         arrays=[]; hashes={}
         for mode in ('cpu',gpu_mode):

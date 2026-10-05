@@ -426,6 +426,70 @@ TEST(YoloGpuPipeline, Rectangle576TransformAndBoundedContractRejectBeforeBackend
         EXPECT_EQ(api.gpu_pipeline->create(&config,&host,&rejected,nullptr),HV_ERR_MODEL_LOAD);EXPECT_EQ(rejected,nullptr);
     }
 }
+TEST(YoloGpuPipeline, Rectangle960TransformAndBoundedContractRejectBeforeBackend) {
+    auto manifest=Load(Root()/"modelpacks/yolov8n-pose-square320-fp32-local/modelpack.json");
+    const auto profile=Load(Root()/"profiles/android-ncnn-vulkan.json").dump();
+    auto& model=manifest["models"][0];model["input_contract"]["width"]=960;model["input_contract"]["height"]=576;
+    model["output_contract"]["max_output_bytes"]={{"out0",11340*65*4},{"out1",11340*51*4}};
+    Fake fake;fake.detection.assign(11340*65,-80);fake.points.assign(11340*51,0);
+    // Last cell at each stride checks rectangular grid offsets and restored joints.
+    for(int anchor:{120*72-1,120*72+60*36-1,11340-1})fake.detection[anchor*65+64]=8;
+    auto api=Query();HV_HostServicesV3 host{};host.v2.v1.struct_size=sizeof(host);
+    host.v2.v1.api_version=HV_PLUGIN_API_V1;host.v2.v1.context=&fake;
+    host.create_gpu_backend_v3=Create;host.release_gpu_backend_v3=Release;
+    const auto text=manifest.dump();HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,8,0,text.c_str(),"fixture",profile.c_str()};
+    void* instance=nullptr;ASSERT_EQ(api.gpu_pipeline->create(&config,&host,&instance,nullptr),HV_OK);
+    struct Cleanup{const HV_GpuPipelineApiV2* api;void* instance;~Cleanup(){api->destroy(instance);}}cleanup{api.gpu_pipeline,instance};
+    humanvision::gpu::ConsumerFrame lease{};
+    HV_GpuFrameRefV1 frame{sizeof(frame),HV_GPU_FRAME_API_V1,&lease,1024,768,10,10000,1,HV_GPU_IMAGE_RGBA8_UNORM,0};
+    HV_GpuObservationFrameV3 out{};out.v1.struct_size=sizeof(out);out.v1.api_version=HV_PLUGIN_API_V1;
+    for(auto source:{std::pair<int,int>{1024,768},{576,1024},{1024,575}}) {
+        frame.width=source.first;frame.height=source.second;
+        EXPECT_EQ(api.gpu_pipeline->process_gpu(instance,&frame,&out.v1,nullptr),HV_ERR_INVALID_ARGUMENT);
+        EXPECT_EQ(fake.creates,0);EXPECT_EQ(fake.runs,0);
+    }
+    for(int width:{624,1024,1072,1232,1920}) {
+        frame.width=width;frame.height=width/16*9;++frame.frame_id;
+        ASSERT_EQ(api.gpu_pipeline->process_gpu(instance,&frame,&out.v1,nullptr),HV_OK);
+        EXPECT_EQ(fake.transform.output_width,960u);EXPECT_EQ(fake.transform.output_height,576u);
+        EXPECT_FLOAT_EQ(fake.transform.source_rect_px.x,0);EXPECT_FLOAT_EQ(fake.transform.source_rect_px.y,-18/(960.f/width));
+        EXPECT_FLOAT_EQ(fake.transform.source_rect_px.width,float(frame.width));EXPECT_FLOAT_EQ(fake.transform.source_rect_px.height,576/(960.f/width));
+        ASSERT_GT(out.v1.body_count,0u);
+        const auto& nose=out.v1.bodies[0].joints[HV_CANONICAL_NOSE];
+        // Area ordering places the stride32 proposal first.
+        EXPECT_FLOAT_EQ(nose.x_px,29*32/(960.f/width));EXPECT_FLOAT_EQ(nose.y_px,(17*32-18)/(960.f/width));
+    }
+    for(int mutation=0;mutation<9;++mutation) {
+        auto changed=manifest;
+        if(mutation==0)changed["models"][0]["input_contract"]["height"]=960;
+        if(mutation==1)changed["models"][0]["input_contract"]["width"]=352;
+        if(mutation==2)changed["models"][0]["output_contract"]["max_output_bytes"]["out0"]=5040*65*4;
+        if(mutation==3)changed["models"][0]["output_contract"]["max_output_bytes"]["out1"]=11340*51*4-4;
+        if(mutation==4) {
+            changed["execution_contract"]="raw_tensor_fp32_sgemm_v1";changed["models"][0]["execution_contract"]="raw_tensor_fp32_sgemm_v1";
+            changed["models"][0]["backend_options"]["use_winograd_convolution"]=false;changed["models"][0]["backend_options"]["use_sgemm_convolution"]=true;
+        }
+        if(mutation==5) {
+            changed["execution_contract"]="raw_tensor_fp32_no_local_memory_v1";
+            changed["models"][0]["execution_contract"]="raw_tensor_fp32_no_local_memory_v1";
+            changed["models"][0]["backend_options"]["use_winograd_convolution"]=true;
+            changed["models"][0]["backend_options"]["use_sgemm_convolution"]=true;
+            changed["models"][0]["backend_options"]["use_shader_local_memory"]=false;
+        }
+        if(mutation==6)changed["models"][0]["backend_options"]["use_fp16_storage"]=true;
+        if(mutation==7)changed["local_evaluation_only"]=false;
+        if(mutation==8) {changed["models"][0]["input_contract"]["width"]=384;changed["models"][0]["input_contract"]["height"]=960;}
+        const auto invalid=changed.dump();config.model_manifest_utf8=invalid.c_str();void* rejected=nullptr;
+        EXPECT_EQ(api.gpu_pipeline->create(&config,&host,&rejected,nullptr),HV_ERR_MODEL_LOAD);EXPECT_EQ(rejected,nullptr);
+    }
+    for(auto shape:{std::pair<int,int>{960,544},{960,608},{928,576},{992,576},{608,960}}) {
+        auto changed=manifest;changed["models"][0]["input_contract"]["width"]=shape.first;
+        changed["models"][0]["input_contract"]["height"]=shape.second;
+        const auto invalid=changed.dump();config.model_manifest_utf8=invalid.c_str();void* rejected=nullptr;
+        EXPECT_EQ(api.gpu_pipeline->create(&config,&host,&rejected,nullptr),HV_ERR_MODEL_LOAD);EXPECT_EQ(rejected,nullptr);
+        EXPECT_EQ(fake.creates,1);
+    }
+}
 TEST(YoloGpuPipeline, OneNetworkPerSourceFrameProvenanceAndInvalidHands) {
     const auto manifest=Load(Root()/"modelpacks/yolov8n-pose-square320-fp32-local/modelpack.json").dump();
     const auto profile=Load(Root()/"profiles/android-ncnn-vulkan.json").dump();

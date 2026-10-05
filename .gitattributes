@@ -23,3 +23,8 @@ tools/models/ncnn/first_norm_probe.cpp whitespace=-blank-at-eof
 # UPM archives and the Git install must have byte-identical manifest payloads.
 upm/** -text whitespace=cr-at-eol
 upm/**/Licenses/** whitespace=cr-at-eol,-blank-at-eol
+
+# Frozen rectangle960 device evidence binds these exact reviewed CRLF bytes.
+tools/models/ncnn/yolo_rectangle960_gate_evidence.json -text whitespace=cr-at-eol
+tools/models/ncnn/yolo_rectangle960_golden_runner.cpp -text whitespace=cr-at-eol
+tools/models/ncnn/yolo_rectangle960_runner/CMakeLists.txt -text whitespace=cr-at-eol

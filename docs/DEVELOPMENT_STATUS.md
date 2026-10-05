@@ -1,3 +1,15 @@
+# Current: quality Q1 fixed960 admission; shipping and selector pending (2026-10-05)
+
+Q1: exact960x576 native YOLO admission and offline local numerical/semantic
+eligibility verified. Native RED2/2 -> GREEN; complete Release CTest368/368;
+canonical Python127/127; independent Spec PASS/Quality PASS. Snapdragon offline
+seven/one/empty captures3/3, seven raised-left arms7/7 CPU/GPU.
+No new APK/production AHB gate, continuous motion or30FPS acceptance. Affected
+Android build contains unrelated dirty sources and is not qualified shipping.
+Q2 catalog/profiles, Q3 saved selector/Apply, Q4 actual deployment remain pending.
+Task11 and Region Android acceptance remain open.
+See [Q1 evidence](reports/2026-10-05-model-input-quality-q1.md).
+
 # Current: Region candidate admission repaired; Android gate pending (2026-10-04)
 
 Full-frame YOLO now admits bounded pack/plugin candidates before Region assignment;

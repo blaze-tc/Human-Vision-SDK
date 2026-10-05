@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "status": "ELIGIBLE_FP32_RECTANGLE960_OFFLINE_SINGLE_FRAME_ONLY_PENDING_INDEPENDENT_REVIEW",
+  "archive_base": "out/android-yolo/rectangle960-eligibility-20261005-py313",
+  "archive_path_convention": "fixtures[].archive relative to archive_base",
+  "precision_mode": "gpu-fp32",
+  "local_evaluation_only": true,
+  "geometry_ruling": "fixed960x576:16:9 source resize960x540, pad18top/bottom; reject960x544 minimalstride32 output; oneportrait derived centered114canvas, originalpixelsunchanged",
+  "hardware_fps_acceptance": false,
+  "production_gpu_ahb_input_acceptance": false,
+  "integration_completed": false,
+  "options": {
+    "vulkan": true,
+    "fp16_storage": false,
+    "fp16_packed": false,
+    "fp16_arithmetic": false,
+    "subgroup": false,
+    "use_packing_layout": true,
+    "input_elempack": 1,
+    "input_bits": 32,
+    "output_elempack": 1,
+    "output_bits": 32,
+    "num_threads": 2
+  },
+  "limits": {
+    "raw_max": 0.2,
+    "raw_mean": 0.01,
+    "box_iou": 0.95,
+    "score": 0.01,
+    "joint_xy": 3.0,
+    "joint_score": 0.01
+  },
+  "upstream_revision": "f1ac75ec54ccb3817a9eba620fe51da8bdcf87ca",
+  "model_hashes": {
+    "yolov8n_pose.ncnn.param": "908ace8e8d5b99622e0b492ebb18a6b287e647d2df7dff81205e8322752e0905",
+    "yolov8n_pose.ncnn.bin": "6128010de189605795a496f3d3f6baa6435a493b31796ceaf400cced07038da9"
+  },
+  "model_graph_and_weights_identical_to_rectangle640": true,
+  "runner_source": "tools/models/ncnn/yolo_rectangle960_golden_runner.cpp",
+  "runner_source_sha256": "e366bec0c2091e8f3ce2017636cc8135b37fe3d4ae974a2d9a85c0b785fa649c",
+  "runner_cmake": "tools/models/ncnn/yolo_rectangle960_runner/CMakeLists.txt",
+  "runner_cmake_sha256": "d7e0c1898c9bb2ea0015b19d4c5022dddace08b8c96d970beac2ae6eb4bd3a70",
+  "runner_sha256": "7177b482665a1a3607de8eb5b086027572e851e2d010236f312d5558598ea863",
+  "fixtures": [
+    {
+      "fixture": "seven-960",
+      "archive": "device-runs/seven-960/gpu-fp32-b33ea967330f467ea767ed42660acb35",
+      "passed": true,
+      "run_id": "gpu-fp32-b33ea967330f467ea767ed42660acb35",
+      "device_serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "geometry": {
+        "width": 960,
+        "height": 576,
+        "resized_width": 960,
+        "resized_height": 540,
+        "left": 0,
+        "top": 18,
+        "scale": 0.9375,
+        "source_width": 1024,
+        "source_height": 576
+      },
+      "raw_shapes": {
+        "out0": [
+          11340,
+          65
+        ],
+        "out1": [
+          11340,
+          51
+        ]
+      },
+      "reference_people": 7,
+      "gpu_people": 7,
+      "raw": {
+        "out0": {
+          "max_abs": 0.0001583099365234375,
+          "mean_abs": 1.7784163471843121e-06
+        },
+        "out1": {
+          "max_abs": 5.14984130859375e-05,
+          "mean_abs": 1.6739773878825154e-06
+        }
+      },
+      "raised_left_arms": {
+        "cpu": 7,
+        "gpu-fp32": 7
+      },
+      "artifact_sha256": {
+        "android-cpu.log": "5ce91eb92e27e852183951457d724ecd83d85189c89b4e7f5f90356af7894de9",
+        "android-gpu-fp32.log": "a0beb627c1e9cd91d11cb50642a723cf24d4692c59006d9f2d673aab2b0bc3b1",
+        "comparison.json": "5ba57fc5ea2b5489f5ae9adfa916d9f0ac6c9abad24562a0ebf847684e7f32ad",
+        "execution.json": "9509ff045645f2e1472d9b7569aefb4218f369c1e02a34d0dac6965922440b1e",
+        "fixture.json": "7d5a00489cb0b80ea48736d2607194b2ce6f2c521e03766c7e41bc0e54cffcc9",
+        "input.fp32": "d16618843275a7079972fb06f994153d90f2031a539e66ed697bd6b04aae8e7b",
+        "ncnn-cpu-out0.fp32": "305a4efcf37b76b2f33c8612ee910c4bab1dec00b2894f924dc11a6268b16172",
+        "ncnn-cpu-out1.fp32": "cbbbcd5b9f27b64919dc9b56be396a08ffe9f80b3c4ffa56ea1e9afb3500d1dc",
+        "ncnn-gpu-fp32-out0.fp32": "572e77173eb609f59043d84fd18ed24cbed6398895a13da7f7c4204861f46f60",
+        "ncnn-gpu-fp32-out1.fp32": "b00b192899154e3ac3944ffe6f7cdabd432e46081c10120b6205839f2f82e767",
+        "runner": "7177b482665a1a3607de8eb5b086027572e851e2d010236f312d5558598ea863",
+        "source.png": "017ac2921ed78faff17d125165430bf45eb350861ff80ef5408c3a4b873dad04"
+      },
+      "fixture_sha256": "7d5a00489cb0b80ea48736d2607194b2ce6f2c521e03766c7e41bc0e54cffcc9",
+      "execution_sha256": "9509ff045645f2e1472d9b7569aefb4218f369c1e02a34d0dac6965922440b1e",
+      "comparison_sha256": "5ba57fc5ea2b5489f5ae9adfa916d9f0ac6c9abad24562a0ebf847684e7f32ad",
+      "output_sha256": {
+        "ncnn-cpu-out0.fp32": "305a4efcf37b76b2f33c8612ee910c4bab1dec00b2894f924dc11a6268b16172",
+        "ncnn-cpu-out1.fp32": "cbbbcd5b9f27b64919dc9b56be396a08ffe9f80b3c4ffa56ea1e9afb3500d1dc",
+        "ncnn-gpu-fp32-out0.fp32": "572e77173eb609f59043d84fd18ed24cbed6398895a13da7f7c4204861f46f60",
+        "ncnn-gpu-fp32-out1.fp32": "b00b192899154e3ac3944ffe6f7cdabd432e46081c10120b6205839f2f82e767"
+      },
+      "source_qualification": "seven pinned real frame1500"
+    },
+    {
+      "fixture": "one-960",
+      "archive": "device-runs/one-960/gpu-fp32-a21268f91e3f4b8ea9df14fda5432f30",
+      "passed": true,
+      "run_id": "gpu-fp32-a21268f91e3f4b8ea9df14fda5432f30",
+      "device_serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "geometry": {
+        "width": 960,
+        "height": 576,
+        "resized_width": 960,
+        "resized_height": 540,
+        "left": 0,
+        "top": 18,
+        "scale": 0.9375,
+        "source_width": 1024,
+        "source_height": 576
+      },
+      "raw_shapes": {
+        "out0": [
+          11340,
+          65
+        ],
+        "out1": [
+          11340,
+          51
+        ]
+      },
+      "reference_people": 1,
+      "gpu_people": 1,
+      "raw": {
+        "out0": {
+          "max_abs": 0.000217437744140625,
+          "mean_abs": 1.4085974200243305e-06
+        },
+        "out1": {
+          "max_abs": 4.1365623474121094e-05,
+          "mean_abs": 1.6773545943829496e-06
+        }
+      },
+      "raised_left_arms": null,
+      "artifact_sha256": {
+        "android-cpu.log": "5ce91eb92e27e852183951457d724ecd83d85189c89b4e7f5f90356af7894de9",
+        "android-gpu-fp32.log": "a0beb627c1e9cd91d11cb50642a723cf24d4692c59006d9f2d673aab2b0bc3b1",
+        "comparison.json": "2263e12eddc7379db0c35ca40a0c18ce994005b1e14b72e48269aa4f519db43e",
+        "execution.json": "9ba223574fd4455c6ac5ab36617604ced37bf9465a8aaaf19f36fc2210d97e14",
+        "fixture.json": "8babf59205a9ea1e7a54a0841511c056eaf3dade7ad9e8fb5f68711f1d909a63",
+        "input.fp32": "da6b8ca9d9fe5ad044fe34dcb488520cce75194eca5e0bbea18aa40378bfa9fe",
+        "ncnn-cpu-out0.fp32": "d5b103b110476de0587c01b2b46d26d8aefa999137fb008f48308bdfa5ae6376",
+        "ncnn-cpu-out1.fp32": "00d5bc7653f58b588f4642b26057e51ea9c1cb43fa28908d8ed4cc680d90ce21",
+        "ncnn-gpu-fp32-out0.fp32": "c18eda8bc8d4ea8262bc7ed499c5d806fb58072426f3b75a4e0f2bc344b58bc8",
+        "ncnn-gpu-fp32-out1.fp32": "9a6e599d8523401a658bfcb9764b173bca3fa687d6af286c037e5a070c3205f2",
+        "runner": "7177b482665a1a3607de8eb5b086027572e851e2d010236f312d5558598ea863",
+        "source.png": "1cc753bf5986a60c3caf227f56175fa04593ae40932b1d32935a631836deb688"
+      },
+      "fixture_sha256": "8babf59205a9ea1e7a54a0841511c056eaf3dade7ad9e8fb5f68711f1d909a63",
+      "execution_sha256": "9ba223574fd4455c6ac5ab36617604ced37bf9465a8aaaf19f36fc2210d97e14",
+      "comparison_sha256": "2263e12eddc7379db0c35ca40a0c18ce994005b1e14b72e48269aa4f519db43e",
+      "output_sha256": {
+        "ncnn-cpu-out0.fp32": "d5b103b110476de0587c01b2b46d26d8aefa999137fb008f48308bdfa5ae6376",
+        "ncnn-cpu-out1.fp32": "00d5bc7653f58b588f4642b26057e51ea9c1cb43fa28908d8ed4cc680d90ce21",
+        "ncnn-gpu-fp32-out0.fp32": "c18eda8bc8d4ea8262bc7ed499c5d806fb58072426f3b75a4e0f2bc344b58bc8",
+        "ncnn-gpu-fp32-out1.fp32": "9a6e599d8523401a658bfcb9764b173bca3fa687d6af286c037e5a070c3205f2"
+      },
+      "source_qualification": "offline portrait-derived114 canvas; original person pixels unchanged"
+    },
+    {
+      "fixture": "empty-960",
+      "archive": "device-runs/empty-960/gpu-fp32-9a71c2d0dfc24a4894b7f4a2fcd386d5",
+      "passed": true,
+      "run_id": "gpu-fp32-9a71c2d0dfc24a4894b7f4a2fcd386d5",
+      "device_serial": "e7c07019",
+      "device_fingerprint": "OnePlus/OnePlus9Pro_CH/OnePlus9Pro:14/UKQ1.230924.001/R.1d260fe_4b1aa_523d2:user/release-keys",
+      "geometry": {
+        "width": 960,
+        "height": 576,
+        "resized_width": 960,
+        "resized_height": 540,
+        "left": 0,
+        "top": 18,
+        "scale": 0.9375,
+        "source_width": 1024,
+        "source_height": 576
+      },
+      "raw_shapes": {
+        "out0": [
+          11340,
+          65
+        ],
+        "out1": [
+          11340,
+          51
+        ]
+      },
+      "reference_people": 0,
+      "gpu_people": 0,
+      "raw": {
+        "out0": {
+          "max_abs": 0.0001430511474609375,
+          "mean_abs": 1.0964689551132163e-06
+        },
+        "out1": {
+          "max_abs": 4.297494888305664e-05,
+          "mean_abs": 1.3687623479837547e-06
+        }
+      },
+      "raised_left_arms": null,
+      "artifact_sha256": {
+        "android-cpu.log": "5ce91eb92e27e852183951457d724ecd83d85189c89b4e7f5f90356af7894de9",
+        "android-gpu-fp32.log": "a0beb627c1e9cd91d11cb50642a723cf24d4692c59006d9f2d673aab2b0bc3b1",
+        "comparison.json": "f0cd76635342b2481239e0cbabfa9b715c8d29ed29ed8061b7cedec414c7c4dd",
+        "execution.json": "22aa055141818731bd942f5059fd5462ee29754b1db6bdcb4d53cf29b0fe14ed",
+        "fixture.json": "e3c5397f5fc3bae7e83cecd33bfedfc7da1f2f1fe379b85b88b016d363a6279c",
+        "input.fp32": "20fdac908c90bf89424a0678f0f221bff13f8364ccc217fa0df8a3fede356830",
+        "ncnn-cpu-out0.fp32": "b9e75e94766e56db5bc1fdb82545fca2f7a1d23d65d6cb94165a1bd76743e734",
+        "ncnn-cpu-out1.fp32": "05b74ea2ba733913afa07a40b2db1a9ce182fc3991e289b96fe2fcf2ecdd1263",
+        "ncnn-gpu-fp32-out0.fp32": "849bf8478fe5d2ef7d07697d3f05c1f89cd15658719939afcc06ba1956a7e1a0",
+        "ncnn-gpu-fp32-out1.fp32": "edd3d0daa80eedefbebf551fcd6bd5213b524b1a546f9107f6702bc384921f65",
+        "runner": "7177b482665a1a3607de8eb5b086027572e851e2d010236f312d5558598ea863",
+        "source.png": "ff698e612416705ddcd8f388a6d9492bc4e2717f7efcf5b8297b9766251b851c"
+      },
+      "fixture_sha256": "e3c5397f5fc3bae7e83cecd33bfedfc7da1f2f1fe379b85b88b016d363a6279c",
+      "execution_sha256": "22aa055141818731bd942f5059fd5462ee29754b1db6bdcb4d53cf29b0fe14ed",
+      "comparison_sha256": "f0cd76635342b2481239e0cbabfa9b715c8d29ed29ed8061b7cedec414c7c4dd",
+      "output_sha256": {
+        "ncnn-cpu-out0.fp32": "b9e75e94766e56db5bc1fdb82545fca2f7a1d23d65d6cb94165a1bd76743e734",
+        "ncnn-cpu-out1.fp32": "05b74ea2ba733913afa07a40b2db1a9ce182fc3991e289b96fe2fcf2ecdd1263",
+        "ncnn-gpu-fp32-out0.fp32": "849bf8478fe5d2ef7d07697d3f05c1f89cd15658719939afcc06ba1956a7e1a0",
+        "ncnn-gpu-fp32-out1.fp32": "edd3d0daa80eedefbebf551fcd6bd5213b524b1a546f9107f6702bc384921f65"
+      },
+      "source_qualification": "analytic uniform114 negative control"
+    }
+  ]
+}

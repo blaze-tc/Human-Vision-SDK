@@ -12,6 +12,21 @@ and profiles. Generic backend performs inference and GPU preprocessing; the
 pipeline validates exact `[anchors,65]` DFL16+person logits and `[anchors,51]`
 COCO17 outputs, finite values, threshold0.25, NMS0.45 and source geometry.
 
+The exact rectangular contracts are512x288,576x352,640x384 and960x576;
+each requires a16:9 landscape source. The fixed960x576 contract resizes to
+960x540 and pads114 by18 pixels top/bottom, producing11340 rows and exact
+2948400/2313360-byte outputs. Nearby shapes, portrait sources and unqualified
+SGEMM/no-local-memory combinations fail before backend creation. Historical
+defaults and original model graph/weights remain unchanged.
+
+960 eligibility is local offline numerical/semantic evidence only. Start at
+`tools/models/ncnn/yolo_rectangle960_prepare.py`, then its separate device gate
+and runner recipe; use canonical Python3.13. The frozen960 index binds real
+seven-person frame1500, a documented portrait-derived114 canvas control and an
+analytic empty control. Original shared runner hashes and historical staging
+gates remain intact. These CPU tensor uploads do not qualify production GPU/AHB
+input, temporal accuracy, motion or the30fresh complete observation FPS target.
+
 Resize truncates the shorter source extent. The existing GPU letterbox shader
 quantizes resized pixels to uint8 before normalization; M1 uses a shared OpenCV
 offline input oracle. Integrated GPU preprocessing parity remains device work.

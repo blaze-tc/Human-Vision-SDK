@@ -83,7 +83,7 @@ HV_Result HV_CALL Create(const HV_PipelineConfigV1* c,const HV_HostServicesV3* h
            contract.output_elempack!=1||contract.input_blob!="in0"||contract.crop_mode!=ncnn_backend::InputContract::CropMode::Letterbox||
            contract.output_blobs!=std::vector<std::string>{"out0","out1"}||output.at("decoder")!="yolov8_pose_dfl17_v1"||
            output.at("max_output_bytes").at("out0")!=anchors*65*4||output.at("max_output_bytes").at("out1")!=anchors*51*4)
-            throw std::runtime_error("YOLO requires reviewed square320/416 or rectangle512x288/576x352/640x384 RGB FP32 pack1 and exact bounded out0/out1");
+            throw std::runtime_error("YOLO requires reviewed square320/416 or rectangle512x288/576x352/640x384/960x576 RGB FP32 pack1 and exact bounded out0/out1");
         for(int i=0;i<3;++i)if(contract.mean[i]!=0||contract.norm[i]!=1.f/255.f||contract.pad_rgb[i]!=114)
             throw std::runtime_error("YOLO requires RGB /255 and pad114");
         auto self=std::make_unique<Instance>(*h,c->max_bodies,contract.width,contract.height);

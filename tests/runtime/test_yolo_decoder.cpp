@@ -118,6 +118,80 @@ TEST(YoloDecoder, RectangularContractRejectsUnreviewedShapesAndAspectRatios) {
     EXPECT_EQ(g.width,640);EXPECT_EQ(g.height,384);EXPECT_EQ(g.left,0);EXPECT_EQ(g.top,12);EXPECT_EQ(g.scale,.625f);
     EXPECT_FALSE(BuildGeometry(576,1024,640,384,g));EXPECT_FALSE(BuildGeometry(1024,768,640,384,g));
 }
+TEST(YoloDecoder, Rectangle960ExactBoundedGeometryAndOutput) {
+    EXPECT_EQ(AnchorCount(960,576),11340);EXPECT_EQ(AnchorCount(960),0);
+    Geometry g{};
+    for(int width:{624,1024,1072,1232,1920}) {
+        ASSERT_TRUE(BuildGeometry(width,width/16*9,960,576,g));
+        EXPECT_EQ(g.left,0);EXPECT_EQ(g.top,18);EXPECT_FLOAT_EQ(g.scale,960.f/width);
+    }
+    for(auto shape:{std::pair<int,int>{960,544},{960,608},{928,576},{992,576},{576,960},{960,960}})
+        EXPECT_EQ(AnchorCount(shape.first,shape.second),0);
+    EXPECT_FALSE(BuildGeometry(1024,575,960,576,g));
+    ASSERT_TRUE(BuildGeometry(1024,576,960,576,g));
+    std::vector<float> det(11340*65,-80),kp(11340*51,0);
+    HV_TensorViewV1 views[]={View("out0",det,11340,65),View("out1",kp,11340,51)};
+    Decoder decoder(960,576);HV_BodyObservationV1 bodies[8]{};float scores[8]{};uint32_t count=0;
+    ASSERT_TRUE(decoder.Decode(views,2,g,123,bodies,scores,8,count));EXPECT_EQ(count,0u);
+    BeginNativeAllocationProbe();
+    const bool ok=decoder.Decode(views,2,g,123,bodies,scores,8,count);
+    const auto allocations=EndNativeAllocationProbe();EXPECT_TRUE(ok);EXPECT_EQ(allocations,0u);
+    views[0].dimensions[0]=5040;EXPECT_FALSE(decoder.Decode(views,2,g,123,bodies,scores,8,count));
+    views[0].dimensions[0]=11340;views[1].byte_count-=4;
+    EXPECT_FALSE(decoder.Decode(views,2,g,123,bodies,scores,8,count));
+}
+TEST(YoloDecoder, Rectangle960PinnedDeviceGoldenAndAllSevenRealLeftArms) {
+    const auto project=std::filesystem::path(HV_TEST_PROJECT_ROOT);
+    const auto path=project/"tools/models/ncnn/yolo_rectangle960_gate_evidence.json";
+    ASSERT_EQ(Hash(path),"b1d634d79c6793bb0970e49b7b3975e901b9560a3f38f9f581e57e554de82683");
+    std::ifstream file(path);nlohmann::json index;file>>index;
+    for(const auto& record:index.at("fixtures")) {
+        const auto root=project/index.at("archive_base").get<std::string>()/record.at("archive").get<std::string>();
+        ASSERT_EQ(Hash(root/"fixture.json"),record.at("fixture_sha256"));
+        ASSERT_EQ(Hash(root/"comparison.json"),record.at("comparison_sha256"));
+        std::ifstream fixture_file(root/"fixture.json");nlohmann::json fixture;fixture_file>>fixture;
+        Geometry g{};ASSERT_TRUE(BuildGeometry(1024,576,960,576,g));
+        ASSERT_EQ(fixture.at("geometry").at("top"),18);
+        for(const char* mode:{"cpu","gpu-fp32"}) {
+            SCOPED_TRACE(record.at("fixture").get<std::string>()+mode);
+            const auto d=std::string("ncnn-")+mode+"-out0.fp32",k=std::string("ncnn-")+mode+"-out1.fp32";
+            ASSERT_EQ(Hash(root/d),record.at("output_sha256").at(d));ASSERT_EQ(Hash(root/k),record.at("output_sha256").at(k));
+            auto det=Read(root/d),kp=Read(root/k);
+            HV_TensorViewV1 views[]={View("out0",det,11340,65),View("out1",kp,11340,51)};
+            Decoder decoder(960,576);HV_BodyObservationV1 bodies[8]{};float scores[8]{};uint32_t count=0;
+            ASSERT_TRUE(decoder.Decode(views,2,g,123456,bodies,scores,8,count));
+            const uint32_t people=fixture.at("expected_people");ASSERT_EQ(count,people);
+            if(record.at("fixture")=="seven-960") {
+                ASSERT_EQ(fixture.at("sequential_frame_index"),1500);
+                ASSERT_EQ(fixture.at("source_rgba_sha256"),"83db08727c2db6aafe2369e71f689428c3e9197176f2d10933a839b141ab9b67");
+                bool matched[8]{};int raised=0;
+                for(const auto& annotation:fixture.at("annotations")) {
+                    const auto& box=annotation.at("bbox_xyxy");
+                    const float cx=(box[0].get<float>()+box[2].get<float>())*.5f,cy=(box[1].get<float>()+box[3].get<float>())*.5f;
+                    int match=-1;float distance=std::numeric_limits<float>::max();
+                    for(uint32_t b=0;b<count;++b)if(!matched[b]) {
+                        const auto& actual=bodies[b].bbox_px;
+                        const float dx=actual.x+actual.width*.5f-cx,dy=actual.y+actual.height*.5f-cy;
+                        if(dx*dx+dy*dy<distance){distance=dx*dx+dy*dy;match=int(b);}
+                    }
+                    ASSERT_GE(match,0);ASSERT_LT(distance,50.f*50.f);matched[match]=true;
+                    const auto& shoulder=bodies[match].joints[HV_CANONICAL_SHOULDER_LEFT];
+                    const auto& wrist=bodies[match].joints[HV_CANONICAL_WRIST_LEFT];
+                    if(shoulder.valid&&wrist.valid&&wrist.y_px<shoulder.y_px)++raised;
+                    EXPECT_EQ(wrist.observation_timestamp_us,123456);
+                    EXPECT_FALSE(bodies[match].joints[HV_CANONICAL_HAND_LEFT].valid);
+                }
+                EXPECT_EQ(raised,7);
+            }
+            for(uint32_t capacity=1;capacity<=8;++capacity) {
+                ASSERT_TRUE(decoder.Decode(views,2,g,123456,bodies,scores,capacity,count));EXPECT_EQ(count,std::min(people,capacity));
+            }
+            BeginNativeAllocationProbe();
+            const bool decoded=decoder.Decode(views,2,g,123456,bodies,scores,8,count);
+            const auto allocations=EndNativeAllocationProbe();EXPECT_TRUE(decoded);EXPECT_EQ(allocations,0u);
+        }
+    }
+}
 TEST(YoloDecoder, ExactLandscapeAspectIsIndependentOfFloatingPointRounding) {
     for(const int width:{624,1072,1232,1024,1920}) {
         SCOPED_TRACE(width);Geometry g{};
