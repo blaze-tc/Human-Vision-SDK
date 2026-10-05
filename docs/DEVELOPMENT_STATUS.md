@@ -1,4 +1,35 @@
-# Current: Q3 shared quality selector and Happytime RTSP presets verified (2026-10-05)
+# Current: integration preview 4 release preparation verified (2026-10-05)
+
+The user accepted the tested visible demo and explicitly authorized main merge,
+Git publication and downloadable Unity packages. This authorization supersedes
+the historical publication holds below; it does not certify 30 fresh complete
+observation frames/s. Task 11 and that performance gate remain OPEN.
+
+Release composition is the immutable Q4 device-tested package closure plus the
+accepted half-thickness defaults, reviewed RTSP deferred reopen, and packaging
+metadata/licenses. The separate release worktree preserves the original dirty
+development checkout and caches. Android NCNN Vulkan remains fail-fast; no
+runtime/model/performance behavior was changed to prepare the release.
+
+Fresh clean-checkout native regression: 376/376 PASS. Architecture Python tests:
+33 PASS, 24 conditional SKIP; quality tests: 4/4 PASS. Unity coverage comprises
+218 passing cases from the full 219-case run (one native-absent fixture fails
+when the real plugin is installed), plus that case passing in a separate
+native-absent installation. The original failure log is retained.
+
+Final package closure: 450 files, 248 GUIDs, 20 runtime-index entries, eight
+Android SOs and nine Windows DLLs. Corrected .unitypackage actually imports in
+Unity 2021.3.45f1; local UPM installation initializes Windows models and generates
+three demos. Offline native/model initialization and independent spec/code-quality
+review PASS. Remote Git import and uploaded/downloaded artifact
+hash verification follow the authorized main/tag push before Release publication.
+
+See [preview 4 evidence](reports/2026-10-05-preview4-release-verification.md).
+Current modelpacks retain local-evaluation/license restrictions and disabled
+real-hand inference; this is an integration preview, not a commercial model
+license or 30 FPS acceptance certificate.
+
+# Historical: Q3 shared quality selector and Happytime RTSP presets verified (2026-10-05)
 
 Q1 committed4169b6d; Q2 committed18f73ae. Q3 shared UGUI quality draft/save/Apply,
 preflight before retirement, explicit default recovery and transient build-PC

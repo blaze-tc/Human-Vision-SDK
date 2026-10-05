@@ -1,49 +1,19 @@
 {
-  "version": "0.4.0-preview.3",
+  "binding_correction": {
+    "composition_id": "model-input-qualities-q4-reviewed-source-native-candidate",
+    "distribution_qualified": false,
+    "hardware_fps_acceptance": false,
+    "input_native_sha256": "d3968a4f12d1cf7882c04312c7f0ad095c4a18b894846e2beafb758e9f582628",
+    "sdk_native_sha256": "71b15097f9fd56d1969a0a9a8eb5fb95aa3aeb88f6103b105006cbf06c5afa92",
+    "windows_default_profile": "windows-pc-directml",
+    "windows_explicit_cpu_profile": "windows-pc-cpu",
+    "windows_native_sha256": "bbdfc399c85efeb1519b77569e7c0e3a1cead80f40a1a06a79bf97958ff24927"
+  },
+  "eligibility_evidence_sha256": "839fa054f0048f5ed79cd4436c380fa536161043447f7b51d55426e025ed0ce4",
   "files": [
     {
-      "path": "modelpacks/hand21/component.json",
-      "sha256": "76119b6fe411d18b55b7c23a423e3cef5e144607e114a1846c8067b6293c4598"
-    },
-    {
-      "path": "modelpacks/hand21/hand.onnx",
-      "sha256": "39e858936bca0f94c09847d4e70b68a51d6c0adac61f36b457fcadb54621cd29"
-    },
-    {
-      "path": "modelpacks/hand21/manifest.json",
-      "sha256": "1fad738224ff6f99ce52acd5961bd402236ddc62d48b6f8c880765416b45c1a3"
-    },
-    {
-      "path": "modelpacks/hand21/README.md",
-      "sha256": "5ad41d190790e3407918ad2eae6bdb9f6bf33ae1ae2e75273e0370aeb1446ed1"
-    },
-    {
-      "path": "modelpacks/hand21/SOURCES.md",
-      "sha256": "48d9a6ae7c3f52c31d7717e83f2bdd65f60ef2ddc39c5794bcbdc626ba4c80e4"
-    },
-    {
-      "path": "modelpacks/precision-t-26/body.onnx",
-      "sha256": "7d0075fbc44b2e696af21ac4555333fbb43405bf8dcc8d44c17c98d23818c710"
-    },
-    {
-      "path": "modelpacks/precision-t-26/component.json",
-      "sha256": "5d2e8962c2db42ae742a294b860e118ad00765d2ac5351ac8bd5b6c13194479b"
-    },
-    {
-      "path": "modelpacks/precision-t-26/detector.onnx",
-      "sha256": "a6e9039b481218cc0cfcccf1d03243b68af34c736f2cb774dcca39afce2e99c7"
-    },
-    {
-      "path": "modelpacks/precision-t-26/manifest.json",
-      "sha256": "df00e4d62ae0e276abebf5a16bbc4568824b734a2296e8ff1eb04df1960eb128"
-    },
-    {
-      "path": "modelpacks/precision-t-26/README.md",
-      "sha256": "1f377f5265b497d8a4a04504065d7e84c1b32949d49de9c40b08e130e475a5fb"
-    },
-    {
-      "path": "modelpacks/precision-t-26/SOURCES.md",
-      "sha256": "548c383147d38a47388d614599dac8eb68e89b4372b5e327cc24105f993274b9"
+      "path": "model-input-qualities.json",
+      "sha256": "8b191ccf81be8a47ce5de993bc325f9ad6d218a5c1ec819e16455af844736730"
     },
     {
       "path": "modelpacks/rtmo-t-416/body.onnx",
@@ -51,47 +21,106 @@
     },
     {
       "path": "modelpacks/rtmo-t-416/component.json",
-      "sha256": "f9c5e90457a55e687f9509643e1a6a28235f466f9d0c581da087c0f2e9b4ce82"
+      "sha256": "b77e9cfe6cd2399f6536a2bc4497f11f89344bc33e70402e682c7e25778e5ff0"
     },
     {
       "path": "modelpacks/rtmo-t-416/manifest.json",
-      "sha256": "337cb5c0289ceba3acd2c43d2914f489f7d03ba634e3fbc3058ef9f77bdd1189"
+      "sha256": "6ed2a7166bec589bb7aa5322b26c01cec2a5db3a0b691e92f503ecf6a3de0f90"
     },
     {
       "path": "modelpacks/rtmo-t-416/README.md",
-      "sha256": "c7bc67750c93e6b806b35f4960eb7b527f6374aac3bd42bc721ba57d89271020"
+      "sha256": "848ac0ab68f7783cbf8b09fefb685426c64c65ddcfa02a9ba4e94a7136502f89"
     },
     {
       "path": "modelpacks/rtmo-t-416/SOURCES.md",
-      "sha256": "73712b78b6305c83ee3ebdb3f34581a02b20172758692c986c1689b13216b7e4"
+      "sha256": "65cab3acfad55148d551cfebd4f2ba8c43dd8e151c77ac30a1073f9fac7ab9f3"
     },
     {
-      "path": "profiles/android-cpu-nohands.json",
-      "sha256": "9969cf1b1a6a4400f21139b8c168188c92c39bcac2f964a19f2e0e3eb9090353"
+      "path": "modelpacks/yolov8n-pose-rectangle512x288-fp32-quality-low-local/modelpack.json",
+      "sha256": "eca73081eed3f52da2b02e5457ae6b552f7e3990951704e597e3809c96c62df6"
     },
     {
-      "path": "profiles/android-nnapi-nohands.json",
-      "sha256": "16a8e11a96363827809bb48a6ca8f6ad5938590bcd72332457b0db5c620eeaec"
+      "path": "modelpacks/yolov8n-pose-rectangle512x288-fp32-quality-low-local/yolov8n_pose.ncnn.bin",
+      "sha256": "6128010de189605795a496f3d3f6baa6435a493b31796ceaf400cced07038da9"
     },
     {
-      "path": "profiles/android-xnnpack-nohands.json",
-      "sha256": "6754f27d1624c49da96d9c38f4d5860a38e9dc2a0985e1a71a2f49b549c3a588"
+      "path": "modelpacks/yolov8n-pose-rectangle512x288-fp32-quality-low-local/yolov8n_pose.ncnn.param",
+      "sha256": "908ace8e8d5b99622e0b492ebb18a6b287e647d2df7dff81205e8322752e0905"
     },
     {
-      "path": "profiles/auto.json",
-      "sha256": "9dea68a7bd87a3b63fc19bb442a71ee7bf24c9fe4ed3653815c24f7a7f79c09e"
+      "path": "modelpacks/yolov8n-pose-rectangle640x384-fp32-local/modelpack.json",
+      "sha256": "7fd006c3f54edaadad79d3afe911096b0a2b8d77a81171aa8a8a29aae59df337"
     },
     {
-      "path": "profiles/component.json",
-      "sha256": "9e5927e0d87544ece8c1b4651055c0001ef53dc37a8d8804f22574999716db81"
+      "path": "modelpacks/yolov8n-pose-rectangle640x384-fp32-local/yolov8n_pose.ncnn.bin",
+      "sha256": "6128010de189605795a496f3d3f6baa6435a493b31796ceaf400cced07038da9"
     },
     {
-      "path": "profiles/cpu.json",
-      "sha256": "1180b18f52de55e0319d46ce201231193fdfb2bd0e308862f6249583dd727b26"
+      "path": "modelpacks/yolov8n-pose-rectangle640x384-fp32-local/yolov8n_pose.ncnn.param",
+      "sha256": "908ace8e8d5b99622e0b492ebb18a6b287e647d2df7dff81205e8322752e0905"
     },
     {
-      "path": "profiles/README.md",
-      "sha256": "eaa6a03307b9bae4764d4e36b5ede8257b818f61eb55bc920ef4fc0248f243af"
+      "path": "modelpacks/yolov8n-pose-rectangle960x576-fp32-quality-high-local/modelpack.json",
+      "sha256": "26788ac5225af6439829f84f56430f8b71f74dea8b20232ae534d7544ce909cc"
+    },
+    {
+      "path": "modelpacks/yolov8n-pose-rectangle960x576-fp32-quality-high-local/yolov8n_pose.ncnn.bin",
+      "sha256": "6128010de189605795a496f3d3f6baa6435a493b31796ceaf400cced07038da9"
+    },
+    {
+      "path": "modelpacks/yolov8n-pose-rectangle960x576-fp32-quality-high-local/yolov8n_pose.ncnn.param",
+      "sha256": "908ace8e8d5b99622e0b492ebb18a6b287e647d2df7dff81205e8322752e0905"
+    },
+    {
+      "path": "profiles/android-ncnn-vulkan-quality-high.json",
+      "sha256": "a3fd3194b4095e228150d5f46f579f1755b69005c251ef0f5be0d6fe17939090"
+    },
+    {
+      "path": "profiles/android-ncnn-vulkan-quality-low.json",
+      "sha256": "fbd1798deeeac7c1937d0064455282407a9c55a138e03c3f583de8265ba182d9"
+    },
+    {
+      "path": "profiles/android-ncnn-vulkan.json",
+      "sha256": "5cd72fca9ea22a276bf94bb279777ea687488eee89a5308f432ee48edc68185e"
+    },
+    {
+      "path": "profiles/windows-pc-cpu.json",
+      "sha256": "41dc0b0156bf6b3ddf44c0232527d066c23b2d2ca640db006aadeee2d34082f4"
+    },
+    {
+      "path": "profiles/windows-pc-directml.json",
+      "sha256": "1185fe744196637eec468fecbd20ee97b83cb58fdb02dfd17685d1e30473331d"
     }
-  ]
+  ],
+  "fixture": "android-yolo/device-runs/seven-640/gpu-fp32-866e333068bf4b058ca0c40176faf897",
+  "hardware_fps_acceptance": false,
+  "input_height": 384,
+  "input_width": 640,
+  "local_evaluation_only": true,
+  "precision": "fp32",
+  "quality_delivery": {
+    "distribution_qualified": false,
+    "hardware_fps_acceptance": false,
+    "local_package_source_native_closure": true,
+    "production_gpu_ahb_input_acceptance": false,
+    "schema_version": 1,
+    "sdk_native_build_receipt_sha256": "840cfbfd399db0d7e587c800b65525304ca4cbde9c56e5dc57dc35cee5ecbddd",
+    "sdk_native_commit_qualification_sha256": "6f58eb86503a2f2e4c10a6de010d7d1e3d7053f5d31b2e34f5a5936356d164b2",
+    "sdk_source_commit": "9e09fcb211770345208ae9ec6ca311ac5a5a687f",
+    "source_stage_index_sha256": "e1b157578c940e9f1850a0ec1ccb132b05b6dc18aa2f976904184c6afa1114a2",
+    "source_stage_sdk_native_sha256": "fef5fda3952d21e68b40052cc8804adcd99bc9d961429daf868afd3650bbbd96"
+  },
+  "quality_staging": {
+    "base_index_sha256": "89703ad345f2b7a954b6711f8e65ffbd02e5f80cbf1c653d6815a53395ee3cfc",
+    "distribution_qualified": false,
+    "hardware_fps_acceptance": false,
+    "high_evidence_sha256": "b1d634d79c6793bb0970e49b7b3975e901b9560a3f38f9f581e57e554de82683",
+    "low_evidence_sha256": "fe23f93f39a77ad8fc3f3b78a60dbb728e34749116fcd22478074b5d493dde74",
+    "native_quality_deployment_qualified": false,
+    "production_gpu_ahb_input_acceptance": false
+  },
+  "shape_id": "rectangle640x384",
+  "size": 640,
+  "source_aspect_ratio": "16:9",
+  "version": "model-input-qualities-v1-local-fp32"
 }

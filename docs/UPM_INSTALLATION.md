@@ -1,3 +1,74 @@
+# Human Vision SDK 0.4.0-preview.4 安装与接入
+
+支持 Windows x64 Editor/Player 和 Android ARM64，Unity 2021.3 或更新版本。
+包含独立 Input、SDK、原生依赖、模型和 Camera/Video/RTSP 三个 Demo。
+不需要 AzureKinectExamples；测试视频不随包分发。
+
+## Git 安装
+
+Window > Package Manager > + > Add package from git URL，先 Input、后 SDK：
+
+```text
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.4
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.4
+```
+
+也可以在 `Packages/manifest.json` 的 `dependencies` 同时添加这两条地址。
+SDK 的版本依赖不会自动查找同仓库另一个 Git 子目录，因此两包都需要配置。
+版本标签固定本次内容；`#main` 会随后续开发更新。
+
+## 本地安装
+
+[Release 下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.4)：
+
+- `HumanVisionSDK-Input-0.4.0-preview.4.unitypackage`：Assets > Import Package > Custom Package，一次导入 SDK 和 Input。
+- 两个 `.tgz`：Package Manager > Add package from tarball，先 Input、后 SDK。
+- `HumanVisionSDK-Input-0.4.0-preview.4.zip`：两个 UPM tarball、导入包、安装说明和校验信息。
+
+Git、tarball、Assets 导入选择一种，更换方式前移除原 SDK/Input，避免重复脚本、
+GUID、原生库。保留游戏和厂商资源，不手工修改 `Library/PackageCache`。
+安装器按哈希将模型复制到 `Assets/StreamingAssets/HumanVision/Runtime`，使用独立
+GUID；菜单 `HumanVision > Install Packaged Models` 可以重新安装运行数据。
+
+## Demo 与设置
+
+执行 `HumanVision > Create unified demos in dedicated folder`，在
+`Assets/HumanVisionUnifiedDemo` 生成三个场景并加入 Build Settings；公共按钮切换。
+也可以导入 Package Manager 的 `UnifiedInput` sample。
+
+Camera 选择设备；Video 填写自己的视频路径；RTSP 填写 H.264/TCP 地址。
+各模式独立保存采集尺寸、镜像和骨骼样式。RTSP 快捷按钮使用打包电脑的 LAN 地址，
+默认端口554、路径 `/videodevice` 和 `/video-1.mp4`；仍需启动自己的推流服务，
+手机和电脑在同一局域网，也可修改电脑地址。
+
+公共 Settings 设置人数、编号区域和模型质量：低512×288、中640×384、高960×576。
+采集尺寸和模型尺寸独立。选择质量后 Apply，Save all settings 保存。
+区域使用推理后 bbox/pelvis assignment，框外结果不对外提供，不执行整图 CPU mask。
+
+Android：Project Settings > Human Vision > Android Runtime 选择 **NCNN Vulkan**；
+Player Settings 使用 ARM64、最低 API26、Vulkan Graphics API。
+所需 native/profile/model/GPU bridge 或设备能力不满足时明确报错，不自动回退 ORT。
+ORT CPU/XNNPACK 的配置接口保留，但当前验收的随包路线是 NCNN 三档与 Windows PC，
+兼容模式的独立 ModelPack/Profile 不属于本次验收。
+
+## 游戏接入和本次范围
+
+参考 `HumanVisionInputAdapter` 将独立 Input 绑定到 `HumanVisionManager`。
+Input 可以只绑定预览而不创建推理。读取 `Bodies` 和 `ResultUpdated`；区域查询参考
+`HumanVisionCameraManager.TryGetBodyByRegionIndex` / `TryGetJointByRegionIndex`。
+公开游戏接口不需要引用具体模型类型。
+
+用户已确认当前演示效果，可进入项目接入。**Android 30 个完整新鲜观察帧/秒尚未认证**；
+Render/Preview/预测帧不能算新骨骼帧。当前默认人体模型输出 COCO-17 身体关键点；
+Canonical API 保留手掌/指尖/拇指字段，但随包 Profile 未启用真实手部识别。
+图像平面坐标不包含 Kinect 深度传感器的真实三维深度。
+模型保留评估标记与来源记录；具体条款见包内 `Licenses` 和 ModelPack，
+不表示已取得商业模型授权。维护入口：`docs/maintenance/START_HERE.md`。
+
+---
+
+## 以下为旧版本安装历史，不适用于 preview.4
+
 # Human Vision SDK 0.4.0-preview.3
 
 Current installation/runtime instructions: [0.4 user guide](SDK_040_USER_GUIDE.md).

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "profile": "android-ncnn-vulkan-quality-high",
+  "local_evaluation_only": true,
+  "frame_policy": "every_frame",
+  "body": {
+    "pipeline": "pipeline.yolo.pose",
+    "modelPack": "yolov8n-pose-rectangle960x576-fp32-quality-high-local"
+  },
+  "hands": {
+    "enabled": false
+  },
+  "backend": {
+    "preference": [
+      "backend.ncnn.vulkan"
+    ],
+    "allow_fallback": false
+  },
+  "body_fps": 30,
+  "output": {
+    "hz": 60
+  },
+  "required_capabilities": [
+    "body_pose",
+    "multi_person",
+    "gpu_input",
+    "vulkan",
+    "android-hardware-buffer",
+    "external-sync-fd"
+  ]
+}

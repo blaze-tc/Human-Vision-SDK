@@ -1,21 +1,21 @@
 {
-  "name": "com.blazetc.humanvision.input",
-  "version": "0.1.0-preview.1",
-  "displayName": "Human Vision Input",
-  "description": "Standalone Unity texture frame sources and source-copy lifetime contracts.",
-  "unity": "2021.3",
   "author": {
     "name": "BlazeTC"
   },
   "dependencies": {
-    "com.unity.ugui": "1.0.0",
-    "com.unity.modules.video": "1.0.0"
+    "com.unity.modules.video": "1.0.0",
+    "com.unity.ugui": "1.0.0"
   },
+  "description": "Independent Camera, Video and RTSP frames and preview for Windows x64 and Android ARM64; no inference or model dependency.",
+  "displayName": "Human Vision Input",
+  "name": "com.blazetc.humanvision.input",
   "samples": [
     {
-      "displayName": "InputPreview",
       "description": "Standalone video, camera and RTSP preview without inference or models.",
+      "displayName": "InputPreview",
       "path": "Samples~/InputPreview"
     }
-  ]
+  ],
+  "unity": "2021.3",
+  "version": "0.1.0-preview.2"
 }
