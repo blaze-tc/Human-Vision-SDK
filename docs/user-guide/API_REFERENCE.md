@@ -15,16 +15,19 @@
 5. 读取点前检查`Valid`、`Confidence`和独立观察时间。语义手槽位存在不代表实际识别手点；当前随包Profile关闭真实手部推理。
 6. Create、Shutdown、改变容量/重新初始化可能加载模型或等任务；不是无耗时的逐帧操作。显示采样/保持不能算新观察。
 
-## 2. 可复制的初始化与骨骼读取示例
+## 2. Start初始化与骨骼读取示例
 
-第一次使用按[从空场景搭建](FIRST_INSTALL.md#6-从空场景手动搭建自己的预览)创建Canvas/RawImage/Overlay/VisionRoot，再把两个完整文件复制到Assets/Scripts并绑定Inspector：
+先看[代码入门引导](FIRST_INSTALL.md)：在一个空物体上挂[SdkBasicUsage.cs](examples/SdkBasicUsage.cs)，无需配置Canvas/预览/Overlay。它使用当前包API，自动关联所需组件。
 
-| 完整文件 | 调用内容 | 适用范围 |
+| 代码所在位置 | 调用与含义 | 引导片段 |
 | --- | --- | --- |
-| [SdkCameraQuickStart.cs](examples/SdkCameraQuickStart.cs) | Prepare → TryInitialize → Configure → Open → BindUnifiedSource；StopVision/StopVisionRoutine提供退休、关闭和Shutdown | Windows x64 CPU最小摄像头场景 |
-| [SdkSkeletonReader.cs](examples/SdkSkeletonReader.cs) | ResultUpdated订阅/取消、序号去重、BodyCount遍历、StableTrackId、WristLeft/KneeLeft、Valid/Confidence/观察时间 | 同一场景的新身体观察读取 |
+| `void Start()` | GetComponent、Configure(manager,null,null)、StartCoroutine(Initialize) | [Start](FIRST_INSTALL.md#3-void-start中写什么) |
+| `IEnumerator Initialize()` | Prepare成功取得root，TryInitialize配置会话，订阅ResultUpdated | [初始化](FIRST_INSTALL.md#4-怎样初始化sdk) |
+| 初始化成功后 | source.Open相机，BindUnifiedSource自动提交图像 | [输入图像](FIRST_INSTALL.md#5-怎样让sdk得到摄像头图像) |
+| `OnResult(long sequence)` | BodyCount遍历、StableTrackId、WristLeft、Valid/Confidence/坐标 | [骨骼读取](FIRST_INSTALL.md#6-怎样读取人数人物id和骨骼关节) |
+| `StopSdk()` | 取消订阅、Detach并等退休、Close、Shutdown | [关闭](FIRST_INSTALL.md#8-不再使用时怎样关闭) |
 
-初始化和骨骼片段的逐行含义见[初始化步骤](FIRST_INSTALL.md#7-初始化代码准备资源创建会话打开相机)与[骨骼调用步骤](FIRST_INSTALL.md#8-骨骼调用代码人数身份和关节点)。多人/区域调用与停止/场景切换分别见引导第9和10节。示例只依赖SDK、Input及Unity组件；Android使用统一示例与对应构建合同，不原样运行Windows CPU例子。
+可选[Hierarchy创建菜单](FIRST_INSTALL.md#9-可选hierarchy右键创建启动物体)由示例编辑器文件提供，用户需复制到Assets/Editor；不是当前发布包已经提供的菜单。显示组件示例见[可选显示教程](DISPLAY_AND_BUILD.md)。
 
 ## 3. 运行数据与初始化配置
 

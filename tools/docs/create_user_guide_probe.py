@@ -9,8 +9,9 @@ project=args.project.resolve()
 assert not project.exists(), 'Use a fresh path; never reset an existing project.'
 for directory in ['Assets/Scripts','Assets/Editor','Packages','ProjectSettings']:
     (project/directory).mkdir(parents=True,exist_ok=True)
-for source in (root/'docs/user-guide/examples').glob('*.cs'):
-    shutil.copyfile(source,project/'Assets/Scripts'/source.name)
+for source in (root/'docs/user-guide/examples').rglob('*.cs'):
+    destination=project/('Assets/Editor' if source.parent.name=='Editor' else 'Assets/Scripts')/source.name
+    shutil.copyfile(source,destination)
 dependencies={
  'com.blazetc.humanvision.input':'file:'+ (root/'upm/com.blazetc.humanvision.input').as_posix(),
  'com.blazetc.humanvision':'file:'+ (root/'upm/com.blazetc.humanvision').as_posix(),

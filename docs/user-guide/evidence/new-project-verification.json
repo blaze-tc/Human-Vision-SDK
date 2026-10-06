@@ -6,27 +6,29 @@
   "project_kind": "New isolated Unity project; local file packages",
   "result": {
     "passed": true,
-    "message": "Two examples compiled; three demos; manual scene persisted with references; Prepare; CPU initialization; Shutdown.",
+    "message": "Three runtime examples and optional Editor menu compile; menu creates one starter without Canvas; Prepare; CPU initialization; empty body access; Shutdown.",
     "unity": "2021.3.45f1",
     "hardware_test": false
   },
   "indexed_runtime_files_verified": 20,
   "source_sha256": {
+    "docs/user-guide/examples/SdkBasicUsage.cs": "4b4845e817d7d97d017bb05b2be4fa5103b2ed572c3c31daed34c05406ca689b",
     "docs/user-guide/examples/SdkCameraQuickStart.cs": "7e88ab4056b76715075a17d6662178542faba882dc20e9ed7a2b675b9aa53a49",
     "docs/user-guide/examples/SdkSkeletonReader.cs": "c70a490c96987917648342511da2025f621cb8a9815b365fe3dbf3328b94ad27",
-    "tools/docs/create_user_guide_probe.py": "0c2e45fba80abcf5e9855bfb034c2dfa165c2f4d9fa432adcd556307e00bd956",
-    "tools/docs/SdkDocsProbe.cs": "12291c359af42ac8a7d4b2af045a2a7799960247bceff4477dcd3ca006d775c2",
-    "tools/docs/verify_sdk_user_docs.py": "87da61d7a12de409f53113ba2b4b713c90ce72bc7c2dfc355eb93bed714eb761"
+    "docs/user-guide/examples/Editor/SdkBasicUsageMenu.cs": "e1a68112812f91d558fba995c5c93c145d66f1bd74bccdda45a94c9925268ba5",
+    "tools/docs/create_user_guide_probe.py": "edcc7bd905758bdcf8d5990bff1d9e168734bb2e13953fcd6f973497a403ea2d",
+    "tools/docs/SdkDocsProbe.cs": "b70d0a23822d857895c2d87451416c985b47130854c5528a2bf7e10be8775314",
+    "tools/docs/verify_sdk_user_docs.py": "5ebf8673c6b933a44cafb204c59a650b34075b2aa9fe83f027c66c3d16a81225"
   },
-  "scope": "Compilation, scene references, Prepare, Windows CPU initialization and Shutdown. No physical camera, rendering, build or performance test.",
+  "scope": "Compilation, optional menu-created one-object starter without Canvas, Prepare, Windows CPU initialization, empty body access and Shutdown. No physical camera, rendering, build or performance test.",
   "documentation_checks": {
-    "local_links_checked": 126,
+    "local_links_checked": 144,
     "documented_public_api_names_checked": 179,
     "application_specific_content_absent": true,
     "result": "PASS",
     "new_project_probe": {
       "passed": true,
-      "message": "Two examples compiled; three demos; manual scene persisted with references; Prepare; CPU initialization; Shutdown.",
+      "message": "Three runtime examples and optional Editor menu compile; menu creates one starter without Canvas; Prepare; CPU initialization; empty body access; Shutdown.",
       "unity": "2021.3.45f1",
       "hardware_test": false
     }

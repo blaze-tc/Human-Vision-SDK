@@ -1,12 +1,12 @@
 # Current: integration preview 4 published (2026-10-05)
 
-Documentation update (2026-10-07): [four Chinese SDK guides](user-guide/README.md)
-now target a newly created Unity project. The walkthrough includes package/model
-installation, manual Canvas/preview/Overlay construction, standalone Windows CPU
-initialization and skeleton readers, region examples, teardown and platform builds.
-Fresh Unity2021.3.45f1 isolated-project compilation, scene references, Prepare,
-Windows CPU initialization/Shutdown, 126 links, 179 selected public names and
-maintenance architecture checks PASS. Results are recorded in the [verification report](reports/2026-10-07-sdk-user-docs-verification.md).
+Documentation update (2026-10-07): [Chinese SDK guides](user-guide/README.md)
+now lead with Start initialization, image input and skeleton result code fragments.
+The minimal starter needs one empty GameObject and no UI bindings; an optional
+copied Editor script adds a Hierarchy creation action. Display/build steps are
+an optional supplement. Fresh Unity2021.3.45f1 compilation, menu-created starter,
+Prepare, CPU initialization/body access/Shutdown and documentation guards are
+recorded in the [verification report](reports/2026-10-07-sdk-user-docs-verification.md).
 No new physical device, per-person FPS or genuine hand acceptance is claimed.
 
 The user accepted the tested visible demo and explicitly authorized main merge,

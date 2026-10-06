@@ -1,54 +1,53 @@
-# SDK user documentation verification — 2026-10-07
+# SDK code-first user guide verification — 2026-10-07
 
-Scope: four SDK guides for a **new Unity project**, two standalone first-use
-scripts and documentation verification tooling. SDK/Input remain
-`0.4.0-preview.4` / `0.1.0-preview.2`. Runtime/package implementation and release
-assets are unchanged. [Guide entry](../user-guide/README.md).
+Scope: first-use code fragments, [one-object starter](../user-guide/examples/SdkBasicUsage.cs)
+and [optional Hierarchy menu](../user-guide/examples/Editor/SdkBasicUsageMenu.cs).
+The [beginner guide](../user-guide/FIRST_INSTALL.md) explains Start, asynchronous
+resource preparation, initialization, camera binding, body/joint reads and teardown.
+SDK/Input remain `0.4.0-preview.4` / `0.1.0-preview.2`; package implementation and
+release assets are unchanged.
 
-## Fresh checks
+## Latest checks
 
 | Check | Result | Scope |
 | --- | --- | --- |
-| Unity `2021.3.45f1` clean project | PASS | Two copied examples compile using local SDK/Input/UGUI packages; no application framework dependency |
-| SDK scene generation | PASS | Camera, Video and RTSP demos generated and included in build scenes |
-| Manual first-use scene | PASS | Canvas/RawImage/FitInParent/Overlay built, saved and reopened; serialized references and required components checked |
-| Runtime data | PASS | Install Packaged Models and asynchronous Prepare complete |
-| Windows CPU lifecycle | PASS | TryInitialize with prepared root, profile windows-pc-cpu and capacity1; active profile verified; Shutdown verified |
-| Local Markdown links/anchors | 126 PASS | User guides, new report and navigation entries checked |
-| Selected public member coverage | 179 names checked | Names checked against SDK source; this is a symbol-presence check, not a claim that every parameter was automatically reviewed |
-| Component catalog / public surface / architecture boundaries | PASS | Maintenance documentation checks |
-| Diff whitespace / scope | PASS | No changes to upm, native or runtime implementation |
+| Unity2021.3.45f1 isolated project compilation | PASS | Minimal starter, two optional display examples and Editor menu compile |
+| Hierarchy creation action | PASS | Editor menu method creates a starter with required SDK components; no Canvas |
+| Saved starter | PASS | Starter persists after scene save/reopen; no UI references to bind |
+| Runtime preparation | PASS | Packaged resource staging and asynchronous Prepare complete |
+| CPU initialization/data access | PASS | windows-pc-cpu capacity1 initializes; profile, zero bodies before input and allocated body array checked |
+| Shutdown | PASS | Initialized Manager shuts down |
+| Markdown links/anchors | PASS | All user-guide/navigation/report links checked |
+| API member coverage | 179 names checked | Selected SDK public names appear in API reference; parameter descriptions are source-reviewed |
+| Architecture / component catalog / whitespace | PASS | Documentation guards and diff checks |
 
-Two isolated projects passed; the final run used the repository's published
-probe setup script and the final copies of both examples. Results and source
-hashes are in [new-project verification evidence](../user-guide/evidence/new-project-verification.json).
+The final run used the final starter source with input error logging. Source
+hashes and results are in [verification evidence](../user-guide/evidence/new-project-verification.json).
 
-## Reproduce the non-hardware probe
+## Reproduce
 
-Run from the repository root. The setup refuses to overwrite an existing project;
-choose a fresh output path. Requires installed Windows Unity `2021.3.45f1`, its
-license, Python and access to bundled UGUI packages. The actual SDK packages are
-local file dependencies for this check; Git/offline release installation evidence
-remains in the [preview.4 release report](2026-10-05-preview4-release-verification.md).
+From the repository root, choose a fresh project path (setup never resets an
+existing project). Requires licensed Windows Unity2021.3.45f1 and Python.
 
 ```powershell
-py -3.13 tools/docs/create_user_guide_probe.py --project out/sdk-user-guide-new-project
+py -3.13 tools/docs/create_user_guide_probe.py --project out/sdk-code-first-new-project
 $unityEditor = 'D:/Developer/2021.3.45f1/Editor/Unity.exe' # Set to your installation.
-& $unityEditor -batchmode -nographics -projectPath "$PWD/out/sdk-user-guide-new-project" -executeMethod SdkDocsProbe.Run -logFile "$PWD/out/sdk-user-guide-new-project.log"
-# Wait for Unity to exit and inspect docs-probe-result.json; shell launch alone is not proof.
-py -3.13 tools/docs/verify_sdk_user_docs.py --probe-result out/sdk-user-guide-new-project/docs-probe-result.json
+& $unityEditor -batchmode -nographics -projectPath "$PWD/out/sdk-code-first-new-project" -executeMethod SdkDocsProbe.Run -logFile "$PWD/out/sdk-code-first-new-project.log"
+# Wait for the result file and Unity exit; successful launch alone is not proof.
+py -3.13 tools/docs/verify_sdk_user_docs.py --probe-result out/sdk-code-first-new-project/docs-probe-result.json
 py -3.13 tools/maintenance/generate_component_catalog.py --check
 py -3.13 tools/maintenance/check_architecture_boundaries.py
 git diff --check
 ```
 
-Sources: [fresh-project setup](../../tools/docs/create_user_guide_probe.py),
+Sources: [setup](../../tools/docs/create_user_guide_probe.py),
 [Editor probe](../../tools/docs/SdkDocsProbe.cs),
-[documentation checker](../../tools/docs/verify_sdk_user_docs.py).
+[document checker](../../tools/docs/verify_sdk_user_docs.py).
+The probe uses local SDK/Input packages; released Git/offline package integrity
+remains covered by the [release report](2026-10-05-preview4-release-verification.md).
 
-The probe builds and validates scene references in batch mode, invokes Prepare
-and initializes the CPU runtime directly. It does **not** enter camera Play Mode,
-render a visible skeleton, build an EXE/APK or measure device inference. There
-are no new physical-device, per-person30FPS or genuine-hand acceptance claims.
-Historical SDK measurements retain their original limitations in the
-[platform guide](../user-guide/PLATFORM_TEST_RESULTS.md).
+The probe invokes the menu creation method in the Editor, prepares resources and
+initializes the runtime directly. It does not click a physical context menu,
+enter camera Play Mode, produce a detected-body fixture, render skeletons, build
+EXE/APK or measure hardware performance. Empty body access before input verifies
+data availability, not inference. Device/30FPS/real-hand gates remain unchanged.

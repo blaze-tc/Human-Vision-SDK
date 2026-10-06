@@ -64,7 +64,7 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description='Check SDK user-guide links and selected public API names.')
     parser.add_argument('--probe-result', type=Path)
     args=parser.parse_args()
-    checked=list(GUIDE.rglob('*.md'))+list((GUIDE/'examples').glob('*.cs'))
+    checked=list(GUIDE.rglob('*.md'))+list((GUIDE/'examples').rglob('*.cs'))
     forbidden=['Sensory', 'HurdleKing', 'HumanVisionGameRuntime', 'SensoryGame.Vision',
                'PoseMotionDetector', 'VisionSettingsView', '正式项目', 'YS-Sensory']
     for path in checked:
@@ -75,7 +75,8 @@ if __name__=='__main__':
         probe=json.loads(read(args.probe_result))
         assert probe['passed'] and probe['unity']=='2021.3.45f1' and not probe['hardware_test']
         project=args.probe_result.parent
-        for example in (GUIDE/'examples').glob('*.cs'):
-            assert example.read_bytes()==(project/'Assets/Scripts'/example.name).read_bytes()
+        for example in (GUIDE/'examples').rglob('*.cs'):
+            folder='Assets/Editor' if example.parent.name=='Editor' else 'Assets/Scripts'
+            assert example.read_bytes()==(project/folder/example.name).read_bytes()
         result['new_project_probe']=probe
     print(json.dumps(result,ensure_ascii=False))

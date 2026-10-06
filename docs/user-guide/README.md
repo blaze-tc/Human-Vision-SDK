@@ -2,19 +2,21 @@
 
 适用版本：SDK **0.4.0-preview.4** / Input **0.1.0-preview.2**。更新日期：2026-10-07。[版本下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.4)
 
-这套文档面向在**新创建的 Unity 项目**中第一次使用 SDK 的开发者。无需先了解模型或原生推理；先把相机和骨骼跑起来，再按需要查接口。
+这套文档面向在**新创建的 Unity 项目**中第一次使用 SDK 的开发者。无需先了解模型或原生推理；先学会Start初始化、输入图像和骨骼结果读取，再按需要查接口。
 
 | 文档 | 主要内容 |
 | --- | --- |
-| [第一次安装使用引导](FIRST_INSTALL.md) | 创建项目、安装双包/模型、运行自带示例、从空场景搭建Canvas/预览/骨骼、初始化、关节点读取、停止、Windows/Android构建与排错 |
+| [第一次安装使用引导](FIRST_INSTALL.md) | 安装双包/模型、void Start初始化、摄像头输入、骨骼回调读取、停止释放；可选Hierarchy右键创建菜单 |
 | [技术栈文档](TECH_STACK.md) | Unity/Input/Runtime/插件/后端/模型分层、异步数据流和生命周期 |
 | [平台测试效果文档](PLATFORM_TEST_RESULTS.md) | SDK发布验证与历史真机测量、数字的含义、平台覆盖与复测方法 |
 | [API调用与说明文档](API_REFERENCE.md) | SDK接口的作用、参数、默认值、返回值、关节/帧/区域数据含义和调用示例 |
 
-第一次使用从[安装引导第1节](FIRST_INSTALL.md#1-准备环境并创建项目)开始。跟随第4节先运行自带示例，再按第6～10节创建自己的场景。可以直接复制的完整脚本：
+第一次使用按[代码入门引导](FIRST_INSTALL.md)完成安装，然后只需一个空物体和一份脚本。主要示例：
 
-- [SdkCameraQuickStart.cs](examples/SdkCameraQuickStart.cs)：Windows x64 CPU初始化、相机输入、预览/Overlay绑定与停止释放。
-- [SdkSkeletonReader.cs](examples/SdkSkeletonReader.cs)：新身体结果回调、多人遍历、人物ID、左腕/左膝读取与取消订阅。
+- [SdkBasicUsage.cs](examples/SdkBasicUsage.cs)：无需UI引用；Start中启动初始化，打开相机，在ResultUpdated中读取人物ID与左腕，提供StopSdk关闭协程。
+- [SdkBasicUsageMenu.cs](examples/Editor/SdkBasicUsageMenu.cs)：可选编辑器脚本，复制到Assets/Editor后提供Hierarchy右键创建启动物体菜单。
+
+需要显示或打包时再看[可选示例界面与平台构建](DISPLAY_AND_BUILD.md)，其中的[SdkCameraQuickStart.cs](examples/SdkCameraQuickStart.cs)和[SdkSkeletonReader.cs](examples/SdkSkeletonReader.cs)用于预览/Overlay与独立结果消费；它们不是初始化和取数据的必做步骤。
 
 两包Git标签均为`v0.4.0-preview.4`，对应源码提交`a201e0f44aa68a3f831f248b67400bd5fd7358c9`。本目录只描述SDK和可独立复制的入门示例；API表中的类以包源码为准。
 
