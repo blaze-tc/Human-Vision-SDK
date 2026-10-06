@@ -1,121 +1,115 @@
 # 技术栈文档
 
-适用 SDK `0.4.0-preview.4` 与正式项目 `Sensory-Game-2021.3.45`，核查日期 2026-10-07。[文档首页](README.md)
+适用 SDK `0.4.0-preview.4` / Input `0.1.0-preview.2`，面向新Unity项目接入。[文档首页](README.md)
 
 ## 1. 整体分层
 
 ```mermaid
 flowchart TD
-    G[跨栏游戏 HurdleKing / Player] --> A[IRunJumpInput 动作输入]
-    UI[Setting UGUI 设置界面] --> P[HumanVisionGameRuntime 常驻服务]
-    P --> A
-    P --> S[Camera / Video / RTSP 统一输入包]
-    S --> B[VideoPlayerFrameSource 帧提交桥]
-    B --> M[HumanVisionManager Unity SDK]
+    A[自己的 Unity 脚本] --> M[HumanVisionManager]
+    S[Camera / Video / RTSP 输入] --> I[HumanVision.Input 统一纹理帧]
+    I --> P[RawImage / FramePreview 独立预览]
+    I --> B[VideoPlayerFrameSource / InputAdapter 提交桥]
+    B --> M
     M --> C[稳定 C ABI]
     C --> H[Runtime Host]
-    H --> PL[流水线插件]
-    PL --> BE[后端插件 ORT / NCNN Vulkan]
-    H --> CO[跟踪 / 区域 / 语义骨骼 / 时序服务]
-    MP[ModelPack + Profile] --> H
-    M --> O[原始观察 Bodies / 显示采样 SampledBodies]
-    O --> A
-    O --> R[骨骼绘制与诊断]
+    H --> PL[版本化流水线插件]
+    PL --> BE[ORT / NCNN Vulkan 后端插件]
+    MP[Profile / ModelPack / 哈希索引] --> H
+    H --> CO[跟踪 / 区域 / 骨骼语义 / 时序服务]
+    CO --> M
+    M --> R[ResultUpdated / Bodies 新观察]
+    M --> D[SampledBodies 显示采样]
+    R --> A
+    R --> O[Overlay / 骨骼显示]
+    D --> O
 ```
 
-游戏通过区域和动作状态使用 SDK；模型、张量格式、推理后端留在 SDK 内。Settings UI 的生命期与识别服务分离，因此换场景不需要反复创建识别器。
+Input可以独立获取与显示图像。接上提交桥和Manager后，SDK异步产生身体结果，应用通过公共语义关节读取数值。应用无需依赖具体模型的输出张量或原生后端类型。
 
-## 2. 技术与实际职责
+## 2. 技术与职责
 
-| 层 | 使用的技术 | 本项目职责 | 核查入口 |
+| 层 | 技术/模块 | 负责什么 | 源码/文档入口 |
 | --- | --- | --- | --- |
-| 游戏引擎 | Unity 2021.3.45f1、C# | 场景、游戏循环、对象更新 | 项目 `ProjectSettings/ProjectVersion.txt` |
-| 设置 UI | UGUI：Canvas、RawImage、Dropdown、InputField、Scroll、Graphic | 设置草稿、真实画面、区域拖框、状态、动作阈值与日志 | 项目 `VisionSettingsView/ VisionSettingsLayout` |
-| 游戏异步启动 | UniTask、Unity 协程、SceneManager | Init 等本地化、识别启动并切场景 | 项目 `GameLoading.cs` |
-| 输入包 | `HumanVision.Input`，WebCamTexture、VideoPlayer、原生 RTSP 输入 | 相机/视频/网络解码与统一纹理帧 | [输入包 Runtime](../../upm/com.blazetc.humanvision.input/Runtime) |
-| Unity SDK | `HumanVision.Runtime`、`HumanVision.Demo` | 运行数据准备、会话、P/Invoke、骨骼数据、提交/显示桥 | [SDK Runtime](../../upm/com.blazetc.humanvision/Runtime) |
-| 原生核心 | C++17、C ABI | 异步提交、Runtime Host 与公共服务 | [Runtime](../../runtime)、[C 头文件](../../native/include/humanvision) |
-| Windows 推理 | ONNX Runtime CPU/DirectML | 当前 PC 的模型执行 | `windows-pc-cpu` / `windows-pc-directml` Profile |
-| Android 推理 | ncnn、Vulkan、AHardwareBuffer、GPU fence | 定向纹理拷贝、GPU 输入和姿态推理；不静默 CPU 回退 | `android-ncnn-vulkan` 与质量 Profile |
-| 模型/组合 | ModelPack JSON、索引 SHA-256、Profile JSON | 选择模型族、实际尺寸、后端、能力、是否启用手部 | [ModelPack 指南](../maintenance/MODEL_PACK_GUIDE.md) |
-| 配置 | JsonUtility、JSON 文件、临时文件/原子替换/备份 | 全项目共用一份保存配置 | 项目 `VisionSettingsStore` |
-| 诊断 | CSV、JSONL、有限写队列、ZIP、Android 系统导出 | 运行状态、吞吐、关节点和故障记录 | 项目 `VisionDiagnostics/BufferedLogWriter/VisionLogAccess` |
-| 自动测试 | Unity Test Framework / NUnit、CTest、Python 结构与打包检查 | API/布局/动作/ABI/架构/包闭包回归 | [平台测试文档](PLATFORM_TEST_RESULTS.md) |
+| Unity宿主 | Unity2021.3+、C#、MonoBehaviour、协程 | 场景生命周期、主线程组件与UI更新 | [新手场景与代码](FIRST_INSTALL.md#6-从空场景手动搭建自己的预览) |
+| 图像输入 | `HumanVision.Input`；WebCamTexture、VideoPlayer、原生RTSP输入 | 权限、采集/解码、定向纹理、源身份、帧元数据 | [Input Runtime](../../upm/com.blazetc.humanvision.input/Runtime) |
+| 图像展示 | UGUI Canvas、RawImage、AspectRatioFitter、FramePreview | 实际图像与宽高比；输入预览不需要模型 | [FramePreview](../../upm/com.blazetc.humanvision.input/Runtime/FramePreview.cs) |
+| SDK Unity接口 | `HumanVision.Runtime` | 运行资源准备、配置、Manager、身体/关节、P/Invoke | [SDK Runtime](../../upm/com.blazetc.humanvision/Runtime) |
+| 提交与示例层 | `HumanVision.Demo` | 输入适配、CPU读回/GPU提交、Overlay、统一示例设置 | [Demo Runtime](../../upm/com.blazetc.humanvision/Runtime/Demo) |
+| 原生核心 | C++17、C ABI、Runtime Host | 有界异步任务、插件装配、公共服务与数据复制 | [Runtime](../../runtime)、[公开头文件](../../native/include/humanvision) |
+| Windows执行 | ONNX Runtime CPU / DirectML | 当前PC模型执行与硬件后端 | `windows-pc-cpu` / `windows-pc-directml` |
+| Android执行 | ncnn、Vulkan、AHardwareBuffer、GPU fence | ARM64纹理复制与GPU模型执行；能力/合同不符会报错 | `android-ncnn-vulkan`质量族 |
+| 运行组合 | Profile、ModelPack、质量目录、SHA-256索引 | 选插件/模型/实际尺寸/能力，并校验完整性 | [ModelPack指南](../maintenance/MODEL_PACK_GUIDE.md) |
+| 示例配置 | JsonUtility、JSON、临时文件及备份 | 共享识别参数和各模式独立输入参数 | [设置API](API_REFERENCE.md#8-sdk设置质量和实际合同api) |
+| SDK验证 | Unity Test Framework/NUnit、CTest、Python架构/打包检查 | 托管接口、原生ABI、功能、合同、导入和资产闭包 | [平台与测试边界](PLATFORM_TEST_RESULTS.md) |
 
-项目同时使用 Localization、TextMeshPro、Cinemachine、Timeline 等依赖。它们是正式游戏的依赖，不意味着 SDK 骨骼识别需要依赖所有这些包。项目 SDK 适配程序集只显式引用 Runtime、Demo、Input 和 UnityEngine.UI。
+入门脚本只依赖Runtime、Demo、Input和UnityEngine.UI。SDK不要求安装UniTask、Cinemachine、Localization或其他业务框架。若自己的脚本放入asmdef，显式引用`HumanVision.Runtime`、`HumanVision.Demo`、`HumanVision.Input`、`UnityEngine.UI`；放在普通Assets/Scripts时使用默认程序集即可。
 
-## 3. 包与平台边界
+## 3. 包、版本与平台组合
 
-| 包/资产 | 版本或作用 | 使用规则 |
+| 项目 | 当前版本/作用 | 接入规则 |
 | --- | --- | --- |
-| `com.blazetc.humanvision.input` | `0.1.0-preview.2` | 可独立预览，不依赖骨骼模型 |
-| `com.blazetc.humanvision` | `0.4.0-preview.4` | 骨骼识别及输入适配；需 Input |
-| Git 标签 | `v0.4.0-preview.4` | 两包用同一标签；项目 lock 同一提交 |
-| Windows 原生资产 | x64 DLL | 保留插件依赖，不单独搬走 humanvision.dll |
-| Android 原生资产 | ARM64 SO | API26+、IL2CPP、所选路线的 Vulkan 能力/桥校验 |
-| RuntimeData | profiles、modelpacks、quality catalog、index | 安装/构建按索引校验，运行提取后再次匹配 |
+| Input包 | `com.blazetc.humanvision.input`，`0.1.0-preview.2` | 先安装；可独立预览 |
+| SDK包 | `com.blazetc.humanvision`，`0.4.0-preview.4` | 后安装，依赖Input |
+| Git标签 | `v0.4.0-preview.4` | 两包同一标签，固定源码提交 |
+| Windows原生资产 | x64 DLL及依赖 | 构建x86_64，保留依赖 |
+| Android原生资产 | ARM64 SO和桥 | API26+、IL2CPP、ARM64、所选Vulkan路线 |
+| RuntimeData | profiles/modelpacks/models/quality catalog/index | 编辑器安装到StreamingAssets；运行Prepare后使用回调路径 |
 
-此版已发布包的合格使用路线是 Windows CPU/DirectML 与 Android NCNN Vulkan。代码中还有其他后端、模型和模式接口；存在接口不等于该组合已打包合格。iOS/macOS/Linux/RK3588 不在本套正式项目证据覆盖内。
+当前发布闭包覆盖Windows CPU/DirectML和Android NCNN Vulkan。其他后端接口、其他平台源码存在，不等于相应安装组合或硬件已验收。具体依据见平台文档。
 
-## 4. 真实模型输入与采集分辨率
+## 4. 采集尺寸、模型尺寸与骨骼语义
 
-| 场景 | 当前实际输入合同 | 设置界面含义 |
+| 路线 | 实际身体模型输入 | Profile |
 | --- | --- | --- |
-| Windows PC CPU/DirectML | 身体模型 `416×416` | Android 模型等级选择不会改变 PC 合同 |
-| Android NCNN 低 | `512×288` | 对应 `android-ncnn-vulkan-quality-low` |
-| Android NCNN 中 | `640×384` | 对应 `android-ncnn-vulkan` |
-| Android NCNN 高 | `960×576` | 对应 `android-ncnn-vulkan-quality-high` |
-| 相机采集 | 请求如 `1280×720 / 30FPS`；实际以源帧为准 | 影响采集，不直接定义模型尺寸 |
+| Windows CPU | 416×416 | `windows-pc-cpu` |
+| Windows DirectML | 416×416 | `windows-pc-directml` |
+| Android Low | 512×288 | `android-ncnn-vulkan-quality-low` |
+| Android Medium | 640×384 | `android-ncnn-vulkan` |
+| Android High | 960×576 | `android-ncnn-vulkan-quality-high` |
 
-Android 当前质量族是 YOLO 姿态路线；PC 使用当前打包的 RTMO 身体配置。公共 Unity API 只返回语义身体与关节，不要求游戏知道模型下标。32 点规范含派生位置，随包 Profile 关闭真实手部推理。不能拿槽位数推断真实手指、深度或全部关节点有效。
+相机`RequestedWidth/Height/FPS`是设备采集请求，实际尺寸来自源纹理；模型尺寸来自已验证运行合同，不能用修改请求分辨率或任意JSON尺寸代替更换模型。
 
-## 5. 正式项目调用链
+当前PC打包使用RTMO身体配置，Android质量族使用YOLO姿态路线。公共API返回身体和语义关節，隐藏模型输出布局。32语义槽位包含派生点，读取时检查Valid/Confidence/IsDerived和观察时间。当前随包配置关闭真实手任务；RGB图像坐标不提供米制3D深度。
 
-| 环节 | 项目代码 | 实际行为 |
+当前Android NCNN GPU输入适配还要求定向后的源图像为横向16:9；这和模型内部的Low/Medium/High尺寸是不同合同。比例不符时预览可继续，识别提交会报错。
+
+## 5. 新项目的调用顺序
+
+| 步骤 | SDK调用 | 含义 |
 | --- | --- | --- |
-| 启动 | `GameLoading.Start` | 目标显示60FPS；EnsureInstance、读取已保存配置；等待启动，最后载入 HurdleKing |
-| 服务 | `HumanVisionGameRuntime.Awake/Start` | DontDestroyOnLoad，唯一 Manager/Bridge，注册 ResultUpdated，启动诊断 |
-| 配置预检 | `Apply/Preflight` | 验证草稿和源参数；Prepare RuntimeRoot；解析实际 Profile/质量合同 |
-| 替换源 | `RetireSource/Initialize/OpenSource` | 换 Generation、清理动作，等 GPU 拷贝退休，再初始化及打开源 |
-| 成功应用 | `ApplyRoutine` | 仅源 Streaming 才替换 Active/Contract；需要时保存；失败尝试恢复旧配置 |
-| 新骨骼 | `OnResult` | 去掉重复序号；检查显示可用性、年龄和区域 revision；复制数值快照 |
-| 动作 | `PoseMotionDetector.Observe/Read` | 每区域状态机：摆臂+新抬腿计步、髋上升+速度起跳；读取时衰减/失效 |
-| 游戏消费 | `HurdleKingManager.ApplyKeyboardInput` | 按 players 下标取区域状态；强度控制跑速；每次新 JumpSequence 只跳一次 |
-| 设置 | `SettingManager/VisionSettingsView` | UI 从 Saved 复制草稿；应用成功刷新显示；返回游戏保留服务 |
-| 日志 | `VisionDiagnostics` | 事件、阶段统计、有限频率骨骼记录和导出 |
+| 安装资源 | 编辑器Install Packaged Models | 把索引与完整运行数据带入项目 |
+| 准备 | `yield return HumanVisionRuntimeData.Prepare(...)` | 校验/提取资源，成功返回RuntimeRoot |
+| 初始化 | `manager.TryInitialize(config)` | 创建Runtime会话；失败看LastError |
+| 关联显示 | `bridge.Configure(...)`、`overlay.Configure(...)` | 把识别器、预览、比例和骨骼层关联 |
+| 打开输入 | `source.Open(settings)` | 异步开启相机/视频/RTSP |
+| 绑定提交 | `bridge.BindUnifiedSource(source)` | 桥自动提交，Manager.Update自动轮询 |
+| 读新观察 | `manager.ResultUpdated += handler` | 按BodyCount读取Bodies、检查有效点与身份 |
+| 显示 | Overlay / SampledBodies | 骨骼绘制或显示平滑；不增加新观察数 |
+| 停止 | Detach → 等退休 → Close → Shutdown | 防止复制未结束时释放源资源 |
 
-目前明确消费跑跳状态的游戏是 HurdleKing；常驻服务供其他场景使用，并不表示每个游戏都已接好动作控制。
+初始化、模型加载、Shutdown和改变容量属于控制操作，可能耗时；CPU SubmitFrame或GPU提交是异步受理，不能据返回true断言完成推理。最新未处理帧可被覆盖，避免积累旧帧延迟。
 
-## 6. 数据规则：接入时最容易误解的部分
+## 6. 数据、线程与资源约定
 
-- **身份**：`StableTrackId` 是跟踪身份，`RegionIndex` 是区域，`Bodies[i]` 是当前快照的数组位置。它们不能混用。
-- **原始与显示**：`Bodies` 用于新观察/动作/计数；`SampledBodies` 用于平滑显示。重复显示同一结果不增加识别吞吐。
-- **数组**：SDK 复用对象与数组。事件中读完即可；历史要复制数值。正式项目 `PoseObservationFactory` 就是这个边界。
-- **坐标**：关节点为 RGB 图像平面，归一化 Y 向下。兼容 `GetJointPosition` 的 z 为0，不是米制3D。
-- **时间**：源观察、Unity 发布、流 PTS 是不同含义；只有同一/已映射时钟可相减。结果年龄不自动等于传感器拍摄到显示延迟。
-- **区域**：当前已发布路线按推理结果分配区域，不把区域拖框宣称为像素遮罩或推理加速。修改区域要检查 revision，避免用旧配置结果控制新角色。
-- **并发**：Unity 对象和这些接入接口在主线程用；推理异步、最新待处理帧优先。Create/Shutdown/重新初始化属于控制操作，可能耗时。
-- **资源**：GPU fence 证明源纹理快照拷贝完成，不等于模型推理完成。切源不能提前释放仍被拷贝使用的纹理。
+- Unity组件/API在主线程使用，推理工作由原生Runtime调度；应用不用另开线程操作Bodies或UI。
+- `StableTrackId`、`RegionIndex`、`Bodies[i]`分别代表身份、区域、快照数组位置。不要以数组下标固定绑定玩家。
+- `Bodies`是原始观察；`SampledBodies`是显示采样。重复采样同一结果不增加识别FPS。
+- 身体/关节对象反复复用；在回调中读取，历史记录复制值，避免保存引用后数据被下次轮询改变。
+- 图像左上为原点、Y向下，镜像/旋转由Input定向处理；不要重复反转。把图像点映射到UI时处理宽高比与坐标原点。
+- 输入单调时钟、Unity/原生时钟、媒体PTS用途不同；仅在同一或已经映射的时钟域内计算年龄。
+- 区域用于当前推理后的结果分配；修改时递增revision，不把区域框当像素遮罩或已证明的性能优化。
+- GPU复制完成的fence不表示推理完成。切源/卸载前等待退休，不能提前释放被复制使用的纹理。
+- 消费层需处理结果超时、无身体、点无效、遮挡、ID改变和输入停止。SDK骨骼API不会自动替应用定义跑步/跳跃规则。
 
-## 7. 维护应改哪里
+## 7. 扩展与维护入口
 
-| 需求 | 优先改动位置 | 验证重点 |
-| --- | --- | --- |
-| 游戏跑跳规则/阈值 | 项目 `PoseMotionDetector`、`MotionSettings` | 新结果、失效、换人、单次跳跃消费 |
-| 游戏角色接入 | `IRunJumpInput` 的消费者 | 区域下标、游戏人数、输入模式 |
-| 设置布局 | 项目 `VisionSettingsLayout/View` 或已生成场景 | CanvasRenderer、引用、草稿与应用区分 |
-| 相机/视频/RTSP 源 | Input 包对应组件 | 生命周期、实际尺寸、帧身份/时钟、重连 |
-| 兼容权重/质量选择 | ModelPack + Profile + 哈希索引 | 合同、版本和包闭包 |
-| 新算法/后端 | 对应 pipeline/backend 插件 | Plugin ABI、能力声明、独立黄金测试 |
-| 跟踪/时序/骨骼语义 | Runtime 公共服务 | 稳定身份、有效点、时间戳和采样 |
+| 需要做什么 | 先看哪里 |
+| --- | --- |
+| 自己的UI或交互 | [入门示例](FIRST_INSTALL.md)、[API](API_REFERENCE.md) |
+| 新输入源 | Input接口、帧身份/时钟、SourceCopyLease与生命周期 |
+| 新ModelPack/Profile | [模型包指南](../maintenance/MODEL_PACK_GUIDE.md)，能力声明和哈希索引 |
+| 新pipeline/backend | [维护入口](../maintenance/START_HERE.md)，版本化Plugin ABI和独立测试 |
+| SDK源码构建/发布 | [发布指南](../maintenance/RELEASE_GUIDE.md) |
 
-维护先读 [START_HERE](../maintenance/START_HERE.md)，不要直接修改 Unity PackageCache 或让游戏依赖模型文件名。安装用户无需自己编译 C++；SDK 开发者的编译/发布流程见 [RELEASE_GUIDE](../maintenance/RELEASE_GUIDE.md)。
-
-## 8. 本次核查发现的使用注意事项
-
-1. 当前正式项目的接入边界清晰：常驻识别服务与游戏动作接口分开，设置变化有预检和资源退休流程。
-2. 默认混合键盘输入只适合调试；骨骼验收应单独选择 Skeleton。
-3. 日志 `fresh_result_fps` 统计的是被项目接受的新结果事件，尚不是每个参与者的完整有效骨骼 FPS；详细骨骼默认0.2秒节流。
-4. 新会话容量/轮转参数由诊断器创建时取快照，应用参数不自动重建已有日志写入器；需要重新创建服务/重启生效。
-5. 当前保存的 Profile/尺寸字段应以运行解析的 Contract 为准；直接修改 JSON 的模型尺寸不会改变真实模型。
-6. 本次只读分析与补充文档，没有修改游戏功能，也没有将旧平台结果当作正式项目新验收。
+安装用户不需要改原生源码。开发时不要直接改Library/PackageCache；需要维护SDK时先按START_HERE中的架构和文档合同定位对应模块。

@@ -1,0 +1,34 @@
+{
+  "verified_on": "2026-10-07",
+  "sdk_version": "0.4.0-preview.4",
+  "input_version": "0.1.0-preview.2",
+  "unity": "2021.3.45f1",
+  "project_kind": "New isolated Unity project; local file packages",
+  "result": {
+    "passed": true,
+    "message": "Two examples compiled; three demos; manual scene persisted with references; Prepare; CPU initialization; Shutdown.",
+    "unity": "2021.3.45f1",
+    "hardware_test": false
+  },
+  "indexed_runtime_files_verified": 20,
+  "source_sha256": {
+    "docs/user-guide/examples/SdkCameraQuickStart.cs": "7e88ab4056b76715075a17d6662178542faba882dc20e9ed7a2b675b9aa53a49",
+    "docs/user-guide/examples/SdkSkeletonReader.cs": "c70a490c96987917648342511da2025f621cb8a9815b365fe3dbf3328b94ad27",
+    "tools/docs/create_user_guide_probe.py": "0c2e45fba80abcf5e9855bfb034c2dfa165c2f4d9fa432adcd556307e00bd956",
+    "tools/docs/SdkDocsProbe.cs": "12291c359af42ac8a7d4b2af045a2a7799960247bceff4477dcd3ca006d775c2",
+    "tools/docs/verify_sdk_user_docs.py": "87da61d7a12de409f53113ba2b4b713c90ce72bc7c2dfc355eb93bed714eb761"
+  },
+  "scope": "Compilation, scene references, Prepare, Windows CPU initialization and Shutdown. No physical camera, rendering, build or performance test.",
+  "documentation_checks": {
+    "local_links_checked": 126,
+    "documented_public_api_names_checked": 179,
+    "application_specific_content_absent": true,
+    "result": "PASS",
+    "new_project_probe": {
+      "passed": true,
+      "message": "Two examples compiled; three demos; manual scene persisted with references; Prepare; CPU initialization; Shutdown.",
+      "unity": "2021.3.45f1",
+      "hardware_test": false
+    }
+  }
+}

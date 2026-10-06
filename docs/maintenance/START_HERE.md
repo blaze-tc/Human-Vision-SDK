@@ -1,9 +1,9 @@
 # Start here
 
 Application integration documentation: [Chinese user guide](../user-guide/README.md)
-contains the first-install walkthrough, the formal Sensory project's call chain,
-API semantics and platform evidence. These docs pin preview.4 and distinguish
-historical Demo measurements from the formal project's acceptance.
+contains a new-Unity-project walkthrough, manual scene construction, standalone
+initialization/skeleton examples, API semantics and SDK platform evidence. These
+docs pin preview.4 and distinguish historical measurements from fresh checks.
 
 0.4 keeps the V1 API and adds a semantic runtime API. Device performance remains
 manual acceptance. The current implementation evidence is in

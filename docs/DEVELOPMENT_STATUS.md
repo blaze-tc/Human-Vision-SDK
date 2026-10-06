@@ -1,14 +1,13 @@
 # Current: integration preview 4 published (2026-10-05)
 
-Documentation update (2026-10-07): added [four Chinese integration guides](user-guide/README.md)
-based on the formal Sensory Unity2021.3.45f1 project. Installed Input127 + SDK325
-cache files match the tagged package bytes (452/452); two C# documentation
-examples compile against the installed assemblies. Local links/anchors, 167
-selected public member names, component catalog, public surface and architecture
-documentation guards PASS. [Verification record](reports/2026-10-07-sensory-sdk-docs-verification.md).
-This is a read-only project audit and docs-only change; historical Windows
-snapshots and Android Demo measurements are identified separately. No new
-physical device, per-person FPS, hand or game-motion acceptance is claimed.
+Documentation update (2026-10-07): [four Chinese SDK guides](user-guide/README.md)
+now target a newly created Unity project. The walkthrough includes package/model
+installation, manual Canvas/preview/Overlay construction, standalone Windows CPU
+initialization and skeleton readers, region examples, teardown and platform builds.
+Fresh Unity2021.3.45f1 isolated-project compilation, scene references, Prepare,
+Windows CPU initialization/Shutdown, 126 links, 179 selected public names and
+maintenance architecture checks PASS. Results are recorded in the [verification report](reports/2026-10-07-sdk-user-docs-verification.md).
+No new physical device, per-person FPS or genuine hand acceptance is claimed.
 
 The user accepted the tested visible demo and explicitly authorized main merge,
 Git publication and downloadable Unity packages. This authorization supersedes

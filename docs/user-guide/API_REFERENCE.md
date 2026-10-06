@@ -1,10 +1,10 @@
 # API 调用与说明文档
 
-基线：SDK `0.4.0-preview.4` / Input `0.1.0-preview.2`，提交 `a201e0f44aa68a3f831f248b67400bd5fd7358c9`；正式项目 Unity `2021.3.45f1`。[文档首页](README.md)
+基线：SDK `0.4.0-preview.4` / Input `0.1.0-preview.2`，提交 `a201e0f44aa68a3f831f248b67400bd5fd7358c9`；包最低 Unity `2021.3`。[文档首页](README.md)
 
-本页逐项覆盖应用接入用的 Manager、输入源、帧数据、桥、关节、区域、质量/配置、显示门面及正式项目跑跳封装；末尾列出基础C ABI调用与高级GPU/插件扩展入口。`internal`会话/Interop不是给游戏直接调用的公共API；自定义算法插件和底层Vulkan ABI以对应头文件为完整合同。
+本页逐项覆盖应用接入用的 Manager、输入源、帧数据、桥、关节、区域、质量/配置、显示门面；末尾列出基础C ABI调用与高级GPU/插件扩展入口。`internal`会话/Interop不是给游戏直接调用的公共API；自定义算法插件和底层Vulkan ABI以对应头文件为完整合同。
 
-快速查阅：[初始化/配置](#3-运行数据与初始化配置) · [Manager](#4-humanvisionmanager逐项说明) · [身体/关节/统计](#5-身体关节点与统计数据) · [统一输入](#6-统一输入包api) · [显示桥](#7-提交与显示桥-videoplayerframesource) · [设置与质量](#8-sdk设置质量和实际合同api) · [跑跳动作](#10-动作输入与动作参数) · [项目服务](#11-正式项目服务与设置api) · [C ABI](#12-c-abi调用与结果码)。
+快速查阅：[初始化/配置](#3-运行数据与初始化配置) · [Manager](#4-humanvisionmanager逐项说明) · [身体/关节/统计](#5-身体关节点与统计数据) · [统一输入](#6-统一输入包api) · [显示桥](#7-提交与显示桥-videoplayerframesource) · [设置与质量](#8-sdk设置质量和实际合同api) · [C ABI](#10-c-abi调用与结果码)。
 
 ## 1. 调用前的六条规则
 
@@ -15,80 +15,16 @@
 5. 读取点前检查`Valid`、`Confidence`和独立观察时间。语义手槽位存在不代表实际识别手点；当前随包Profile关闭真实手部推理。
 6. Create、Shutdown、改变容量/重新初始化可能加载模型或等任务；不是无耗时的逐帧操作。显示采样/保持不能算新观察。
 
-## 2. 最小可用示例：Windows Camera
+## 2. 可复制的初始化与骨骼读取示例
 
-下面是SDK直接接入示例，不依赖Sensory游戏脚本。安装双包并准备运行数据后，创建空GameObject，挂上此脚本。它会打开第一台相机并记录有效左腕；不会自动生成预览UI。相机由系统选择，实际分辨率以源帧为准。
+第一次使用按[从空场景搭建](FIRST_INSTALL.md#6-从空场景手动搭建自己的预览)创建Canvas/RawImage/Overlay/VisionRoot，再把两个完整文件复制到Assets/Scripts并绑定Inspector：
 
-```csharp
-using System.Collections;
-using HumanVision;
-using HumanVision.Demo;
-using HumanVision.Input;
-using UnityEngine;
+| 完整文件 | 调用内容 | 适用范围 |
+| --- | --- | --- |
+| [SdkCameraQuickStart.cs](examples/SdkCameraQuickStart.cs) | Prepare → TryInitialize → Configure → Open → BindUnifiedSource；StopVision/StopVisionRoutine提供退休、关闭和Shutdown | Windows x64 CPU最小摄像头场景 |
+| [SdkSkeletonReader.cs](examples/SdkSkeletonReader.cs) | ResultUpdated订阅/取消、序号去重、BodyCount遍历、StableTrackId、WristLeft/KneeLeft、Valid/Confidence/观察时间 | 同一场景的新身体观察读取 |
 
-public sealed class FirstVisionCamera : MonoBehaviour
-{
-    HumanVisionManager manager;
-    VideoPlayerFrameSource bridge;
-    WebCameraFrameSource source;
-
-    IEnumerator Start()
-    {
-        string root = null, error = null;
-        yield return HumanVisionRuntimeData.Prepare(
-            value => root = value, value => error = value);
-        if (root == null) { Debug.LogError(error); yield break; }
-
-        manager = gameObject.AddComponent<HumanVisionManager>();
-        bridge = gameObject.AddComponent<VideoPlayerFrameSource>();
-        bridge.Configure(manager, null, null);
-        if (!manager.TryInitialize(new HumanVisionConfig {
-            RuntimeRoot = root, Profile = "windows-pc-cpu", MaxBodies = 1
-        })) { Debug.LogError(manager.LastError); yield break; }
-
-        manager.ResultUpdated += OnResult;
-        source = gameObject.AddComponent<WebCameraFrameSource>();
-        source.Open(new HumanVisionSourceSettings {
-            Kind = InputKind.WebCamera,
-            RequestedWidth = 1280, RequestedHeight = 720,
-            RequestedFramesPerSecond = 30
-        });
-        bridge.BindUnifiedSource(source);
-    }
-
-    void OnResult(long sequence)
-    {
-        if (!bridge.CanPresentResult(manager.SourceFrameId)) return;
-        for (int i = 0; i < manager.BodyCount; i++) {
-            var body = manager.Bodies[i];
-            var joint = body.CanonicalJoints[
-                (int)HumanVisionCanonicalJointId.WristLeft];
-            if (joint.Position.Valid && joint.Position.Confidence >= 0.35f)
-                Debug.Log($"result={sequence}, id={body.StableTrackId}, " +
-                          $"left wrist={joint.Position.Normalized}");
-        }
-    }
-
-    public IEnumerator StopInput()
-    {
-        if (bridge != null) {
-            bridge.DetachUnifiedSource();
-            while (bridge.UnifiedRetirementPending) yield return null;
-        }
-        if (source != null) source.Close();
-        if (manager != null) manager.Shutdown();
-    }
-
-    void OnDestroy()
-    {
-        if (manager != null) manager.ResultUpdated -= OnResult;
-        if (bridge != null) bridge.DetachUnifiedSource();
-        if (source != null) source.Close();
-    }
-}
-```
-
-日志逐帧输出仅便于首次验证，生产时应限频。运行中切源/销毁对象之前先`yield return StopInput()`；OnDestroy只做最后解绑，不能用它代替GPU退休等待。Android应使用构建metadata限定的Profile和统一GPU路线，不把Windows示例原样套用。
+初始化和骨骼片段的逐行含义见[初始化步骤](FIRST_INSTALL.md#7-初始化代码准备资源创建会话打开相机)与[骨骼调用步骤](FIRST_INSTALL.md#8-骨骼调用代码人数身份和关节点)。多人/区域调用与停止/场景切换分别见引导第9和10节。示例只依赖SDK、Input及Unity组件；Android使用统一示例与对应构建合同，不原样运行Windows CPU例子。
 
 ## 3. 运行数据与初始化配置
 
@@ -121,14 +57,14 @@ public sealed class FirstVisionCamera : MonoBehaviour
 
 ## 4. `HumanVisionManager`逐项说明
 
-来源：[HumanVisionManager.cs](../../upm/com.blazetc.humanvision/Runtime/HumanVisionManager.cs)。正式项目持有一个Manager，由项目服务负责生命周期。
+来源：[HumanVisionManager.cs](../../upm/com.blazetc.humanvision/Runtime/HumanVisionManager.cs)。新接入由自己的启动脚本持有Manager并管理生命周期，示例见第2节。
 
 ### 4.1 初始化、提交、容量与关闭
 
 | API | 参数 | 返回/错误 | 调用含义 |
 | --- | --- | --- | --- |
-| `TryInitialize(HumanVisionConfig requestedConfig)` | 非null配置 | bool；失败看`LastError` | 先Shutdown旧会话，再按RuntimeRoot创建新会话；失败时旧会话不会由Manager自动恢复，正式项目另有恢复逻辑 |
-| `TrySetMaxBodies(int maxBodies)` | Runtime范围1～8 | bool；失败看LastError | 变更最大容量；Runtime可能重建本机会话并清空结果，源/GPU租约应协调；项目通常整体Apply |
+| `TryInitialize(HumanVisionConfig requestedConfig)` | 非null配置 | bool；失败看`LastError` | 先Shutdown旧会话，再按RuntimeRoot创建新会话；失败时旧会话不会自动恢复，调用方应处理失败状态 |
+| `TrySetMaxBodies(int maxBodies)` | Runtime范围1～8 | bool；失败看LastError | 变更最大容量；Runtime可能重建本机会话并清空结果，源/GPU租约应协调；重建前应停止提交并等待资源退休 |
 | `Shutdown()` | 无 | void | Dispose会话；IsInitialized=false；不要继续提交 |
 | `SubmitFrame(...)` | 见下表 | bool；失败看LastError | CPU像素异步提交；有界队列最新帧优先，接受不等于完成；NCNN GPU路线不要走CPU帧接口 |
 
@@ -152,7 +88,7 @@ bool SubmitFrame(IntPtr data, int width, int height, int strideBytes,
 
 ### 4.2 区域API
 
-`TrySetRegions(Rect[] regions, long revision)`：归一化左上坐标区域数组；空数组表示关闭区域。revision标识配置版本，修改时递增。返回true表示设置成功；null、未初始化或原生拒绝返回false。项目设置要求每人一框、框不重叠且宽高至少0.01。
+`TrySetRegions(Rect[] regions, long revision)`：归一化左上坐标区域数组；空数组表示关闭区域。revision标识配置版本，修改时递增。返回true表示设置成功；null、未初始化或原生拒绝返回false。共享示例设置要求每人一框、框不重叠且宽高至少0.01。
 
 `TryCopyRegionAssignments(int[] indices, out long revision)`：把当前身体结果对应的区域下标写入调用方数组；容量至少BodyCount。返回false表示无会话、容量/快照不匹配或错误。只读写入的前BodyCount项，并检查返回revision等于已应用的区域版本；未匹配区域可能是-1。第i项对应该次Bodies[i]，不是固定角色i。
 
@@ -180,7 +116,7 @@ bool SubmitFrame(IntPtr data, int width, int height, int strideBytes,
 
 事件使用：初始化后订阅；销毁/切服务时取消。只做有限工作；不要把显示刷新当成ResultUpdated，也不要在回调里阻塞等待下一结果。
 
-Runtime轮询也会检测独立手序号变化，因此启用真实手任务的其他Profile可能在身体ResultSequence相同的情况下再次发事件。严格身体FPS按新的身体序号去重；手部更新按自己的关节观察时间判断。当前随包Profile关闭真实手任务，正式项目OnResult也主动排除重复身体序号。
+Runtime轮询也会检测独立手序号变化，因此启用真实手任务的其他Profile可能在身体ResultSequence相同的情况下再次发事件。严格身体FPS按新的身体序号去重；手部更新按自己的关节观察时间判断。当前随包Profile关闭真实手任务；第2节Reader演示身体序号去重。
 
 ### 4.4 高级Android GPU生命周期API
 
@@ -279,6 +215,7 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 | 类型/API | 意义 |
 | --- | --- |
 | `WebCameraFrameSource` | 相机输入；按DeviceName/采集请求打开；真实输出由设备决定 |
+| `WebCameraFrameSource.Pause()/Resume()` | 暂停/恢复相机；暂停不能把保留的画面计为新源帧 |
 | `VideoFrameSource` | Unity视频输入；从Location打开，媒体与平台编码能力有关 |
 | `RtspFrameSource` | RTSP输入；Windows/Android路径由包实现，默认TCP |
 | `VideoFrameSource.Pause()` | 暂停视频；源仍由组件管理，旧帧不能当新发布 |
@@ -379,7 +316,7 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 | `ConfigureLiveInput(bool smoothPreview,int analysisWidth=1280,int analysisHeight=720)` | void；旧实时预览/分析目标策略；不重写Profile模型尺寸 |
 | `StopFrames()` | void；停止桥自己的输入/显示工作；统一外部源生命期仍由调用方协调 |
 | `PlayRelativeVideo(string relativeStreamingAssetsPath)` | bool；旧便捷接口，用StreamingAssets相对路径开始播放，失败看LastError |
-| `PlayUrl(string path)` | bool；旧便捷媒体接口，当前视频分支要求存在本地文件，不能因为名字含Url就当万能网络播放器；正式项目统一Video源支持独立资源定位 |
+| `PlayUrl(string path)` | bool；旧便捷媒体接口，当前视频分支要求存在本地文件，不能因为名字含Url就当万能网络播放器；统一VideoFrameSource按其输入设置定位资源 |
 | `SubmitExternalTexture(Texture texture,long timestampUs)` | bool；旧实时纹理提交，默认方向 |
 | `SubmitExternalTexture(Texture texture,long timestampUs,int rotationDegrees=0,bool mirrored=false)` | bool；额外提供方向 |
 | `SubmitExternalTexture(Texture texture,long timestampUs,int rotationDegrees,bool mirrored,Texture previewTexture)` | bool；可独立预览纹理，提交受路线/背压约束；新源优先BindUnifiedSource |
@@ -399,6 +336,29 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 | `IsPlaying/IsStillImage/VideoFrameRate` | 输入播放状态/静态图/源报告率；不当作识别率 |
 | `VideoLayoutChanged` | 无参事件，预览布局改变 |
 | `PresentationFrameChanged` | 无参事件，呈现帧改变；不是新骨骼事件 |
+
+统一输入路径的`CanPresentResult`检查Streaming、已提交帧范围与会话新身体序号；它不独立保证年龄、身体数和必需关节点全部有效。消费层还应检查这些条件。
+
+### 7.1 `HumanVisionInputAdapter`高级接口
+
+来源：[HumanVisionInputAdapter.cs](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/HumanVisionInputAdapter.cs)。`BindUnifiedSource`会自动创建并关联它；通常使用桥即可，不要重复创建第二套提交器。
+
+| API | 参数/返回与含义 |
+| --- | --- |
+| `manager` | HumanVisionManager字段；提交的目标会话 |
+| `Bind(IHumanVisionFrameSource newSource)` | void；源不能为null，否则抛ArgumentNullException；解绑旧源并绑定新源，重置帧/会话门限 |
+| `Detach()` | void；取消输入绑定，清空预览标识，存在复制/GPU工作时发起退休；不关闭外部源 |
+| `Tick()` | void；自动Update调用；轮询退休、获取新帧、申请租约并按路线复制/提交。自定义调度时不要和自动Update重复驱动 |
+| `CanPresentResult(long frameId)` | bool；当前源Streaming、帧在提交范围内、Manager新序号超过绑定门限才true |
+| `PreviewTexture` | Texture或null；借用的最新预览，不归调用方销毁 |
+| `LatestPreviewFrameId` | long；最新获取的输入发布帧ID，初始-1 |
+| `LatestSubmittedFrameId` | long；最新接受的提交ID，初始-1；与输入发布计数分开 |
+| `SourceId/SourceGeneration` | ulong；当前提交所绑定的源身份/世代 |
+| `LastError` | string；提交/资源/能力错误，与源错误和Manager错误分开 |
+| `CopiedFrames` | long；GPU槽位退休时Outcome=1计数，不是完成推理帧数；当前CPU路径不递增此计数 |
+| `DroppedUnsubmittedFrames` | long；GPU槽位退休时Outcome非1计数；当前CPU路径不递增，不是所有源丢帧的总和 |
+| `RetirementPending` | bool；旧复制/GPU生命周期尚待退休 |
+| `PendingSourceCopies` | int；当前活跃源复制槽位数 |
 
 ## 8. SDK设置、质量和实际合同API
 
@@ -436,7 +396,7 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 
 RTSP预设工具：[HumanVisionRtspComputerHost](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/HumanVisionRtspComputerHost.cs)。`Configure(host)`登记电脑IP；`ComputerHost`读取；`Resolve(Scene scene,string manualHost)`优先手填，其次场景记录，无合法值抛异常；`IsPrivateIpv4(host)`检查标准私有LAN IPv4；`BuildUrl(host,bool camera)`返回端口554、camera=true为`/videodevice`，false为`/video-1.mp4`。主机字段不能含端口/路径；其他主机用完整RTSP URL。工具不会启动服务。
 
-统一Demo配置存储：[HumanVisionSettingsStore](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/HumanVisionSettingsStore.cs)。构造器`HumanVisionSettingsStore(string directory=null)`默认persistentDataPath/HumanVisionUnifiedInput；`LoadShared()`返回SharedRecognitionSettings，缺文件默认，非法配置抛异常；`SaveShared(value)`验证并保存shared.json；`LoadMode(InputKind kind)`读取该模式DemoModeSettings，缺文件默认；`SaveMode(kind,value)`验证并保存Video/WebCamera/Rtsp.json，使用临时文件及.bak。正式项目首次无config.json时可迁移这些文件，之后使用项目自己的VisionSettingsStore。
+统一Demo配置存储：[HumanVisionSettingsStore](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/HumanVisionSettingsStore.cs)。构造器`HumanVisionSettingsStore(string directory=null)`默认persistentDataPath/HumanVisionUnifiedInput；`LoadShared()`返回SharedRecognitionSettings，缺文件默认，非法配置抛异常；`SaveShared(value)`验证并保存shared.json；`LoadMode(InputKind kind)`读取该模式DemoModeSettings，缺文件默认；`SaveMode(kind,value)`验证并保存Video/WebCamera/Rtsp.json，使用临时文件及.bak。这是SDK统一示例的配置存储，应用可自行定义其他配置格式。
 
 Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc.humanvision/Runtime/Android/HumanVisionAndroidRuntimeSelection.cs)。
 
@@ -447,7 +407,7 @@ Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc
 | `ResolveConfiguredProfile(string configuredProfile,string bakedProfile,string runtimeMode,string[] admittedProfiles)` | 额外校验同模式质量allowlist；空allowlist退回严格基Profile；支持的三个质量必须和NCNN模式/基Profile一致；请求只能在allowlist内 |
 | `ParseBakedQualityProfiles(string metadata)` | 从JSON字符串数组返回string[]，空值返回空数组，格式错抛InvalidOperationException |
 
-普通Manager初始化已调用内部解析；正式项目Preflight读同一metadata，防止界面先接受一个APK根本不允许的Profile。这些API不能把改过的配置字符串变成已安装的模型。
+普通Manager初始化已调用内部解析；自定义设置界面也应按metadata验证Profile，避免请求APK不允许的组合。这些API不能把改过的配置字符串变成已安装的模型。
 
 ## 9. 骨骼显示和兼容相机门面
 
@@ -462,7 +422,7 @@ Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc
 
 ### 9.2 `HumanVisionCameraManager`
 
-命名空间`HumanVision`；来源：[CameraManager](../../upm/com.blazetc.humanvision/Runtime/Demo/Live/HumanVisionCameraManager.cs)。旧接入/官方Demo可使用。正式项目直接持有底层Manager，不要为它再创建第二个常驻相机门面。
+命名空间`HumanVision`；来源：[CameraManager](../../upm/com.blazetc.humanvision/Runtime/Demo/Live/HumanVisionCameraManager.cs)。旧接入/官方Demo可使用。使用第2节底层Manager例子时，不要同时再创建自动启动的相机门面，以免重复打开输入/会话。
 
 | API | 参数/返回和含义 |
 | --- | --- |
@@ -476,7 +436,7 @@ Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc
 | `SkeletonUpdated` | Action<long>新骨骼事件；读取后不要保留复用数组引用 |
 | `ApplySettings()` | bool；校验并应用相机/区域/Runtime设置，控制操作 |
 | `StartCamera()/StopCamera()` | void；启动/停止门面自有源；统一绑定源应由其拥有者关闭 |
-| `SaveSettings()/LoadSettings()` | void；保存/加载旧相机配置，不是Sensory config.json |
+| `SaveSettings()/LoadSettings()` | void；保存/加载旧相机配置；与统一Demo共享设置文件不同 |
 | `GetColorImageTex()` | Texture/null；借用预览纹理 |
 | `GetColorImageWidth()/GetColorImageHeight()` | 像素尺寸，无纹理0 |
 | `GetJointCount()` | 23，即旧17+6槽位，不保证23点有效 |
@@ -494,11 +454,11 @@ Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc
 
 `HumanVisionJointType`旧枚举顺序为Nose、LeftEye、RightEye、LeftEar、RightEar、LeftShoulder、RightShoulder、LeftElbow、RightElbow、LeftWrist、RightWrist、LeftHip、RightHip、LeftKnee、RightKnee、LeftAnkle、RightAnkle、LeftHand、LeftHandtip、LeftThumb、RightHand、RightHandtip、RightThumb。与32语义枚举顺序不同，不能相互强转下标。
 
-旧`HumanVisionCameraSettings`：version/source/deviceName/rtspUrl/rtspTcp/width/height/framesPerSecond/mirror/people/useRegions/regions是旧单源相机配置；`ResizeRegions(count)`1～8、改变数目时均分；`Validate()`校验；`Save()`写`FilePath`（persistentDataPath/HumanVisionCamera.json）；`Load()`读取、缺文件默认，坏配置抛异常。这份文件与项目config、统一Demo共享配置是三种不同所有权。
+旧`HumanVisionCameraSettings`：version/source/deviceName/rtspUrl/rtspTcp/width/height/framesPerSecond/mirror/people/useRegions/regions是旧单源相机配置；`ResizeRegions(count)`1～8、改变数目时均分；`Validate()`校验；`Save()`写`FilePath`（persistentDataPath/HumanVisionCamera.json）；`Load()`读取、缺文件默认，坏配置抛异常。这份旧配置与统一Demo共享/模式配置使用不同文件路径，不能混用。
 
 ### 9.3 对象骨骼渲染组件
 
-[`HumanVisionSkeletonOverlayer`](../../upm/com.blazetc.humanvision/Runtime/Demo/Live/HumanVisionSkeletonOverlayer.cs)用于官方对象点/LineRenderer显示：`manager/preview/foregroundCamera`绑定门面、预览和前景相机；`renderLayer`是对象层（其他游戏相机也要排除该层）；`jointPrefab/linePrefab`为可选对象模板；`drawSkeleton/drawJoints/drawBones`控制显示；`lineWidthPixels/jointDiameterPixels`调大小；`planeDistance`定义显示平面位置。类默认9/27，统一设置的4.5/13.5会覆盖实际样式。它把图像点映射到显示平面，不增加3D深度。正式Setting使用上节UGUI Overlay，勿把两种绘制组件叠加当识别增强。
+[`HumanVisionSkeletonOverlayer`](../../upm/com.blazetc.humanvision/Runtime/Demo/Live/HumanVisionSkeletonOverlayer.cs)用于官方对象点/LineRenderer显示：`manager/preview/foregroundCamera`绑定门面、预览和前景相机；`renderLayer`是对象层（其他游戏相机也要排除该层）；`jointPrefab/linePrefab`为可选对象模板；`drawSkeleton/drawJoints/drawBones`控制显示；`lineWidthPixels/jointDiameterPixels`调大小；`planeDistance`定义显示平面位置。类默认9/27，统一设置的4.5/13.5会覆盖实际样式。它把图像点映射到显示平面，不增加3D深度。第2节使用UGUI Overlay；官方统一示例协调对象骨骼与Overlay，避免重复绘制。叠加绘制组件不会增强识别。
 
 ### 9.4 举手示例组件
 
@@ -515,142 +475,11 @@ Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc
 | `IsDetected` | 任一侧举手为true |
 | `Status` | 等待/无骨骼/过旧/左/右/双手举起等描述 |
 
-## 10. 动作输入与动作参数
-
-下面均为**正式项目API**，命名空间`SensoryGame.Vision`；只装SDK不包含这些类。文件位于项目`Assets/Scripts/HumanVisionGame/`。
-
-### 10.1 游戏边界与返回值
-
-`IRunJumpInput.TryGetState(int regionIndex,out RunJumpState state)`：每个游戏帧可调用；下标按角色区域0～N-1。true表示当前Tracked且服务/源运行；false时游戏应把外部跑速置0，不能继续消费旧跳跃。它不直接返回SDK身体数组。
-
-| RunJumpState字段 | 含义 |
-| --- | --- |
-| `Tracked` | 该区域的动作状态尚在有效跟踪窗口 |
-| `ArmActive/LegActive` | 摆臂证据仍有效/腿处于抬起状态，不等于一次步事件 |
-| `Generation/TrackId` | 源世代/身份；任何一项改变要清理消费者序号 |
-| `StepSequence/JumpSequence` | 本身份状态的计步/跳跃事件序号，不能每帧重消费同一值 |
-| `ObservationSeconds` | 当前有效身体观察时间，Unity单调秒 |
-| `FrequencyHz` | 统计窗口内步数/窗口秒数，不是关节点推理FPS |
-| `RunIntensity01` | 平滑跑速强度0～1；供Player.SetExternalRunIntensity |
-| `CenterRise` | 髋中心相对基线上升/身体尺度，无量纲 |
-
-`PoseObservationFactory.Copy(HumanVisionBody body,long generation,long sequence,double observationSeconds,float sourceHeight,float minConfidence)`返回值类型`PoseObservation`：复制肩/腕/髋/膝归一化坐标、稳定ID、世代、序号与有效标志，不保留SDK数组。
-
-`PoseObservation`字段：`Generation/Sequence/TrackId`身份与去重；`TimeSeconds`观察时间；`BodyScale`包围框高/源高，最低0.01；`Left/RightShoulder,Wrist,Hip,Knee`数值坐标；`CenterValid/ArmsValid/LegsValid`参与计算的有效性；只读`Center`为左右髋均值。BodyScale是图像尺度近似，不是实测身高。
-
-`PoseMotionDetector(MotionSettings settings)`验证并复制参数；`Observe(in PoseObservation pose)`只接受新有效观察，重复/回退时间忽略，换人/世代/失效后重新校准；`Read(double now)`返回当前动作并按时间平滑/失效；`Reset()`清空所有校准/事件状态。
-
-### 10.2 `MotionSettings`每个参数
-
-| 字段 | 默认 | 单位及含义 |
-| --- | --- | --- |
-| `MinConfidence` | 0.35 | 0～1最低关节点置信度（Validate要求大于0） |
-| `ArmExcursion` | 0.09 | 腕相对肩垂直变化/BodyScale，摆臂触发幅度 |
-| `KneeLift` | 0.10 | 膝相对髋从静止基线抬升/BodyScale，抬腿触发 |
-| `KneeRelease` | 0.045 | 放下重置阈值，小于KneeLift |
-| `ArmEvidenceSeconds` | 0.65 | 摆臂证据保持秒数，容许手腿相位差 |
-| `MinStepInterval` | 0.12 | 秒，两步最短间隔，防同一动作重复计步 |
-| `FrequencyWindowSeconds` | 1.5 | 秒，步频统计窗口 |
-| `FullSpeedFrequencyHz` | 4 | 达到最大跑速的步频，每秒次数 |
-| `SpeedResponse` | 3 | 每秒强度变化响应，控制速度平滑 |
-| `LostTimeoutSeconds` | 0.75 | 秒，多久没有新有效观察即停止Tracked，最大10 |
-| `JumpRise` | 0.12 | 髋中心相对站立基线上移/BodyScale，起跳幅度 |
-| `JumpRelease` | 0.045 | 回落解锁幅度，小于JumpRise |
-| `JumpUpSpeed` | 0.25 | 每秒归一化上升速度，配合JumpRise触发 |
-| `JumpCooldownSeconds` | 0.5 | 秒，两次起跳间最短冷却 |
-
-`Clone()`复制参数；`Validate()`要求所有值有限且为正、置信度≤1、释放阈值小于触发阈值、最短步间隔小于统计窗口、丢失≤10秒；非法抛ArgumentException。
-
-### 10.3 游戏消费示例
-
-```csharp
-// 字段保留在消费者组件中，不能每帧重置。
-long previousGeneration = -1, previousTrack = -1, consumedJump;
-
-void UpdateFromVision(IRunJumpInput input, int regionIndex)
-{
-    if (input == null || !input.TryGetState(regionIndex, out var s)) {
-        // 将当前角色外部跑速置0；具体Player引用由游戏提供。
-        previousGeneration = previousTrack = -1;
-        return;
-    }
-    // 当前角色.SetExternalRunIntensity(s.RunIntensity01);
-    if (s.Generation != previousGeneration || s.TrackId != previousTrack) {
-        previousGeneration = s.Generation;
-        previousTrack = s.TrackId;
-        consumedJump = s.JumpSequence; // 换人第一帧不重播旧跳跃
-    } else if (s.JumpSequence > consumedJump) {
-        // 当前角色.InjectKeyboardJump();
-        consumedJump = s.JumpSequence;
-    }
-}
-```
-
-HurdleKing实际还公开`SetMotionInput(IRunJumpInput source)`用于注入别的输入实现；inputMode三种Keyboard/Skeleton/KeyboardAndSkeleton。项目Player的`SetExternalRunIntensity(float)`和`InjectKeyboardJump()`属于游戏API，SDK不会替游戏自动调用。
-
-## 11. 正式项目服务与设置API
-
-### 11.1 `HumanVisionGameRuntime`
-
-| API | 参数/返回/意义 |
-| --- | --- |
-| `Instance/EnsureInstance()` | 获取/创建唯一常驻服务；不要每场景new第二套 |
-| `InitializeFromSaved()` | 一次性启动请求；Saved.AutoStart=true才Apply；重复调用不会重复启动 |
-| `Apply(VisionSettings draft,bool saveAfterApply)` | bool表示请求是否通过预检并开始协程，**不是最终成功**；草稿复制，Busy/后台/销毁时拒绝；最终读State/LastError或SettingsApplied |
-| `StopSource()` | 请求安全退休/关闭源；Busy时提示等待 |
-| `Save(VisionSettings draft)` | bool，验证+原子写保存，失败LastError；不改变当前Active会话 |
-| `ReloadSaved()` | 返回保存配置副本供UI草稿；不自动Apply |
-| `QualityChoices()` | Android返回经运行目录校验的模型等级；PC/未准备/错误可为空 |
-| `TryGetState(regionIndex,out state)` | 见动作边界；源/服务/区域不合法时false |
-| `ExportLogs()` | 返回本地ZIP路径，刷新/生成失败抛异常；Android导出到系统目的地还需VisionLogAccess |
-| `OnAndroidLogExport(string result)` | 系统文件导出回调，更新Status并记录；游戏不伪造成功回调 |
-| `SettingsApplied` | 无参事件，成功Streaming后触发；失败不会拿它作为成功通知 |
-| `MotionObserved` | Action<int,PoseObservation,RunJumpState>，新有效区域观察后的动作通知 |
-
-| 公开属性 | 内容 |
-| --- | --- |
-| `Manager/Bridge/Source` | SDK识别器、桥、当前源；Source可以null |
-| `Active/Saved/Store` | 实际运行配置、已保存配置、配置存储；编辑用Clone |
-| `Contract` | 当前已应用实际AnalysisContract |
-| `State/Status/LastError` | 状态枚举/提示/脱敏错误；State含Stopped/Preparing/Opening/Running/Applying/Error/ShuttingDown |
-| `Busy` | 正在应用/停止等控制工作，UI应等待 |
-| `Generation` | 项目源世代，重开/切源/暂停会改；用于清理动作 |
-| `ObservationCount/SourceFrameCount` | 项目接受的新观察/源发布计数，含各自过滤边界；不是每人FPS |
-| `DetailedLogs` | 当前是否允许详细记录；Setting负责开关 |
-| `LogDirectory/DroppedLogRecords/LogError` | 当前会话目录、日志丢弃计数、写入错误 |
-
-### 11.2 项目配置与UI
-
-| API/字段 | 内容 |
-| --- | --- |
-| `VisionSettings.Defaults()` | 默认Camera/AutoStart=true，4人、UseRegions=true并均分 |
-| `Version/Mode/AutoStart` | 格式1、InputKind、启动自动应用开关 |
-| `Recognition/Camera/Video/Rtsp/Motion` | SDK共享识别设置、三个独立源设置、项目动作设置 |
-| `StatisticsInterval/SkeletonLogInterval` | 默认1s/0.2s；允许0.1～60s/0.02～60s，不是推理间隔 |
-| `DetailedSkeletonLogs` | 默认true；还受Runtime.DetailedLogs控制 |
-| `LogQueueCapacity/LogFileMegabytes/RetainedLogSessions` | 默认512/8MB/10；允许16～16384、1～256MB、1～100；日志器创建时使用 |
-| `ForMode(InputKind mode)` | 返回该模式设置；未知模式抛异常 |
-| `VisionSettings.Clone()` | JsonUtility深复制嵌套配置，适合草稿，不在每帧调用 |
-| `VisionSettings.Validate()` | 检查版本、源、识别、动作、日志范围；不合法抛异常 |
-| `VisionSettingsStore(string directory=null)` | 默认persistentDataPath/HumanVisionGame；测试可给独立目录 |
-| `ConfigPath` | 实际config.json位置 |
-| `Load(out string warning)` | 返回有效配置；坏文件尝试.bak，再默认；原件保留，warning说明恢复/迁移问题 |
-| `VisionSettingsStore.Save(VisionSettings value)` | 验证后临时文件写入与原子替换，保留.bak；失败抛异常 |
-| `VisionSettingsView.Boot(HumanVisionGameRuntime service,Action onReturn)` | 一次性关联UI/事件；复制Saved草稿；回调返回游戏 |
-| `VisionSettingsView.Create(Transform parent,Font font=null)` | 创建普通UGUI视图，项目编辑器菜单用于把对象存到场景 |
-| `Preview/Overlay/Draft` | UI预览、显示组件、编辑草稿；Draft不是Active |
-| `SettingManager.View` | 场景视图引用；为空时寻找或生成兜底 |
-| `SettingManager.ReturnToGame()` | 返回记录游戏，缺记录则HurdleKing |
-
-项目源清单API：`VisionInputCatalog.Scan(root,computerHost)`扫描支持扩展名并返回相对视频目录/电脑地址；`Videos/ComputerHost`保存结果；`RelativeManifest`为HumanVisionGame/video-catalog.json；`VideoUrl(root,index)`生成安全资源URL，非法相对路径抛异常；`ResolveComputerHost()`找LAN私有IPv4，找不到返回127.0.0.1，后者不是手机到电脑的可用预设。
-
-项目日志API：`VisionDiagnostics(settings)`创建有限写队列会话；`DirectoryPath/DroppedRecords/LastError`供诊断；`RecordEvent(kind,message)`记录事件；`Tick(runtime)`限频统计；`RecordPose(region,pose,state,detailed,body=null,interval=-1)`限频记录点；`Redact(value)`隐藏RTSP用户信息；`Flush()`刷新；`Export()`返回ZIP路径；`Dispose()`结束写入。`VisionLogAccess.Open(runtime)`在Windows打开或Android导出；`Export(runtime,zip)`请求平台导出。返回本地ZIP不等于系统文件导出成功。
-
-## 12. C ABI调用与结果码
+## 10. C ABI调用与结果码
 
 Unity应用优先用上述托管API。原生应用/自建封装需包含[humanvision_types.h](../../native/include/humanvision/humanvision_types.h)、[humanvision_c.h](../../native/include/humanvision/humanvision_c.h)、[humanvision_v2.h](../../native/include/humanvision/humanvision_v2.h)。这些头文件包含精确参数类型和内存布局，不能把C++类/STL跨边界传递。
 
-### 12.1 共同参数与返回
+### 10.1 共同参数与返回
 
 - `handle`：Create返回的不透明句柄；只能由对应Destroy释放，不混用V1/Runtime/Input句柄。
 - `struct_size`/`api_version`：按该头文件结构和版本填写；不要改变旧V1布局。RuntimeV1的API版本为`HV_API_VERSION_040`，StatsV2独立版本为2。
@@ -659,7 +488,7 @@ Unity应用优先用上述托管API。原生应用/自建封装需包含[humanvi
 - `HV_OK=0`成功；`HV_NO_NEW_RESULT=1`无新结果；负值为错误。-1非法参数、-2未初始化、-3模型加载失败、-4不支持格式、-5内部错误。不是所有非0都表示崩溃。
 - `HV_VideoFrame`内容与CPU提交参数对应；`HV_Rect` x/y/width/height；V1`HV_Body`17点。语义`HV_CanonicalBodyV1`含64位track_id、区域revision、源frame/time及32个独立有效性/时间/预测的关节。
 
-### 12.2 语义Runtime API每项
+### 10.2 语义Runtime API每项
 
 | API | 参数及返回内容 |
 | --- | --- |
@@ -677,7 +506,7 @@ Unity应用优先用上述托管API。原生应用/自建封装需包含[humanvi
 
 `HV_RuntimeStatsV1`每项：body_sequence/hand_sequence独立序号；source_frame_id/source_timestamp_us结果源身份/时间；region_revision区域版本；dropped_frames丢弃计数；body_fps/hand_fps观察/手任务率；preprocess_ms/inference_ms/postprocess_ms阶段毫秒。StatsV2更细字段以头文件注释为准，禁止把output_samples当fresh_observation_frames。
 
-### 12.3 旧V1 API每项
+### 10.3 旧V1 API每项
 
 | API | 参数及返回内容 |
 | --- | --- |
@@ -697,7 +526,7 @@ Unity应用优先用上述托管API。原生应用/自建封装需包含[humanvi
 
 V1 Meta/Bodies/区域/手分别查询可能跨快照，需序号核对并处理被更新情况；不能拼接不同结果冒充同一帧。新代码优先语义RuntimeCopy。
 
-### 12.4 独立Input C ABI与旧RTSP入口
+### 10.4 独立Input C ABI与旧RTSP入口
 
 来源：[humanvision_input.h](../../native/input/include/humanvision_input.h)。Options的size/version按ABI1填写，含url、最大尺寸、打开超时、重连等待和TCP开关。
 
@@ -716,7 +545,7 @@ Input返回码独立：OK=0、NO_FRAME=1、BUSY=2、INVALID=-1、BUFFER_TOO_SMAL
 
 旧可选[humanvision_rtsp.h](../../native/include/humanvision/humanvision_rtsp.h)：`HV_RtspOpen(url,width,height,tcp,timeout_ms)`返回句柄；`HV_RtspCopyFrame(handle,after_sequence,rgba,capacity,out width/height/sequence/timestamp_us)`返回1有帧、0无新帧、-1参数/缓冲错误；`HV_RtspState(handle)`1连接/2流式/3重连/4停止；`HV_RtspClose(handle)`立即使句柄失效并异步释放worker。它和新的Input_Close/Release生命周期不同。
 
-## 13. 扩展与维护接口入口
+## 11. 扩展与维护接口入口
 
 底层GPU接入/算法插件开发不是游戏逐帧调用面，不能仅按本页表格自行实现同步协议。完整入口：
 

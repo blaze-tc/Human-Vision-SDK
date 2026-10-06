@@ -1,7 +1,7 @@
 # Human Vision SDK
 
 Current integration preview: **0.4.0-preview.4** (2026-10-05).
-中文接入文档（基于正式 Sensory 游戏项目，2026-10-07核查）：
+中文使用文档（新建Unity项目首次接入，2026-10-07更新）：
 [第一次安装使用引导](docs/user-guide/FIRST_INSTALL.md) ·
 [技术栈](docs/user-guide/TECH_STACK.md) ·
 [平台测试效果](docs/user-guide/PLATFORM_TEST_RESULTS.md) ·
