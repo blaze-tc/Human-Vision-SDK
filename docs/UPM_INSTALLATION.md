@@ -1,5 +1,7 @@
 # Human Vision SDK 0.4.0-preview.4 安装与接入
 
+中文逐步操作：[第一次安装使用引导](user-guide/FIRST_INSTALL.md)。正式Sensory游戏接入分析、技术栈、平台证据和API说明见[中文文档首页](user-guide/README.md)。
+
 支持 Windows x64 Editor/Player 和 Android ARM64，Unity 2021.3 或更新版本。
 包含独立 Input、SDK、原生依赖、模型和 Camera/Video/RTSP 三个 Demo。
 不需要 AzureKinectExamples；测试视频不随包分发。

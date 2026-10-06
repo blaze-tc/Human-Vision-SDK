@@ -1,5 +1,15 @@
 # Current: integration preview 4 published (2026-10-05)
 
+Documentation update (2026-10-07): added [four Chinese integration guides](user-guide/README.md)
+based on the formal Sensory Unity2021.3.45f1 project. Installed Input127 + SDK325
+cache files match the tagged package bytes (452/452); two C# documentation
+examples compile against the installed assemblies. Local links/anchors, 167
+selected public member names, component catalog, public surface and architecture
+documentation guards PASS. [Verification record](reports/2026-10-07-sensory-sdk-docs-verification.md).
+This is a read-only project audit and docs-only change; historical Windows
+snapshots and Android Demo measurements are identified separately. No new
+physical device, per-person FPS, hand or game-motion acceptance is claimed.
+
 The user accepted the tested visible demo and explicitly authorized main merge,
 Git publication and downloadable Unity packages. This authorization supersedes
 the historical publication holds below; it does not certify 30 fresh complete
