@@ -21,6 +21,16 @@ namespace HumanVision.Demo
         public HumanVisionSettingsData Clone() => JsonUtility.FromJson<HumanVisionSettingsData>(JsonUtility.ToJson(this));
         /// <summary>当前模式草稿，切换模式不会覆盖其它模式。</summary>
         public DemoModeSettings Mode => SourceKind == InputKind.Video ? Video : SourceKind == InputKind.Rtsp ? Rtsp : Camera;
+        /// <summary>无保存文件时从场景总控 Inspector 生成初始草稿；当前模式独立复制。</summary>
+        public static HumanVisionSettingsData FromOptions(HumanVisionSdkOptions options, bool autoStart = false)
+        {
+            var value = new HumanVisionSettingsData { Recognition = options.Recognition.Clone(), SourceKind = options.SourceKind,
+                InputQuality = options.InputQuality, UseWindowsCpu = options.UseWindowsCpu, RtspTcp = options.RtspTcp, AutoStart = autoStart };
+            var mode = JsonUtility.FromJson<DemoModeSettings>(JsonUtility.ToJson(options.Input));
+            if (options.SourceKind == InputKind.Video) value.Video = mode;
+            else if (options.SourceKind == InputKind.Rtsp) value.Rtsp = mode; else value.Camera = mode;
+            return value;
+        }
         /// <summary>转成总控启动配置；只有提交时才要求输入地址。</summary>
         public HumanVisionSdkOptions ToOptions(string runtimeRoot = "") => new HumanVisionSdkOptions {
             Recognition = Recognition.Clone(), SourceKind = SourceKind, Input = JsonUtility.FromJson<DemoModeSettings>(JsonUtility.ToJson(Mode)),

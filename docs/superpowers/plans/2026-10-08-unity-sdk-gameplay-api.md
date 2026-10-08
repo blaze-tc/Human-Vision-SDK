@@ -77,4 +77,4 @@
 
 ## Execution record
 
-Progress and rulings live in .superpowers/sdd/2026-10-08-unity-sdk-gameplay-api/progress.md and docs/reports/2026-10-08-unity-sdk-api-settings.md. No merge/push/public Release is required.
+Progress and rulings live in .superpowers/sdd/2026-10-08-unity-sdk-gameplay-api/progress.md and docs/reports/2026-10-08-unity-sdk-api-settings.md. The user subsequently authorized pushing GitHub and publishing preview.5 after actual Human-Vision-SDK-Test validation. Preserve origin/main ancestry, tag the verified commit, verify remote Git installation and downloaded draft assets, then publish the prerelease.

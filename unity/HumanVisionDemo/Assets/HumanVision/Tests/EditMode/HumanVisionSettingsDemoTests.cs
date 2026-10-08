@@ -90,9 +90,10 @@ namespace HumanVision.Tests
         [Test] public void BuilderPreservesUntitledSceneAndSavesPrefabReferences()
         {
             string folder = "Assets/SdkSettingsTest-" + Guid.NewGuid().ToString("N");
-            var builder = typeof(HumanVision.Editor.HumanVisionSdkMenu).Assembly.GetType("HumanVision.Editor.HumanVisionSettingsDemoBuilder");
+            var builder = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("HumanVision.Editor.HumanVisionSettingsDemoBuilder")).FirstOrDefault(t => t != null);
             var generate = builder.GetMethod("GenerateAssetsAt"); Assert.NotNull(generate, "Untitled-scene preservation API is missing.");
             var original = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            string originalPath = original.path;
             root = new GameObject("Must survive generation");
             try {
                 generate.Invoke(null, new object[] { folder });
@@ -104,7 +105,23 @@ namespace HumanVision.Tests
             } finally {
                 // 只删除本测试 UUID 目录；保留之前的场景对象。
                 UnityEditor.AssetDatabase.DeleteAsset(folder);
+                if (string.IsNullOrEmpty(originalPath)) { UnityEngine.Object.DestroyImmediate(root); root = null; UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single); }
             }
+        }
+        [Test] public void MissingSaveUsesSdkInspectorDefaults()
+        {
+            root = new GameObject("Inspector defaults"); var sdk = root.AddComponent<HumanVisionSdk>(); sdk.InitializeOnStart = false;
+            var options = sdk.Configuration; options.SourceKind = HumanVision.Input.InputKind.Video; options.Input.VideoPath = "scene-default.mp4";
+            options.Recognition.MaxBodies = 2; options.Recognition.Regions = HumanVisionSdkConfiguration.CreateEqualRegions(2);
+            typeof(HumanVisionSdk).GetField("options", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(sdk, options);
+            var view = HumanVisionSettingsView.Create(root.transform); var controller = root.AddComponent<HumanVisionSettingsController>(); controller.Configure(sdk, view);
+            typeof(HumanVisionSettingsController).GetMethod("Reload", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(controller, new object[] { System.IO.Path.Combine(System.IO.Path.GetTempPath(), System.Guid.NewGuid() + ".json") });
+            Assert.That(controller.Draft.SourceKind, Is.EqualTo(HumanVision.Input.InputKind.Video));
+            Assert.That(controller.Draft.Video.VideoPath, Is.EqualTo("scene-default.mp4")); Assert.That(controller.Draft.Recognition.MaxBodies, Is.EqualTo(2));
+        }
+        [Test] public void PublishedTwoArgumentTextureSubmissionOverloadIsPreserved()
+        {
+            Assert.NotNull(typeof(VideoPlayerFrameSource).GetMethod("SubmitExternalTexture", new[] { typeof(Texture), typeof(long) }), "Compiled clients need the exact published signature.");
         }
     }
 }

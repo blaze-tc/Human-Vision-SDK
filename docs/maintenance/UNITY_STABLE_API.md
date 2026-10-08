@@ -27,3 +27,5 @@ Removing/renaming a public type/member, changing enum values, Count, array order
 native layout, GUID or timestamp meaning is breaking. Add semantic members instead.
 Run check_public_surface.py after regenerating UPM and compile_managed.ps1, followed
 by managed regression/ABI tests where applicable.
+
+HumanVisionSdk adds coroutine lifecycle, cloned configuration, indexed semantic queries and source-age validation. Runtime/HumanVisionSkeletonQueries owns query rules; Demo/Sdk owns Input composition and retirement; Demo/Settings owns editable UGUI and persistence. See ../user-guide/UNITY_SDK.md and SETTINGS_DEMO.md. Existing native/managed V1 signatures and script GUIDs remain frozen.

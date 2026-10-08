@@ -2,6 +2,9 @@ param(
     [string]$Filter = 'HumanVision.Tests.HumanVisionConfigTests',
     [ValidateSet('EditMode','PlayMode')][string]$TestMode = 'EditMode',
     [switch]$CompileOnly,
+    [switch]$Graphics,
+    [switch]$Package,
+    [string]$ProjectSuffix = "",
     [string]$Unity = 'D:/Developer/2021.3.45f1/Editor/Unity.exe',
     [string]$Payload = 'E:/Project/Human Vision SDK/.worktrees/android-ncnn-vulkan/out/input/production-correction/quality-q4-package-20261005-v2'
 )
@@ -42,29 +45,46 @@ foreach ($platform in @('Editor','Android')) {
 }
 Write-Output 'SDK Input/Runtime/Demo/Editor and Android managed compile PASS.'
 if ($CompileOnly) { return }
-$project = Join-Path $output 'project'
+$project = Join-Path $output ($(if ($Package) { 'package-project' } else { 'project' }) + $ProjectSuffix)
 foreach ($folder in @('Assets/HumanVision','Packages','ProjectSettings')) {
     New-Item -ItemType Directory -Force (Join-Path $project $folder) | Out-Null
 }
-foreach ($part in @('Runtime','Demo','Editor','Tests')) {
+if (!$Package) { foreach ($part in @('Runtime','Demo','Editor','Tests')) {
     Copy-Item -LiteralPath "$repo/unity/HumanVisionDemo/Assets/HumanVision/$part" -Destination "$project/Assets/HumanVision" -Recurse -Force
 }
+} # Package verification consumes the exact admitted UPM closure.
 $manifest = Get-Content "$repo/unity/HumanVisionDemo/Packages/manifest.json" -Raw | ConvertFrom-Json
 $manifest.dependencies | Add-Member -NotePropertyName 'com.blazetc.humanvision.input' -NotePropertyValue ('file:' + ("$repo/upm/com.blazetc.humanvision.input" -replace '\\','/')) -Force
+if ($Package) {
+    $manifest.dependencies | Add-Member -NotePropertyName 'com.blazetc.humanvision' -NotePropertyValue ('file:' + ("$repo/upm/com.blazetc.humanvision" -replace '\\','/')) -Force
+    $manifest | Add-Member -NotePropertyName 'testables' -NotePropertyValue @('com.blazetc.humanvision','com.blazetc.humanvision.input') -Force
+    Copy-Item -LiteralPath "$repo/upm/com.blazetc.humanvision/RuntimeData" -Destination "$project/ApprovedQualities" -Recurse -Force
+}
 $manifest.dependencies | Add-Member -NotePropertyName 'com.unity.modules.screencapture' -NotePropertyValue '1.0.0' -Force
 $manifest | ConvertTo-Json -Depth 10 | Set-Content "$project/Packages/manifest.json"
 Copy-Item -LiteralPath "$repo/unity/HumanVisionDemo/ProjectSettings/ProjectVersion.txt" -Destination "$project/ProjectSettings/ProjectVersion.txt" -Force
-if (Test-Path "$Payload/com.blazetc.humanvision/Runtime/Plugins") {
+if (!$Package -and (Test-Path "$Payload/com.blazetc.humanvision/Runtime/Plugins")) {
     Copy-Item -LiteralPath "$Payload/com.blazetc.humanvision/Runtime/Plugins" -Destination "$project/Assets" -Recurse -Force
     New-Item -ItemType Directory -Force "$project/Assets/StreamingAssets/HumanVision" | Out-Null
     Copy-Item -LiteralPath "$Payload/com.blazetc.humanvision/RuntimeData" -Destination "$project/Assets/StreamingAssets/HumanVision/Runtime" -Recurse -Force
+}
+if ($Package) {
+    New-Item -ItemType Directory -Force "$project/Assets/StreamingAssets/HumanVision" | Out-Null
+    # Data files are copied without package GUIDs; Unity generates installation-local identities.
+    $dataSource = "$repo/upm/com.blazetc.humanvision/RuntimeData"
+    foreach ($dataFile in (Get-ChildItem -LiteralPath $dataSource -Recurse -File | Where-Object Name -NotLike "*.meta")) {
+        $dataTarget = Join-Path "$project/Assets/StreamingAssets/HumanVision/Runtime" $dataFile.FullName.Substring($dataSource.Length + 1)
+        New-Item -ItemType Directory -Force (Split-Path $dataTarget) | Out-Null
+        Copy-Item -LiteralPath $dataFile.FullName -Destination $dataTarget -Force
+    }
 }
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 $resultPath = Join-Path $output "$stamp-results.xml"
 $logPath = Join-Path $output "$stamp-unity.log"
 $env:HV_TEST_RUNTIME_ROOT = $repo
 $env:__COMPAT_LAYER = 'RunAsInvoker'
-$arguments = "-batchmode -nographics -projectPath `"$project`" -runTests -testPlatform $TestMode -testFilter `"$Filter`" -testResults `"$resultPath`" -logFile `"$logPath`""
+$graphicsArgs = if ($Graphics) { '-force-d3d11' } else { '-nographics' }
+$arguments = "-batchmode $graphicsArgs -projectPath `"$project`" -runTests -testPlatform $TestMode -testFilter `"$Filter`" -testResults `"$resultPath`" -logFile `"$logPath`""
 $process = Start-Process -FilePath $Unity -ArgumentList $arguments -WindowStyle Hidden -PassThru
 $process.WaitForExit()
 if (!(Test-Path -LiteralPath $resultPath)) {

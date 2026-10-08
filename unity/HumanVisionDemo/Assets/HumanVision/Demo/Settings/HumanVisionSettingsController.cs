@@ -19,6 +19,7 @@ namespace HumanVision.Demo
         [SerializeField, Tooltip("可选返回场景；留空时只触发 ReturnRequested。")] private string returnScene = "";
         [SerializeField] private UnityEvent returnRequested = new UnityEvent();
         [SerializeField] private string runtimeRoot = "";
+        [SerializeField, Tooltip("无保存配置时是否自动启动；输入等初始值读取 SDK Inspector。")] private bool autoStartWhenNoSavedSettings;
         private HumanVisionSettingsData draft = new HumanVisionSettingsData(), active, saved;
         private HumanVisionSettingsLogger logger;
         private bool applying, applySucceeded;
@@ -139,7 +140,7 @@ namespace HumanVision.Demo
         }
         private void Reload(string path)
         {
-            try { var value = HumanVisionSdkSettingsStore.Load(path); draft = value.Clone(); if (path == HumanVisionSdkSettingsStore.DefaultPath) saved = File.Exists(path) ? value.Clone() : null; message = "已读取保存配置为草稿，尚未应用"; }
+            try { var value = File.Exists(path) ? HumanVisionSdkSettingsStore.Load(path) : HumanVisionSettingsData.FromOptions(sdk.Configuration, autoStartWhenNoSavedSettings); draft = value.Clone(); if (path == HumanVisionSdkSettingsStore.DefaultPath) saved = File.Exists(path) ? value.Clone() : null; message = "已读取保存配置为草稿，尚未应用"; }
             catch (Exception e) { message = "读取失败，保留原件和草稿：" + Redact(e.Message); }
         }
         private void ConnectRenderer()

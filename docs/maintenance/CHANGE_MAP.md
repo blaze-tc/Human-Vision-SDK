@@ -17,3 +17,5 @@ After focused checks, run the architecture guard.
 | Add preset | [profiles](../../profiles/README.md) | source code | architecture guard + RuntimeSession |
 | Change worker lifecycle | [Host](../../runtime/host/README.md) | model decoder | RuntimeHost |
 | Release runtime | [release guide](RELEASE_GUIDE.md) | gameplay | full release gates |
+
+| Unity gameplay API / UGUI settings | Runtime/HumanVisionSkeletonQueries.cs; Demo/Sdk; Demo/Settings | [guide](../user-guide/UNITY_SDK.md), [settings](../user-guide/SETTINGS_DEMO.md) | HumanVisionSdkQueryTests / HumanVisionSdkLifecycleTests / HumanVisionSdkRuntimeTests / HumanVisionSettingsDemoTests |

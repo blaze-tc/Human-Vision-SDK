@@ -70,5 +70,24 @@ namespace HumanVision.Tests
             sdk.enabled = false; yield return null; yield return null;
             Assert.False(sdk.IsInitialized); Assert.That(sdk.State, Is.EqualTo(HumanVisionSdkState.Stopped));
         }
+        [UnityTest] public IEnumerator CpuQueriesUseNativeObservationClock()
+        {
+            yield return sdk.Initialize(Options()); Assert.True(sdk.IsInitialized, sdk.LastError);
+            var clock = typeof(HumanVisionSdk).GetProperty("NowUs", BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic);
+            long actual = (long)clock.GetValue(sdk);
+            Assert.That(System.Math.Abs(actual - (long)typeof(HumanVisionManager).Assembly.GetType("HumanVision.Interop.RuntimeBindings").GetMethod("HV_RuntimeClockUs", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).Invoke(null, null)), Is.LessThan(1000000), "CPU observation ages must use the native monotonic clock.");
+        }
+        [UnityTest] public IEnumerator FailedInputDoesNotCommitCandidateConfiguration()
+        {
+            yield return sdk.Initialize(Options()); var before = sdk.ActiveConfiguration;
+            var bad = Options(); bad.OpenInputOnInitialize = true; bad.SourceKind = HumanVision.Input.InputKind.Video;
+            bad.Input.VideoPath = System.IO.Path.Combine(Application.temporaryCachePath, "missing-" + System.Guid.NewGuid() + ".mp4");
+            bad.Recognition.MaxBodies = 2; bad.Recognition.Regions = HumanVisionSdkConfiguration.CreateEqualRegions(2);
+            LogAssert.ignoreFailingMessages = true;
+            try { yield return sdk.Initialize(bad); }
+            finally { LogAssert.ignoreFailingMessages = false; }
+            Assert.False(sdk.IsRunning); Assert.That(sdk.LastError, Is.Not.Empty);
+            Assert.That(sdk.ActiveConfiguration.Recognition.MaxBodies, Is.EqualTo(before.Recognition.MaxBodies));
+        }
     }
 }

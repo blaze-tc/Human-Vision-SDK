@@ -45,3 +45,6 @@ per frame.
 The camera/settings drawer exposes the three no-hands Android benchmark profiles.
 Changing the selection takes effect on Apply/Start and recreates the native runtime;
 an empty `runtimeProfileOverride` preserves the existing auto/forceCpu behavior.
+
+## One-component SDK and UGUI settings
+HumanVisionSdk: attach or GameObject/Human Vision/Create SDK; use Initialize and StopSdk. Demo/Settings uses its public APIs and preserves draft/active/saved state. HumanVisionSettingsDemoBuilder generates editable UGUI scene/Prefab. Docs: ../../../../../docs/user-guide/UNITY_SDK.md and SETTINGS_DEMO.md. Tests: HumanVisionSdkQueryTests, HumanVisionSdkLifecycleTests, HumanVisionSdkRuntimeTests, HumanVisionSettingsDemoTests, HumanVisionUnityCompatibilityTests.

@@ -97,7 +97,7 @@ namespace HumanVision.Tests
         }
         [Test] public void MenuCreatesOnlyOneControllerInCurrentSceneAndSupportsUndo()
         {
-            var menuType = typeof(HumanVision.Editor.HumanVisionAndroidBuildSettings).Assembly.GetType("HumanVision.Editor.HumanVisionSdkMenu");
+            var menuType = Array.Find(AppDomain.CurrentDomain.GetAssemblies(), a => a.GetType("HumanVision.Editor.HumanVisionSdkMenu") != null)?.GetType("HumanVision.Editor.HumanVisionSdkMenu");
             Assert.NotNull(menuType);
             var create = menuType.GetMethod("CreateSdk");
             Assert.NotNull(create); create.Invoke(null, new object[] { new UnityEditor.MenuCommand(owner) });

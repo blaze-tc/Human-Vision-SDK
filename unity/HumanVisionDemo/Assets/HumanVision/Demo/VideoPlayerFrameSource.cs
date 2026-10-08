@@ -349,6 +349,10 @@ namespace HumanVision.Demo
             });
         }
 
+        // 保留已发布的精确双参数签名，兼容已编译调用方和双参数委托。
+        public bool SubmitExternalTexture(Texture texture, long timestampUs)
+            => SubmitExternalTexture(texture, timestampUs, 0, false, null);
+
         public bool SubmitExternalTexture(Texture texture, long timestampUs, int rotationDegrees = 0, bool mirrored = false)
             => SubmitExternalTexture(texture, timestampUs, rotationDegrees, mirrored, null);
 

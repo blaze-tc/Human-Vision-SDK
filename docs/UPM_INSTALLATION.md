@@ -1,4 +1,4 @@
-# Human Vision SDK 0.4.0-preview.4 安装与接入
+# Human Vision SDK 0.4.0-preview.5 安装与接入
 
 中文逐步操作：[第一次安装使用引导](user-guide/FIRST_INSTALL.md)。新建Unity项目的Start初始化、骨骼读取代码片段、技术栈、平台证据和API说明见[中文文档首页](user-guide/README.md)。
 
@@ -11,8 +11,8 @@
 Window > Package Manager > + > Add package from git URL，先 Input、后 SDK：
 
 ```text
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.4
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.4
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.5
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.5
 ```
 
 也可以在 `Packages/manifest.json` 的 `dependencies` 同时添加这两条地址。
@@ -21,10 +21,10 @@ SDK 的版本依赖不会自动查找同仓库另一个 Git 子目录，因此�
 
 ## 本地安装
 
-[Release 下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.4)：
+[Release 下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.5)：
 
-- `HumanVisionInput-0.1.0-preview.2.unitypackage`：先用 Assets > Import Package > Custom Package 导入 Input。
-- `HumanVisionSDK-0.4.0-preview.4.unitypackage`：随后导入 SDK，包含模型、骨骼与 Demo。
+- `HumanVisionInput-0.1.0-preview.3.unitypackage`：先用 Assets > Import Package > Custom Package 导入 Input。
+- `HumanVisionSDK-0.4.0-preview.5.unitypackage`：随后导入 SDK，包含模型、骨骼与 Demo。
 - 两个 `.tgz`：Package Manager > Add package from tarball，先 Input、后 SDK。
 
 两个本地导入包与 Git 安装的两包结构一致，合起来提供完整 SDK 功能。

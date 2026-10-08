@@ -1,3 +1,19 @@
+# 2026-10-08 Unity SDK API/settings update — verified scope
+
+Unity API/UGUI Tasks 1–4 implementation is complete; new/affected EditMode 41/41,
+native PlayMode 8/8, native CTest 376/376, actual Human-Vision-SDK-Test CPU video,
+region/capacity/coordinate/lifetime actions, offline imports and final Windows
+player build PASS. Actual project Console 0; saved Settings scene is open.
+Full broad regression is NOT all green (226 PASS / 2 FAIL / 32 SKIP); missing-
+plugin lane separately passes, Native Collection leak source and legacy Unity
+Camera.Render environment failures remain unqualified. Exact commands/receipts
+and failed runs are in docs/reports/2026-10-08-unity-sdk-api-settings.md.
+
+User authorized GitHub/main and preview.5 Release after actual validation.
+Final remote/upload/download gates are executed after the verified commit;
+network receipts are retained in out. This managed update preserves previous
+native/model/SDK bytes and does not advance skeleton/device/FPS acceptance.
+
 # Current: Unity API and Settings Demo built; project/release verification active (2026-10-08)
 
 Task3 UGUI RED4/4 missing settings -> GREEN7/7, including safe saved-scene/prefab references,

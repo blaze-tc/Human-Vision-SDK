@@ -90,11 +90,11 @@ namespace HumanVision.Demo
         public void SetQualities(ModelInputQualityChoice[] choices)
         {
             qualities = choices ?? Array.Empty<ModelInputQualityChoice>(); qualityChoice.ClearOptions();
-            qualityChoice.AddOptions(qualities.Length == 0 ? new List<string> { "当前平台固定合同" } : qualities.Select(v => v.Quality.ToString()).ToList());
+            qualityChoice.AddOptions(qualities.Length == 0 ? new List<string> { "固定精度" } : qualities.Select(v => v.Quality.ToString()).ToList());
             qualityChoice.interactable = qualities.Length != 0;
             int index = draft == null ? -1 : Array.FindIndex(qualities, v => v.Quality == draft.InputQuality);
             qualityChoice.SetValueWithoutNotify(Mathf.Max(0, index));
-            qualityHint.text = qualities.Length == 0 ? "本构建未声明可切换质量档位；不更换模型。" : "仅切换本构建已声明的实际输入合同。";
+            qualityHint.text = qualities.Length == 0 ? "此平台使用固定识别精度。" : "选择此平台支持的识别精度。";
         }
         public void RefreshSources()
         {

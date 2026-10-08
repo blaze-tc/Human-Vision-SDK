@@ -1,4 +1,6 @@
-# Unity installation — 0.4.0-preview.4
+新版单组件总控：Hierarchy → Human Vision → Create SDK。UGUI 设置示例：HumanVision → Create SDK settings demo assets。详见 Documentation/user-guide/UNITY_SDK.md 和 SETTINGS_DEMO.md。
+
+# Unity installation — 0.4.0-preview.5
 
 Requires Unity 2021.3 or later. Install into a clean project, or remove a previous
 Assets/HumanVision, Assets/HumanVisionInput and HumanVision native plugin installation
@@ -10,16 +12,16 @@ For Git UPM, add Input first, then SDK, using these two tag-pinned dependencies
 in Packages/manifest.json:
 
 ```json
-"com.blazetc.humanvision.input": "https://github.com/blaze-tc/Human-Vision-SDK.git?path=upm/com.blazetc.humanvision.input#v0.4.0-preview.4",
-"com.blazetc.humanvision": "https://github.com/blaze-tc/Human-Vision-SDK.git?path=upm/com.blazetc.humanvision#v0.4.0-preview.4"
+"com.blazetc.humanvision.input": "https://github.com/blaze-tc/Human-Vision-SDK.git?path=upm/com.blazetc.humanvision.input#v0.4.0-preview.5",
+"com.blazetc.humanvision": "https://github.com/blaze-tc/Human-Vision-SDK.git?path=upm/com.blazetc.humanvision#v0.4.0-preview.5"
 ```
 
-The SDK's exact Input version is 0.1.0-preview.2. Unity cannot discover a second
+The SDK's exact Input version is 0.1.0-preview.3. Unity cannot discover a second
 Git subdirectory from the SDK's version dependency; explicitly add both URLs.
 Input alone provides camera/video/RTSP preview without models or inference.
 For offline import into a clean project, import
-**HumanVisionInput-0.1.0-preview.2.unitypackage first**, then
-**HumanVisionSDK-0.4.0-preview.4.unitypackage**. Wait for Input compilation before
+**HumanVisionInput-0.1.0-preview.3.unitypackage first**, then
+**HumanVisionSDK-0.4.0-preview.5.unitypackage**. Wait for Input compilation before
 importing SDK. Input alone supports standalone preview; both packages provide
 the complete SDK installation. The two release tgz files are the alternative
 local UPM archives, also installed Input first, then SDK.

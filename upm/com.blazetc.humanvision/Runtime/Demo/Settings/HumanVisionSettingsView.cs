@@ -1,0 +1,151 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using HumanVision.Input;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace HumanVision.Demo
+{
+    /// <summary>普通可编辑 UGUI 的引用和草稿交互。不会直接更改 Native 或自动保存。</summary>
+    public sealed partial class HumanVisionSettingsView : MonoBehaviour
+    {
+        [SerializeField] private RawImage preview;
+        [SerializeField] private HumanVisionOverlay overlay;
+        [SerializeField] private Text status, qualityHint, sourceHint;
+        [SerializeField] private InputField[] fields;
+        [SerializeField] private Button[] buttons;
+        [SerializeField] private Dropdown peopleChoice, qualityChoice, cameraChoice, videoChoice, captureChoice;
+        [SerializeField] private GameObject cameraPanel, videoPanel, rtspPanel, advancedPanel, regionDetailsPanel;
+        [SerializeField] private HumanVisionSettingsRegionHandle[] regionHandles;
+        private HumanVisionSettingsController controller;
+        private HumanVisionSettingsData draft;
+        private ModelInputQualityChoice[] qualities = Array.Empty<ModelInputQualityChoice>();
+        private string[] cameras = Array.Empty<string>(), videos = Array.Empty<string>();
+        private bool wired, editRegions, fullPreview;
+        private int selectedRegion;
+        public RawImage Preview => preview;
+        public HumanVisionOverlay Overlay => overlay;
+        public HumanVisionSettingsData Draft => draft?.Clone();
+        /// <summary>绑定控制器一次；运行时监听器不写入场景资产。</summary>
+        public void Bind(HumanVisionSettingsController owner)
+        {
+            controller = owner; if (wired) return; wired = true;
+            foreach (var button in buttons) {
+                string command = button.name;
+                button.onClick.AddListener(() => controller.Execute(command));
+            }
+            peopleChoice.onValueChanged.AddListener(_ => controller.Edit(ReadDraft));
+            qualityChoice.onValueChanged.AddListener(_ => controller.Edit(ReadDraft));
+            cameraChoice.onValueChanged.AddListener(i => { if (draft != null && i < cameras.Length) { Put("CameraDevice", cameras[i]); } });
+            videoChoice.onValueChanged.AddListener(i => { if (draft != null && i < videos.Length) { Put("VideoPath", videos[i]); } });
+            captureChoice.onValueChanged.AddListener(i => {
+                if (i == 0) return; int[] widths = { 0, 640, 1280, 1920 }, heights = { 0, 480, 720, 1080 };
+                Put("Width", widths[i]); Put("Height", heights[i]); Put("FPS", 30);
+            });
+            foreach (var region in regionHandles) region.Changed = (index, rect) => {
+                selectedRegion = index; draft.Recognition.Regions[index] = rect; ShowRegionFields();
+                // 重叠仅存在于草稿；整组 Apply 会验证，不偷偷挪动其它人的区域。
+            };
+            RefreshSources();
+        }
+        /// <summary>所有输入字段先读到副本；解析异常保留原草稿和当前运行配置。</summary>
+        public HumanVisionSettingsData ReadDraft()
+        {
+            var value = draft.Clone(); var mode = value.Mode;
+            int count = peopleChoice.value + 1;
+            if (count != value.Recognition.MaxBodies) {
+                value.Recognition.MaxBodies = count; value.Recognition.Regions = HumanVisionSdkConfiguration.CreateEqualRegions(count);
+            }
+            mode.CameraDevice = Field("CameraDevice").text; mode.VideoPath = Field("VideoPath").text; mode.RtspUrl = Field("RtspUrl").text;
+            mode.RtspComputerHost = Field("RtspHost").text;
+            mode.RequestedWidth = Integer("Width"); mode.RequestedHeight = Integer("Height"); mode.RequestedFramesPerSecond = Integer("FPS");
+            mode.LineWidth = Number("LineWidth"); mode.PointDiameter = Number("PointSize");
+            value.StatisticsInterval = Number("LogInterval"); value.SkeletonLogInterval = Number("PoseLogInterval");
+            value.LogFileMegabytes = Integer("LogFileMB"); value.RetainedLogSessions = Integer("LogSessions");
+            if (qualities.Length > qualityChoice.value) value.InputQuality = qualities[qualityChoice.value].Quality;
+            return value;
+        }
+        /// <summary>显示独立草稿；主动提交/保存才让配置生效。</summary>
+        public void ShowDraft(HumanVisionSettingsData value)
+        {
+            draft = value.Clone(); var mode = draft.Mode;
+            peopleChoice.SetValueWithoutNotify(draft.Recognition.MaxBodies - 1);
+            cameraPanel.SetActive(draft.SourceKind == InputKind.WebCamera); videoPanel.SetActive(draft.SourceKind == InputKind.Video); rtspPanel.SetActive(draft.SourceKind == InputKind.Rtsp);
+            sourceHint.text = "当前草稿输入：" + draft.SourceKind;
+            Put("MaxBodies", draft.Recognition.MaxBodies); Put("CameraDevice", mode.CameraDevice);
+            Put("VideoPath", mode.VideoPath); Put("RtspUrl", mode.RtspUrl); Put("RtspHost", mode.RtspComputerHost);
+            Put("Width", mode.RequestedWidth); Put("Height", mode.RequestedHeight); Put("FPS", mode.RequestedFramesPerSecond);
+            Put("LineWidth", mode.LineWidth); Put("PointSize", mode.PointDiameter);
+            Put("LogInterval", draft.StatisticsInterval); Put("PoseLogInterval", draft.SkeletonLogInterval);
+            Put("LogFileMB", draft.LogFileMegabytes); Put("LogSessions", draft.RetainedLogSessions);
+            Mark("UseRegions", "按区域绑定角色", draft.Recognition.UseRegions); Mark("Mirror", "镜像", mode.Mirror);
+            Mark("AutoStart", "Init 自动启动", draft.AutoStart); Mark("WindowsCpu", "Windows CPU", draft.UseWindowsCpu);
+            Mark("DetailedLogs", "详细骨骼日志", draft.DetailedLogs);
+            selectedRegion = Mathf.Clamp(selectedRegion, 0, draft.Recognition.Regions.Length - 1);
+            ShowRegionFields(); ShowRegions();
+        }
+        public void SetQualities(ModelInputQualityChoice[] choices)
+        {
+            qualities = choices ?? Array.Empty<ModelInputQualityChoice>(); qualityChoice.ClearOptions();
+            qualityChoice.AddOptions(qualities.Length == 0 ? new List<string> { "固定精度" } : qualities.Select(v => v.Quality.ToString()).ToList());
+            qualityChoice.interactable = qualities.Length != 0;
+            int index = draft == null ? -1 : Array.FindIndex(qualities, v => v.Quality == draft.InputQuality);
+            qualityChoice.SetValueWithoutNotify(Mathf.Max(0, index));
+            qualityHint.text = qualities.Length == 0 ? "此平台使用固定识别精度。" : "选择此平台支持的识别精度。";
+        }
+        public void RefreshSources()
+        {
+            cameras = WebCamTexture.devices.Select(v => v.name).ToArray();
+            cameraChoice.ClearOptions(); cameraChoice.AddOptions(cameras.Length == 0 ? new List<string> { "没有可用摄像头" } : cameras.ToList());
+            cameraChoice.interactable = cameras.Length != 0;
+            // 桌面 StreamingAssets 可枚举；Android 包内列表可用自定义 URL/path，不伪造可用条目。
+            videos = Directory.Exists(Application.streamingAssetsPath) ? Directory.GetFiles(Application.streamingAssetsPath, "*.mp4", SearchOption.AllDirectories) : Array.Empty<string>();
+            videoChoice.ClearOptions(); videoChoice.AddOptions(videos.Length == 0 ? new List<string> { "使用自定义视频路径" } : videos.Select(Path.GetFileName).ToList());
+            videoChoice.interactable = videos.Length != 0;
+            if (draft != null) { cameraChoice.SetValueWithoutNotify(Mathf.Max(0, Array.IndexOf(cameras, draft.Camera.CameraDevice))); videoChoice.SetValueWithoutNotify(Mathf.Max(0, Array.IndexOf(videos, draft.Video.VideoPath))); }
+        }
+        public void ToggleAdvanced() => advancedPanel.SetActive(!advancedPanel.activeSelf);
+        public void ToggleRegionEdit() { editRegions = !editRegions; regionDetailsPanel.SetActive(editRegions); ShowRegions(); }
+        public void SelectRegion(int delta) { selectedRegion = (selectedRegion + delta + draft.Recognition.MaxBodies) % draft.Recognition.MaxBodies; ShowRegionFields(); }
+        public HumanVisionSettingsData UpdateRegion()
+        {
+            var value = ReadDraft(); value.Recognition.Regions[selectedRegion] = new Rect(Number("RegionX"), Number("RegionY"), Number("RegionW"), Number("RegionH"));
+            // 即使当前关闭区域，编辑区也按开启区域的规则验证，防止把 NaN 草稿画到 UI。
+            var check = value.Recognition.Clone(); check.UseRegions = true; check.Validate(); return value;
+        }
+        private void ShowRegionFields()
+        {
+            if (draft.Recognition.Regions.Length == 0) return;
+            var region = draft.Recognition.Regions[selectedRegion]; Put("RegionX", region.x); Put("RegionY", region.y); Put("RegionW", region.width); Put("RegionH", region.height);
+        }
+        private void ShowRegions()
+        {
+            for (int i = 0; i < regionHandles.Length; i++) {
+                bool shown = draft.Recognition.UseRegions && i < draft.Recognition.Regions.Length;
+                regionHandles[i].gameObject.SetActive(shown); if (shown) regionHandles[i].SetRegion(draft.Recognition.Regions[i], editRegions);
+            }
+        }
+        public void ToggleFullscreen()
+        {
+            fullPreview = !fullPreview; transform.Find("Settings panel").gameObject.SetActive(!fullPreview);
+            var panel = (RectTransform)transform.Find("Preview panel"); panel.anchorMax = new Vector2(fullPreview ? 1 : .72f, .92f);
+        }
+        public void SetBusy(bool busy)
+        {
+            foreach (var button in buttons) button.interactable = !busy || button.name == "Stop";
+            foreach (var field in fields) field.interactable = !busy;
+            peopleChoice.interactable = !busy; qualityChoice.interactable = !busy && qualities.Length != 0;
+            cameraChoice.interactable = !busy && cameras.Length != 0; videoChoice.interactable = !busy && videos.Length != 0; captureChoice.interactable = !busy;
+            foreach (var region in regionHandles) if (region.gameObject.activeSelf) region.SetRegion(region.Region, editRegions && !busy);
+        }
+        public void SetStatus(string value) => status.text = value;
+        private InputField Field(string name) => Array.Find(fields, f => f.name == name) ?? throw new InvalidOperationException("设置场景缺少字段 " + name);
+        private float Number(string name) => float.Parse(Field(name).text, CultureInfo.InvariantCulture);
+        private int Integer(string name) => int.Parse(Field(name).text, CultureInfo.InvariantCulture);
+        private void Put(string name, object value) => Field(name).SetTextWithoutNotify(Convert.ToString(value, CultureInfo.InvariantCulture));
+        private void Mark(string name, string label, bool enabled) => Array.Find(buttons, b => b.name == name).GetComponentInChildren<Text>().text = label + (enabled ? " ✓" : " ○");
+    }
+}

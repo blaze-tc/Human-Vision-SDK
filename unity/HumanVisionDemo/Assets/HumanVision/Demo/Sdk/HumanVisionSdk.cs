@@ -73,7 +73,7 @@ namespace HumanVision
         public long ResultSequence => manager != null ? manager.ResultSequence : 0;
         /// <summary>来源帧 ID；未初始化为 -1。</summary>
         public long SourceFrameId => manager != null ? manager.SourceFrameId : -1;
-        /// <summary>来源观测时间，使用 Unity 单调时间，单位微秒。</summary>
+        /// <summary>来源观测时间，单位微秒；CPU 使用 Runtime 单调时钟，GPU 使用 Unity 单调时钟。请用 ResultAgeMilliseconds 获取年龄。</summary>
         public long SourceTimestampUs => manager != null ? manager.SourceTimestampUs : 0;
         /// <summary>当前结果年龄，毫秒；没有有效当前结果时为正无穷。</summary>
         public double ResultAgeMilliseconds => HasFreshResult ? (NowUs - SourceTimestampUs) / 1000d : double.PositiveInfinity;
@@ -87,7 +87,10 @@ namespace HumanVision
         public bool InitializeOnStart { get => initializeOnStart; set => initializeOnStart = value; }
         internal HumanVisionManager RuntimeManager => manager;
         internal VideoPlayerFrameSource FrameBridge => bridge;
-        private static long NowUs => (long)(Time.realtimeSinceStartupAsDouble * 1000000);
+        // 必须与当前会话返回的身体/关节观测时间使用同一时钟域。
+        private long NowUs => manager != null && manager.UsesRuntimeProfile && !manager.UsesAndroidGpuFrames
+            ? HumanVision.Interop.RuntimeBindings.HV_RuntimeClockUs()
+            : (long)(Time.realtimeSinceStartupAsDouble * 1000000);
 
         private void Start() { if (initializeOnStart) StartCoroutine(Initialize()); }
         private void OnDisable() { StopAllCoroutines(); BeginStop(); }
@@ -135,11 +138,11 @@ namespace HumanVision
             if (!ApplyRecognition(candidate.Recognition)) {
                 string error = LastError; yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); yield break;
             }
-            active = candidate.Clone(); options = candidate.Clone(); LastError = ""; State = HumanVisionSdkState.Ready;
+            LastError = ""; State = HumanVisionSdkState.Ready;
             manager.ResultUpdated += OnResult;
             Initialized?.Invoke();
             if (token != operation || !isActiveAndEnabled) yield break;
-            if (!candidate.OpenInputOnInitialize) yield break;
+            if (!candidate.OpenInputOnInitialize) { active = candidate.Clone(); options = candidate.Clone(); yield break; }
             try {
                 switch (candidate.SourceKind) {
                     case InputKind.WebCamera: source = go.AddComponent<WebCameraFrameSource>(); break;
@@ -156,7 +159,7 @@ namespace HumanVision
             while (token == operation && source != null && source.State != InputSourceState.Streaming &&
                 source.State != InputSourceState.Error && Time.realtimeSinceStartupAsDouble < deadline) yield return null;
             if (token != operation || !isActiveAndEnabled) yield break;
-            if (source != null && source.State == InputSourceState.Streaming) { State = HumanVisionSdkState.Running; LastError = ""; }
+            if (source != null && source.State == InputSourceState.Streaming) { active = candidate.Clone(); options = candidate.Clone(); State = HumanVisionSdkState.Running; LastError = ""; }
             else { string error = string.IsNullOrEmpty(source?.LastError) ? "输入未在规定时间内进入流送状态。" : source.LastError;
                 yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); }
         }

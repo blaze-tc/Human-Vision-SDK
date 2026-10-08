@@ -388,7 +388,7 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + '\n', encoding='utf-8')
 
 
-def build(root, output, authority):
+def build(root, output, authority, authority_path=None):
     validation = validate_snapshot(root, authority)
     partitions, translations = split_offline_assets(root)
     assets = {name: value for partition in partitions.values() for name, value in partition.items()}
@@ -423,7 +423,7 @@ def build(root, output, authority):
                                             for name, (data, meta) in sorted(assets.items())})
     git_head = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
     provenance = {'schema_version': 1, 'source_commit': git_head, 'authority': authority,
-                  'authority_sha256': sha256((root / 'tools/package/release-preview4-authority.json').read_bytes()),
+                  'authority_sha256': sha256((authority_path or root / 'tools/package/release-preview4-authority.json').read_bytes()),
                   'packaging_source_sha256': {name: sha256((root / 'tools/package' / name).read_bytes()) for name in
                                              ('package_release_snapshot.py', 'package_live_sdk.py', 'check_input_package.py')},
                   'validation': validation, 'unity_layout_translation': translations,
@@ -445,14 +445,18 @@ def main():
     parser.add_argument('--source-root', type=Path, default=ROOT)
     parser.add_argument('--output', type=Path)
     parser.add_argument('--verify-only', action='store_true')
+    parser.add_argument('--authority', type=Path, help='Immutable reviewed release authority (versions and full source closure).')
     args = parser.parse_args()
-    authority = read_json(args.source_root / 'tools/package/release-preview4-authority.json')
+    authority_path = args.authority or args.source_root / 'tools/package/release-preview4-authority.json'
+    authority = read_json(authority_path)
+    global VERSION, INPUT_VERSION
+    VERSION, INPUT_VERSION = authority['sdk_version'], authority['input_version']
     if args.verify_only:
         result = validate_snapshot(args.source_root, authority)
     elif args.output is None:
         parser.error('--output is required unless --verify-only')
     else:
-        result = build(args.source_root, args.output, authority)
+        result = build(args.source_root, args.output, authority, authority_path)
     print(json.dumps(result, indent=2))
 
 
