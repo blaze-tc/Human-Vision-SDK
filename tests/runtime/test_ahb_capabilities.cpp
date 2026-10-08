@@ -109,6 +109,21 @@ TEST(AhbCapabilities, RejectsActualDescriptionMismatchAndRetainsMeasuredStride) 
     EXPECT_EQ(SelectAhbCopyPath({Complete(HV_ANDROID_GPU_COPY_BLIT)}).contract.stride, 672u);
 }
 
+TEST(AhbCapabilities, OpaqueGpuStrideStillRequiresSuccessfulImportsOnBothDevices) {
+    // Reproduce the RK3588 descriptor: a GPU-only RGBA AHB reports stride=0.
+    // The measured value must survive; no invented CPU row pitch is allowed.
+    for (const auto path : {HV_ANDROID_GPU_COPY_BLIT, HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT}) {
+        auto c = Complete(path);
+        c.actual.stride = 0;
+        const auto selected = SelectAhbCopyPath({c});
+        EXPECT_EQ(selected.path, path);
+        EXPECT_EQ(selected.contract.stride, 0u);
+        EXPECT_NE(selected.diagnostic.find("stride=0"), std::string::npos);
+        c.consumer.memory_bound = false;
+        EXPECT_EQ(SelectAhbCopyPath({c}).path, HV_ANDROID_GPU_COPY_UNAVAILABLE);
+    }
+}
+
 TEST(AhbCapabilities, RejectsWrongCandidateUsageAndWritableConsumerImage) {
     for (const auto path : {HV_ANDROID_GPU_COPY_BLIT, HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT}) {
         auto c = Complete(path);

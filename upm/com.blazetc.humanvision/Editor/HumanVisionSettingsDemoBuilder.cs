@@ -1,8 +1,10 @@
 using HumanVision.Demo;
+using HumanVision.Input;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 namespace HumanVision.Editor
 {
@@ -31,6 +33,48 @@ namespace HumanVision.Editor
         /// <summary>在独立文件夹生成场景和 Prefab。新版本不覆盖已有用户布局。</summary>
         [MenuItem("HumanVision/Create SDK settings demo assets")]
         public static void GenerateAssets() => GenerateAssetsAt(Folder);
+        /// <summary>
+        /// 显式升级旧设置界面的分辨率控件。只移除宽高输入及空行，保留 SDK、
+        /// Controller、字体和用户布局；调用者负责保存场景/Prefab。
+        /// </summary>
+        public static void UpgradeResolutionControls(HumanVisionSettingsView view)
+        {
+            if (view == null) throw new System.ArgumentNullException(nameof(view));
+            if (EditorApplication.isPlaying) throw new System.InvalidOperationException("请先退出 Play Mode。");
+            var serialized = new SerializedObject(view);
+            var choice = serialized.FindProperty("captureChoice").objectReferenceValue as Dropdown;
+            if (choice == null) throw new System.InvalidOperationException("设置界面缺少分辨率下拉框。");
+            var fields = serialized.FindProperty("fields");
+            var removed = new System.Collections.Generic.List<InputField>();
+            for (int i = fields.arraySize - 1; i >= 0; i--) {
+                var item = fields.GetArrayElementAtIndex(i); var field = item.objectReferenceValue as InputField;
+                if (field == null || (field.name != "Width" && field.name != "Height")) continue;
+                removed.Add(field); item.objectReferenceValue = null; fields.DeleteArrayElementAtIndex(i);
+            }
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            foreach (var field in removed) {
+                // 标准生成器的列只有标签和输入。自定义容器仅删除输入本身。
+                var column = field.transform.parent;
+                var row = column != null ? column.parent : null;
+                if (column != null && (column.name == "Width field" || column.name == "Height field"))
+                    Object.DestroyImmediate(column.gameObject);
+                else Object.DestroyImmediate(field.gameObject);
+                if (row != null && row.childCount == 0) Object.DestroyImmediate(row.gameObject);
+            }
+            int previous = choice.transform.GetSiblingIndex() - 1;
+            if (previous >= 0) {
+                var title = choice.transform.parent.GetChild(previous).GetComponent<Text>();
+                if (title != null && (title.text == "采集预设" || title.text == "采集分辨率")) title.text = "采集分辨率";
+            }
+            choice.ClearOptions(); choice.AddOptions(new System.Collections.Generic.List<string> { "640 × 480", "1280 × 720", "1920 × 1080", "3840 × 2160" });
+            choice.SetValueWithoutNotify(1);
+            if (choice.transform.parent.Find("Capture resolution hint") == null) {
+                var hint = InputPreviewCanvas.Label(choice.transform.parent, "相机请求采集尺寸；视频 / RTSP 以源实际尺寸为准。", 52);
+                hint.name = "Capture resolution hint"; hint.font = choice.captionText.font; hint.fontSize = 18;
+                hint.transform.SetSiblingIndex(choice.transform.GetSiblingIndex() + 1);
+            }
+            EditorUtility.SetDirty(choice); EditorUtility.SetDirty(view);
+        }
         /// <summary>独立目录生成，保留 Untitled 场景为备份；便于自动化测试和项目自定义路径。</summary>
         public static void GenerateAssetsAt(string folder)
         {

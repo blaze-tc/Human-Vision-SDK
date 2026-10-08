@@ -1,3 +1,26 @@
+# 2026-10-08 RK3588 field maintenance — local retest APK verified
+
+The supplied RTSP session publishes real 4K frames (~15.406 FPS), but accepts,
+submits and processes none. Measured GPU-only AHB stride0 is rejected before actual
+Vulkan probes. Three bounded guards now admit opaque stride to the real two-device
+import checks; nonzero undersized stride and failed Vulkan imports still reject.
+RED3/3 -> affected GREEN118/118 -> full native379/379; Android ARM64 API26 build,
+506 strong import closure and exact original48 public exports PASS. V1 preserved.
+
+User follow-ups replace capture width/height entry with four resolution presets,
+preserve mode/FPS/saved sizes, and register actual packaged video choices. Final
+Settings23 + diagnostics9 =32/32; actual HumanVisionSettingsDemo selects and plays
+StreamingAssets/video-1.mp4 with genuine skeleton results, exports complete ZIP and
+copies paths. Scene/prefab, source/UPM samples and guide updated through Editor API.
+Test project records actual Unity/publication/new-result rates and requests Android60.
+
+Local embedded RK3588-Fix1 APK: Android IL2CPP/Vulkan, single Settings scene/ARM64,
+Succeeded0errors8warnings; native/video/build markers and47 preserved model/profile/
+Input entries verified. SHA f9c71aeb8c8f042044a03fff87d452731643f4e72213e16aa5bc2a57c575d561.
+Active remaining gate is user device retest. No physical import/recognition/smoothness,
+real-hand or30freshFPS claim. No new GitHub release in this maintenance turn.
+Details: [field report](reports/2026-10-08-rk3588-opaque-ahb-stride.md).
+
 # 2026-10-08 Preview 6 Unity settings follow-up — verified scope
 
 User-requested model availability explanation, detailed diagnostics and four-group

@@ -10,6 +10,8 @@ namespace humanvision::gpu {
 struct AhbDescription {
     uint32_t width = 0, height = 0, layers = 0, format = 0;
     uint64_t usage = 0;
+    // Measured AHB row pitch; zero can describe an opaque GPU-only layout.
+    // This bridge never uses it to address CPU pixels or substitutes width.
     uint32_t stride = 0;
 };
 struct AhbImageFacts {

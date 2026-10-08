@@ -24,6 +24,13 @@ namespace HumanVision.Demo
         private HumanVisionSettingsData draft;
         private ModelInputQualityChoice[] qualities = Array.Empty<ModelInputQualityChoice>();
         private string[] cameras = Array.Empty<string>(), videos = Array.Empty<string>();
+        private string[] bundledVideos = Array.Empty<string>();
+        // 分辨率与 FPS 分开配置；只在草稿交互时重建选项，不进入识别热路径。
+        private static readonly Vector2Int[] capturePresets = {
+            new Vector2Int(640, 480), new Vector2Int(1280, 720),
+            new Vector2Int(1920, 1080), new Vector2Int(3840, 2160)
+        };
+        private Vector2Int[] captureSizes = Array.Empty<Vector2Int>();
         private bool wired, editRegions, fullPreview;
         private int selectedRegion;
         public RawImage Preview => preview;
@@ -41,10 +48,7 @@ namespace HumanVision.Demo
             qualityChoice.onValueChanged.AddListener(_ => controller.Edit(ReadDraft));
             cameraChoice.onValueChanged.AddListener(i => { if (draft != null && i < cameras.Length) { Put("CameraDevice", cameras[i]); } });
             videoChoice.onValueChanged.AddListener(i => { if (draft != null && i < videos.Length) { Put("VideoPath", videos[i]); } });
-            captureChoice.onValueChanged.AddListener(i => {
-                if (i == 0) return; int[] widths = { 0, 640, 1280, 1920 }, heights = { 0, 480, 720, 1080 };
-                Put("Width", widths[i]); Put("Height", heights[i]); Put("FPS", 30);
-            });
+            captureChoice.onValueChanged.AddListener(_ => controller.Edit(ReadDraft));
             foreach (var region in regionHandles) region.Changed = (index, rect) => {
                 selectedRegion = index; draft.Recognition.Regions[index] = rect; ShowRegionFields();
                 // 重叠仅存在于草稿；整组 Apply 会验证，不偷偷挪动其它人的区域。
@@ -60,8 +64,12 @@ namespace HumanVision.Demo
                 value.Recognition.MaxBodies = count; value.Recognition.Regions = HumanVisionSdkConfiguration.CreateEqualRegions(count);
             }
             mode.CameraDevice = Field("CameraDevice").text; mode.VideoPath = Field("VideoPath").text; mode.RtspUrl = Field("RtspUrl").text;
+            // 自定义路径可留空，使用下拉框中实际选中的随包视频。
+            if (value.SourceKind == InputKind.Video && string.IsNullOrWhiteSpace(mode.VideoPath) && videoChoice.value < videos.Length)
+                mode.VideoPath = videos[videoChoice.value];
             mode.RtspComputerHost = Field("RtspHost").text;
-            mode.RequestedWidth = Integer("Width"); mode.RequestedHeight = Integer("Height"); mode.RequestedFramesPerSecond = Integer("FPS");
+            var size = captureSizes[captureChoice.value];
+            mode.RequestedWidth = size.x; mode.RequestedHeight = size.y; mode.RequestedFramesPerSecond = Integer("FPS");
             mode.LineWidth = Number("LineWidth"); mode.PointDiameter = Number("PointSize");
             value.StatisticsInterval = Number("LogInterval"); value.SkeletonLogInterval = Number("PoseLogInterval");
             value.LogFileMegabytes = Integer("LogFileMB"); value.RetainedLogSessions = Integer("LogSessions");
@@ -77,7 +85,8 @@ namespace HumanVision.Demo
             sourceHint.text = "当前草稿输入：" + draft.SourceKind;
             Put("MaxBodies", draft.Recognition.MaxBodies); Put("CameraDevice", mode.CameraDevice);
             Put("VideoPath", mode.VideoPath); Put("RtspUrl", mode.RtspUrl); Put("RtspHost", mode.RtspComputerHost);
-            Put("Width", mode.RequestedWidth); Put("Height", mode.RequestedHeight); Put("FPS", mode.RequestedFramesPerSecond);
+            ShowSelectedVideo(mode.VideoPath);
+            ShowCaptureResolution(mode); Put("FPS", mode.RequestedFramesPerSecond);
             Put("LineWidth", mode.LineWidth); Put("PointSize", mode.PointDiameter);
             Put("LogInterval", draft.StatisticsInterval); Put("PoseLogInterval", draft.SkeletonLogInterval);
             Put("LogFileMB", draft.LogFileMegabytes); Put("LogSessions", draft.RetainedLogSessions);
@@ -86,6 +95,18 @@ namespace HumanVision.Demo
             Mark("DetailedLogs", "详细骨骼日志", draft.DetailedLogs);
             selectedRegion = Mathf.Clamp(selectedRegion, 0, draft.Recognition.Regions.Length - 1);
             ShowRegionFields(); ShowRegions();
+        }
+        private void ShowCaptureResolution(DemoModeSettings mode)
+        {
+            var saved = new Vector2Int(mode.RequestedWidth, mode.RequestedHeight);
+            var sizes = capturePresets.ToList(); int index = sizes.IndexOf(saved);
+            // 旧配置/API 可能使用其它合法尺寸；显示已保存值，不静默改成 720p。
+            // 用户仍通过下拉框选择常用尺寸，不提供宽高输入框。
+            if (index < 0) { index = sizes.Count; sizes.Add(saved); }
+            captureSizes = sizes.ToArray(); captureChoice.ClearOptions();
+            captureChoice.AddOptions(sizes.Select((s, i) => new Dropdown.OptionData(
+                (i >= capturePresets.Length ? "已保存：" : "") + s.x + " × " + s.y)).ToList());
+            captureChoice.SetValueWithoutNotify(index);
         }
         public void SetQualities(ModelInputQualityChoice[] choices)
             => SetQualities(choices, null);
@@ -100,16 +121,33 @@ namespace HumanVision.Demo
             qualityChoice.SetValueWithoutNotify(Mathf.Max(0, index));
             qualityHint.text = HumanVisionSettingsController.Redact(explanation ?? (qualities.Length == 0 ? "此平台使用固定模型。" : "选择此平台支持的模型输入等级。"));
         }
+        /// <summary>
+        /// 注册项目构建时生成的随包视频路径/URL。Android 不能枚举 APK 内的目录，
+        /// 因此由项目清单提供真实条目；刷新按钮会保留清单，调用本方法不会启动播放。
+        /// </summary>
+        public void SetBundledVideos(string[] paths)
+        {
+            bundledVideos = paths == null ? Array.Empty<string>() : paths.Where(p => !string.IsNullOrWhiteSpace(p)).Distinct().ToArray();
+            RefreshSources();
+        }
+        private void ShowSelectedVideo(string path)
+        {
+            int index = Array.IndexOf(videos, path);
+            // 明确的外部路径显示自定义项，避免单个随包视频无法重新选中来替换旧路径。
+            videoChoice.SetValueWithoutNotify(index >= 0 ? index : string.IsNullOrWhiteSpace(path) ? 0 : videos.Length);
+        }
         public void RefreshSources()
         {
             cameras = WebCamTexture.devices.Select(v => v.name).ToArray();
             cameraChoice.ClearOptions(); cameraChoice.AddOptions(cameras.Length == 0 ? new List<string> { "没有可用摄像头" } : cameras.ToList());
             cameraChoice.interactable = cameras.Length != 0;
-            // 桌面 StreamingAssets 可枚举；Android 包内列表可用自定义 URL/path，不伪造可用条目。
-            videos = Directory.Exists(Application.streamingAssetsPath) ? Directory.GetFiles(Application.streamingAssetsPath, "*.mp4", SearchOption.AllDirectories) : Array.Empty<string>();
-            videoChoice.ClearOptions(); videoChoice.AddOptions(videos.Length == 0 ? new List<string> { "使用自定义视频路径" } : videos.Select(Path.GetFileName).ToList());
+            // 桌面可枚举；Android 使用项目注册的构建清单，不猜测 APK 内文件。
+            var local = Directory.Exists(Application.streamingAssetsPath) ? Directory.GetFiles(Application.streamingAssetsPath, "*.mp4", SearchOption.AllDirectories) : Array.Empty<string>();
+            videos = bundledVideos.Concat(local.OrderBy(p => p, StringComparer.Ordinal)).Distinct().ToArray();
+            var titles = videos.Select(Path.GetFileName).ToList(); titles.Add("使用自定义视频路径");
+            videoChoice.ClearOptions(); videoChoice.AddOptions(titles);
             videoChoice.interactable = videos.Length != 0;
-            if (draft != null) { cameraChoice.SetValueWithoutNotify(Mathf.Max(0, Array.IndexOf(cameras, draft.Camera.CameraDevice))); videoChoice.SetValueWithoutNotify(Mathf.Max(0, Array.IndexOf(videos, draft.Video.VideoPath))); }
+            if (draft != null) { cameraChoice.SetValueWithoutNotify(Mathf.Max(0, Array.IndexOf(cameras, draft.Camera.CameraDevice))); ShowSelectedVideo(draft.Video.VideoPath); }
         }
         public void ToggleAdvanced() => advancedPanel.SetActive(!advancedPanel.activeSelf);
         public void ToggleRegionEdit() { editRegions = !editRegions; regionDetailsPanel.SetActive(editRegions); ShowRegions(); }

@@ -1230,8 +1230,11 @@ private:
     if (actual.width != contract.width || actual.height != contract.height ||
         actual.layers != 1 || actual.format != contract.actual_format ||
         actual.usage != contract.actual_usage ||
-        actual.stride < actual.width)
+        (actual.stride != 0 && actual.stride < actual.width))
       return false;
+    // Match the capability probe's GPU-only stride contract: zero is opaque,
+    // not an invented linear row. Actual Vulkan allocation/import/bind below
+    // remains mandatory for every persistent slot as well as the probe.
     VkExternalMemoryImageCreateInfo ext{
         VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO};
     ext.handleTypes =

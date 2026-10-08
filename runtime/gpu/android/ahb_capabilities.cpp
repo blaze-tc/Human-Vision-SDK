@@ -30,7 +30,12 @@ bool Evaluate(const AhbCandidate& c, std::ostringstream& out) {
     require(c.actual.format == rgba8 && c.requested.format == rgba8, "actual.format");
     require(c.actual.usage == c.requested.usage &&
             c.requested.usage == (blit ? sampled_usage : sampled_usage | color_usage), "actual.usage");
-    require(c.actual.stride >= c.actual.width && c.actual.stride > 0, "actual.stride");
+    // GPU-only buffers on RK3588 can report an opaque row layout (stride=0).
+    // We never map CPU rows: Vulkan properties/import/create/bind on BOTH
+    // devices prove usability below. Keep zero measured, never replace it with
+    // width. A reported nonzero pitch smaller than a row is still inconsistent.
+    require(c.actual.stride == 0 || c.actual.stride >= c.actual.width, "actual.stride");
+    if (c.actual.stride == 0) out << "\nstride_layout=opaque_gpu; admission=Vulkan_import_on_both_devices";
     require(c.source_supported, "source.single_sample_rgba_or_bgra_2d");
     const auto image = [&](const AhbImageFacts& facts, const std::string& prefix) {
         out << "\n" << prefix << " vk_format=" << facts.vk_format << " external_format=" << facts.external_format
@@ -379,7 +384,10 @@ AhbSelection ProbeAndroidAhbCapabilities(const VulkanDeviceContext& unity,
             // Never issue import/create operations with an incompatible actual
             // descriptor, even if the requested descriptor was correct.
             if (actual.width == request.width && actual.height == request.height && actual.layers == 1 &&
-                actual.format == request.format && actual.usage == request.usage && actual.stride >= actual.width) {
+                actual.format == request.format && actual.usage == request.usage &&
+                (actual.stride == 0 || actual.stride >= actual.width)) {
+                // A GPU-only opaque pitch must reach the real Vulkan queries.
+                // Do not manufacture a CPU row pitch or skip import checks.
                 detail << "\nproducer";
                 c.producer = ProbeImport(unity, buffer.value, c.actual,
                     VK_IMAGE_USAGE_SAMPLED_BIT | (path == HV_ANDROID_GPU_COPY_BLIT ? VK_IMAGE_USAGE_TRANSFER_DST_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT), detail);

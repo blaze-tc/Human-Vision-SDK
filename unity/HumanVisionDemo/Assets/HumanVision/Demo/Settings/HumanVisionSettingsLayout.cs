@@ -68,12 +68,13 @@ namespace HumanVision.Demo
             field(view.rtspPanel.transform,"RtspUrl","RTSP 地址（已自动填入）"); field(view.rtspPanel.transform,"RtspHost","推流电脑 IP");
             var presets=RowBlock(view.rtspPanel.transform,58); button(presets,"BuildRtsp","电脑摄像头"); button(presets,"BuildRtspVideo","电脑视频");
             button(content,"Mirror","镜像");
-            view.captureChoice=Choice(content,"CaptureChoice","采集预设",new[]{"自定义（见高级设置）","640 × 480 / 30 FPS","1280 × 720 / 30 FPS","1920 × 1080 / 30 FPS"});
+            view.captureChoice=Choice(content,"CaptureChoice","采集分辨率",new[]{"640 × 480","1280 × 720","1920 × 1080","3840 × 2160"});
+            view.captureChoice.SetValueWithoutNotify(1);
+            var captureHint=InputPreviewCanvas.Label(content,"相机请求采集尺寸；视频 / RTSP 以源实际尺寸为准。",52); captureHint.name="Capture resolution hint"; captureHint.fontSize=18;
             var drawing=RowBlock(content,94); field(ColumnBlock(drawing,"Bone width"),"LineWidth","骨骼线宽 px"); field(ColumnBlock(drawing,"Joint diameter"),"PointSize","关节点 px");
             button(content,"Advanced","高级设置 / 日志");
             var advanced=ColumnBlock(content,"Advanced settings"); view.advancedPanel=advanced.gameObject;
             button(advanced,"AutoStart","Init 自动启动"); button(advanced,"WindowsCpu","Windows CPU"); button(advanced,"ResetQuality","重置模型等级为中");
-            var capture=RowBlock(advanced,94); field(ColumnBlock(capture,"Width field"),"Width","采集宽度"); field(ColumnBlock(capture,"Height field"),"Height","采集高度");
             field(advanced,"FPS","采集 FPS");
             var regionDetails=ColumnBlock(content,"Region numeric settings"); view.regionDetailsPanel=regionDetails.gameObject;
             var selection=RowBlock(regionDetails,58); button(selection,"PreviousRegion","上一区域"); button(selection,"NextRegion","下一区域");

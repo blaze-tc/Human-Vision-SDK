@@ -13,6 +13,7 @@ uint64_t optimal_usage_extra = 0;
 int fail_stage = 0;
 int live_resources = 0;
 int identity_queries = 0;
+bool opaque_gpu_stride = false;
 AHardwareBuffer_Desc allocated_description{};
 AHardwareBuffer allocated_buffer{};
 
@@ -52,6 +53,7 @@ void Reset() {
     optimal_usage_extra = 0;
     fail_stage = 0;
     identity_queries = 0;
+    opaque_gpu_stride = false;
     ASSERT_EQ(live_resources, 0);
 }
 
@@ -118,7 +120,7 @@ void VKAPI_CALL vkDestroyFramebuffer(VkDevice, VkFramebuffer, const VkAllocation
 
 int AHardwareBuffer_allocate(const AHardwareBuffer_Desc* description, AHardwareBuffer** buffer) {
     allocated_description = *description;
-    allocated_description.stride = description->width;
+    allocated_description.stride = opaque_gpu_stride ? 0 : description->width;
     *buffer = &allocated_buffer;
     return 0;
 }
@@ -207,6 +209,31 @@ TEST(AhbAndroidProbe, ConcreteFormatFeaturesAreIndependentFromExternalFormatFeat
     EXPECT_TRUE(facts.image_created);
     EXPECT_EQ(facts.format_features, external_features);
     EXPECT_EQ(live_resources, 0);
+}
+
+TEST(AhbAndroidProbe, OpaqueGpuStrideReachesActualVulkanImportQueries) {
+    for (const auto path : {HV_ANDROID_GPU_COPY_BLIT, HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT}) {
+        Reset();
+        opaque_gpu_stride = true;
+        const VulkanSourceImage source{3840, 2160, VK_FORMAT_R8G8B8A8_UNORM,
+            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_TILING_OPTIMAL,
+            VK_SAMPLE_COUNT_1_BIT, 1, VK_IMAGE_TYPE_2D};
+        const auto result = ProbeAndroidAhbCapabilities(Context(), Context(), source, 3840, 2160, path);
+        EXPECT_EQ(result.path, path);
+        EXPECT_EQ(result.contract.stride, 0u);
+        ASSERT_EQ(result.candidates.size(), 1u);
+        EXPECT_TRUE(result.candidates[0].producer.properties);
+        EXPECT_TRUE(result.candidates[0].consumer.memory_bound);
+        EXPECT_EQ(live_resources, 0);
+        // A failed Vulkan bind remains a real rejection even with opaque stride.
+        fail_stage = 3;
+        const auto failed = ProbeAndroidAhbCapabilities(Context(), Context(), source, 3840, 2160, path);
+        EXPECT_EQ(failed.path, HV_ANDROID_GPU_COPY_UNAVAILABLE);
+        EXPECT_TRUE(failed.candidates[0].producer.properties);
+        EXPECT_FALSE(failed.candidates[0].consumer.memory_bound);
+        EXPECT_EQ(live_resources, 0);
+    }
+    Reset();
 }
 
 TEST(AhbAndroidProbe, OptionalVendorUsageIsDiagnosticButStandardUsageIsMandatory) {

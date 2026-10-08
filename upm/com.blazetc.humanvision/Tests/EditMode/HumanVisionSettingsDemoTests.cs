@@ -84,8 +84,62 @@ namespace HumanVision.Tests
             root = new GameObject("invalid settings"); var sdk = root.AddComponent<HumanVisionSdk>(); sdk.InitializeOnStart = false;
             var view = HumanVisionSettingsView.Create(root.transform); var controller = root.AddComponent<HumanVisionSettingsController>(); controller.Configure(sdk, view);
             view.Bind(controller); view.ShowDraft(new HumanVisionSettingsData());
-            Array.Find(view.GetComponentsInChildren<InputField>(true), f => f.name == "Width").text = "NaN";
+            Array.Find(view.GetComponentsInChildren<InputField>(true), f => f.name == "FPS").text = "NaN";
             controller.Execute("Mirror"); Assert.False(view.Draft.Camera.Mirror); Assert.False(sdk.IsInitialized); Assert.Null(controller.Active);
+        }
+        [TestCase(HumanVision.Input.InputKind.WebCamera)]
+        [TestCase(HumanVision.Input.InputKind.Video)]
+        [TestCase(HumanVision.Input.InputKind.Rtsp)]
+        public void ResolutionDropdownEditsOnlyCurrentModeAndPreservesFps(HumanVision.Input.InputKind kind)
+        {
+            root = new GameObject("resolution choices"); var sdk = root.AddComponent<HumanVisionSdk>(); sdk.InitializeOnStart = false;
+            var view = HumanVisionSettingsView.Create(root.transform); var controller = root.AddComponent<HumanVisionSettingsController>();
+            controller.Configure(sdk, view); view.Bind(controller);
+            var data = new HumanVisionSettingsData { SourceKind = kind }; data.Mode.RequestedFramesPerSecond = 24;
+            controller.Edit(() => data);
+            Assert.False(view.GetComponentsInChildren<InputField>(true).Any(f => f.name == "Width" || f.name == "Height"), "Resolution must be selected without width/height text entry.");
+            var choice = view.GetComponentsInChildren<Dropdown>(true).Single(d => d.name == "CaptureChoice");
+            CollectionAssert.AreEqual(new[] { "640 × 480", "1280 × 720", "1920 × 1080", "3840 × 2160" }, choice.options.Select(o => o.text));
+            Assert.That(choice.value, Is.EqualTo(1)); choice.value = 2;
+            Assert.That(controller.Draft.Mode.RequestedWidth, Is.EqualTo(1920)); Assert.That(controller.Draft.Mode.RequestedHeight, Is.EqualTo(1080));
+            Assert.That(controller.Draft.Mode.RequestedFramesPerSecond, Is.EqualTo(24), "Choosing geometry must not replace a separately configured FPS.");
+            foreach (var mode in new[] { controller.Draft.Camera, controller.Draft.Video, controller.Draft.Rtsp }.Where(m => m.RequestedFramesPerSecond != 24))
+                Assert.That(mode.RequestedWidth, Is.EqualTo(1280), "Another input mode must retain its own saved geometry.");
+            Assert.Null(controller.Active); Assert.False(sdk.IsInitialized);
+            view.SetBusy(true); Assert.False(choice.interactable);
+        }
+        [Test] public void ResolutionDropdownPreservesAnExistingNonPresetSizeUntilAChoiceIsMade()
+        {
+            root = new GameObject("saved resolution"); var sdk = root.AddComponent<HumanVisionSdk>(); sdk.InitializeOnStart = false;
+            var view = HumanVisionSettingsView.Create(root.transform); var controller = root.AddComponent<HumanVisionSettingsController>();
+            controller.Configure(sdk, view); view.Bind(controller);
+            var data = new HumanVisionSettingsData(); data.Camera.RequestedWidth = 1440; data.Camera.RequestedHeight = 900;
+            controller.Edit(() => data);
+            var choice = view.GetComponentsInChildren<Dropdown>(true).Single(d => d.name == "CaptureChoice");
+            Assert.That(choice.options[choice.value].text, Does.Contain("1440 × 900"), "An older saved size must not silently become a preset.");
+            Assert.That(view.ReadDraft().Camera.RequestedWidth, Is.EqualTo(1440)); Assert.That(view.ReadDraft().Camera.RequestedHeight, Is.EqualTo(900));
+            choice.value = 0; Assert.That(controller.Draft.Camera.RequestedWidth, Is.EqualTo(640)); Assert.That(controller.Draft.Camera.RequestedHeight, Is.EqualTo(480));
+        }
+        [Test] public void BundledVideoChoicesSurviveRefreshAndResolveAnEmptyCustomPath()
+        {
+            root = new GameObject("packaged videos"); var sdk = root.AddComponent<HumanVisionSdk>(); sdk.InitializeOnStart = false;
+            var view = HumanVisionSettingsView.Create(root.transform); var controller = root.AddComponent<HumanVisionSettingsController>();
+            controller.Configure(sdk, view); view.Bind(controller);
+            var register = typeof(HumanVisionSettingsView).GetMethod("SetBundledVideos");
+            Assert.NotNull(register, "APK video paths need an explicit catalog because Android cannot enumerate StreamingAssets with Directory.GetFiles.");
+            string[] paths = { "jar:file:///test.apk!/assets/video-1.mp4", "jar:file:///test.apk!/assets/folder/video-2.mp4" };
+            register.Invoke(view, new object[] { paths }); view.RefreshSources();
+            var data = new HumanVisionSettingsData { SourceKind = HumanVision.Input.InputKind.Video }; controller.Edit(() => data);
+            var choice = view.GetComponentsInChildren<Dropdown>(true).Single(d => d.name == "VideoChoice");
+            Assert.True(choice.interactable); Assert.That(choice.options.Count, Is.EqualTo(3));
+            Assert.That(view.ReadDraft().Video.VideoPath, Is.EqualTo(paths[0]), "Empty custom path must use the visibly selected list item.");
+            choice.value = 1; Assert.That(view.ReadDraft().Video.VideoPath, Is.EqualTo(paths[1]));
+            Array.Find(view.GetComponentsInChildren<InputField>(true), f => f.name == "VideoPath").text = "/device/custom.mp4";
+            Assert.That(view.ReadDraft().Video.VideoPath, Is.EqualTo("/device/custom.mp4"), "An explicitly entered path must remain authoritative.");
+            data.Video.VideoPath = "/device/old-saved.mp4"; controller.Edit(() => data);
+            Assert.That(choice.value, Is.EqualTo(2), "Unknown saved path must show the custom entry so even one bundled video can be selected again.");
+            choice.value = 0; Assert.That(view.ReadDraft().Video.VideoPath, Is.EqualTo(paths[0]));
+            Assert.False(sdk.IsInitialized); Assert.Null(controller.Active);
         }
         [Test] public void BuilderPreservesUntitledSceneAndSavesPrefabReferences()
         {

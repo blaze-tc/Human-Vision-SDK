@@ -46,6 +46,7 @@ struct AdapterFacts {
   bool access_from_queue = false;
   bool omit_sync_fd_extension = false;
   uint32_t described_width_delta = 0;
+  bool opaque_gpu_stride = false;
   int create_calls = 0;
   int fail_create_at = -1;
   bool export_failure = false;
@@ -359,7 +360,7 @@ std::array<humanvision::gpu::BridgeBarrier,4> Barriers(uintptr_t source, uintptr
 extern "C" {
 int AHardwareBuffer_allocate(const AHardwareBuffer_Desc* d, AHardwareBuffer** out){if(FailCreate())return -1;g.requested=*d;*out=new AHardwareBuffer();++g.ahb_live;return 0;}
 void AHardwareBuffer_acquire(AHardwareBuffer* b){++b->references;}
-void AHardwareBuffer_describe(const AHardwareBuffer*, AHardwareBuffer_Desc* d){*d=g.requested;d->width+=g.described_width_delta;d->stride=d->width;}
+void AHardwareBuffer_describe(const AHardwareBuffer*, AHardwareBuffer_Desc* d){*d=g.requested;d->width+=g.described_width_delta;d->stride=g.opaque_gpu_stride?0:d->width;}
 void AHardwareBuffer_release(AHardwareBuffer* b){if(--b->references==0){delete b;--g.ahb_live;}}
 PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice,const char* n){if(std::strcmp(n,"vkGetAndroidHardwareBufferPropertiesANDROID")==0)return reinterpret_cast<PFN_vkVoidFunction>(AhbProperties);if(std::strcmp(n,"vkGetSemaphoreFdKHR")==0)return reinterpret_cast<PFN_vkVoidFunction>(GetSemaphoreFd);return nullptr;}
 void VKAPI_CALL vkGetPhysicalDeviceMemoryProperties(VkPhysicalDevice,VkPhysicalDeviceMemoryProperties* p){p->memoryTypeCount=1;p->memoryTypes[0].propertyFlags=0;}
@@ -912,6 +913,22 @@ TEST(UnityVulkanAndroidAdapter,
       0, Device(), Contract(HV_ANDROID_GPU_COPY_BLIT), selection, cache));
   EXPECT_EQ(g.ahb_live, 0);
   EXPECT_EQ(cache.ahb, 0u);
+}
+TEST(UnityVulkanAndroidAdapter, PersistentGpuSlotsImportOpaqueStrideWithoutLeaking) {
+  for (const auto path : {HV_ANDROID_GPU_COPY_BLIT, HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT}) {
+    g = AdapterFacts{};
+    g.opaque_gpu_stride = true;
+    humanvision::gpu::UnityVulkanSlotCache cache{};
+    const bool created = AndroidProducer::TestCreate(0, Device(), Contract(path), Selection(path), cache);
+    EXPECT_TRUE(created);
+    if (created) AndroidProducer::TestDrain(0, cache);
+    EXPECT_EQ(g.ahb_live, 0);
+    EXPECT_EQ(g.view_creates, g.view_destroys);
+    // The normal Vulkan resource error path must still roll back every AHB ref.
+    g.fail_create_at = g.create_calls;
+    EXPECT_FALSE(AndroidProducer::TestCreate(0, Device(), Contract(path), Selection(path), cache));
+    EXPECT_EQ(g.ahb_live, 0);
+  }
 }
 TEST(UnityVulkanAndroidAdapter, ColorSourceViewsWarmOnceAndTypedBgraDoesNotSwap) {
   g=AdapterFacts{}; InstallAndCreateUnityDevice(); auto selection=Selection(HV_ANDROID_GPU_COPY_COLOR_ATTACHMENT);
