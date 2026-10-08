@@ -1,3 +1,48 @@
+# 2026-10-08 RK3588 latency follow-up — dominant stage located; device trace ready
+
+New user field logs confirm Fix1 imports frames and produces real RK3588 skeletons.
+Medium completes4.3–5.4 results/s with body-result age381–441ms; Low7.7–7.8/s
+at292–301ms. Actual RTSP publication14–16FPS and Unity~30FPS; all phases still
+publish4K despite lower requested bounds. Age starts at local publication, not
+camera capture. Remaining device smoothness/complete skeleton/FPS gates are open.
+
+Managed Input now bounds Android GPU output before target allocation/binding,
+preserving aspect and using existing GPU conversion; decoded/requested/output
+geometry is logged. Source/UPM hint/docs and actual Settings scene/prefab updated.
+RED14/14 -> Input present54/55 (missing-plugin fixture mismatch) -> absent15/15;
+all55 unique Input cases verified in applicable lanes. Settings23/23, actual
+genuine-video/log/export probe, Android build0errors8warnings and boundaries PASS.
+
+User-authorized OnePlus/PC RTSP comparison confirms Fix1 1280x720 vs Fix2 640x360
+for requested640x480; recognition/no pipeline errors verified. Both complete~16/s,
+body-result age median~149ms: no substantial latency improvement claim. Different
+person coverage/stream fluctuations limit performance comparison. Original phone
+settings restored; Fix2 stays installed. No RK3588 connected to this host.
+
+The user requested a complete skeleton-FPS root-cause investigation. Long RK3588
+phases average175.608ms Medium /119.333ms Low for the processing chain: single-worker
+ceilings5.69/8.38 results/s vs measured5.366/7.805. Backend timing includes imports,
+preprocessing/waits/output. Active full-image NCNN Vulkan packs use FP32, no RKNN/NPU;
+MaxBodies/regions do not reduce graph work. Preview advances independently.
+
+Fresh connected OnePlus diagnostic trace validates204 layers per warm sample,
+Medium/Low/High10/10/11 complete samples (7/7/8 warm). Convolution83.96/85.44/83.25%
+of GPU layer time; preprocessing submit/wait2.87/3.93/2.70ms. This is OnePlus evidence,
+not RK GPU-layer proof. Later input~10FPS also caps Low/Medium diagnostic throughput.
+Own-process native stage logs are now in actual SettingsDemo ZIP export. New local
+log tests RED9/11 -> final GREEN11/11; native API26 closure504/exact48 exports,
+diagnostic Android build0errors9warnings and three real UGUI trace exports PASS.
+Original normal Fix2 phone preferences restored exactly, project/native marker
+restored; final genuine-video/log/ZIP probe sequence310/users2 PASS.
+
+Local Fix2 APK SHA f4839c0c3d2d8e3ddbb4b156b00e34b374a74078a60540dcd44c4632e5a4066c;
+47 native/model/profile entries equal Fix1. Native unchanged, prior379/379 belongs
+to Fix1. Trace APK SHA657a94de7debe8ea516854d327c5a123455784533756457998021737af363544.
+Sole active gate: actual RK3588 trace and normal Fix2 output/smoothness retest;
+instrumented FPS is not acceptance. No new Release or hardware optimization claim.
+Details: [latency/output](reports/2026-10-08-rk3588-rtsp-output-bounds.md),
+[FPS bottleneck and diagnostic evidence](reports/2026-10-08-skeleton-fps-bottleneck.md).
+
 # 2026-10-08 RK3588 field maintenance — local retest APK verified
 
 The supplied RTSP session publishes real 4K frames (~15.406 FPS), but accepts,

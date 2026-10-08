@@ -20,6 +20,7 @@ namespace HumanVision.Input
         private ulong nativeGeneration, sequence, bindingGeneration;
         private long frameId;
         private uint width, height;
+        private int maximumWidth, maximumHeight;
         private bool closing, rebinding, mirror;
         private int latestSlot = -1;
         internal InputSourceState State { get; private set; } = InputSourceState.Stopped;
@@ -70,6 +71,7 @@ namespace HumanVision.Input
                 if (result != 0) throw new InvalidOperationException("RTSP GPU initialization failed (" + result + "); a prior input owner may still be retiring.");
             } finally { Marshal.FreeHGlobal(url); }
             renderEvent = NativeInputBindings.HV_Input_GetRenderEventFunc();
+            maximumWidth = settings.RequestedWidth; maximumHeight = settings.RequestedHeight;
             nativeGeneration = bindingGeneration = sequence = 0; latestSlot = -1; closing = rebinding = false; mirror = settings.DisplayMirror;
             State = InputSourceState.Opening; LastError = "Waiting for RTSP connection, first keyframe and actual decoder geometry.";
             timeline.BeginGeneration();
@@ -89,7 +91,14 @@ namespace HumanVision.Input
             if (state == 3) { State = InputSourceState.Reconnecting; LastError = "RTSP disconnected; waiting for reconnect and a new keyframe."; timeline.Close(); }
             if (!rebinding && NativeInputBindings.HV_Input_GetGpuGeometry(handle, out var w, out var h, out var generation) == 0 && generation != nativeGeneration) {
                 if (w == 0 || h == 0 || w > 4096 || h > 4096) throw new InvalidOperationException("Actual decoder output geometry is unsupported.");
-                width = w; height = h; bindingGeneration = generation; rebinding = true;
+                // MediaCodec 按码流解码，requested 并不会改变摄像机发送的尺寸。
+                // 已有 GPU 颜色转换支持直接缩放到目标：先应用本地输出上限，
+                // 再创建三个槽位，避免把 4K 纹理继续送入预览、归一化拷贝和 SDK。
+                var output = SelectOutputSize((int)w, (int)h, maximumWidth, maximumHeight);
+                width = (uint)output.x; height = (uint)output.y; bindingGeneration = generation; rebinding = true;
+                Debug.Log("HumanVision RTSP GPU geometry: decoded=" + w + "x" + h +
+                    " requestedMaximum=" + maximumWidth + "x" + maximumHeight +
+                    " publishedOutput=" + width + "x" + height + " nativeGeneration=" + generation);
                 NativeInputBindings.HV_Input_RetireGpuTargets(handle);
                 timeline.BeginGeneration(); latestSlot = -1;
             }
@@ -132,6 +141,22 @@ namespace HumanVision.Input
             closing = true; rebinding = false; State = InputSourceState.Closing; LastError = "Retiring queued GPU source copies.";
             NativeInputBindings.HV_Input_Close(handle);
             timeline.Close(); InputRetirementPump.Watch(registration);
+        }
+        /// <summary>
+        /// 本地发布尺寸按请求上限等比缩小，不拉伸、不放大；整除最多舍去不足一个像素。
+        /// 请求 640×480 而源为 16:9 时输出 640×360，关节与预览共享该输出坐标系。
+        /// 使用整数比例比较，避免浮点舍入把标准 16:9 分辨率变成少一像素的尺寸。
+        /// </summary>
+        internal static Vector2Int SelectOutputSize(int sourceWidth, int sourceHeight, int maximumWidth, int maximumHeight)
+        {
+            if (sourceWidth < 1 || sourceHeight < 1 || maximumWidth < 1 || maximumHeight < 1)
+                throw new ArgumentOutOfRangeException(nameof(sourceWidth), "RTSP source and requested output dimensions must be positive.");
+            int w = Math.Min(sourceWidth, maximumWidth), h = Math.Min(sourceHeight, maximumHeight);
+            if ((long)w * sourceHeight <= (long)h * sourceWidth)
+                h = Math.Max(1, (int)((long)sourceHeight * w / sourceWidth));
+            else
+                w = Math.Max(1, (int)((long)sourceWidth * h / sourceHeight));
+            return new Vector2Int(w, h);
         }
         private void DestroyRetiredTextures()
         {

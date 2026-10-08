@@ -68,10 +68,14 @@ namespace HumanVision.Editor
             }
             choice.ClearOptions(); choice.AddOptions(new System.Collections.Generic.List<string> { "640 × 480", "1280 × 720", "1920 × 1080", "3840 × 2160" });
             choice.SetValueWithoutNotify(1);
-            if (choice.transform.parent.Find("Capture resolution hint") == null) {
-                var hint = InputPreviewCanvas.Label(choice.transform.parent, "相机请求采集尺寸；视频 / RTSP 以源实际尺寸为准。", 52);
+            var existingHint = choice.transform.parent.Find("Capture resolution hint");
+            if (existingHint == null) {
+                var hint = InputPreviewCanvas.Label(choice.transform.parent, "相机请求采集尺寸；RTSP 限制本地输出；视频按源尺寸播放。", 52);
                 hint.name = "Capture resolution hint"; hint.font = choice.captionText.font; hint.fontSize = 18;
                 hint.transform.SetSiblingIndex(choice.transform.GetSiblingIndex() + 1);
+            } else {
+                var hint = existingHint.GetComponent<Text>();
+                if (hint != null) { hint.text = "相机请求采集尺寸；RTSP 限制本地输出；视频按源尺寸播放。"; EditorUtility.SetDirty(hint); }
             }
             EditorUtility.SetDirty(choice); EditorUtility.SetDirty(view);
         }

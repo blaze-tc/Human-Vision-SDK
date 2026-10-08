@@ -6,6 +6,15 @@ and Android ARM64/API 26+ are supported by the bundled runtime. Android RTSP use
 MediaCodec/AHardwareBuffer/Vulkan and waits for complete native/copy retirement
 before deferred reopening. Errors remain actionable; no silent CPU fallback.
 
+RTSP requested width/height bound the local published image while preserving the
+stream aspect ratio; smaller streams are never upscaled. The Android output-bound
+fix is staged in the local RK3588-Fix2 retest build (published preview.6/Fix1 still
+use the decoded dimensions). The existing GPU color converter produces the scaled
+output directly, without CPU image readback. This does not reconfigure the camera
+or reduce its encoded-stream/decode workload. Choose a camera substream separately
+when those costs also need to be reduced. New-generation diagnostics distinguish
+decoded geometry, requested maximum and published output.
+
 Install Input first using:
 
 ```

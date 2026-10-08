@@ -14,7 +14,7 @@
 
 草稿、成功应用配置和磁盘保存配置分别保留；状态条显示 SDK/Input 状态、实际人数、真实结果/帧编号、输入与推理 FPS、各槽位未知/无人/有人。UI FPS 不等于每人完整骨骼观测 FPS。
 
-分辨率是相机的采集请求；Video/RTSP 仍采用文件或摄像头码流的实际尺寸。修改 RTSP 的实际分辨率需要在摄像头端选择对应码流，日志会保留请求值和实际值。旧配置包含其它尺寸时，下拉框增加一个“已保存”选项，读取或镜像操作不会悄悄改成 720p。原有界面可由 Editor API `HumanVisionSettingsDemoBuilder.UpgradeResolutionControls(view)` 升级，再保存场景/Prefab；它保留其它布局和引用，只移除宽高输入及空行。
+分辨率是相机的采集请求；Video 按文件实际尺寸播放。RTSP 的本地发布尺寸按请求上限等比缩小，不放大低分辨率源。4K 16:9 流选择 1280×720 后，本地输出为 1280×720；选择 640×480 后为 640×360，预览与骨骼使用同一输出坐标系。Android 由已有 GPU 颜色转换直接生成缩小输出，不增加 CPU 图像回读。它不会改变摄像机发送的码流，减少网络传输和解码负担仍需在摄像头端选择对应子码流。Android 新代次日志记录 decoded/requestedMaximum/publishedOutput；该修复随 RK3588-Fix2 本地复测包提供，已发布 preview.6/Fix1 的 Android 路径仍使用源尺寸。旧配置包含其它尺寸时，下拉框增加一个“已保存”选项，读取或镜像操作不会悄悄改成 720p。原有界面可由 Editor API `HumanVisionSettingsDemoBuilder.UpgradeResolutionControls(view)` 升级，再保存场景/Prefab；它保留其它布局和引用，只移除宽高输入及空行。
 
 桌面视频列表扫描 StreamingAssets 的 MP4。Android 的 StreamingAssets 是 APK 内的 URL，无法用 `Directory.GetFiles` 枚举，项目可在启动前调用 `view.SetBundledVideos(string[] paths)` 注册构建时生成的真实视频目录；刷新按钮会保留这些条目。选择列表后点击应用；自定义视频路径留空时使用当前选中条目，填写外部路径时则使用该路径。当前 Human-Vision-SDK-Test 已自动生成随包清单并使用 Android jar URL，可直接选择 `video-1.mp4`。标准 SDK 不猜测未声明的包内文件。
 
