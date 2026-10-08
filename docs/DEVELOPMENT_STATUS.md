@@ -1,3 +1,17 @@
+# Current: Unity gameplay API — queries verified; lifecycle next (2026-10-08)
+
+User approved the one-component SDK API and reference UGUI settings Demo.
+Task 1: new configuration/query tests RED 0/18 (missing API) → GREEN 18/18.
+Baseline configuration and new queries together: Unity EditMode 28/28 PASS,0skip.
+Command: pwsh -File tools/test/verify_unity_sdk.ps1 -Filter 'HumanVision.Tests.HumanVisionSdkQueryTests|HumanVision.Tests.HumanVisionConfigTests'.
+Input/Runtime/Demo/Editor and Android conditional managed compilation PASS.
+Exact evidence: out/sdk-api-verification/20261008-102241-723-results.xml (RED),
+out/sdk-api-verification/20261008-102444-682-results.xml (GREEN).
+Sole active task: Task 2 lifecycle and one-component creation. Task 3 UGUI and Task 4 docs/package verification follow.
+World coordinates are a virtual plane; no device accuracy/30FPS acceptance claim.
+Plan: docs/superpowers/plans/2026-10-08-unity-sdk-gameplay-api.md.
+
+---
 # Current: Q3 shared quality selector and Happytime RTSP presets verified (2026-10-05)
 
 Q1 committed4169b6d; Q2 committed18f73ae. Q3 shared UGUI quality draft/save/Apply,
@@ -2548,3 +2562,4 @@ Known issues / environment notes:
 Only mark a milestone complete when its acceptance criteria in `CODEX_DEMO_EXECUTION_PLAN.md` are met with real outputs. Then update `Current milestone` to the next item before implementing it.
 
 Task 6 final focused SimCC check 1/1 PASS; final default native builds PASS. Current work advances to Task 7 common services. Model-pack generation assets are retained; source archives remain cached.
+
