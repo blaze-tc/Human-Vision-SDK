@@ -8,7 +8,7 @@ namespace HumanVision.Input
     /// <summary>Shared scalable input UI primitives. Contains no recognition dependency.</summary>
     public static class InputPreviewCanvas
     {
-        private static Font Font => Resources.GetBuiltinResource<Font>("Arial.ttf");
+        private static Font Font => HumanVisionUnityCompatibility.DefaultFont;
         public static RectTransform Root(Transform parent, out RawImage preview)
         {
             if (UnityEngine.Object.FindObjectOfType<Camera>() == null) {

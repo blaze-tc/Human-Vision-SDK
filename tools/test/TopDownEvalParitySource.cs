@@ -133,7 +133,7 @@ namespace HumanVision
                 _label.transform.SetParent(_displays[0].canvas.transform,false);
                 var rect=(RectTransform)_label.transform; rect.anchorMin=new Vector2(0,0); rect.anchorMax=new Vector2(1,0);
                 rect.pivot=new Vector2(.5f,0); rect.anchoredPosition=new Vector2(0,12); rect.sizeDelta=new Vector2(0,48);
-                var text=_label.GetComponent<Text>(); text.font=Resources.GetBuiltinResource<Font>("Arial.ttf");
+                var text=_label.GetComponent<Text>(); text.font=HumanVision.Input.HumanVisionUnityCompatibility.DefaultFont;
                 text.fontSize=22; text.alignment=TextAnchor.MiddleCenter; text.color=Color.white; text.raycastTarget=false;
                 text.text="STATIC VIDEO FRAME "+manifest.frame_index+" | "+
                     Path.GetFileName((manifest.video_path??"analytic fixture").Replace('\\','/'))+" | GPU INPUT DIAGNOSTIC";

@@ -1,5 +1,6 @@
 param(
     [string]$Filter = 'HumanVision.Tests.HumanVisionConfigTests',
+    [ValidateSet('EditMode','PlayMode')][string]$TestMode = 'EditMode',
     [switch]$CompileOnly,
     [string]$Unity = 'D:/Developer/2021.3.45f1/Editor/Unity.exe',
     [string]$Payload = 'E:/Project/Human Vision SDK/.worktrees/android-ncnn-vulkan/out/input/production-correction/quality-q4-package-20261005-v2'
@@ -7,7 +8,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $unityData = Join-Path (Split-Path $Unity) 'Data'
-$output = Join-Path $repo 'out/sdk-api-verification'
+$editorVersion = (Get-Item $Unity).VersionInfo.ProductVersion
+$is2022 = $editorVersion -match '^2022\.[2-9]' -or $editorVersion -match '^([3-9][0-9]{3})\.'
+$output = Join-Path $repo $(if ($is2022) { 'out/sdk-api-verification-2022' } else { 'out/sdk-api-verification' })
 New-Item -ItemType Directory -Force $output | Out-Null
 $references = @(Get-ChildItem "$unityData/NetStandard/ref/2.1.0" -Filter '*.dll';
     Get-ChildItem "$unityData/NetStandard/compat/2.1.0/shims/netfx" -Filter '*.dll';
@@ -22,6 +25,7 @@ foreach ($platform in @('Editor','Android')) {
         $arguments = @('/nologo','/target:library','/unsafe','/langversion:9','/nostdlib+','/nowarn:0649') + $referenceArgs
         $arguments += '/out:"' + $platformOut + '/HumanVision.' + $part + '.dll"'
         $arguments += if ($platform -eq 'Android') { '/define:UNITY_ANDROID' } else { '/define:UNITY_EDITOR' }
+        if ($is2022) { $arguments += '/define:UNITY_2022_2_OR_NEWER' }
         if ($part -ne 'Input') { $arguments += '/reference:"' + $platformOut + '/HumanVision.Input.dll"' }
         if ($part -in @('Demo','Editor')) { $arguments += '/reference:"' + $platformOut + '/HumanVision.Runtime.dll"' }
         if ($part -eq 'Editor' -or $platform -eq 'Editor') {
@@ -60,7 +64,7 @@ $resultPath = Join-Path $output "$stamp-results.xml"
 $logPath = Join-Path $output "$stamp-unity.log"
 $env:HV_TEST_RUNTIME_ROOT = $repo
 $env:__COMPAT_LAYER = 'RunAsInvoker'
-$arguments = "-batchmode -nographics -projectPath `"$project`" -runTests -testPlatform EditMode -testFilter `"$Filter`" -testResults `"$resultPath`" -logFile `"$logPath`""
+$arguments = "-batchmode -nographics -projectPath `"$project`" -runTests -testPlatform $TestMode -testFilter `"$Filter`" -testResults `"$resultPath`" -logFile `"$logPath`""
 $process = Start-Process -FilePath $Unity -ArgumentList $arguments -WindowStyle Hidden -PassThru
 $process.WaitForExit()
 if (!(Test-Path -LiteralPath $resultPath)) {
@@ -71,6 +75,6 @@ if (!(Test-Path -LiteralPath $resultPath)) {
 $summary = $result.'test-run'
 Write-Output "Unity tests: $($summary.passed)/$($summary.total) passed; $($summary.failed) failed; $($summary.skipped) skipped. Results: $resultPath"
 if ([int]$summary.failed -ne 0 -or [int]$summary.total -eq 0 -or $process.ExitCode -ne 0) {
-    $result.SelectNodes('//test-case[failure]') | ForEach-Object { Write-Output "$($_.fullname): $($_.failure.message)" }
+    $result.SelectNodes('//test-case[failure]') | ForEach-Object { Write-Output "$($_.fullname): $($_.failure.message.InnerText)" }
     throw "Unity tests failed. See $resultPath and $logPath"
 }

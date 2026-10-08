@@ -19,6 +19,7 @@ namespace HumanVision.Input
         private IntPtr handle, rgba;
         private uint capacity;
         private Texture2D upload;
+        private bool uploadLinear;
         private ulong nativeSequence, nativeGeneration;
         private readonly IntPtr[] retiring = new IntPtr[8];
         private readonly byte[] errorBuffer = new byte[1024];
@@ -114,10 +115,11 @@ namespace HumanVision.Input
                 { Fail("RTSP exact frame copy failed; plugin pixels and metadata must match."); return; }
                 if (actual.Generation != nativeGeneration) { BeginOutput(); nativeGeneration = actual.Generation; }
                 bool linear = actual.ColorSpace != 1;
-                if (upload == null || upload.width != actual.Width || upload.height != actual.Height || upload.isDataSRGB == linear) {
+                if (upload == null || upload.width != actual.Width || upload.height != actual.Height || uploadLinear != linear) {
                     FrameTextureNormalizer.Destroy(upload);
                     upload = new Texture2D((int)actual.Width, (int)actual.Height, TextureFormat.RGBA32, false, linear)
                         { name = "HumanVision RTSP upload", filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+                    uploadLinear = linear;
                 }
                 upload.LoadRawTextureData(rgba, (int)actual.RgbaBytes); upload.Apply(false, false);
                 State = InputSourceState.Streaming; LastError = string.Empty;

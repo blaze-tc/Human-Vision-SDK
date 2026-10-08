@@ -1,0 +1,6 @@
+<linker>
+  <!-- 兼容查询在启动时绑定可选属性；IL2CPP 必须保留引擎 Texture 的公开成员。 -->
+  <assembly fullname="UnityEngine.CoreModule">
+    <type fullname="UnityEngine.Texture" preserve="all" />
+  </assembly>
+</linker>

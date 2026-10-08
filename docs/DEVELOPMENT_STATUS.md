@@ -1,14 +1,19 @@
-# Current: Unity gameplay API — queries verified; lifecycle next (2026-10-08)
+# Current: Unity SDK facade verified; UGUI settings active (2026-10-08)
 
-User approved the one-component SDK API and reference UGUI settings Demo.
-Task 1: new configuration/query tests RED 0/18 (missing API) → GREEN 18/18.
-Baseline configuration and new queries together: Unity EditMode 28/28 PASS,0skip.
-Command: pwsh -File tools/test/verify_unity_sdk.ps1 -Filter 'HumanVision.Tests.HumanVisionSdkQueryTests|HumanVision.Tests.HumanVisionConfigTests'.
-Input/Runtime/Demo/Editor and Android conditional managed compilation PASS.
-Exact evidence: out/sdk-api-verification/20261008-102241-723-results.xml (RED),
-out/sdk-api-verification/20261008-102444-682-results.xml (GREEN).
-Sole active task: Task 2 lifecycle and one-component creation. Task 3 UGUI and Task 4 docs/package verification follow.
-World coordinates are a virtual plane; no device accuracy/30FPS acceptance claim.
+Task 1 semantic queries and Task 2 one-component facade are implemented.
+Task 2 RED 0/11 missing controller -> GREEN lifecycle11/11; native PlayMode6/6 PASS.
+Creation Undo parent restoration regression fixed; no unexpected Console errors.
+Unity 2021 compatibility RED0/3 -> GREEN3/3; stopped requiring Texture.isDataSRGB;
+cache optional getter once, preserve Gamma encoding, retain explicit RTSP upload encoding.
+Default font selects LegacyRuntime.ttf from Unity2022.2, Arial.ttf for older editors.
+Combined query/lifecycle/compatibility32/32 PASS,0skip. Editor + Android managed compile PASS.
+Evidence: out/sdk-api-verification/20261008-104234-794-results.xml (compat RED),
+20261008-104137-531-results.xml (native PlayMode6/6), 20261008-104755-003-results.xml (GREEN32/32).
+Commands: pwsh -File tools/test/verify_unity_sdk.ps1 -TestMode PlayMode -Filter HumanVision.Tests.HumanVisionSdkRuntimeTests;
+focused EditMode filter for HumanVisionSdkQueryTests|HumanVisionSdkLifecycleTests|HumanVisionUnityCompatibilityTests.
+Sole active task: Task3 UGUI settings; RED4/4 missing contracts observed in 20261008-104515-526-results.xml.
+Task4 docs/packages and Unity2022 runtime-font validation remain pending. Unity2021.3.18 is not installed locally.
+No native ABI change, device accuracy, real hand availability or30freshFPS acceptance claim.
 Plan: docs/superpowers/plans/2026-10-08-unity-sdk-gameplay-api.md.
 
 ---
@@ -2562,4 +2567,3 @@ Known issues / environment notes:
 Only mark a milestone complete when its acceptance criteria in `CODEX_DEMO_EXECUTION_PLAN.md` are met with real outputs. Then update `Current milestone` to the next item before implementing it.
 
 Task 6 final focused SimCC check 1/1 PASS; final default native builds PASS. Current work advances to Task 7 common services. Model-pack generation assets are retained; source archives remain cached.
-

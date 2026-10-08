@@ -19,7 +19,7 @@ namespace HumanVision.Input
         public FrameColorSpace OutputColorSpace { get; private set; }
         internal static FrameColorSpace EncodingFor(Texture input)
         {
-            return QualitySettings.activeColorSpace == ColorSpace.Gamma && input.isDataSRGB
+            return QualitySettings.activeColorSpace == ColorSpace.Gamma && HumanVisionUnityCompatibility.IsSrgb(input)
                 ? FrameColorSpace.Srgb : FrameColorSpace.Linear;
         }
 
