@@ -88,13 +88,17 @@ namespace HumanVision.Demo
             ShowRegionFields(); ShowRegions();
         }
         public void SetQualities(ModelInputQualityChoice[] choices)
+            => SetQualities(choices, null);
+        /// <summary>同时显示真实平台限制/资源错误；可选等级显示实际模型输入尺寸。</summary>
+        public void SetQualities(ModelInputQualityChoice[] choices, string explanation)
         {
             qualities = choices ?? Array.Empty<ModelInputQualityChoice>(); qualityChoice.ClearOptions();
-            qualityChoice.AddOptions(qualities.Length == 0 ? new List<string> { "固定精度" } : qualities.Select(v => v.Quality.ToString()).ToList());
+            qualityChoice.AddOptions(qualities.Length == 0 ? new List<string> { "固定模型" } : qualities.Select(v =>
+                (v.Quality == ModelInputQuality.Low ? "低" : v.Quality == ModelInputQuality.High ? "高" : "中") + "（" + v.Width + "×" + v.Height + "）").ToList());
             qualityChoice.interactable = qualities.Length != 0;
             int index = draft == null ? -1 : Array.FindIndex(qualities, v => v.Quality == draft.InputQuality);
             qualityChoice.SetValueWithoutNotify(Mathf.Max(0, index));
-            qualityHint.text = qualities.Length == 0 ? "此平台使用固定识别精度。" : "选择此平台支持的识别精度。";
+            qualityHint.text = HumanVisionSettingsController.Redact(explanation ?? (qualities.Length == 0 ? "此平台使用固定模型。" : "选择此平台支持的模型输入等级。"));
         }
         public void RefreshSources()
         {
@@ -138,6 +142,7 @@ namespace HumanVision.Demo
             foreach (var button in buttons) button.interactable = !busy || button.name == "Stop";
             foreach (var field in fields) field.interactable = !busy;
             peopleChoice.interactable = !busy; qualityChoice.interactable = !busy && qualities.Length != 0;
+            var reset = Array.Find(buttons, b => b.name == "ResetQuality"); if (reset != null) reset.interactable = !busy && qualities.Length > 1;
             cameraChoice.interactable = !busy && cameras.Length != 0; videoChoice.interactable = !busy && videos.Length != 0; captureChoice.interactable = !busy;
             foreach (var region in regionHandles) if (region.gameObject.activeSelf) region.SetRegion(region.Region, editRegions && !busy);
         }

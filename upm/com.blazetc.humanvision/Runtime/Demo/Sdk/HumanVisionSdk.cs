@@ -14,6 +14,8 @@ namespace HumanVision
     [DisallowMultipleComponent, AddComponentMenu("Human Vision/Human Vision SDK")]
     public sealed class HumanVisionSdk : MonoBehaviour
     {
+        /// <summary>托管 SDK 版本，便于区分实机日志对应的发布包。</summary>
+        public const string Version = "0.4.0-preview.6";
         [Header("启动与输入"), SerializeField] private HumanVisionSdkOptions options = new HumanVisionSdkOptions();
         [SerializeField, Tooltip("进入 Play Mode 后自动准备 Runtime 并打开配置输入。")] private bool initializeOnStart = true;
         [Header("屏幕与世界坐标"), SerializeField, Tooltip("可选实际视频 RawImage 的 RectTransform；留空为整个屏幕。")] private RectTransform screenTarget;
@@ -34,6 +36,9 @@ namespace HumanVision
         private readonly HumanVisionRegionOccupancy[] previousOccupancy = new HumanVisionRegionOccupancy[8];
         private readonly Vector3[] corners = new Vector3[4];
         private string preparedRoot;
+        private AnalysisContract activeContract;
+        private HumanVisionSdkQualityCapabilities qualityCapabilities;
+        private string qualityRoot;
 
         /// <summary>Runtime 已初始化后通知；输入是否流送请读取 IsRunning。</summary>
         public event Action Initialized;
@@ -69,6 +74,13 @@ namespace HumanVision
         public InputSourceState InputState => source?.State ?? InputSourceState.Stopped;
         /// <summary>最近统计信息；统计与输入/渲染 FPS 不等价。</summary>
         public HumanVisionStats Stats => manager != null ? manager.Stats : default;
+        /// <summary>当前实际 Runtime 配置和诊断字符串，用于实机日志；尚未初始化时为空。</summary>
+        public string RuntimeProfile => manager != null && manager.IsInitialized ? manager.ActiveRuntimeProfile : "";
+        public string RuntimeDiagnostics => manager != null && manager.IsInitialized ? manager.RuntimeDiagnostics : "";
+        /// <summary>当前使用的资源目录与实际模型包；输入采集尺寸与模型尺寸分别记录。</summary>
+        public string RuntimeRootPath => preparedRoot ?? "";
+        public string ActiveModelPack => IsInitialized ? activeContract?.ModelPackId ?? "" : "";
+        public Vector2Int AnalysisInputSize => IsInitialized && activeContract != null ? new Vector2Int(activeContract.PoseWidth, activeContract.PoseHeight) : Vector2Int.zero;
         /// <summary>原始结果序号。</summary>
         public long ResultSequence => manager != null ? manager.ResultSequence : 0;
         /// <summary>来源帧 ID；未初始化为 -1。</summary>
@@ -135,6 +147,7 @@ namespace HumanVision
             if (!manager.TryInitialize(new HumanVisionConfig { RuntimeRoot = root, Profile = contract.ProfileId, MaxBodies = candidate.Recognition.MaxBodies })) {
                 string error = manager.LastError; yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); yield break;
             }
+            activeContract = contract;
             if (!ApplyRecognition(candidate.Recognition)) {
                 string error = LastError; yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); yield break;
             }
@@ -343,12 +356,41 @@ namespace HumanVision
         public int GetColorImageWidth() => GetColorImageTex() != null ? GetColorImageTex().width : 0;
         /// <summary>当前实际图像高度，尚无纹理为 0。</summary>
         public int GetColorImageHeight() => GetColorImageTex() != null ? GetColorImageTex().height : 0;
-        /// <summary>当前平台/构建真实可用的质量档位；空数组表示固定合同。</summary>
-        public ModelInputQualityChoice[] GetAvailableInputQualities() {
-            if (string.IsNullOrEmpty(preparedRoot)) return Array.Empty<ModelInputQualityChoice>();
-            string profile = Application.platform == RuntimePlatform.Android ? HumanVisionAndroidRuntimeSelection.ResolveProfile("auto") : new SharedRecognitionSettings { UseWindowsCpu = options.UseWindowsCpu }.RuntimeProfileFor(Application.platform);
-            return HumanVisionModelInputQualities.Load(preparedRoot).ChoicesForMode(profile);
+        /// <summary>在识别启动前准备 Android 模型等级目录；不创建 Native 会话，不打开输入，不改变运行配置。</summary>
+        public IEnumerator PrepareInputQualities(string runtimeRoot = "")
+        {
+            string profile = null;
+            try { profile = QualityProfile(options); }
+            catch (Exception e) { qualityCapabilities = HumanVisionSdkQualityCapabilities.Failed("", e.Message); }
+            if (profile == null) yield break;
+            if (profile != HumanVisionModelInputQualities.AdmittedRuntimeMode) yield break;
+            string root = string.IsNullOrWhiteSpace(runtimeRoot) ? preparedRoot : runtimeRoot;
+            string failure = "";
+            if (string.IsNullOrEmpty(root)) yield return HumanVisionRuntimeData.Prepare(value => root = value, value => failure = value);
+            qualityRoot = root; qualityCapabilities = HumanVisionSdkQualityCapabilities.Load(root, profile);
+            if (string.IsNullOrEmpty(root) && !string.IsNullOrEmpty(failure))
+                qualityCapabilities = HumanVisionSdkQualityCapabilities.Failed(profile, failure);
+            // 只有当前安装资源校验成功，初始化才能复用该目录；错误不会覆盖正在运行的会话。
+            if (!string.IsNullOrEmpty(root) && string.IsNullOrEmpty(qualityCapabilities.Error)) preparedRoot = root;
         }
+        private static string QualityProfile(HumanVisionSdkOptions candidate) => Application.platform == RuntimePlatform.Android
+            ? HumanVisionAndroidRuntimeSelection.ResolveProfile("auto")
+            : new SharedRecognitionSettings { UseWindowsCpu = candidate.UseWindowsCpu }.RuntimeProfileFor(Application.platform);
+        /// <summary>读取当前或草稿平台的能力说明；结果区分固定模型、准备中与校验失败。</summary>
+        public HumanVisionSdkQualityCapabilities GetInputQualityCapabilities(HumanVisionSdkOptions requested = null)
+        {
+            HumanVisionSdkOptions candidate; string profile;
+            try { candidate = requested ?? Configuration; profile = QualityProfile(candidate); }
+            catch (Exception e) { return HumanVisionSdkQualityCapabilities.Failed("", e.Message); }
+            string root = string.IsNullOrWhiteSpace(candidate.RuntimeRoot) ? preparedRoot : candidate.RuntimeRoot;
+            if (profile != HumanVisionModelInputQualities.AdmittedRuntimeMode) return HumanVisionSdkQualityCapabilities.Load(root, profile);
+            if (qualityCapabilities == null || qualityRoot != root || qualityCapabilities.RuntimeProfile != profile) {
+                qualityRoot = root; qualityCapabilities = HumanVisionSdkQualityCapabilities.Load(root, profile);
+            }
+            return qualityCapabilities;
+        }
+        /// <summary>当前平台/构建真实可用的质量档位；未准备时先等待 PrepareInputQualities。</summary>
+        public ModelInputQualityChoice[] GetAvailableInputQualities() => GetInputQualityCapabilities().Choices;
         private Rect ScreenRect()
         {
             if (screenTarget == null) return new Rect(0, 0, Screen.width, Screen.height);

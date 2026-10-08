@@ -16,9 +16,10 @@ public static class HumanVisionSdkProjectProbe
     private static int phase, observations, queriedJoints, knownRegions;
     private static long previous;
     private static double deadline;
+    private static string diagnosticSession;
     private static string Root => Path.GetDirectoryName(Application.dataPath);
     private static string Report => Path.Combine(Root, "sdk-api-probe.txt");
-    [MenuItem("HumanVision/Verification/Start SDK API probe")]
+    [MenuItem("Tools/Human Vision/Development/SDK API verification/Start SDK API probe")]
     public static void Start()
     {
         if (!EditorApplication.isPlaying) throw new Exception("Enter Play Mode first.");
@@ -27,6 +28,7 @@ public static class HumanVisionSdkProjectProbe
         sdk = controller.Sdk; var config = JsonUtility.FromJson<Config>(File.ReadAllText(Path.Combine(Root,"sdk-api-probe-config.json")));
         var data = controller.Draft; data.SourceKind = InputKind.Video; data.Video.VideoPath = config.video;
         data.UseWindowsCpu = true; data.Recognition.MaxBodies = 4; data.Recognition.UseRegions = false;
+        data.DetailedLogs = true; data.StatisticsInterval = .2f; data.SkeletonLogInterval = .2f;
         data.Recognition.Regions = HumanVisionSdkConfiguration.CreateEqualRegions(4);
         controller.View.ShowDraft(data); controller.Execute("ApplySave");
         phase=0; observations=queriedJoints=knownRegions=0; previous=0; deadline=EditorApplication.timeSinceStartup+120;
@@ -60,6 +62,7 @@ public static class HumanVisionSdkProjectProbe
                 if(observations<5 || queriedJoints==0 || knownRegions==0) return;
                 if(phase==0) {
                     Check(controller.Saved!=null && controller.Active!=null,"ApplySave failed to commit successful input");
+                    CaptureDiagnosticSession(); VerifyDiagnostics("session.start", "device=", "runtime.initialized", "apply.succeeded", "statistics", "skeleton", "confidence=", "user.entered");
                     Note("PASS video4: fresh="+observations+" queriedJoints="+queriedJoints+" knownRegions="+knownRegions+" currentCount="+sdk.GetUsersCount()+" ageMs="+sdk.ResultAgeMilliseconds.ToString("F1"));
                     Note("WAIT_VISUAL: inspect screenshot then run Continue probe"); phase=10;
                 } else if(phase==1) {
@@ -72,14 +75,49 @@ public static class HumanVisionSdkProjectProbe
             } else if(phase==2 && !sdk.Busy) {
                 Check(!sdk.IsInitialized && !sdk.HasFreshResult && !sdk.TryGetRegionOccupancy(0,out _),"Stop did not clear state");
                 Note("PASS safe stop and unknown occupancy");
+                VerifyDiagnostics("stop.complete");
                 var data=controller.Draft; data.Recognition.MaxBodies=2;data.Recognition.UseRegions=true;data.Recognition.Regions=HumanVisionSdkConfiguration.CreateEqualRegions(2);
                 controller.View.ShowDraft(data);controller.Execute("Apply");phase=3;observations=queriedJoints=knownRegions=0;previous=0;deadline=EditorApplication.timeSinceStartup+120;
             } else if(phase==4 && !UnityEngine.Object.FindObjectsOfType<HumanVisionManager>().Any(m=>m.gameObject.name.EndsWith("Runtime Host"))) {
+                CaptureLastDestroyedSession(); VerifyDiagnostics("controller.destroy", "session.end");
                 Note("PASS destroy while video streaming: no Runtime Host remains\nCOMPLETE PASS");EditorApplication.update-=Tick;
             }
         } catch(Exception e) { Note("FAIL: "+e);EditorApplication.update-=Tick;Debug.LogException(e); }
     }
-    [MenuItem("HumanVision/Verification/Continue SDK API probe")]
+    private static void CaptureDiagnosticSession()
+    {
+        object logger = typeof(HumanVisionSettingsController).GetField("logger", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(controller);
+        diagnosticSession = (string)logger.GetType().GetProperty("SessionPath").GetValue(logger);
+        Check(Directory.Exists(diagnosticSession), "Actual diagnostic session was not created");
+    }
+    private static void CaptureLastDestroyedSession()
+    {
+        string logs = Path.Combine(Application.persistentDataPath,"HumanVisionSdkSettings/logs");
+        diagnosticSession = Directory.GetDirectories(logs).OrderByDescending(Path.GetFileName).First();
+    }
+    private static void VerifyDiagnostics(params string[] markers)
+    {
+        string text = string.Join("\n",Directory.GetFiles(diagnosticSession,"*.log").Select(File.ReadAllText));
+        foreach(string marker in markers) Check(text.Contains(marker), "Actual diagnostic logs missing " + marker);
+        Note("PASS diagnostics: " + string.Join(",",markers) + " path=" + diagnosticSession);
+    }
+    [MenuItem("Tools/Human Vision/Development/SDK API verification/Dump main menu")]
+    public static void DumpMainMenu()
+    {
+        var menus = new System.Collections.Generic.SortedSet<string>();
+        foreach(var assembly in AppDomain.CurrentDomain.GetAssemblies().Where(a=>!a.IsDynamic)) {
+            Type[] types; try { types=assembly.GetTypes(); } catch(System.Reflection.ReflectionTypeLoadException e) { types=e.Types.Where(t=>t!=null).ToArray(); }
+            foreach(var type in types) foreach(var method in type.GetMethods(System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static))
+                foreach(var attr in method.GetCustomAttributesData().Where(a=>a.AttributeType.FullName=="UnityEditor.MenuItem")) {
+                    string path=attr.ConstructorArguments[0].Value as string;
+                    if(path!=null && path.StartsWith("HumanVision/")) menus.Add(path);
+                }
+        }
+        var roots=menus.Select(p=>p.Split('/')[1]).Distinct().OrderBy(v=>v).ToArray();
+        Check(roots.Length==4 && roots.Contains("Create SDK") && roots.Contains("Examples"), "Main SDK menu is not reduced to four groups");
+        File.WriteAllText(Path.Combine(Root,"sdk-main-menu.txt"),"PASS: four main groups\n"+string.Join("\n",menus));
+    }
+    [MenuItem("Tools/Human Vision/Development/SDK API verification/Continue SDK API probe")]
     public static void Continue()
     {
         Check(phase==10,"Probe is not waiting for visual inspection");

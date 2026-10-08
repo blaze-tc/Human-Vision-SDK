@@ -590,3 +590,7 @@ Input返回码独立：OK=0、NO_FRAME=1、BUSY=2、INVALID=-1、BUFFER_TOO_SMAL
 | 维护路径/兼容性 | [START_HERE](../maintenance/START_HERE.md)、[UNITY_STABLE_API](../maintenance/UNITY_STABLE_API.md) |
 
 对应用开发者，算法替换应主要发生在Profile/ModelPack/插件，不把模型张量下标或具体后端类带进游戏API。新增公开接口时同步维护参数、错误、线程、所有权、坐标/时钟和验证说明。
+
+### 模型能力与实机诊断
+
+`yield return sdk.PrepareInputQualities(runtimeRoot)` 可在 Android 启动识别前准备等级资源。`GetInputQualityCapabilities(options)` 返回真实平台的 `Choices`、`Selectable`、`Message`、`Error`；不支持的平台有明确说明。`RuntimeProfile`、`RuntimeDiagnostics`、`RuntimeRootPath`、`ActiveModelPack`、`AnalysisInputSize` 可用于诊断实际运行配置；输入图像尺寸仍通过 `GetColorImageWidth/Height` 获取。

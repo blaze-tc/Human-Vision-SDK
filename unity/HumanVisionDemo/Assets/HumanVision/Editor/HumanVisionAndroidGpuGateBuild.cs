@@ -250,7 +250,7 @@ namespace HumanVision.Editor
                     "humanvision-gpu-bridge-gate.apk", StringComparison.OrdinalIgnoreCase);
         }
 
-        [MenuItem("HumanVision/Android/Build PREPARED Detector Gate (Development APK)")]
+        [MenuItem("Tools/Human Vision/Development/Android/Build PREPARED Detector Gate (Development APK)")]
         public static void BuildPreparedInOpenProject()
         {
             if (Application.isBatchMode || EditorApplication.isPlayingOrWillChangePlaymode)

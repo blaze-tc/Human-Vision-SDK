@@ -7,6 +7,7 @@ namespace HumanVision.Editor
     public static class HumanVisionSdkMenu
     {
         /// <summary>支持 Hierarchy 上下文父对象和 Undo；配置通过总控 Inspector 修改。</summary>
+        [MenuItem("HumanVision/Create SDK", false, 0)]
         [MenuItem("GameObject/Human Vision/Create SDK", false, 10)]
         public static void CreateSdk(MenuCommand command)
         {

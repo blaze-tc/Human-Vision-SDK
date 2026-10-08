@@ -18,3 +18,25 @@ The other failure is an unlocated Native Collection leak logged in a geometry
 case; its source is not established. Legacy renderer runs encountered Unity
 Camera.Render hangs/SIGSEGV. These records remain; their resolution is not claimed.
 Physical-device, complete-hand and fresh per-person FPS acceptance remain pending.
+
+## Preview 6 follow-up review
+
+The user requested model-quality availability, device diagnostics and a smaller
+main menu before publication. Independent read-only review raised four issues:
+startup pruning before loading saved retention, compound URL tokens exposed in
+logs, failed log-directory creation escaping to UI, and Android quality-profile
+exceptions escaping capability discovery. All four were repaired. Startup does
+not prune; loaded retention controls subsequent cleanup; compound tokens are
+redacted; I/O failures remain visible without aborting settings; profile failures
+return an explicit unavailable capability. Rotation retains configuration and
+runtime headers and never deletes the current session.
+
+Follow-up RED: 0/5 new contracts and 0/4 edge cases. Final packaged EditMode
+50/50 and native PlayMode 9/9 passed, with no skips. Actual test-project CPU
+video, 4-to-2 region/capacity changes, stop, streaming destruction and diagnostic
+records passed. A fresh Windows player build returned exit 0. Real menu reflection
+confirmed four main groups. The reviewer found no additional new-code blocker.
+
+Preview 6 intentionally changes legacy Editor menu annotations only; native
+payload, model assets, existing public managed signatures and GUIDs remain
+preserved. Earlier broad-regression and physical-device limitations above remain.

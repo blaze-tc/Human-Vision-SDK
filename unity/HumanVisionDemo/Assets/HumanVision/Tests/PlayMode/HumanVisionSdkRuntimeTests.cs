@@ -89,5 +89,32 @@ namespace HumanVision.Tests
             Assert.False(sdk.IsRunning); Assert.That(sdk.LastError, Is.Not.Empty);
             Assert.That(sdk.ActiveConfiguration.Recognition.MaxBodies, Is.EqualTo(before.Recognition.MaxBodies));
         }
+        [UnityTest] public IEnumerator SettingsLogsFailedNativeInputBeforeFirstSuccessfulApply()
+        {
+            string directory = System.IO.Path.Combine(Application.temporaryCachePath, "StartupDiagnostics-" + System.Guid.NewGuid());
+            var view = HumanVision.Demo.HumanVisionSettingsView.Create(owner.transform);
+            var controller = owner.AddComponent<HumanVision.Demo.HumanVisionSettingsController>();
+            // 本测试手动驱动 Apply；不加载任何机器上的已保存场景设置。
+            controller.enabled = false; controller.Configure(sdk, view);
+            var type = typeof(HumanVisionSdk).Assembly.GetType("HumanVision.Demo.HumanVisionSettingsLogger");
+            var logger = type.GetConstructor(new[] { typeof(string) }).Invoke(new object[] { directory });
+            type.GetMethod("BeginStartup").Invoke(logger, null);
+            typeof(HumanVision.Demo.HumanVisionSettingsController).GetField("logger", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(controller, logger);
+            typeof(HumanVision.Demo.HumanVisionSettingsController).GetField("runtimeRoot", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(controller, Options().RuntimeRoot);
+            var data = new HumanVision.Demo.HumanVisionSettingsData { SourceKind = HumanVision.Input.InputKind.Video, UseWindowsCpu = true };
+            data.Video.VideoPath = System.IO.Path.Combine(directory, "missing-real-input.mp4");
+            data.Recognition.MaxBodies = 1; data.Recognition.Regions = HumanVisionSdkConfiguration.CreateEqualRegions(1);
+            view.ShowDraft(data);
+            LogAssert.ignoreFailingMessages = true;
+            try {
+                yield return controller.Apply(false);
+                Assert.False(sdk.IsRunning); Assert.Null(controller.Active); Assert.Null(controller.Saved);
+                string logs = string.Join("\n", System.Array.ConvertAll(System.IO.Directory.GetFiles(directory, "*.log", System.IO.SearchOption.AllDirectories), System.IO.File.ReadAllText));
+                Assert.True(logs.Contains("apply.begin") && logs.Contains("apply.failed") && logs.Contains("missing-real-input.mp4") && logs.Contains("session.start"), "Actual native/input failure context was not written.");
+            } finally {
+                LogAssert.ignoreFailingMessages = false; ((System.IDisposable)logger).Dispose();
+                if (System.IO.Directory.Exists(directory)) System.IO.Directory.Delete(directory, true);
+            }
+        }
     }
 }

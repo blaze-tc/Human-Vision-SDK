@@ -1,3 +1,17 @@
+# 2026-10-08 Preview 6 Unity settings follow-up — verified scope
+
+User-requested model availability explanation, detailed diagnostics and four-group
+menu are implemented. Fresh packaged affected EditMode 50/50, native PlayMode 9/9,
+source settings 18/18, snapshot packaging 15/15 and Windows player build exit 0.
+Actual Human-Vision-SDK-Test video/regions/capacity/stop/destruction/log assertions
+COMPLETE PASS; visual fixed-model explanation and reduced menu verified.
+Independent review found no new-code blocker after four edge-case repairs.
+Publication now targets SDK0.4.0-preview.6/Input0.1.0-preview.4; preview5 tag is
+preserved and its superseded draft is unpublished. Final remote/import/download
+gates run after the verified commit, with receipts in out. Existing broad-regression
+limitations below remain; no physical-device, complete-hand or fresh-FPS claim.
+See docs/reports/2026-10-08-unity-sdk-api-settings.md and review companion.
+
 # 2026-10-08 Unity SDK API/settings update — verified scope
 
 Unity API/UGUI Tasks 1–4 implementation is complete; new/affected EditMode 41/41,

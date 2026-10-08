@@ -78,3 +78,10 @@
 ## Execution record
 
 Progress and rulings live in .superpowers/sdd/2026-10-08-unity-sdk-gameplay-api/progress.md and docs/reports/2026-10-08-unity-sdk-api-settings.md. The user subsequently authorized pushing GitHub and publishing preview.5 after actual Human-Vision-SDK-Test validation. Preserve origin/main ancestry, tag the verified commit, verify remote Git installation and downloaded draft assets, then publish the prerelease.
+
+The user added quality availability, device diagnostics and reduced menus before
+publication. Those additive changes passed packaged EditMode50/50, PlayMode9/9,
+actual video/API/log/menu verification and Windows build. Preview5 was tagged
+but its draft never published; final follow-up targets preview6/Input preview4
+without rewriting the earlier tag. Final remote/import/download gates remain
+required; existing broader regression limitations stay documented.

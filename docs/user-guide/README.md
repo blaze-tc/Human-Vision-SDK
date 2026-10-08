@@ -1,6 +1,6 @@
 # Human Vision SDK 中文使用文档
 
-适用版本：SDK **0.4.0-preview.5** / Input **0.1.0-preview.3**。更新日期：2026-10-07。[版本下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.5)
+适用版本：SDK **0.4.0-preview.6** / Input **0.1.0-preview.4**。更新日期：2026-10-07。[版本下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.6)
 
 这套文档面向在**新创建的 Unity 项目**中第一次使用 SDK 的开发者。无需先了解模型或原生推理；先学会Start初始化、输入图像和骨骼结果读取，再按需要查接口。
 
@@ -20,7 +20,7 @@
 
 需要显示或打包时再看[可选示例界面与平台构建](DISPLAY_AND_BUILD.md)，其中的[SdkCameraQuickStart.cs](examples/SdkCameraQuickStart.cs)和[SdkSkeletonReader.cs](examples/SdkSkeletonReader.cs)用于预览/Overlay与独立结果消费；它们不是初始化和取数据的必做步骤。
 
-两包Git标签均为`v0.4.0-preview.5`，对应发布标签请以本次 Release 的提交为准。本目录只描述SDK和可独立复制的入门示例；API表中的类以包源码为准。
+两包Git标签均为`v0.4.0-preview.6`，对应发布标签请以本次 Release 的提交为准。本目录只描述SDK和可独立复制的入门示例；API表中的类以包源码为准。
 
 当前随包Profile关闭真实Hand/Handtip/Thumb推理，32个语义槽位不代表全部为有效观察。模型保留评估/分发资格标记，具体见[第三方说明](../../upm/com.blazetc.humanvision/THIRD_PARTY_NOTICES.md)。历史测量与本次文档检查分开记录，不把安装成功或显示FPS当作持续识别性能。
 

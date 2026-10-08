@@ -1,12 +1,12 @@
 # Unity managed API/settings preview.5 update
 
 This additive update uses `tools/package/release-preview5-authority.json` and
-`--authority` for snapshot validation/build. SDK 0.4.0-preview.5 depends on Input
-0.1.0-preview.3; existing preview.4 native/model/SDK managed bytes remain pinned.
+`--authority` for snapshot validation/build. SDK 0.4.0-preview.6 depends on Input
+0.1.0-preview.4; existing preview.4 native/model/SDK managed bytes remain pinned.
 See `docs/reports/2026-10-08-unity-sdk-api-settings.md` for exact passing evidence
 and the broad-regression limitations. Build a fresh immutable directory, verify
 real Input-first/SDK offline imports and remote Git packages, push main without
-force after ancestry checks, annotate tag v0.4.0-preview.5, upload/download and
+force after ancestry checks, annotate tag v0.4.0-preview.6, upload/download and
 hash-check all eight draft assets, then publish as a prerelease.
 
 # Release gates

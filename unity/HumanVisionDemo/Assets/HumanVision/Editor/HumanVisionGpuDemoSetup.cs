@@ -8,7 +8,7 @@ namespace HumanVision.Demo.Editor
 {
     public static class HumanVisionGpuDemoSetup
     {
-        [MenuItem("HumanVision/Use camera test image")]
+        [MenuItem("Tools/Human Vision/Development/Use camera test image")]
         public static void ConfigureImage()
         {
             const string relativeImage = "HumanVision/Media/cameraImage.png";
@@ -33,7 +33,7 @@ namespace HumanVision.Demo.Editor
             camera.cullingMask = 0;
         }
 
-        [MenuItem("HumanVision/Capture runtime evidence")]
+        [MenuItem("Tools/Human Vision/Development/Capture runtime evidence")]
         public static void CaptureEvidence()
         {
             if (!Application.isPlaying) throw new System.InvalidOperationException("Enter Play Mode first.");
@@ -78,7 +78,7 @@ namespace HumanVision.Demo.Editor
             public float x, y, confidence;
             public bool valid;
         }
-        [MenuItem("HumanVision/Use validated person detector")]
+        [MenuItem("Tools/Human Vision/Development/Use validated person detector")]
         public static void Configure()
         {
             const string relativeModel = "HumanVision/Models/rtmdet_tiny_person_640.onnx";

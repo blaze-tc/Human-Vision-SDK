@@ -1,6 +1,6 @@
 # 可选：示例界面、预览显示与平台构建
 
-适用：**新创建的 Unity 项目**，SDK `0.4.0-preview.5` / Input `0.1.0-preview.3`。以下操作以 Windows x64、Unity `2021.3.45f1`、英文编辑器菜单为例；包声明最低 Unity `2021.3`。[文档首页](README.md)
+适用：**新创建的 Unity 项目**，SDK `0.4.0-preview.6` / Input `0.1.0-preview.4`。以下操作以 Windows x64、Unity `2021.3.45f1`、英文编辑器菜单为例；包声明最低 Unity `2021.3`。[文档首页](README.md)
 
 本页是可选的显示与构建教程。学习初始化和骨骼读取请先看[代码入门引导](FIRST_INSTALL.md)；该引导只需一个空物体和一份脚本。本页的Canvas、RawImage、Overlay、示例界面和打包步骤用于后续需要显示画面或构建程序时查阅。
 
@@ -26,29 +26,29 @@ Input 负责获取图像，SDK 负责人体识别。必须先装 Input，再装 
 3. 粘贴 Input 地址，点击 **Add**，等待安装和编译结束：
 
    ```text
-   https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.5
+   https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.6
    ```
 
-4. 确认列表出现 **Human Vision Input**，版本为 `0.1.0-preview.3`。
+4. 确认列表出现 **Human Vision Input**，版本为 `0.1.0-preview.4`。
 5. 再点击 **+ → Add package from git URL…**，安装 SDK：
 
    ```text
-   https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.5
+   https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.6
    ```
 
-6. 确认列表出现 **Human Vision SDK**，版本为 `0.4.0-preview.5`，Console 无编译错误。
+6. 确认列表出现 **Human Vision SDK**，版本为 `0.4.0-preview.6`，Console 无编译错误。
 7. 检查 `Packages/manifest.json`：应有两个包的 Git 地址。`Packages/packages-lock.json` 中两个包的 `hash` 应为 `a201e0f44aa68a3f831f248b67400bd5fd7358c9`。锁文件由 Unity 生成，不要用手改它来掩盖安装失败。
 
 地址中的 `?path=` 指向同一仓库里的不同包；不要只粘贴仓库首页地址。需要联网下载包，但运行本地相机识别不需要从互联网下载模型。
 
 ### 2.2 离线方式：只选其中一种
 
-从[版本发布页](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.5)下载成对资产，然后选择一种方式：
+从[版本发布页](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.6)下载成对资产，然后选择一种方式：
 
 | 方式 | 第一步：Input | 第二步：SDK | Unity 操作 |
 | --- | --- | --- | --- |
-| UPM 压缩包 | `com.blazetc.humanvision.input-0.1.0-preview.3.tgz` | `com.blazetc.humanvision-0.4.0-preview.5.tgz` | Package Manager → **+ → Add package from tarball…**，依次选择两个文件 |
-| Assets 导入包 | `HumanVisionInput-0.1.0-preview.3.unitypackage` | `HumanVisionSDK-0.4.0-preview.5.unitypackage` | **Assets → Import Package → Custom Package…**，先导入 Input，等编译结束，再导入 SDK；保留包内文件 |
+| UPM 压缩包 | `com.blazetc.humanvision.input-0.1.0-preview.4.tgz` | `com.blazetc.humanvision-0.4.0-preview.6.tgz` | Package Manager → **+ → Add package from tarball…**，依次选择两个文件 |
+| Assets 导入包 | `HumanVisionInput-0.1.0-preview.4.unitypackage` | `HumanVisionSDK-0.4.0-preview.6.unitypackage` | **Assets → Import Package → Custom Package…**，先导入 Input，等编译结束，再导入 SDK；保留包内文件 |
 
 Assets 导入方式的文件显示在 Assets 下，不会像 UPM 一样列为两个已安装包。不要同时安装 Git、tgz 和 unitypackage 的重复副本；重复程序集/同名类错误先检查重复安装。安装用户无需自行编译 C++。
 

@@ -1,4 +1,4 @@
-# Human Vision SDK 0.4.0-preview.5 安装与接入
+# Human Vision SDK 0.4.0-preview.6 安装与接入
 
 中文逐步操作：[第一次安装使用引导](user-guide/FIRST_INSTALL.md)。新建Unity项目的Start初始化、骨骼读取代码片段、技术栈、平台证据和API说明见[中文文档首页](user-guide/README.md)。
 
@@ -11,8 +11,8 @@
 Window > Package Manager > + > Add package from git URL，先 Input、后 SDK：
 
 ```text
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.5
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.5
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.6
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.6
 ```
 
 也可以在 `Packages/manifest.json` 的 `dependencies` 同时添加这两条地址。
@@ -21,10 +21,10 @@ SDK 的版本依赖不会自动查找同仓库另一个 Git 子目录，因此�
 
 ## 本地安装
 
-[Release 下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.5)：
+[Release 下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.6)：
 
-- `HumanVisionInput-0.1.0-preview.3.unitypackage`：先用 Assets > Import Package > Custom Package 导入 Input。
-- `HumanVisionSDK-0.4.0-preview.5.unitypackage`：随后导入 SDK，包含模型、骨骼与 Demo。
+- `HumanVisionInput-0.1.0-preview.4.unitypackage`：先用 Assets > Import Package > Custom Package 导入 Input。
+- `HumanVisionSDK-0.4.0-preview.6.unitypackage`：随后导入 SDK，包含模型、骨骼与 Demo。
 - 两个 `.tgz`：Package Manager > Add package from tarball，先 Input、后 SDK。
 
 两个本地导入包与 Git 安装的两包结构一致，合起来提供完整 SDK 功能。
@@ -37,7 +37,7 @@ GUID；菜单 `HumanVision > Install Packaged Models` 可以重新安装运行�
 
 ## Demo 与设置
 
-执行 `HumanVision > Create unified demos in dedicated folder`，在
+执行 `HumanVision > Examples > Create Camera, Video and RTSP demos`，在
 `Assets/HumanVisionUnifiedDemo` 生成三个场景并加入 Build Settings；公共按钮切换。
 也可以导入 Package Manager 的 `UnifiedInput` sample。
 
@@ -125,9 +125,9 @@ This copy is required because UPM model folders are not APK StreamingAssets.
 
 ## Scenes
 
-HumanVision > Create Live Camera Demo creates a live camera scene plus a separate
+Tools > Human Vision > Legacy Examples > Create Live Camera Demo creates a live camera scene plus a separate
 settings scene, registers both in Build Settings, and opens the camera scene.
-HumanVision > Create Camera Settings Scene opens the settings scene instead.
+Tools > Human Vision > Legacy Examples > Create Camera Settings Scene opens the settings scene instead.
 Use the bottom navigation buttons; settings save under persistentDataPath.
 The existing rectangle move/resize behavior is unchanged.
 

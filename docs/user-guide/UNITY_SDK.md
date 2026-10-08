@@ -1,6 +1,6 @@
 # Unity 总控使用（preview.5）
 
-先安装 Input **0.1.0-preview.3**，等待编译，再安装 SDK **0.4.0-preview.5**。两包使用同一个 Git 标签 `v0.4.0-preview.5`。旧 API 保留。
+先安装 Input **0.1.0-preview.4**，等待编译，再安装 SDK **0.4.0-preview.6**。两包使用同一个 Git 标签 `v0.4.0-preview.6`。旧 API 保留。
 
 ## 一份组件即可启动
 

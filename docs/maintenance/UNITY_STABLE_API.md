@@ -29,3 +29,11 @@ Run check_public_surface.py after regenerating UPM and compile_managed.ps1, foll
 by managed regression/ABI tests where applicable.
 
 HumanVisionSdk adds coroutine lifecycle, cloned configuration, indexed semantic queries and source-age validation. Runtime/HumanVisionSkeletonQueries owns query rules; Demo/Sdk owns Input composition and retirement; Demo/Settings owns editable UGUI and persistence. See ../user-guide/UNITY_SDK.md and SETTINGS_DEMO.md. Existing native/managed V1 signatures and script GUIDs remain frozen.
+
+HumanVisionSdkQualityCapabilities reports real selectable levels, profile and
+unavailability reasons. PrepareInputQualities prepares Android indexed capabilities
+before input initialization; Windows fixed-model behavior is explicit. Diagnostic
+properties expose descriptive runtime/profile/model/input dimensions without
+making provider-specific types part of gameplay contracts. SettingsLogger owns
+bounded files, credentials redaction and main-thread Unity log subscription.
+Menu annotation relocation is permitted by the user; method signatures remain.

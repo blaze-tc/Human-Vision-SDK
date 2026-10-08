@@ -7,7 +7,7 @@ namespace HumanVision.Input.Editor
 {
     public static class InputPreviewSceneBuilder
     {
-        [MenuItem("HumanVision/Input/Create standalone preview")]
+        [MenuItem("HumanVision/Examples/Create standalone Input preview")]
         public static void CreateScene()
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;

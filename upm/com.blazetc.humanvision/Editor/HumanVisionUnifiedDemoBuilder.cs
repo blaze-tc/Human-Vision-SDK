@@ -9,13 +9,13 @@ namespace HumanVision.Editor
 {
     public static class HumanVisionUnifiedDemoBuilder
     {
-        [MenuItem("HumanVision/Create unified Camera, Video and RTSP demos")]
+        [MenuItem("Tools/Human Vision/Legacy Examples/Create demos in Assets Scenes")]
         public static void CreateScenes()
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
             BuildScenes();
         }
-        [MenuItem("HumanVision/Create unified demos in dedicated folder")]
+        [MenuItem("HumanVision/Examples/Create Camera, Video and RTSP demos")]
         public static void CreateDedicatedScenes()
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;

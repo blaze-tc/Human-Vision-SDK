@@ -108,3 +108,58 @@ upload a draft, download all eight assets into another directory and compare
 hashes before publishing. Network publication receipts live in out; final tag
 and Release URL identify the published source. No user media/screenshots are
 included in public artifacts.
+
+## Preview 6 user-requested follow-up
+
+Windows uses the published fixed model, so its model-level dropdown now explains
+why it cannot select a level. Android NCNN/Vulkan capabilities prepare and inspect
+the real indexed quality catalog before input/native initialization; admitted
+low/medium/high choices show actual dimensions. Missing or invalid catalogs show
+an actionable message rather than advertising unsupported choices.
+
+Diagnostics record startup, OS/device/Unity/SDK, active runtime/profile/model and
+analysis dimensions, configuration/application elapsed time, input/native errors,
+statistics, region states, stable user events, stop and destruction. Optional
+joint records include confidence/provenance/time and coordinates. Unity warnings
+and exceptions are captured; log rotation retains headers; loaded retention is
+honored; I/O failures appear in the panel. RTSP credentials and compound tokens
+are redacted. Default intervals are bounded; frame processing remains asynchronous.
+
+The HumanVision product menu has four groups: Create SDK, Create SDK settings demo
+assets, Examples and Install Packaged Models. Existing legacy builders remain under
+Tools/Human Vision/Legacy Examples. Private acceptance scripts in the test project
+were moved by menu annotations to Tools/Human Vision/Development.
+
+Fresh verification receipts under out/sdk-api-verification:
+
+- Initial diagnostics RED **0/5**, 20261008-123615-837-results.xml.
+- Reviewer edge-case RED **0/4**, 20261008-125802-554-results.xml.
+- Source settings GREEN **18/18**, 20261008-130058-040-results.xml.
+- Final packaged affected EditMode GREEN **50/50**, no skips,
+  20261008-130558-306-results.xml.
+- Final packaged native PlayMode GREEN **9/9**, no skips,
+  20261008-130302-411-results.xml. Includes failed native input logging before
+  the first successful Apply; failed input does not commit active/saved options.
+- Fresh packaged Windows player build **exit 0**, player-preview6-build.log.
+- Snapshot-packaging regression **15/15**, architecture, public-surface and
+  source/package synchronization PASS.
+- Actual Human-Vision-SDK-Test Unity 2021.3.45f1 video probe COMPLETE PASS:
+  five distinct observations, valid screen/world/joint queries, known regions,
+  4-to-2 capacity/region updates, stop -> unknown occupancy, and streaming destroy
+  -> no Runtime Host. Diagnostic assertions cover session/device/init/apply,
+  statistics/joints/confidence/user entered/stop/controller destroy/session end.
+  Screenshot sdk-settings-diagnostics-preview6.png shows real video/boxes/bones
+  and readable fixed-model explanation. Four main groups confirmed by reflecting
+  actual loaded MenuItem attributes. User project left stopped in Settings scene.
+
+Stopping Play Mode produced one UnitySkills HTTP response ThreadAbort error,
+recorded in actual-console-after-stop-preview6.json; it is not an SDK exception.
+After retaining that evidence and clearing the Console, final idle errors are 0
+(actual-console-final-preview6.json). This does not erase the historical error.
+
+The visible editor was restored after an earlier verification launch had hidden
+its window; no unrelated Unity process was terminated. Preview 5 was already
+tagged but its draft was never published. These follow-up changes ship as SDK
+0.4.0-preview.6 / Input 0.1.0-preview.4; preview 5 is not retagged. The new immutable
+authority is tools/package/release-preview6-authority.json. Final network/import/
+download receipts are written to out after tagging the verified source commit.

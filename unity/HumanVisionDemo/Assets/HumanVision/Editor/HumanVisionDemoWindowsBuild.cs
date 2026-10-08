@@ -10,7 +10,7 @@ namespace HumanVision.Demo.Editor
     {
         public const string RelativeOutputPath = "Builds/HumanVisionD04/HumanVisionD04.exe";
 
-        [MenuItem("HumanVision/Build Windows x64 Demo")]
+        [MenuItem("Tools/Human Vision/Development/Build Windows x64 Demo")]
         public static void BuildWindowsPlayer()
         {
             if (AssetDatabase.LoadAssetAtPath<SceneAsset>(HumanVisionDemoSceneBuilder.ScenePath) == null)

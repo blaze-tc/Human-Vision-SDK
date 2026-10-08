@@ -14,7 +14,7 @@ namespace HumanVision.Demo.Editor
     {
         public const string ScenePath = "Assets/Scenes/HumanVisionD04Demo.unity";
 
-        [MenuItem("HumanVision/Build D0.4 Demo Scene")]
+        [MenuItem("Tools/Human Vision/Development/Build D0.4 Demo Scene")]
         public static void BuildScene()
         {
             EnsureScenesFolder();

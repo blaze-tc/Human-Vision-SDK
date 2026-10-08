@@ -11,8 +11,10 @@ import subprocess
 from package_live_sdk import metadata
 
 ROOT = Path(__file__).resolve().parents[2]
-SDK_VERSION = '0.4.0-preview.5'
-INPUT_VERSION = '0.1.0-preview.3'
+SDK_VERSION = '0.4.0-preview.6'
+INPUT_VERSION = '0.1.0-preview.4'
+# Pin the previously verified source instead of a moving remote branch.
+SHIPPING_REF = '6bdb58b0cb9b7306f43888611cdbb600e1ab4268'
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -25,7 +27,7 @@ def main():
     # Published package GUIDs are the compatibility authority. Canonical source
     # metadata can differ; do not replace existing package identities.
     legacy_meta = {}
-    tree = subprocess.check_output(['git','-C',str(ROOT),'ls-tree','-rz','origin/main','--','upm'])
+    tree = subprocess.check_output(['git','-C',str(ROOT),'ls-tree','-rz',SHIPPING_REF,'--','upm'])
     entries = []
     for row in tree.split(b'\0'):
         if not row: continue
@@ -57,7 +59,7 @@ def main():
                 if existing:
                     # Keep unrelated published managed code exact, including evaluation
                     # hooks and Android release gate behavior. New API is additive.
-                    dest.write_bytes(subprocess.check_output(['git','-C',str(ROOT),'show','origin/main:upm/'+sdk.name+'/'+relative]))
+                    dest.write_bytes(subprocess.check_output(['git','-C',str(ROOT),'show',SHIPPING_REF+':upm/'+sdk.name+'/'+relative]))
                 else: shutil.copyfile(file, dest)
             elif dest.exists():
                 # Only reconcile the named canonical files added by this staging
@@ -69,8 +71,35 @@ def main():
         target = ROOT/name
         if target.exists(): target.write_bytes(data)
     for name, data in retained_settings.items(): (sdk/'Samples~/Settings'/name).write_bytes(data)
+    # User requested a smaller product menu. Only annotations of retained
+    # legacy builders change; their existing behavior/signatures remain exact.
+    menus = {
+        'HumanVision/Create Live Camera Demo': 'Tools/Human Vision/Legacy Examples/Create Live Camera Demo',
+        'HumanVision/Create Camera Settings Scene': 'Tools/Human Vision/Legacy Examples/Create Camera Settings Scene',
+        'HumanVision/Create unified Camera, Video and RTSP demos': 'Tools/Human Vision/Legacy Examples/Create demos in Assets Scenes',
+        'HumanVision/Create unified demos in dedicated folder': 'HumanVision/Examples/Create Camera, Video and RTSP demos',
+    }
+    for file in (sdk/'Editor').glob('*.cs'):
+        data = file.read_text(encoding='utf-8-sig')
+        changed = data
+        for old_menu, new_menu in menus.items(): changed = changed.replace('[MenuItem("'+old_menu+'")]', '[MenuItem("'+new_menu+'")]')
+        if changed != data: file.write_text(changed, encoding='utf-8')
     shutil.copyfile(ROOT/'docs/user-guide/examples/HumanVisionGameplayExample.cs', sdk/'Samples~/Settings/HumanVisionGameplayExample.cs')
     shutil.copytree(ROOT/'docs/user-guide', sdk/'Documentation/user-guide', dirs_exist_ok=True)
+    # Canonical checkout can use CRLF; public documentation retains exact LF.
+    for document in (sdk/'Documentation/user-guide').rglob('*.md'):
+        document.write_bytes(document.read_bytes().replace(b'\r\n', b'\n'))
+    installation = sdk/'UPM_INSTALLATION.md'
+    installation_crlf = b'\r\n' in installation.read_bytes()
+    guide = installation.read_text(encoding='utf-8')
+    guide = guide.replace('0.4.0-preview.5', SDK_VERSION).replace('0.1.0-preview.3', INPUT_VERSION)
+    guide = guide.replace('HumanVision > Create unified demos in dedicated folder',
+                          'HumanVision > Examples > Create Camera, Video and RTSP demos')
+    guide = guide.replace('HumanVision > Create unified Camera, Video and RTSP demos',
+                          'Tools > Human Vision > Legacy Examples > Create demos in Assets Scenes')
+    guide = guide.replace('HumanVision > Input > Create standalone preview',
+                          'HumanVision > Examples > Create standalone Input preview')
+    installation.write_bytes((guide.replace('\n', '\r\n') if installation_crlf else guide).encode('utf-8'))
     package = json.loads((sdk/'package.json').read_text())
     package['version'] = SDK_VERSION
     package['dependencies']['com.blazetc.humanvision.input'] = INPUT_VERSION
@@ -127,7 +156,7 @@ def main():
         unknown = external - known
         if unknown: raise ValueError('Missing custom script GUIDs: '+str(sorted(unknown)))
         authority['baseline_external_asset_guids'] = sorted(external)
-    (ROOT/'tools/package/release-preview5-authority.json').write_text(json.dumps(authority, indent=2, sort_keys=True)+'\n')
+    (ROOT/'tools/package/release-preview6-authority.json').write_text(json.dumps(authority, indent=2, sort_keys=True)+'\n')
     for relative, expected in old['native_files'].items(): assert digest(ROOT/'upm'/relative) == expected
     print('Managed sources staged; all shipping native hashes preserved.')
 

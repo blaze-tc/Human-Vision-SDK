@@ -1,6 +1,6 @@
 新版单组件总控：Hierarchy → Human Vision → Create SDK。UGUI 设置示例：HumanVision → Create SDK settings demo assets。详见 Documentation/user-guide/UNITY_SDK.md 和 SETTINGS_DEMO.md。
 
-# Unity installation — 0.4.0-preview.5
+# Unity installation — 0.4.0-preview.6
 
 Requires Unity 2021.3 or later. Install into a clean project, or remove a previous
 Assets/HumanVision, Assets/HumanVisionInput and HumanVision native plugin installation
@@ -12,25 +12,25 @@ For Git UPM, add Input first, then SDK, using these two tag-pinned dependencies
 in Packages/manifest.json:
 
 ```json
-"com.blazetc.humanvision.input": "https://github.com/blaze-tc/Human-Vision-SDK.git?path=upm/com.blazetc.humanvision.input#v0.4.0-preview.5",
-"com.blazetc.humanvision": "https://github.com/blaze-tc/Human-Vision-SDK.git?path=upm/com.blazetc.humanvision#v0.4.0-preview.5"
+"com.blazetc.humanvision.input": "https://github.com/blaze-tc/Human-Vision-SDK.git?path=upm/com.blazetc.humanvision.input#v0.4.0-preview.6",
+"com.blazetc.humanvision": "https://github.com/blaze-tc/Human-Vision-SDK.git?path=upm/com.blazetc.humanvision#v0.4.0-preview.6"
 ```
 
-The SDK's exact Input version is 0.1.0-preview.3. Unity cannot discover a second
+The SDK's exact Input version is 0.1.0-preview.4. Unity cannot discover a second
 Git subdirectory from the SDK's version dependency; explicitly add both URLs.
 Input alone provides camera/video/RTSP preview without models or inference.
 For offline import into a clean project, import
-**HumanVisionInput-0.1.0-preview.3.unitypackage first**, then
-**HumanVisionSDK-0.4.0-preview.5.unitypackage**. Wait for Input compilation before
+**HumanVisionInput-0.1.0-preview.4.unitypackage first**, then
+**HumanVisionSDK-0.4.0-preview.6.unitypackage**. Wait for Input compilation before
 importing SDK. Input alone supports standalone preview; both packages provide
 the complete SDK installation. The two release tgz files are the alternative
 local UPM archives, also installed Input first, then SDK.
 
 Create the official Camera, Video and RTSP demos with
-**HumanVision > Create unified demos in dedicated folder**. The other official
-menu **HumanVision > Create unified Camera, Video and RTSP demos** creates the same
+**HumanVision > Examples > Create Camera, Video and RTSP demos**. The other official
+menu **Tools > Human Vision > Legacy Examples > Create demos in Assets Scenes** creates the same
 three modes. For Git UPM, import the InputPreview sample in Package Manager first.
-Input-only preview uses **HumanVision > Input > Create standalone preview**.
+Input-only preview uses **HumanVision > Examples > Create standalone Input preview**.
 Select a camera, your own local video, or an H.264/TCP RTSP URL. No video or user
 camera address is bundled. Computer camera/video RTSP presets use a transient
 build-computer address; that computer must run the corresponding publisher.
