@@ -1,0 +1,79 @@
+{
+  "schema_version": 2,
+  "pack_id": "yolov8n-pose-rectangle640x384-fp32-local",
+  "pack_version": "0.4.0-local",
+  "pipeline_id": "pipeline.yolo.pose",
+  "local_evaluation_only": true,
+  "execution_contract": "raw_tensor_fp32_v1",
+  "max_people": 8,
+  "capabilities": [
+    "body_pose",
+    "multi_person",
+    "gpu_input",
+    "vulkan",
+    "android-hardware-buffer",
+    "external-sync-fd"
+  ],
+  "profile_sha256": "5cd72fca9ea22a276bf94bb279777ea687488eee89a5308f432ee48edc68185e",
+  "models": [
+    {
+      "role": "body",
+      "format": "ncnn",
+      "decoder_id": "yolov8_pose_dfl17_v1",
+      "execution_contract": "raw_tensor_fp32_v1",
+      "param_path": "yolov8n_pose.ncnn.param",
+      "param_sha256": "908ace8e8d5b99622e0b492ebb18a6b287e647d2df7dff81205e8322752e0905",
+      "bin_path": "yolov8n_pose.ncnn.bin",
+      "bin_sha256": "6128010de189605795a496f3d3f6baa6435a493b31796ceaf400cced07038da9",
+      "source": "https://github.com/nihui/ncnn-android-yolov8/tree/f1ac75ec54ccb3817a9eba620fe51da8bdcf87ca",
+      "license": "Ultralytics origin; distribution rights unestablished; local evaluation only",
+      "conversion_recipe": "Pinned upstream ncnn graph; M1 FP32 rectangle640x384 input eligibility",
+      "backend_options": {
+        "use_packing_layout": true,
+        "use_subgroup_ops": false,
+        "use_fp16_packed": false,
+        "use_fp16_storage": false,
+        "use_fp16_arithmetic": false
+      },
+      "input_contract": {
+        "image_format": "rgba8-unorm",
+        "color_order": "rgb",
+        "crop": "letterbox",
+        "resize_interpolation": "bilinear",
+        "pad_rgb": [
+          114,
+          114,
+          114
+        ],
+        "normalization": {
+          "mean": [
+            0,
+            0,
+            0
+          ],
+          "norm": [
+            0.00392156862745098,
+            0.00392156862745098,
+            0.00392156862745098
+          ]
+        },
+        "width": 640,
+        "height": 384,
+        "tensor_dtype": "fp32",
+        "elempack": 1,
+        "input_blob": "in0"
+      },
+      "output_contract": {
+        "decoder": "yolov8_pose_dfl17_v1",
+        "output_blobs": [
+          "out0",
+          "out1"
+        ],
+        "max_output_bytes": {
+          "out0": 1310400,
+          "out1": 1028160
+        }
+      }
+    }
+  ]
+}

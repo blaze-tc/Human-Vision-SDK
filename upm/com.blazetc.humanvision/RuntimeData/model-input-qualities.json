@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "families": [
+    {
+      "runtime_mode": "android-ncnn-vulkan",
+      "base_profile": "android-ncnn-vulkan",
+      "default_quality": "medium",
+      "qualities": [
+        {
+          "id": "low",
+          "profile": "android-ncnn-vulkan-quality-low",
+          "width": 512,
+          "height": 288
+        },
+        {
+          "id": "medium",
+          "profile": "android-ncnn-vulkan",
+          "width": 640,
+          "height": 384
+        },
+        {
+          "id": "high",
+          "profile": "android-ncnn-vulkan-quality-high",
+          "width": 960,
+          "height": 576
+        }
+      ]
+    }
+  ]
+}

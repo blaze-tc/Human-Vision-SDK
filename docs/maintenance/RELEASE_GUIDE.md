@@ -1,5 +1,50 @@
 # Release gates
 
+## 0.4.0-preview.4 admitted snapshot
+
+The preview.4 release consumes the byte-qualified two-package snapshot in `upm/`.
+Do not reconstruct it from the unrelated development worktree or an older live
+build directory. `tools/package/release-preview4-authority.json` binds the complete
+SDK/Input file/meta closure, reviewed RTSP reopen fix and accepted half-size defaults.
+The native/model bytes remain those of the qualified Q4 payload.
+
+```powershell
+py -3.13 tools/package/package_release_snapshot.py --verify-only
+py -3.13 tools/package/test_package_release_snapshot.py
+py -3.13 tools/maintenance/check_architecture_boundaries.py
+py -3.13 tools/maintenance/generate_component_catalog.py --check
+py -3.13 tools/test/verify_upm_git_newlines.py
+py -3.13 tools/package/package_release_snapshot.py --output out/releases/v0.4.0-preview.4-final
+```
+
+The output directory must be new. The eight public files are two `.tgz` archives,
+`HumanVisionInput-0.1.0-preview.2.unitypackage`,
+`HumanVisionSDK-0.4.0-preview.4.unitypackage`, README, asset index, source snapshot
+and SHA256SUMS. Import Input first, then SDK. The two unitypackage GUID partitions
+must be disjoint and their union must contain every reviewed asset byte exactly.
+The historical combined unitypackage/ZIP remain local evidence, not public assets.
+Both installation forms contain the same reviewed source/native/models.
+Offline directory groups must match
+Unity ExportPackage: folder `asset.meta` plus `pathname`, without a file `asset`.
+Test real Unity imports; a serializer checking its own archives is insufficient.
+`tools/test/ReleaseSnapshotImportCheck.cs` verifies installed runtime hashes, generates
+the three demos and initializes the actual Windows CPU native/model route in a
+separate project. Validate local/Git UPM and actual sequential imports of the two
+downloaded unitypackages. Input-only compilation must succeed before adding SDK.
+
+The existing package_live_sdk/package_upm/verify_package_isolation scripts below
+describe the older preview.3 reconstruction. They are not authoritative for this
+two-package preview.4 snapshot. Package versions, provenance and SHA256SUMS must
+match the final commit; rebuild artifacts after that commit.
+
+Merge/push only after checking origin/main ancestry. Create an annotated
+`v0.4.0-preview.4` tag on the verified commit, a draft Release, upload all artifacts,
+download into a separate directory and compare every SHA256 before publishing.
+Record the actual user acceptance separately from the unmet 30 fresh complete
+observation FPS goal and retained model evaluation/distribution markers.
+
+## Historical preview.3 tooling
+
 Use PowerShell7 (`pwsh`) on this machine. Native scripts set up MSVC v143 and UTF-8
 Ninja include dependencies. Android uses NDK23 (API24, ARM64); NDK21 lacks
 the filesystem implementation required by ModelPack/Profile paths. On this

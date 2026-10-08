@@ -34,7 +34,68 @@ No native ABI change, device accuracy, real hand availability or30freshFPS accep
 Plan: docs/superpowers/plans/2026-10-08-unity-sdk-gameplay-api.md.
 
 ---
-# Current: Q3 shared quality selector and Happytime RTSP presets verified (2026-10-05)
+# Current: integration preview 4 published (2026-10-05)
+
+Documentation update (2026-10-07): [Chinese SDK guides](user-guide/README.md)
+now lead with Start initialization, image input and skeleton result code fragments.
+The minimal starter needs one empty GameObject and no UI bindings; an optional
+copied Editor script adds a Hierarchy creation action. Display/build steps are
+an optional supplement. Fresh Unity2021.3.45f1 compilation, menu-created starter,
+Prepare, CPU initialization/body access/Shutdown and documentation guards are
+recorded in the [verification report](reports/2026-10-07-sdk-user-docs-verification.md).
+No new physical device, per-person FPS or genuine hand acceptance is claimed.
+
+The user accepted the tested visible demo and explicitly authorized main merge,
+Git publication and downloadable Unity packages. This authorization supersedes
+the historical publication holds below; it does not certify 30 fresh complete
+observation frames/s. Task 11 and that performance gate remain OPEN.
+
+Release composition is the immutable Q4 device-tested package closure plus the
+accepted half-thickness defaults, reviewed RTSP deferred reopen, and packaging
+metadata/licenses. The separate release worktree preserves the original dirty
+development checkout and caches. Android NCNN Vulkan remains fail-fast; no
+runtime/model/performance behavior was changed to prepare the release.
+
+Fresh clean-checkout native regression: 376/376 PASS. Architecture Python tests:
+33 PASS, 24 conditional SKIP; quality tests: 4/4 PASS. Unity coverage comprises
+218 passing cases from the full 219-case run (one native-absent fixture fails
+when the real plugin is installed), plus that case passing in a separate
+native-absent installation. The original failure log is retained.
+
+Final package closure: 452 files, 249 GUIDs, 20 runtime-index entries, eight
+Android SOs and nine Windows DLLs. Corrected .unitypackage actually imports in
+Unity 2021.3.45f1; local UPM installation initializes Windows models and generates
+three demos. Offline native/model initialization and independent spec/code-quality
+review PASS. Actual remote Git initialization PASS, but byte verification found
+54 Input text files converted by Git autocrlf. Package-local file attributes
+fix this without runtime changes: RED 2 -> GREEN 13/13 packaging cases. Root
+authority is now LF-stable. Corrected real Git byte-closure PASS at `506f3bd`.
+Large combined/ZIP transfers failed before publication; final downloads use two
+smaller unitypackages, Input first then SDK. Their disjoint GUID partitions cover
+the complete 248 offline asset groups; RED 2 -> GREEN 15/15, fresh duplicate builds
+byte-identical. Sequential real Unity Input/SDK import and native/model
+initialization PASS. Final real remote Git installation at `a201e0f` verifies
+all 452 cache bytes, 20 installed runtime hashes, three demos and native/model
+initialization. All eight final assets uploaded and were downloaded into a
+separate directory with matching SHA256 before public publication.
+
+Main was fast-forwarded without force. The immutable `v0.4.0-preview.4` tag
+points to `a201e0f44aa68a3f831f248b67400bd5fd7358c9`; the public prerelease was
+published at 2026-10-05 13:32:44 UTC. Subsequent main changes record publication
+evidence only and do not retag or replace the tested artifacts.
+Download [preview 4](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.4),
+or follow [Git/offline installation and game integration](UPM_INSTALLATION.md).
+For offline installation import Input first, wait for compilation, then SDK.
+The [publication receipt](reports/2026-10-05-preview4-publication.json) records
+all eight public asset URLs, sizes and exact downloaded SHA256 values.
+Historical combined and failed-transfer evidence is retained.
+
+See [preview 4 evidence](reports/2026-10-05-preview4-release-verification.md).
+Current modelpacks retain local-evaluation/license restrictions and disabled
+real-hand inference; this is an integration preview, not a commercial model
+license or 30 FPS acceptance certificate.
+
+# Historical: Q3 shared quality selector and Happytime RTSP presets verified (2026-10-05)
 
 Q1 committed4169b6d; Q2 committed18f73ae. Q3 shared UGUI quality draft/save/Apply,
 preflight before retirement, explicit default recovery and transient build-PC
