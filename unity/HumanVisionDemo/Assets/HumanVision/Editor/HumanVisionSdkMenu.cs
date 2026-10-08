@@ -23,4 +23,3 @@ namespace HumanVision.Editor
         }
     }
 }
-

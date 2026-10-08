@@ -83,6 +83,8 @@ namespace HumanVision
         public Transform WorldPlane { get => worldPlane; set => worldPlane = value; }
         /// <summary>修改世界映射宽高；无效尺寸使世界位置查询失败。</summary>
         public Vector2 WorldPlaneSize { get => worldPlaneSize; set => worldPlaneSize = value; }
+        /// <summary>是否在 Start 自动启动；自行调用 Initialize 时可关闭。</summary>
+        public bool InitializeOnStart { get => initializeOnStart; set => initializeOnStart = value; }
         internal HumanVisionManager RuntimeManager => manager;
         internal VideoPlayerFrameSource FrameBridge => bridge;
         private static long NowUs => (long)(Time.realtimeSinceStartupAsDouble * 1000000);

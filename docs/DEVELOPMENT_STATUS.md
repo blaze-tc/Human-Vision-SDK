@@ -1,3 +1,20 @@
+# Current: Unity API and Settings Demo built; project/release verification active (2026-10-08)
+
+Task3 UGUI RED4/4 missing settings -> GREEN7/7, including safe saved-scene/prefab references,
+3-mode visibility, busy buttons, invalid fields, clone/store/region geometry.
+Untitled scene preservation RED0/1 -> GREEN, original scene preserved before additive generation.
+Evidence: 20261008-104515-526-results.xml (initial RED), 20261008-110024-608-results.xml (builder RED),
+out/sdk-api-verification/20261008-110130-640-results.xml (GREEN7/7).
+Command: pwsh -File tools/test/verify_unity_sdk.ps1 -Filter HumanVision.Tests.HumanVisionSettingsDemoTests.
+Fresh Windows x64 Development player build PASS, generated ordinary editable UGUI scene and Prefab.
+Evidence: out/sdk-api-verification/build-settings.log; player/HumanVisionSdkSettings.exe.
+Unity2022.3.61t4 compatibility3/3 PASS,0skip, evidence out/sdk-api-verification-2022/20261008-105706-847-results.xml.
+Task4 sole active: docs, source/package synchronization, actual Human-Vision-SDK-Test validation,
+full regression and final review, then user-authorized GitHub/Release publication.
+Publish next SDK0.4.0-preview.5/Input0.1.0-preview.3; preserve preview4 native/model payload.
+No physical-device or30fresh complete skeleton FPS acceptance claim.
+
+---
 # Current: Unity SDK facade verified; UGUI settings active (2026-10-08)
 
 Task 1 semantic queries and Task 2 one-component facade are implemented.
