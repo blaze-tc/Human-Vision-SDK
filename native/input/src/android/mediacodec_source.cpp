@@ -3,6 +3,7 @@
 #include "input_vulkan_private.h"
 #include "input_h264_color.h"
 #include "input_frame_ring.h"
+#include "input_diagnostic_sampling.h"
 #include <android/log.h>
 #include <media/NdkImageReader.h>
 #include <media/NdkMediaCodec.h>
@@ -27,14 +28,15 @@ AndroidDecodedImage::~AndroidDecodedImage() {
   if(image_counted) {--live_images;if(fd>=0)--live_owned_fds;}
   if(buffer) --live_ahb_references;
   if(release_fd_counted)--live_owned_fds;
-  if(release_fd_counted)__android_log_print(ANDROID_LOG_INFO,"HVInputGate","release_fd_transferred_to_AImage=%d active_owned_fds=%d",returned_release_fd,live_owned_fds.load());
-  if(image) __android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoded_lease_returned=true acquire_fd=%d release_fence=%s gpu_fence_complete=%d no_gpu_work=%d ahb_reference_released=%d active_images=%d active_ahb_references=%d active_owned_fds=%d",fd,gpu_submitted?"actual_gpu_release":"original_acquire",gpu_submitted,!gpu_submitted,buffer!=nullptr,live_images.load(),live_ahb_references.load(),live_owned_fds.load());
+  if(log_frame_details&&release_fd_counted)__android_log_print(ANDROID_LOG_INFO,"HVInputGate","release_fd_transferred_to_AImage=%d active_owned_fds=%d",returned_release_fd,live_owned_fds.load());
+  if(log_frame_details&&image) __android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoded_lease_returned=true acquire_fd=%d release_fence=%s gpu_fence_complete=%d no_gpu_work=%d ahb_reference_released=%d active_images=%d active_ahb_references=%d active_owned_fds=%d",fd,gpu_submitted?"actual_gpu_release":"original_acquire",gpu_submitted,!gpu_submitted,buffer!=nullptr,live_images.load(),live_ahb_references.load(),live_owned_fds.load());
 }
-void AndroidDecodedImage::CountReleaseFd() noexcept {if(release_fd>=0&&!release_fd_counted){release_fd_counted=true;++live_owned_fds;__android_log_print(ANDROID_LOG_INFO,"HVInputGate","release_fd_held=%d active_owned_fds=%d",release_fd,live_owned_fds.load());}}
+void AndroidDecodedImage::CountReleaseFd() noexcept {if(release_fd>=0&&!release_fd_counted){release_fd_counted=true;++live_owned_fds;if(log_frame_details)__android_log_print(ANDROID_LOG_INFO,"HVInputGate","release_fd_held=%d active_owned_fds=%d",release_fd,live_owned_fds.load());}}
 void AndroidDecodedImage::Reset() noexcept {this->~AndroidDecodedImage();new(this)AndroidDecodedImage();}
 void AndroidDecodedImage::TakeFrom(AndroidDecodedImage& s) noexcept {
  image=std::exchange(s.image,nullptr);reader=std::exchange(s.reader,nullptr);buffer=std::exchange(s.buffer,nullptr);acquire_fd=std::exchange(s.acquire_fd,-1);image_counted=std::exchange(s.image_counted,false);
  release_fd=std::exchange(s.release_fd,-1);release_fd_counted=std::exchange(s.release_fd_counted,false);gpu_submitted=std::exchange(s.gpu_submitted,false);generation=s.generation;pts_us=s.pts_us;received_us=s.received_us;decoded_us=s.decoded_us;
+ log_frame_details=std::exchange(s.log_frame_details,false);
  matrix=s.matrix;color_range=s.color_range;transfer=s.transfer;primaries=s.primaries;width=s.width;height=s.height;crop_left=s.crop_left;crop_top=s.crop_top;crop_right=s.crop_right;crop_bottom=s.crop_bottom;
 }
 static std::mutex gate_mutex;
@@ -150,6 +152,9 @@ void Session::Decode() {
     int64_t ns=0; AImage_getTimestamp(image.image,&ns);
     image.generation=info.generation; image.pts_us=ns/1000;
     image.received_us=info.received_timestamp_us; image.decoded_us=NowUs();
+    // The color converter is enabled in production too; it is not a diagnostic
+    // mode flag. Only the private non-production gate retains every frame.
+    image.log_frame_details=ShouldLogInputFrame(uint64_t(decoded)+1,!production);
     image.matrix=matrix;image.color_range=range;image.transfer=transfer;image.primaries=primaries;
     AImage_getWidth(image.image,&image.width);AImage_getHeight(image.image,&image.height);AImageCropRect crop{};
     if(AImage_getCropRect(image.image,&crop)!=AMEDIA_OK){fail("query actual decoder crop",AVERROR_INVALIDDATA);return;}
@@ -157,8 +162,8 @@ void Session::Decode() {
     if((ColorProbeEnabled()||production)&&(!codec_crop_known||codec_crop.right>int64_t(allocation.width)||codec_crop.bottom>int64_t(allocation.height)||codec_crop.right-codec_crop.left!=image.width||codec_crop.bottom-codec_crop.top!=image.height)){fail("actual decoder crop unavailable or incompatible with AHB/display geometry",AVERROR_INVALIDDATA);return;}
     const auto actual_crop=(ColorProbeEnabled()||production)?codec_crop:crop;
     image.crop_left=actual_crop.left;image.crop_top=actual_crop.top;image.crop_right=actual_crop.right;image.crop_bottom=actual_crop.bottom;
-    if(ColorProbeEnabled()||production)__android_log_print(ANDROID_LOG_INFO,"HVInputGate","resolved_ahb_crop left=%d top=%d right_exclusive=%d bottom_exclusive=%d ahb_width=%u ahb_height=%u aimage_rect=%d,%d,%d,%d crop_source=MediaCodec_coded_rect",actual_crop.left,actual_crop.top,actual_crop.right,actual_crop.bottom,allocation.width,allocation.height,crop.left,crop.top,crop.right,crop.bottom);
-    if(ColorProbeEnabled()||production)__android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoded_crop generation=%llu image_width=%d image_height=%d left=%d top=%d right=%d bottom=%d display_width=%d display_height=%d matrix=%u range=%u transfer=%u primaries=%u crop_metadata_domain=AImage_full_window matrix_range_domain=resolved_Android_or_H264_VUI raw_transfer_primaries_domain=AndroidMediaFormat",(unsigned long long)image.generation,image.width,image.height,crop.left,crop.top,crop.right,crop.bottom,crop.right-crop.left,crop.bottom-crop.top,matrix,range,transfer,primaries);
+    if(image.log_frame_details&&(ColorProbeEnabled()||production))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","resolved_ahb_crop left=%d top=%d right_exclusive=%d bottom_exclusive=%d ahb_width=%u ahb_height=%u aimage_rect=%d,%d,%d,%d crop_source=MediaCodec_coded_rect",actual_crop.left,actual_crop.top,actual_crop.right,actual_crop.bottom,allocation.width,allocation.height,crop.left,crop.top,crop.right,crop.bottom);
+    if(image.log_frame_details&&(ColorProbeEnabled()||production))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoded_crop generation=%llu image_width=%d image_height=%d left=%d top=%d right=%d bottom=%d display_width=%d display_height=%d matrix=%u range=%u transfer=%u primaries=%u crop_metadata_domain=AImage_full_window matrix_range_domain=resolved_Android_or_H264_VUI raw_transfer_primaries_domain=AndroidMediaFormat",(unsigned long long)image.generation,image.width,image.height,crop.left,crop.top,crop.right,crop.bottom,crop.right-crop.left,crop.bottom-crop.top,matrix,range,transfer,primaries);
     if(!production||decoded==0)RecordDecodedCapability(image,name.c_str()); ++decoded;
     if(production)SetDecoderState(HV_INPUT_STREAMING);
     if(ColorProbeEnabled()||production)QueueColorImage(image);

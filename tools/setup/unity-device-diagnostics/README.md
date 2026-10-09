@@ -26,7 +26,8 @@ If no stage instrumentation is installed, SDK aggregate statistics and hardware
 logs still work, with native stages explicitly unavailable.
 
 Run EditMode classes `HumanVision.TestProject.Tests.HardwareAndStageTests` and
-`HumanVision.TestProject.Tests.DeviceDiagnosticSessionTests`. The real-video probe
+`HumanVision.TestProject.Tests.DeviceDiagnosticSessionTests`, and
+`HumanVision.TestProject.Tests.Rk3588DiagnosticsTests`. The real-video probe
 checks genuine results, Unity/background logs, redaction, UGUI clipboard and ZIP
 contents. Physical Android validation also checks the public folder byte prefixes,
 native timings, hardware validity and absence of JNI warning floods.
@@ -37,3 +38,8 @@ from the repository root. The analyzer accepts Android's appended `.txt` filenam
 Results count fresh notifications containing bodies, not per-person complete
 skeleton FPS. Native stages include synchronization and are separate from Unity
 render frame timings. Missing telemetry is unavailable, never fabricated zero.
+
+The RK3588 follow-up discovers Mali devfreq clocks/load and named CPU/GPU thermal
+zones. It preserves raw native details once, indexes batches in events and measures
+flush wall time. Input frame-log sampling is a separate native Input change; copying
+these C# helpers alone does not enable it. This helper snapshot adds no RKNN backend.

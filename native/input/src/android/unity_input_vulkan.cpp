@@ -9,6 +9,7 @@
 #include "android_input_vulkan.h"
 #include "input_frame_ring.h"
 #include "input_gpu_sync.h"
+#include "input_diagnostic_sampling.h"
 #include <android/log.h>
 #include <media/NdkImageReader.h>
 #include <array>
@@ -20,6 +21,9 @@
 namespace hvinput {
 namespace {
 constexpr int event_id=0x485649;
+// Sparse local monotonic timestamps describe input queue/fence polling only;
+// they are not sensor capture latency or a GPU execution timestamp.
+int64_t diagnostic_submitted_us = 0;
 #define INPUT_VK_FUNCTIONS(X) \
  X(GetAndroidHardwareBufferPropertiesANDROID) X(GetPhysicalDeviceMemoryProperties) X(GetPhysicalDeviceFormatProperties) \
  X(CreateImage) X(DestroyImage) X(AllocateMemory) X(FreeMemory) X(BindImageMemory) \
@@ -194,11 +198,11 @@ void Poll(){
     f.received_timestamp_us=active->received_us;f.decoded_timestamp_us=active->decoded_us;f.presentation_timestamp_us=active->pts_us;
     f.clock_id=ClockId();f.clock_domain=HV_INPUT_CLOCK_NATIVE_MONOTONIC;f.timestamp_kind=HV_INPUT_TIME_LOCAL_DECODE;f.pts_valid=1;f.row_origin=0;f.color_space=0;f.decode_mode=2;
     published_frame.slot=output_slot;
-    __android_log_print(ANDROID_LOG_INFO,"HVInputGate","gpu_frame_published sequence=%llu generation=%llu slot=%d",(unsigned long long)token,(unsigned long long)active->generation,output_slot);
+    if(ShouldLogInputFrame(token,!production))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","gpu_frame_published sequence=%llu generation=%llu slot=%d",(unsigned long long)token,(unsigned long long)active->generation,output_slot);
    }else{++old_generation_rejections;}
    frame_ring.Collect(completed_token);
   }
-  __android_log_print(ANDROID_LOG_INFO,"HVInputGate","gpu_color_completed sequence=%llu generation=%llu pts_us=%lld received_us=%lld decoded_us=%lld cpu_image_readbacks=0 target_width=%u target_height=%u applied_rotation=%d applied_mirror=%d source_matrix=%u source_range=%u transfer=%u primaries=%u color_space=%u",(unsigned long long)token,(unsigned long long)active->generation,(long long)active->pts_us,(long long)active->received_us,(long long)active->decoded_us,target_width,target_height,rotation,mirror,active->matrix,active->color_range,active->transfer,active->primaries,0u);
+  if(ShouldLogInputFrame(token,!production))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","gpu_color_completed sequence=%llu generation=%llu pts_us=%lld received_us=%lld decoded_us=%lld submitted_us=%lld converted_us=%lld cpu_image_readbacks=0 target_width=%u target_height=%u applied_rotation=%d applied_mirror=%d source_matrix=%u source_range=%u transfer=%u primaries=%u color_space=%u",(unsigned long long)token,(unsigned long long)active->generation,(long long)active->pts_us,(long long)active->received_us,(long long)active->decoded_us,(long long)diagnostic_submitted_us,(long long)NowUs(),target_width,target_height,rotation,mirror,active->matrix,active->color_range,active->transfer,active->primaries,0u);
   ReturnImage(active);retired.notify_all();
  }
  BufferIdentity removed;while(buffer_registry.TakeRemoved(removed))cache.Remove(removed.buffer);
@@ -234,7 +238,10 @@ void UNITY_INTERFACE_API SubmitOnUnityQueue(int,void*){
  auto result=api.QueueSubmit(api.unity.graphicsQueue,1,&submit,fence);if(result!=VK_SUCCESS){Error("serialized Unity queue color submit",result);ReturnImage(active);return;}
  active->gpu_submitted=true;inflight=true;++token;++counters.submits;++counters.ownership_acquires;++counters.ownership_returns;cache.Used(*source_entry,token);if(production)frame_ring.Queue(output_slot,token);
  if(!gpu_sync.SignalReleaseFdAndReturnOwnership(active->release_fd)){Error("export actual GPU release sync fd");return;}active->CountReleaseFd();++counters.exports;
- __android_log_print(ANDROID_LOG_INFO,"HVInputGate","gpu_color_submitted sequence=%llu buffer=%p acquire_wait=%s release_fd=%d ownership=FOREIGN_EXT_to_Unity_to_FOREIGN_EXT serialized_access_queue=1",(unsigned long long)token,active->buffer,waited?"imported_sync_fd":"actual_minus_one_already_complete",active->release_fd);
+ if(ShouldLogInputFrame(token,!production)){
+  diagnostic_submitted_us=NowUs();
+  __android_log_print(ANDROID_LOG_INFO,"HVInputGate","gpu_color_submitted sequence=%llu buffer=%p acquire_wait=%s release_fd=%d ownership=FOREIGN_EXT_to_Unity_to_FOREIGN_EXT serialized_access_queue=1",(unsigned long long)token,active->buffer,waited?"imported_sync_fd":"actual_minus_one_already_complete",active->release_fd);
+ }
 }
 }
 bool BeginInputGpu(HV_InputHandle h){std::lock_guard<std::mutex> lock(mutex);if(owner||active||pending||inflight)return false;owner=h;session_baseline=counters;registry_baseline=buffer_registry.Inspect();terminal_reported=false;production=true;enabled=true;closing=paused=false;output_slot=-1;published_frame={};frame_ring.Begin(1);return true;}

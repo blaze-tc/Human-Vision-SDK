@@ -84,7 +84,7 @@ namespace HumanVision.TestProject.Tests
             string logs = Read("native-*.log");
             Assert.That(logs, Does.Contain("preprocess_submit_wait").And.Contain("elapsed_us=1500").And.Contain("thread=19"));
             Assert.That(logs, Does.Not.Contain("privatepass").And.Not.Contain("privatetoken"));
-            Assert.That(Read("events-*.jsonl"), Does.Contain("native.android"));
+            Assert.That(Read("events-*.jsonl"), Does.Contain("native.batch").And.Not.Contain("preprocess_submit_wait"));
             using (var archive = ZipFile.OpenRead(zip))
                 Assert.That(archive.Entries.Any(e => e.Name.StartsWith("native-")), Is.True);
         }

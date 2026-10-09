@@ -45,6 +45,8 @@ namespace HumanVision.TestProject.Diagnostics
 
         public string SessionPath { get; private set; } = "";
         public string LastWriteError { get; private set; } = "";
+        public double LastFlushMilliseconds { get; private set; }
+        public double MaximumFlushMilliseconds { get; private set; }
         public long DroppedUnityMessages { get { lock (queueLock) return dropped; } }
         public long DroppedNativeMessages { get { lock (queueLock) return nativeDropped; } }
         public double ElapsedSeconds => clock.Elapsed.TotalSeconds;
@@ -164,14 +166,23 @@ namespace HumanVision.TestProject.Diagnostics
         public void Flush(int maximumPending = 256)
         {
             if (disposed) return;
+            long begun = Stopwatch.GetTimestamp();
+            int nativeLines = 0;
             for (int i = 0; i < maximumPending; i++) {
                 PendingLog log;
                 lock (queueLock) { if (pending.Count == 0) break; log = pending.Dequeue(); }
                 bool native = log.Level == "Native";
-                WriteEvent(log.Utc, log.Seconds, native ? "native.android" : "unity." + log.Level, log.Condition, log.Stack, log.Thread);
+                if (native) ++nativeLines;
+                // 原生每帧明细已经在 native.log，事件时间线只写批次索引。
+                // 保留原生警告/错误及采集启停的单独事件，便于直接定位故障。
+                bool important = native && (log.Condition.Contains(" W ") || log.Condition.Contains(" E ") ||
+                    log.Condition.Contains(" F ") || log.Condition.StartsWith("native.capture.", StringComparison.Ordinal));
+                if (!native || important)
+                    WriteEvent(log.Utc, log.Seconds, native ? "native.android" : "unity." + log.Level, log.Condition, log.Stack, log.Thread);
                 Write(native ? "native.log" : "unity.log", log.Utc.ToString("O", Invariant) + " +" + log.Seconds.ToString("F3", Invariant) + "s [" + log.Level + "] thread=" + log.Thread +
                     " " + Redact(log.Condition).Replace("\r", "").Replace("\n", "\\n") + "\n" + (string.IsNullOrEmpty(log.Stack) ? "" : "stack: " + Redact(log.Stack) + "\n"));
             }
+            if (nativeLines > 0) Record("native.batch", "lines=" + nativeLines + "; details=native-*.log; warnings/errors remain individual events");
             long count = DroppedUnityMessages;
             if (count != lastReportedDrop) { Record("unity.queue.overflow", "dropped=" + count + " capacity=" + capacity); lastReportedDrop = count; }
             count = DroppedNativeMessages;
@@ -181,6 +192,8 @@ namespace HumanVision.TestProject.Diagnostics
                 try { state.Writer?.Dispose(); } catch (Exception e) { SetError(e); }
                 finally { state.Writer = null; }
             }
+            LastFlushMilliseconds = (Stopwatch.GetTimestamp() - begun) * 1000d / Stopwatch.Frequency;
+            MaximumFlushMilliseconds = Math.Max(MaximumFlushMilliseconds, LastFlushMilliseconds);
         }
         /// <summary>导出当前诊断会话，并合并本次运行产生的 SDK 设置日志；不导出包含凭据的原始配置文件。</summary>
         public string Export(string sdkLogRoot, string[] sdkSessions)

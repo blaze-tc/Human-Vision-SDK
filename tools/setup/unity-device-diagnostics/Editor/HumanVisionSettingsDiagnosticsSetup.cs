@@ -243,7 +243,8 @@ public static class HumanVisionSettingsDiagnosticsSetup
         bool localFix = File.Exists(Path.Combine(Root, "Assets/HumanVisionSettingsDemo/Resources/HumanVisionDeviceBuildInfo.json"));
         var identity = localFix ? JsonUtility.FromJson<BuildIdentity>(File.ReadAllText(Path.Combine(Root, "Assets/HumanVisionSettingsDemo/Resources/HumanVisionDeviceBuildInfo.json"))) : null;
         bool outputFix = identity != null && (identity.label ?? "").StartsWith("RK3588-Fix2-", StringComparison.Ordinal);
-        string apk = Path.Combine(Root, "Builds", identity != null && identity.hardware_diagnostics ? "HumanVisionSettingsDemo-HardwareDiagnostics.apk" : identity != null && identity.native_stage_trace ? "HumanVisionSettingsDemo-PerformanceTrace.apk" :
+        string apk = Path.Combine(Root, "Builds", identity != null && (identity.label ?? "").StartsWith("RK3588-Optimization-", StringComparison.Ordinal) ? "HumanVisionSettingsDemo-RK3588-Optimization.apk" :
+            identity != null && identity.hardware_diagnostics ? "HumanVisionSettingsDemo-HardwareDiagnostics.apk" : identity != null && identity.native_stage_trace ? "HumanVisionSettingsDemo-PerformanceTrace.apk" :
             outputFix ? "HumanVisionSettingsDemo-RK3588-Fix2.apk" : localFix ? "HumanVisionSettingsDemo-RK3588-Fix1.apk" : "HumanVisionSettingsDemo-DeviceDiagnostics.apk");
         var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions { scenes = new[] { ScenePath }, locationPathName = apk, target = BuildTarget.Android, options = BuildOptions.None });
         File.WriteAllText(Path.Combine(Evidence, "android-build.txt"), "result=" + report.summary.result + "\nerrors=" + report.summary.totalErrors + "\nwarnings=" + report.summary.totalWarnings + "\nbytes=" + report.summary.totalSize + "\nduration=" + report.summary.totalTime + "\napk=" + apk + "\n" +

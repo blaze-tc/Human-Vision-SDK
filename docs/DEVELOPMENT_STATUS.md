@@ -1,3 +1,49 @@
+# 2026-10-09 RK3588 field diagnosis — bounded logs verified; NPU gate open
+
+User-authorized field-log analysis and online primary-source research locate the
+dominant Low FP32 NCNN Vulkan model/internal-wait stage:85.04ms of98.20ms sparse
+six-stage sum, versus measured9.99 completed results/s after30s warm-up. Existing
+telemetry cannot separate GPU execution from CPU/internal waits, establish GPU
+saturation/SoC throttling, or conclude that RK3588 hardware is insufficient.
+4K RTSP decode remains active despite1280x720 output bounds. No RKNN/NPU runs yet.
+
+Implemented startup3/every64 production Input detail sampling (private diagnostic
+lane retains all frames), native.batch event indexing with original native.log,
+flush costs, independent Mali clock/load discovery, named CPU/GPU thermal zones,
+local Input submission/completion timing, profile-aware analysis and explicit
+force-stop final-JSON-fragment warnings. No model/SDK/public ABI change.
+
+Fresh Windows Input49/49 CTest; actual Unity Settings diagnostics39/39 EditMode
+(job40adaa68); Python analyzer/conversion safeguards7/7; Android ARM64 Input
+API26 closure,42 unchanged exports, architecture/public-surface guards PASS.
+Android Input build log:out/rk3588-input-android-build.log; Windows test log:
+out/rk3588-input-windows-tests.log. Python command:
+`py -3.13 -m unittest tests.reference.test_settings_device_log_analysis tests.reference.test_rknn_candidate_conversion`.
+Boundary command:`py -3.13 tools/maintenance/check_architecture_boundaries.py`.
+Diagnostic receipt:actual project DiagnosticsVerification/RK3588-20261009/.
+
+New actual-project APK HumanVisionSettingsDemo-RK3588-Optimization.apk built
+Unity2021.3.45f1,0 errors8 warnings; SHA256
+8243b3cd2e569a4b759f9df050e539df1978379b8f204d0efdc8935b7a61ec80.
+Input SHA256:e6b712f7b5e2ca4aa2602c7a1e6af3e659e01dd6d34a54409e89239c255fd0ed.
+SDK SHA256:eaf4b1297b498605a95e7ff7625ca8debd360f239b35832775549fff287f05f1;
+39 Runtime/model entries and bundled video unchanged. New APK remains installed
+on OnePlus9Pro; original preferences restored byte-for-byte and app stopped.
+
+Actual serial phone A/B:video120s, warm30s, completed23.642 old/22.845 new FPS;
+RTSP90s, warm30s,14.918 old/14.912 new FPS. Routine RTSP detail records fell~98.3%
+and event rows~94.6%; no pipeline errors. These prove reduced log volume and
+working input, NOT improved skeleton FPS. RTSP person coverage is insufficient
+for a sustained skeleton-FPS acceptance claim; RK3588 itself is not connected.
+
+RKNN candidate converter and guarded tests added, explicitly not qualified for
+deployment. Actual conversion is blocked:host Docker/WSL2 reports unavailable
+virtualization; no usable Linux environment or connected RK3588. NPU backend,
+validated ModelPack, selectable mode and20–25FPS RK3588 acceptance remain open.
+No new production Release. [Field report](reports/2026-10-09-rk3588-field-analysis.md),
+[NPU plan](plans/2026-10-09-rk3588-npu-acceleration.md),
+[log guide](user-guide/DEVICE_PERFORMANCE_LOGS.md).
+
 # 2026-10-09 Settings Demo telemetry — connected-phone video verified
 
 User requested a plain log folder, hardware usage and exact stage costs, plus

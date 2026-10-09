@@ -48,6 +48,15 @@ Android MediaStore 可能为文本日志追加 `.txt` 后缀（如 `session.json
 
 输入侧保留发布 FPS、待复制数量、提交/处理计数和本地发布后的结果年龄。当前没有独立测量摄像机曝光、网络传输或硬解码时长，因此结果年龄不是摄像机到屏幕的端到端延迟。Unity CPU/GPU frame time 是 **渲染帧时长**，不是 GPU 使用率或模型 GPU 时长。
 
+2026-10-09 Input优化构建的常规原生明细只保留启动3帧和每64帧，错误、重连及
+终态资源统计仍完整保留。`events` 用 `native.batch` 索引原生原文；具体内容见
+`native.log`，避免双份写入。`timings` 的 `diagnosticFlushMs` 为最近一次日志批次
+实际写入/关闭耗时，`diagnosticFlushMaximumMs` 为本会话峰值，不是推理耗时。
+Input新样本的 `decoded_us → submitted_us` 是本地调度，
+`submitted_us → converted_us` 包含GPU完成及渲染线程轮询。
+`received_us` 只是取图时最近demux到达观测，未证明同包对应关系；不能据此声称
+测到了精确硬解时长。PTS也不能与本地monotonic时间相减。
+
 判断方向：输入发布低于目标先检查视频帧率/码流/解码；模型及等待占主体先优化模型输入等级或验证加速后端；提交/导入等待大再检查生产者同步；解码/释放大再检查结果处理。保留全部段，避免根据单个汇总武断移除 GPU 等待。
 
 ## 硬件指标
@@ -55,6 +64,13 @@ Android MediaStore 可能为文本日志追加 `.txt` 后缀（如 `session.json
 应用 CPU 从自身进程所有线程的 CPU 计数差分得到，同时列出 **全部逻辑核容量占比** 和 **一核为 100% 的占比**；后者可超过 100%。Android 从 `sysconf(_SC_CLK_TCK)` 查询计数频率。系统 CPU 用 `/proc/stat` 差分，guest 不重复计算。应用内存用 Android PSS，另记系统可用内存。
 
 GPU 使用率读取可访问的 Adreno KGSL 或已知 Mali 驱动计数，是设备整体负载。KGSL `gpubusy` 已给出驱动统计区间 busy/total，不再按累计计数差分。NPU 负载没有可读取来源时显示不可用；当前 CPU/NCNN Vulkan profile 未使用 NPU。电池温度不冒充 CPU 结温，Android thermal status 不单独证明未降频。CPU 各核频率、GPU 频率能读取时一并写日志。
+
+RK3588构建自动发现 `/sys/class/devfreq/*gpu*`/`*mali*`，支持Rockchip
+`负载@频率Hz`格式；NPU/DMC节点不算GPU。`cur_freq`独立于负载读取，保留
+`gpuFrequencySource/Status`。`thermalSensors` 保存至多32个热区的type、路径、
+温度和状态，`cpuTemperatureC/gpuTemperatureC` 按热区名称汇总，与电池值分开。
+缺权限/坏格式保留原因，不申请root、不修改频率或温控。
+字段含义依据[Rockchip devfreq实现](https://github.com/rockchip-linux/kernel/blob/develop-5.10/drivers/devfreq/devfreq.c)。
 
 所有不可读取的数值用 **-1 + 原因/来源** 表示，界面显示 **不可用**，不伪装成 0% 空闲。采样和公共目录同步在后台线程执行；主线程按一秒写统计、约两秒写硬件，不逐帧输出 JSON。
 
@@ -71,3 +87,8 @@ python tools/benchmark/analyze_settings_device_log.py "日志会话目录" "anal
 ```
 
 输出分段后的新结果/含人体结果 FPS、窗口分布、六段耗时、硬件可用性和错误，保留计时范围。将 **整个会话文件夹 + 同时段测试视频/截图** 留给后续分析即可。
+
+分析器按实际profile切换和输入代次分段；人物覆盖率单列，不把无人大段统计成
+有人时的骨骼帧率。强制退出可能留下最后一条未写完JSON，分析器只忽略未换行的
+坏尾条并记录 `dataQualityWarnings`；完整行或中间损坏仍报错。
+RK3588实测结论与NPU当前状态见[现场分析报告](../reports/2026-10-09-rk3588-field-analysis.md)。

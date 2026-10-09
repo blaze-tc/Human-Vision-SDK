@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Text.RegularExpressions;
 using UnityEngine;
 
 namespace HumanVision.TestProject.Diagnostics
@@ -16,6 +17,9 @@ namespace HumanVision.TestProject.Diagnostics
         public string systemCpuStatus = "not sampled", cpuStatus = "not sampled", memoryStatus = "not sampled";
         public string npuStatus = "device NPU load unavailable; current CPU/NCNN Vulkan profiles do not use NPU", npuSource = "";
         public string samplerStatus = "not sampled";
+        public string gpuFrequencySource = "", gpuFrequencyStatus = "unavailable", thermalSensorsStatus = "unavailable";
+        public double cpuTemperatureC = -1, gpuTemperatureC = -1;
+        public ThermalSensorSample[] thermalSensors = Array.Empty<ThermalSensorSample>();
         public string temperatureSource = "Android battery (not CPU junction)", thermalStatus = "unavailable";
         public double elapsed_s, intervalSeconds, appCpuPercent = -1, appCpuOneCorePercent = -1, systemCpuPercent = -1;
         public double gpuPercent = -1, gpuFrequencyMHz = -1, npuPercent = -1, batteryTemperatureC = -1;
@@ -28,6 +32,20 @@ namespace HumanVision.TestProject.Diagnostics
     /// <summary>计数解析独立于平台，避免 comm 中空格/括号、guest 重复计数或计数重置制造假负载。</summary>
     public static class HardwareMetrics
     {
+        // Rockchip devfreq.c::load_show emits percent@frequencyHz. Reading this as
+        // a plain double discarded valid Mali load values in the original sampler.
+        private static readonly Regex Devfreq = new Regex(@"^\s*(?<load>\d+(?:\.\d+)?)\s*(?:%|@(?<hz>\d+)Hz)?\s*$", RegexOptions.CultureInvariant);
+        public static double DevfreqLoadPercent(string raw)
+        {
+            var match = Devfreq.Match(raw ?? "");
+            return match.Success && double.TryParse(match.Groups["load"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double load) &&
+                !double.IsNaN(load) && !double.IsInfinity(load) && load >= 0 && load <= 100 ? load : -1;
+        }
+        public static double DevfreqFrequencyMHz(string raw)
+        {
+            var match = Devfreq.Match(raw ?? "");
+            return match.Success && long.TryParse(match.Groups["hz"].Value, out long hz) && hz > 0 ? hz / 1000000d : -1;
+        }
         public static long ProcessTicks(string stat)
         {
             int end = (stat ?? "").LastIndexOf(')'); if (end < 0) return -1;
@@ -69,6 +87,7 @@ namespace HumanVision.TestProject.Diagnostics
         private long previousProcess = -1;
         private double previousSeconds;
         private SystemCpuTicks previousSystem = new SystemCpuTicks();
+        private readonly DeviceSysfsTelemetry sysfs = new DeviceSysfsTelemetry("/sys/class/devfreq", "/sys/class/thermal", "/sys/class/kgsl/kgsl-3d0");
         public DeviceHardwareSampler(int logicalCores) { cores = Math.Max(1, logicalCores); }
         public void Start() { worker = new Thread(Run) { IsBackground = true, Name = "HV hardware diagnostics" }; worker.Start(); }
         public HardwareSample Read() { lock (gate) return latest; }
@@ -119,19 +138,7 @@ namespace HumanVision.TestProject.Diagnostics
                 if (long.TryParse(raw.Trim(), out long khz)) frequencies.Append(i).Append(':').Append(khz / 1000).Append(' ');
             }
             if (frequencies.Length > 0) v.cpuFrequencyMHz = frequencies.ToString().Trim();
-            v.gpuSource = "/sys/class/kgsl/kgsl-3d0/gpubusy";
-            string busy = ReadFile(v.gpuSource, out v.gpuStatus); v.gpuPercent = HardwareMetrics.KgslPercent(busy);
-            // Adreno gpubusy 是驱动上一个统计区间的 busy/total，不能再次做累计差分。
-            if (v.gpuPercent < 0 && v.gpuStatus == "available") v.gpuStatus = "invalid/empty KGSL interval";
-            if (v.gpuPercent < 0) {
-                foreach (string path in new[] { "/sys/class/devfreq/fb000000.gpu/load", "/sys/class/devfreq/ff9a0000.gpu/load", "/sys/class/misc/mali0/device/utilization" }) {
-                    string raw = ReadFile(path, out _).Trim().TrimEnd('%');
-                    if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out double load) || load < 0 || load > 100) continue;
-                    v.gpuSource = path; v.gpuPercent = load; v.gpuStatus = "available; vendor sampling interval"; break;
-                }
-            }
-            string hz = ReadFile("/sys/class/kgsl/kgsl-3d0/gpuclk", out _);
-            if (long.TryParse(hz.Trim(), out long frequency)) v.gpuFrequencyMHz = frequency / 1000000d;
+            sysfs.Capture(v);
             using (var debug = new AndroidJavaClass("android.os.Debug"))
             using (var info = new AndroidJavaObject("android.os.Debug$MemoryInfo")) {
                 debug.CallStatic("getMemoryInfo", info); v.processPssMB = info.Call<int>("getTotalPss") / 1024d; v.memoryStatus = "available; Android Debug.MemoryInfo PSS";

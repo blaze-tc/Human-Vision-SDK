@@ -44,6 +44,8 @@ struct AndroidDecodedImage {
   int acquire_fd = -1;
   bool image_counted = false;
   int release_fd=-1; bool gpu_submitted=false,release_fd_counted=false;
+  // Internal diagnostics only; never changes image/fd lifetime or public ABI.
+  bool log_frame_details = true;
   uint32_t matrix=0,color_range=0,transfer=0,primaries=0;
   int32_t width=0,height=0,crop_left=0,crop_top=0,crop_right=0,crop_bottom=0;
   uint64_t generation = 0;

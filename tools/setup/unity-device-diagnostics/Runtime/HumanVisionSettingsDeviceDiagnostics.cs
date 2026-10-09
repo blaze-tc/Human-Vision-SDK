@@ -102,6 +102,8 @@ namespace HumanVision.TestProject.Diagnostics
             public long resultFrame, acceptedFrame;
             public double publicationFps, freshBodyResultsFps, pipelineTotalMs, sdkDetectMs, sdkPoseMs, sdkTrackingMs;
             public double resultAgeMs, publishedAgeMs, unityCpuFrameMs, unityGpuFrameMs;
+            public double diagnosticFlushMs, diagnosticFlushMaximumMs;
+            public string diagnosticScope = "last main-thread log flush batch and session maximum, not the same inference frame; includes redaction/write/close";
             public int pendingCopies;
             public NativeStageSample native;
             public string scope = "SDK current-result aggregate and latest complete sparse native frame are separate; frame IDs may differ";
@@ -323,7 +325,8 @@ namespace HumanVision.TestProject.Diagnostics
                 resultFrame = value.resultFrame, acceptedFrame = value.acceptedFrame, publicationFps = value.publicationFpsEstimate, freshBodyResultsFps = value.freshBodyResultsFps,
                 pipelineTotalMs = value.totalMs, sdkDetectMs = value.detectMs, sdkPoseMs = value.poseMs, sdkTrackingMs = value.trackingMs,
                 resultAgeMs = value.frameAgeMs, publishedAgeMs = value.publishedAgeMs, pendingCopies = value.pendingCopies,
-                native = value.nativeStages, unityCpuFrameMs = unityCpuFrameMs, unityGpuFrameMs = unityGpuFrameMs }));
+                native = value.nativeStages, unityCpuFrameMs = unityCpuFrameMs, unityGpuFrameMs = unityGpuFrameMs,
+                diagnosticFlushMs = session.LastFlushMilliseconds, diagnosticFlushMaximumMs = session.MaximumFlushMilliseconds }));
             if (value.nativeStages.available && value.nativeStages.completedSamples != lastStageSample) {
                 lastStageSample = value.nativeStages.completedSamples; session.Record("timing.native.complete", JsonUtility.ToJson(value.nativeStages));
             }
@@ -433,10 +436,10 @@ namespace HumanVision.TestProject.Diagnostics
                 hardwareLabel.text = h == null ? "硬件采样准备中" :
                     "应用CPU " + Metric(h.appCpuPercent, "%全核") + " / " + Metric(h.appCpuOneCorePercent, "%一核") + " | 系统CPU " + Metric(h.systemCpuPercent, "%") +
                     " | GPU " + Metric(h.gpuPercent, "%") + "，频率 " + Metric(h.gpuFrequencyMHz, "MHz") + " | NPU：后端未使用\n" +
-                    "内存PSS " + Metric(h.processPssMB, "MB") + " | 系统可用 " + Metric(h.systemAvailableMB, "MB") + " | 电池 " + Metric(h.batteryTemperatureC, "℃") + " | " + h.thermalStatus +
+                    "内存PSS " + Metric(h.processPssMB, "MB") + " | 可用 " + Metric(h.systemAvailableMB, "MB") + " | 温度 CPU " + Metric(h.cpuTemperatureC, "℃") + " / GPU " + Metric(h.gpuTemperatureC, "℃") + " / 电池 " + Metric(h.batteryTemperatureC, "℃") +
                     "\n" + (n.available ? "稀疏帧 " + n.frameId + "：预处理/等待 " + Number(n.importPreprocessRecordMs + n.preprocessSubmitWaitMs) + "ms，模型/内部等待 " + Number(n.extractDownloadMs) +
                         "ms，提交/下载等待 " + Number(n.inferenceSubmitWaitMs) + "ms，输出/释放 " + Number(n.denseOutputCopyMs + n.ownershipReleaseMs) + "ms" : "等待原生阶段计时；不可用原因详见硬件日志") +
-                    "\n" + (folderMirror?.Status ?? "");
+                    "\n" + h.thermalStatus + " | 日志批次 " + Metric(session.LastFlushMilliseconds, "ms") + " | " + (folderMirror?.Status ?? "");
             }
         }
         private static string Metric(double number, string unit) => number < 0 ? "不可用" : number.ToString("F1", Invariant) + unit;
