@@ -77,6 +77,18 @@ TEST_F(ProfileManagerTest, Schema2ParsesNamedNcnnFilesAndCompleteTensorContract)
  EXPECT_EQ(pack->capabilities & (kVulkan | kFp16Storage | kFp16Arithmetic | kAndroidHardwareBuffer | kExternalSyncFd),
            kVulkan | kFp16Storage | kFp16Arithmetic | kAndroidHardwareBuffer | kExternalSyncFd);
 }
+TEST_F(ProfileManagerTest, SchemaOneRejectsMissingOrTamperedDeclaredEvidence) {
+ auto manifest=nlohmann::json::parse(Manifest());
+ manifest["models"][0]["evidence"]={{{"path","proof.json"},{"sha256","ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"}}};
+ Save(manifest.dump());ModelPackManager packs(root/"packs");std::string error;
+ EXPECT_FALSE(packs.Resolve("fixture",error));
+ std::ofstream(root/"packs"/"fixture"/"proof.json",std::ios::binary)<<"tampered";
+ EXPECT_FALSE(packs.Resolve("fixture",error));
+ std::ofstream(root/"packs"/"fixture"/"proof.json",std::ios::binary|std::ios::trunc)<<"abc";
+ EXPECT_TRUE(packs.Resolve("fixture",error))<<error;
+ manifest["models"][0]["evidence"][0]["path"]="../outside.json";Save(manifest.dump());
+ EXPECT_FALSE(packs.Resolve("fixture",error));
+}
 TEST_F(ProfileManagerTest, Schema2AcceptsRevisionTwoModelpackFilename) {
  std::ofstream(root/"packs"/"fixture"/"detector.param",std::ios::binary)<<"abc";
  std::ofstream(root/"packs"/"fixture"/"detector.bin",std::ios::binary)<<"def";

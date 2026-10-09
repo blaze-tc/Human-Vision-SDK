@@ -19,13 +19,16 @@ namespace HumanVision.Tests
         {
             var type = Find("HumanVisionSettingsView"); Assert.NotNull(type, "Settings view is missing.");
             root = new GameObject("settings test");
+            var existingEvents = UnityEngine.Object.FindObjectsOfType<EventSystem>().Where(item => item.gameObject.scene == root.scene).ToArray();
             var view = (Component)type.GetMethod("Create").Invoke(null, new object[] { root.transform, null });
             Assert.That(view.GetComponent<CanvasScaler>().referenceResolution, Is.EqualTo(new Vector2(1600, 900)));
             Assert.That(view.transform.Find("Settings panel").GetComponent<RectTransform>().anchorMin.x, Is.EqualTo(.72f));
             foreach (string name in new[] { "Apply", "ApplySave", "Stop", "Return", "UseRegions", "EditRegions", "ResetRegions", "Reload", "Save", "Mirror", "Advanced" })
                 Assert.True(Array.Exists(view.GetComponentsInChildren<Button>(true), b => b.name == name), name);
             Assert.That(view.GetComponentsInChildren<InputField>(true).Length, Is.GreaterThanOrEqualTo(12));
-            Assert.That(root.GetComponentsInChildren<EventSystem>(true).Length, Is.EqualTo(1));
+            Assert.That(root.GetComponentsInChildren<EventSystem>(true).Length, Is.EqualTo(existingEvents.Length == 0 ? 1 : 0));
+            Assert.True(UnityEngine.Object.FindObjectsOfType<EventSystem>().Any(item => item.gameObject.scene == root.scene));
+            foreach (var existing in existingEvents) Assert.That(existing.gameObject.scene, Is.EqualTo(root.scene), "Creating the layout must preserve the scene's EventSystem.");
             Assert.That(view.GetComponentsInChildren<HumanVisionOverlay>(true)[0].GetComponent<CanvasRenderer>(), Is.Not.Null);
             Assert.That(view.GetComponentsInChildren<Dropdown>(true).Length, Is.GreaterThanOrEqualTo(4));
         }

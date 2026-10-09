@@ -1,6 +1,8 @@
-# Unity 总控使用（preview.5）
+# Unity 总控使用（preview.6）
 
 先安装 Input **0.1.0-preview.4**，等待编译，再安装 SDK **0.4.0-preview.6**。两包使用同一个 Git 标签 `v0.4.0-preview.6`。旧 API 保留。
+
+2026-10-09 私有双模式测试版本另见 [双模式实测说明](../reports/2026-10-09-dual-acceleration-integration.md)。该版本增加 Android NPU 实验路径；正式 preview.6 安装内容没有被标为已经通过 RK3588 硬件验收。
 
 ## 一份组件即可启动
 

@@ -185,6 +185,18 @@ std::shared_ptr<const ModelPack> ModelPackManager::Resolve(const std::string& id
             if (!value.at("input_contract").is_object() || !value.at("output_contract").is_object() ||
                 value.at("source").get<std::string>().empty() || value.at("license").get<std::string>().empty())
                 throw std::runtime_error("Missing model contract or provenance");
+            // Optional evidence is part of the immutable pack, not an advisory
+            // filename. Validate declared bytes at initialization for every
+            // format; semantics remain the selected pipeline's responsibility.
+            if(value.contains("evidence")) {
+                if(!value.at("evidence").is_array()) throw std::runtime_error("Model evidence must be an array");
+                std::set<std::string> evidence_paths;
+                for(const auto& proof:value.at("evidence")) {
+                    const auto relative=RequiredString(proof,"path");
+                    if(!evidence_paths.insert(relative).second) throw std::runtime_error("Duplicate model evidence path");
+                    ValidateSha256(ModelFilePath(pack->root,relative),RequiredString(proof,"sha256"),asset.role+":evidence");
+                }
+            }
             asset.input_contract = value.at("input_contract").dump();
             asset.output_contract = value.at("output_contract").dump();
             pack->models.push_back(std::move(asset));

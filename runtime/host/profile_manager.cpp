@@ -108,6 +108,10 @@ std::shared_ptr<const RuntimeProfile> ProfileManager::Resolve(const std::string&
             if (!selected.plugin) throw std::runtime_error(error);
             selected.pack = packs.Resolve(choice.at("modelPack").get<std::string>(), error);
             if (!selected.pack) throw std::runtime_error(error);
+            const auto pack_json=nlohmann::json::parse(selected.pack->manifest_json);
+            if(pack_json.contains("profile_sha256")&&
+               (!pack_json.at("profile_sha256").is_string()||pack_json.at("profile_sha256").get<std::string>()!=ProfileHash(profile_path)))
+                throw std::runtime_error("ModelPack profile SHA-256 mismatch");
             if (selected.plugin->api.type != HV_PLUGIN_PIPELINE || selected.pack->pipeline_id != plugin_id ||
                 (selected.pack->capabilities & capability) != capability ||
                 selected.plugin->api.max_people < static_cast<uint32_t>(max_people) || selected.pack->max_people < max_people)

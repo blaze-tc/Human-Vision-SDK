@@ -14,6 +14,11 @@ Android 公共目录通过 MediaStore 写入应用自己创建的文件，不申
 
 ## 文件与计数
 
+私有计算模式版本另记录 NPU 三核设备负载、频率、温度和实际启用状态；
+不可读保持 -1 与原因。CPU/NPU 的 HUD 和计时不会继续展示前一个 Vulkan
+会话的六段样本。NPU 输入交付、执行/等待、取输出、释放耗时位于
+`runtime.diagnostics` 周期事件，详见 [模式与计时范围](../reports/2026-10-09-dual-acceleration-integration.md)。
+
 | 文件 | 用途 |
 |---|---|
 | `session.json` | 设备、图形 API、版本、构建/native 标识、日志格式 |

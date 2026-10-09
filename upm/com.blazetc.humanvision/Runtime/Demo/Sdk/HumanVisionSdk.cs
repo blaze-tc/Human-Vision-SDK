@@ -30,7 +30,7 @@ namespace HumanVision
         private HumanVisionSkeletonQueries raw, sampled;
         private long revision, minimumSequence;
         private int operation;
-        private bool acceptResults, sourceFresh;
+        private bool acceptResults, sourceFresh, stopAfterRetirement;
         private ulong sourceId, sourceGeneration;
         private readonly long[] previousIds = new long[8];
         private readonly HumanVisionRegionOccupancy[] previousOccupancy = new HumanVisionRegionOccupancy[8];
@@ -39,6 +39,8 @@ namespace HumanVision
         private AnalysisContract activeContract;
         private HumanVisionSdkQualityCapabilities qualityCapabilities;
         private string qualityRoot;
+        private int qualityCapacity;
+        private HumanVisionStagedInitialization<HumanVisionRuntimeSession> initialization;
 
         /// <summary>Runtime 已初始化后通知；输入是否流送请读取 IsRunning。</summary>
         public event Action Initialized;
@@ -61,7 +63,7 @@ namespace HumanVision
         /// <summary>Runtime 会话存在。</summary>
         public bool IsInitialized => manager != null && manager.IsInitialized;
         /// <summary>输入实际处于 Streaming，不表示本帧一定识别到人。</summary>
-        public bool IsRunning => State == HumanVisionSdkState.Running && source != null && source.State == InputSourceState.Streaming;
+        public bool IsRunning => (State == HumanVisionSdkState.Running || State == HumanVisionSdkState.Preparing) && source != null && source.State == InputSourceState.Streaming;
         /// <summary>当前输入来源匹配且原始结果仍在时效范围内。</summary>
         public bool HasFreshResult => acceptResults && sourceFresh && raw != null && raw.HasFreshResult(NowUs);
         /// <summary>最近错误；成功应用后清除。</summary>
@@ -77,6 +79,11 @@ namespace HumanVision
         /// <summary>当前实际 Runtime 配置和诊断字符串，用于实机日志；尚未初始化时为空。</summary>
         public string RuntimeProfile => manager != null && manager.IsInitialized ? manager.ActiveRuntimeProfile : "";
         public string RuntimeDiagnostics => manager != null && manager.IsInitialized ? manager.RuntimeDiagnostics : "";
+        /// <summary>实际成功应用的语义加速器；请求失败时保持旧值。</summary>
+        public HumanVisionAccelerationMode ActiveAccelerationMode => IsInitialized
+            ? RuntimeProfile == HumanVisionAndroidAccelerationSelection.NeuralProfile ? HumanVisionAccelerationMode.Neural
+                : RuntimeProfile == HumanVisionAndroidAccelerationSelection.CpuProfile || RuntimeProfile == "windows-pc-cpu" ? HumanVisionAccelerationMode.Cpu : HumanVisionAccelerationMode.Graphics
+            : active?.AccelerationMode ?? HumanVisionAccelerationMode.Graphics;
         /// <summary>当前使用的资源目录与实际模型包；输入采集尺寸与模型尺寸分别记录。</summary>
         public string RuntimeRootPath => preparedRoot ?? "";
         public string ActiveModelPack => IsInitialized ? activeContract?.ModelPackId ?? "" : "";
@@ -128,27 +135,56 @@ namespace HumanVision
                 if (string.IsNullOrEmpty(root)) throw new InvalidOperationException(preparationError ?? "运行资源准备失败。");
                 var shared = new SharedRecognitionSettings {
                     MaxBodies = candidate.Recognition.MaxBodies, UseRegions = candidate.Recognition.UseRegions,
-                    Regions = candidate.Recognition.Regions, InputQuality = candidate.InputQuality, UseWindowsCpu = candidate.UseWindowsCpu
+                    Regions = candidate.Recognition.Regions, InputQuality = candidate.InputQuality, UseWindowsCpu = candidate.UseWindowsCpu,
+                    AccelerationMode = candidate.AccelerationMode
                 };
                 string baseProfile = Application.platform == RuntimePlatform.Android
-                    ? HumanVisionAndroidRuntimeSelection.ResolveProfile("auto") : shared.RuntimeProfileFor(Application.platform);
+                    ? HumanVisionAndroidAccelerationSelection.ResolveInstalled(candidate.AccelerationMode, candidate.InputQuality) : shared.RuntimeProfileFor(Application.platform);
+                if (Application.platform != RuntimePlatform.Android && candidate.AccelerationMode == HumanVisionAccelerationMode.Neural)
+                    throw new InvalidOperationException("Neural acceleration requires the admitted Android build and device.");
                 contract = shared.ResolveContract(root, baseProfile);
             } catch (Exception e) { Error(e.Message); State = previousState; }
             if (contract == null) yield break;
+            var nativeConfig = new HumanVisionConfig { RuntimeRoot = root, Profile = contract.ProfileId, MaxBodies = candidate.Recognition.MaxBodies };
+            HumanVisionStagedInitialization<HumanVisionRuntimeSession> pending = null;
+            long preparedRevision = 0;
+            if (candidate.AccelerationMode == HumanVisionAccelerationMode.Neural ||
+                (Application.platform == RuntimePlatform.Android && candidate.AccelerationMode == HumanVisionAccelerationMode.Cpu)) {
+                // Resolve Android metadata on the main thread above. Only pure managed/native CPU creation runs here.
+                var requestedRegions = candidate.Recognition.UseRegions ? candidate.Recognition.Regions : Array.Empty<Rect>();
+                preparedRevision = revision + 1;
+                pending = new HumanVisionStagedInitialization<HumanVisionRuntimeSession>(() => {
+                    var prepared = new HumanVisionRuntimeSession(nativeConfig, contract.ProfileId);
+                    try { prepared.SetRegions(requestedRegions, preparedRevision); return prepared; }
+                    catch { prepared.Dispose(); throw; }
+                });
+                initialization = pending;
+                while (!pending.Complete && token == operation && isActiveAndEnabled) yield return null;
+                if (token != operation || !isActiveAndEnabled) { pending.Abandon(); if (ReferenceEquals(initialization, pending)) initialization = null; yield break; }
+                if (!string.IsNullOrEmpty(pending.Error)) {
+                    string failure = pending.Error; pending.Abandon(); initialization = null;
+                    State = previousState; Error("Requested " + candidate.AccelerationMode + " profile '" + contract.ProfileId + "' failed: " + failure + ". Current session retained."); yield break;
+                }
+            }
             // 资源与配置验证结束后才能退役当前输入。取消旧操作后重新领取 token。
-            BeginStop(); token = ++operation;
+            BeginStop(false); token = ++operation;
             while (retirement != null && !retirement.Complete) yield return null;
-            if (token != operation || !isActiveAndEnabled) yield break;
+            if (token != operation || !isActiveAndEnabled) { pending?.Abandon(); if (ReferenceEquals(initialization, pending)) initialization = null; yield break; }
             State = HumanVisionSdkState.Preparing; preparedRoot = root;
             var go = new GameObject(name + " Runtime Host");
             DontDestroyOnLoad(go); host = go.AddComponent<HumanVisionSdkLifetime>();
             manager = go.AddComponent<HumanVisionManager>();
             bridge = go.AddComponent<VideoPlayerFrameSource>(); bridge.Configure(manager, null, null);
-            if (!manager.TryInitialize(new HumanVisionConfig { RuntimeRoot = root, Profile = contract.ProfileId, MaxBodies = candidate.Recognition.MaxBodies })) {
+            bool initialized;
+            if (pending != null) {
+                var prepared = pending.Take(); if (ReferenceEquals(initialization, pending)) initialization = null;
+                manager.AdoptPreparedSession(nativeConfig, prepared); initialized = true;
+            } else initialized = manager.TryInitialize(nativeConfig);
+            if (!initialized) {
                 string error = manager.LastError; yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); yield break;
             }
             activeContract = contract;
-            if (!ApplyRecognition(candidate.Recognition)) {
+            if (!ApplyRecognition(candidate.Recognition, preparedRevision)) {
                 string error = LastError; yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); yield break;
             }
             LastError = ""; State = HumanVisionSdkState.Ready;
@@ -191,17 +227,30 @@ namespace HumanVision
             try {
                 if (requested == null) throw new ArgumentNullException(nameof(requested)); requested.Validate();
                 var candidate = requested.Clone();
+                if (IsInitialized && RuntimeProfile == HumanVisionAndroidAccelerationSelection.NeuralProfile && manager.MaxBodies != candidate.MaxBodies) {
+                    Error("Neural capacity changes require asynchronous initialization. Use HumanVisionSdk.Initialize with the updated full HumanVisionSdkOptions; the current session and input are retained.");
+                    return false;
+                }
+                AnalysisContract capacityContract = null;
+                if (IsInitialized && manager.MaxBodies != candidate.MaxBodies &&
+                    (RuntimeProfile == HumanVisionAndroidAccelerationSelection.CpuProfile || RuntimeProfile == "windows-pc-cpu")) {
+                    capacityContract = new SharedRecognitionSettings { MaxBodies = candidate.MaxBodies }.ResolveContract(preparedRoot, RuntimeProfile);
+                }
                 if (IsInitialized && !ApplyRecognition(candidate)) return false;
+                if (capacityContract != null) activeContract = capacityContract;
                 options.Recognition = candidate;
                 if (active != null) active.Recognition = candidate.Clone();
                 LastError = ""; return true;
             } catch (Exception e) { Error(e.Message); return false; }
         }
-        private bool ApplyRecognition(HumanVisionSdkConfiguration candidate)
+        private bool ApplyRecognition(HumanVisionSdkConfiguration candidate, long preparedRevision = 0)
         {
             long nextRevision = revision + 1;
-            if ((manager.MaxBodies != candidate.MaxBodies && !manager.TrySetMaxBodies(candidate.MaxBodies)) ||
-                !manager.TrySetRegions(candidate.UseRegions ? candidate.Regions : Array.Empty<Rect>(), nextRevision)) {
+            if (preparedRevision != 0 && (preparedRevision != nextRevision || manager.MaxBodies != candidate.MaxBodies)) {
+                Error("Prepared recognition configuration no longer matches this initialization."); BeginStop(); return false;
+            }
+            if (preparedRevision == 0 && ((manager.MaxBodies != candidate.MaxBodies && !manager.TrySetMaxBodies(candidate.MaxBodies)) ||
+                !manager.TrySetRegions(candidate.UseRegions ? candidate.Regions : Array.Empty<Rect>(), nextRevision))) {
                 // 底层两个调用不是事务；失败后拒绝查询并停止，避免报告部分应用为成功。
                 Error(manager.LastError); BeginStop(); return false;
             }
@@ -218,8 +267,10 @@ namespace HumanVision
         }
         /// <summary>销毁 Runtime 资源的可等待入口，与 StopSdk 相同；不会销毁用户的总控物体。</summary>
         public IEnumerator Shutdown() => StopSdk();
-        private void BeginStop()
+        private void BeginStop(bool discardCandidate = true)
         {
+            stopAfterRetirement = discardCandidate;
+            if (discardCandidate) { initialization?.Abandon(); initialization = null; }
             ++operation; acceptResults = sourceFresh = false; sourceId = sourceGeneration = 0;
             raw?.Clear(); sampled?.Clear(); RefreshIdentityEvents();
             if (manager != null) manager.ResultUpdated -= OnResult;
@@ -228,9 +279,12 @@ namespace HumanVision
                 retirement = host; var owner = host; var ownedManager = manager; var ownedBridge = bridge; var ownedSource = source;
                 host = null; manager = null; bridge = null; source = null;
                 owner.Retire(ownedManager, ownedBridge, ownedSource, () => {
-                    if (this != null && host == null) { State = HumanVisionSdkState.Stopped; Stopped?.Invoke(); }
+                    if (this != null && host == null) {
+                        State = stopAfterRetirement ? HumanVisionSdkState.Stopped : HumanVisionSdkState.Preparing;
+                        if (stopAfterRetirement) Stopped?.Invoke();
+                    }
                 });
-            } else if (retirement == null || retirement.Complete) State = HumanVisionSdkState.Stopped;
+            } else if (retirement == null || retirement.Complete) State = discardCandidate ? HumanVisionSdkState.Stopped : HumanVisionSdkState.Preparing;
         }
         private void Update()
         {
@@ -363,19 +417,19 @@ namespace HumanVision
             try { profile = QualityProfile(options); }
             catch (Exception e) { qualityCapabilities = HumanVisionSdkQualityCapabilities.Failed("", e.Message); }
             if (profile == null) yield break;
-            if (profile != HumanVisionModelInputQualities.AdmittedRuntimeMode) yield break;
+            if (profile != HumanVisionModelInputQualities.AdmittedRuntimeMode && profile != HumanVisionAndroidAccelerationSelection.NeuralProfile && profile != HumanVisionAndroidAccelerationSelection.CpuProfile) yield break;
             string root = string.IsNullOrWhiteSpace(runtimeRoot) ? preparedRoot : runtimeRoot;
             string failure = "";
             if (string.IsNullOrEmpty(root)) yield return HumanVisionRuntimeData.Prepare(value => root = value, value => failure = value);
-            qualityRoot = root; qualityCapabilities = HumanVisionSdkQualityCapabilities.Load(root, profile);
+            qualityRoot = root; qualityCapacity = options.Recognition.MaxBodies; qualityCapabilities = HumanVisionSdkQualityCapabilities.Load(root, profile, qualityCapacity);
             if (string.IsNullOrEmpty(root) && !string.IsNullOrEmpty(failure))
                 qualityCapabilities = HumanVisionSdkQualityCapabilities.Failed(profile, failure);
             // 只有当前安装资源校验成功，初始化才能复用该目录；错误不会覆盖正在运行的会话。
             if (!string.IsNullOrEmpty(root) && string.IsNullOrEmpty(qualityCapabilities.Error)) preparedRoot = root;
         }
         private static string QualityProfile(HumanVisionSdkOptions candidate) => Application.platform == RuntimePlatform.Android
-            ? HumanVisionAndroidRuntimeSelection.ResolveProfile("auto")
-            : new SharedRecognitionSettings { UseWindowsCpu = candidate.UseWindowsCpu }.RuntimeProfileFor(Application.platform);
+            ? HumanVisionAndroidAccelerationSelection.ResolveInstalled(candidate.AccelerationMode, candidate.AccelerationMode == HumanVisionAccelerationMode.Neural ? ModelInputQuality.Low : candidate.InputQuality, false)
+            : new SharedRecognitionSettings { UseWindowsCpu = candidate.UseWindowsCpu, AccelerationMode = candidate.AccelerationMode }.RuntimeProfileFor(Application.platform);
         /// <summary>读取当前或草稿平台的能力说明；结果区分固定模型、准备中与校验失败。</summary>
         public HumanVisionSdkQualityCapabilities GetInputQualityCapabilities(HumanVisionSdkOptions requested = null)
         {
@@ -383,9 +437,9 @@ namespace HumanVision
             try { candidate = requested ?? Configuration; profile = QualityProfile(candidate); }
             catch (Exception e) { return HumanVisionSdkQualityCapabilities.Failed("", e.Message); }
             string root = string.IsNullOrWhiteSpace(candidate.RuntimeRoot) ? preparedRoot : candidate.RuntimeRoot;
-            if (profile != HumanVisionModelInputQualities.AdmittedRuntimeMode) return HumanVisionSdkQualityCapabilities.Load(root, profile);
-            if (qualityCapabilities == null || qualityRoot != root || qualityCapabilities.RuntimeProfile != profile) {
-                qualityRoot = root; qualityCapabilities = HumanVisionSdkQualityCapabilities.Load(root, profile);
+            if (profile != HumanVisionModelInputQualities.AdmittedRuntimeMode && profile != HumanVisionAndroidAccelerationSelection.NeuralProfile && profile != HumanVisionAndroidAccelerationSelection.CpuProfile) return HumanVisionSdkQualityCapabilities.Load(root, profile);
+            if (qualityCapabilities == null || qualityRoot != root || qualityCapabilities.RuntimeProfile != profile || qualityCapacity != candidate.Recognition.MaxBodies) {
+                qualityRoot = root; qualityCapacity = candidate.Recognition.MaxBodies; qualityCapabilities = HumanVisionSdkQualityCapabilities.Load(root, profile, qualityCapacity);
             }
             return qualityCapabilities;
         }

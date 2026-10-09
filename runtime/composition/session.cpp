@@ -5,9 +5,11 @@
 #include "plugins/pipeline/simcc/simcc_pipeline.h"
 #include "plugins/pipeline/simcc/topdown_gpu_pipeline.h"
 #include "plugins/pipeline/yolo/yolo_gpu_pipeline.h"
+#include "plugins/pipeline/yolo/yolo_tensor_pipeline.h"
 #include "plugins/legacy/legacy_pipeline.h"
 #include "plugins/backend/ort/ort_plugin.h"
 #include "plugins/backend/ncnn/ncnn_vulkan_backend.h"
+#include "plugins/backend/rknn/rknn_backend.h"
 #include "gpu/android/unity_vulkan_plugin.h"
 #include <algorithm>
 #include <cmath>
@@ -58,7 +60,8 @@ bool RuntimeSession::Start(const std::filesystem::path& root,const std::string& 
   if(!gpu_->Start(profile_->gpu_body,factory_->ServicesV3(),config,error))return false;
   return true;
  }
- for(auto query:{HV_QueryOrtCpuPlugin,HV_QueryRtmoPipeline,HV_QueryTopDownPipeline,HV_QueryHandPipeline})
+ for(auto query:{HV_QueryOrtCpuPlugin,HV_QueryRtmoPipeline,HV_QueryTopDownPipeline,HV_QueryHandPipeline,
+                 HV_QueryRknnPluginV1,HV_QueryYoloTensorPipelineV1})
   if(!registry_.Register(query,error))return false;
  // Optional compiled providers may be absent; profile resolution records fallback.
  std::string optional;registry_.Register(HV_QueryOrtAcceleratedPlugin,optional);registry_.Register(HV_QueryOrtXnnpackPlugin,optional);registry_.Register(HV_QueryOrtQnnPlugin,optional);
@@ -146,6 +149,14 @@ void RuntimeSession::Poll(){
    stats_.body_sequence=frame.sequence;
    stats_.source_frame_id=frame.source_frame_id;stats_.source_timestamp_us=frame.source_timestamp_us;
    stats_.preprocess_ms=frame.preprocess_ms;stats_.inference_ms=frame.inference_ms;stats_.postprocess_ms=frame.postprocess_ms;
+   // CPU-delivered tensor profiles publish the same fresh-observation metrics
+   // as GPU profiles. Repeated render samples never increment this counter.
+   const auto published=std::chrono::duration_cast<std::chrono::microseconds>(
+       std::chrono::steady_clock::now().time_since_epoch()).count();
+   const auto diagnostics=body_.Diagnostics();
+   stats_v2_.Publish(frame.source_frame_id,frame.body_count,frame.source_timestamp_us,
+       published,frame.source_frame_id,frame.inference_ms,diagnostics.detector_keyframe,
+       diagnostics.pose_person_count);
   }
  }
  if(profile_->hands_enabled&&hand_.CopyLatest(frame,revision)&&frame.sequence!=hand_sequence_){
@@ -156,7 +167,7 @@ void RuntimeSession::Poll(){
 }
 BodySnapshot RuntimeSession::Copy(int64_t sample_time,HV_RuntimeStatsV1& stats){
  std::lock_guard<std::mutex> lock(mutex_);Poll();stats=stats_;stats.dropped_frames=input_.dropped_frames()+body_.DroppedFrames()+hand_.DroppedFrames();
- if(gpu_&&sample_time)stats_v2_.Sample(stats_.source_frame_id);
+ if(sample_time)stats_v2_.Sample(stats_.source_frame_id);
  return gpu_?services_.Raw():(sample_time?services_.Sample(sample_time):services_.Raw());
 }
 void RuntimeSession::RecordSourceArrival(bool rate_limited) noexcept {
@@ -193,7 +204,15 @@ HV_RuntimeStatsV2 RuntimeSession::StatsV2(){
   result.gpu_capture_requested=gpu_capture_requested_.load(std::memory_order_relaxed);
   result.gpu_bridge_no_free_slot_drops=gpu_no_slot_drops_.load(std::memory_order_relaxed);
   result.gpu_bridge_superseded_ready_drops=gpu_->SupersededReadyDrops();
-  result.gpu_import_errors=gpu_->ImportErrors();
+ result.gpu_import_errors=gpu_->ImportErrors();
+ }else{
+  const auto pipeline=body_.Diagnostics();
+  result.detector_interval_frames=pipeline.cadence_interval_frames;
+  result.detector_attempted=pipeline.detector_attempted;
+  result.detector_completed=pipeline.detector_execution_count;
+  result.pose_validation_failures=pipeline.pose_validation_failures;
+  // GPU capture counters intentionally remain zero for CPU-delivered input.
+  // Its readback/copy times are reported by the managed input bridge instead.
  }
  return result;
 }

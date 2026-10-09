@@ -43,3 +43,35 @@ Generate a separate ignored runtime root using
 `python tools/models/ncnn/yolo_stage_runtime.py --size 320` (or416 explicitly).
 Weights are local only and must not be redistributed. Disable R4 parity shaders
 for this graph; their old tensor/input contract cannot certify YOLO.
+
+## Private tensor experiment (ABI1)
+
+`yolo_tensor_pipeline.{h,cpp}` exports `HV_QueryYoloTensorPipelineV1` as
+`pipeline.yolo.tensor`, with body_pose/multi_person and capacity1..8. It consumes
+stride-aware RGB24/BGR24/RGBA32/BGRA32 CPU frames and emits canonical observations;
+common services still own identity and regions, and unavailable hand points stay
+invalid. This entry point does not advertise GPU input or modify the GPU entry.
+
+Creation checks the private schema-1 512x288 non-quantized ModelPack/profile,
+pinned model SHA, actual conversion/simulator receipt hashes and parsed three-case
+offline qualification. It synchronously creates only `backend.rknn`; initialization
+failure releases partial sessions and returns an error. Use a background candidate
+initializer before switching Unity sessions. No production/device qualification
+is inferred from the saved PC simulator evidence.
+
+Each complete16:9 landscape input resizes to a fixed uint8 RGB NHWC
+`in0[1,288,512,3]`; the RKNN model owns compiled /255 normalization. Fixed storage
+and OpenCV INTER_LINEAR-compatible uint8 rounding support input-resolution changes
+without frame allocations. The same decoder validates exact finite borrowed FP32
+`out0[1,3024,65]` and `out1[1,3024,51]` before copying canonical output. Invalid
+frames, short output buffers or backend/output errors publish zero body/hand counts.
+`preprocess_ms`, `inference_ms` and `postprocess_ms` measure separate local stages;
+the internal fixed diagnostics registry counts backend attempts/executions.
+
+Allowed dependencies are the plugin ABI, config/hash utilities, tensor backend
+host services and local decoder. Unity types and vendor runtime headers do not
+belong in this pipeline. Run `humanvision_native_tests --gtest_filter=YoloTensorPipeline.*`
+and architecture guards. Tests bind actual saved seven/one/empty PC simulator
+outputs and input oracles; injectable plumbing is not physical NPU acceptance.
+Missing/pin-mismatched assets fail before backend creation; malformed output
+shapes, names, bytes or nonfinite values indicate backend/ModelPack mismatch.

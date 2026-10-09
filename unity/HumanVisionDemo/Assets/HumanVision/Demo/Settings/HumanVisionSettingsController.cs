@@ -76,7 +76,7 @@ namespace HumanVision.Demo
         }
         /// <summary>解析/验证成功才替换草稿。外部也可借此实现自己的设置控件。</summary>
         public void Edit(Func<HumanVisionSettingsData> read)
-        { Guard(() => { var next = read(); next.Validate(); draft = next.Clone(); view.ShowDraft(draft); }); }
+        { Guard(() => { var next = read(); next.Validate(); draft = next.Clone(); view.ShowDraft(draft); RefreshQualities(); }); }
         /// <summary>普通 UGUI 按钮的命令入口；应用中只能停止。</summary>
         public void Execute(string command)
         {
@@ -111,7 +111,8 @@ namespace HumanVision.Demo
                             case "UseRegions": next.Recognition.UseRegions = !next.Recognition.UseRegions; break;
                             case "ResetRegions": next.Recognition.Regions = HumanVisionSdkConfiguration.CreateEqualRegions(next.Recognition.MaxBodies); break;
                             case "AutoStart": next.AutoStart = !next.AutoStart; break;
-                            case "WindowsCpu": next.UseWindowsCpu = !next.UseWindowsCpu; break;
+                            case "WindowsCpu": next.UseWindowsCpu = !next.UseWindowsCpu;
+                                if (Application.platform != RuntimePlatform.Android) next.SelectAcceleration(next.UseWindowsCpu ? HumanVisionAccelerationMode.Cpu : HumanVisionAccelerationMode.Graphics); break;
                             case "DetailedLogs": next.DetailedLogs = !next.DetailedLogs; break;
                             case "ResetQuality": next.InputQuality = ModelInputQuality.Medium; break;
                             case "BuildRtsp": case "BuildRtspVideo": next.Mode.RtspUrl = HumanVisionRtspComputerHost.BuildUrl(next.Mode.RtspComputerHost, command == "BuildRtsp"); break;
@@ -142,7 +143,9 @@ namespace HumanVision.Demo
                 Guard(() => { if (save) { HumanVisionSdkSettingsStore.Save(HumanVisionSdkSettingsStore.DefaultPath, candidate); saved = candidate.Clone(); logger?.Record("configuration.saved", "path=" + HumanVisionSdkSettingsStore.DefaultPath); }
                     message = save ? "实际输入已启动，配置已保存" : "实际输入已启动；未保存"; });
                 logger?.Record("apply.succeeded", "elapsedMs=" + ((Time.realtimeSinceStartupAsDouble-applyStarted)*1000).ToString("F1") + " input=" + sdk.InputState + " source=" + candidate.SourceKind);
-            } else { message = "应用失败：" + Redact(sdk.LastError); logger?.Record("apply.failed", "elapsedMs=" + ((Time.realtimeSinceStartupAsDouble-applyStarted)*1000).ToString("F1") + " state=" + sdk.State + " error=" + sdk.LastError); }
+            } else { message = "应用失败：" + Redact(sdk.LastError); logger?.Record("apply.failed", "elapsedMs=" + ((Time.realtimeSinceStartupAsDouble-applyStarted)*1000).ToString("F1") +
+                " requestedMode=" + candidate.AccelerationMode + " actualMode=" + sdk.ActiveAccelerationMode + " actualProfile=" + sdk.RuntimeProfile +
+                " state=" + sdk.State + " error=" + sdk.LastError + " diagnostics=" + sdk.RuntimeDiagnostics); }
             applying = false; view.ShowDraft(draft); RefreshQualities(); view.SetBusy(false);
         }
         private IEnumerator Return()
@@ -175,7 +178,7 @@ namespace HumanVision.Demo
         {
             view.Overlay.Configure(sdk.RuntimeManager, sdk.FrameBridge); sdk.ScreenTarget = view.Preview.rectTransform;
             logger?.Record("runtime.initialized", "elapsedMs=" + ((Time.realtimeSinceStartupAsDouble-applyStarted)*1000).ToString("F1") + " root=" + sdk.RuntimeRootPath +
-                " profile=" + sdk.RuntimeProfile + " modelPack=" + sdk.ActiveModelPack + " analysis=" + sdk.AnalysisInputSize + " diagnostics=" + sdk.RuntimeDiagnostics);
+                " requestedMode=" + draft.AccelerationMode + " actualMode=" + sdk.ActiveAccelerationMode + " profile=" + sdk.RuntimeProfile + " modelPack=" + sdk.ActiveModelPack + " analysis=" + sdk.AnalysisInputSize + " diagnostics=" + sdk.RuntimeDiagnostics);
             RefreshQualities();
         }
         private void RefreshQualities()

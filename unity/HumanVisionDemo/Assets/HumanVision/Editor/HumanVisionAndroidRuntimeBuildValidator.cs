@@ -18,6 +18,10 @@ namespace HumanVision.Editor
         public bool HasProfile { get; set; }
         public bool HasNcnnModelPackAssets { get; set; }
         public bool HasNcnnModelPackSha256Index { get; set; }
+        public bool HasNeuralRuntimeAudit { get; set; }
+        public bool HasNeuralModelPackAssets { get; set; }
+        public bool HasCpuRuntimeAudit { get; set; }
+        public bool HasCpuModelPackAssets { get; set; }
     }
 
     public sealed class AndroidBuildValidationIssue
@@ -64,6 +68,12 @@ namespace HumanVision.Editor
             if (!environment.HasProfile)
                 issues.Add(Error("HasProfile", "HumanVision Android runtime profile '" + descriptor.ProfileId + "' is missing."));
 
+            if (descriptor.Id == "android-dual-vulkan-npu") {
+                if (!environment.HasNeuralRuntimeAudit) issues.Add(Error("HasNeuralRuntimeAudit", "The dual build requires hash-audited ARM64 native and neural runtime libraries."));
+                if (!environment.HasNeuralModelPackAssets) issues.Add(Error("HasNeuralModelPackAssets", "The dual build requires the admitted Low 512×288 neural ModelPack."));
+                if (!environment.HasCpuRuntimeAudit) issues.Add(Error("HasCpuRuntimeAudit", "The dual build requires hash-audited ARM64 native and ONNX CPU runtime libraries."));
+                if (!environment.HasCpuModelPackAssets) issues.Add(Error("HasCpuModelPackAssets", "The dual build requires both admitted Android CPU capacity ModelPacks."));
+            }
             if (!descriptor.RequiresNcnn)
                 return issues;
 

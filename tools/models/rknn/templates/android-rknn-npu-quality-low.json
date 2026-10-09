@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "profile": "android-rknn-npu-quality-low",
+  "experimental": true,
+  "local_evaluation_only": true,
+  "execution_contract": "raw_tensor_rknn_nonquantized_v1",
+  "body": {
+    "pipeline": "pipeline.yolo.tensor",
+    "modelPack": "yolov8n-pose-rectangle512x288-rknn-nonquantized-experimental"
+  },
+  "hands": { "enabled": false, "fps": 15 },
+  "body_fps": 30,
+  "output": { "hz": 60 },
+  "required_capabilities": ["body_pose", "multi_person", "tensor_inference"],
+  "backend": { "preference": ["backend.rknn"], "allow_fallback": false }
+}

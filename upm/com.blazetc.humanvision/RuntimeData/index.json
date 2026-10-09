@@ -4,10 +4,10 @@
     "distribution_qualified": false,
     "hardware_fps_acceptance": false,
     "input_native_sha256": "d3968a4f12d1cf7882c04312c7f0ad095c4a18b894846e2beafb758e9f582628",
-    "sdk_native_sha256": "71b15097f9fd56d1969a0a9a8eb5fb95aa3aeb88f6103b105006cbf06c5afa92",
+    "sdk_native_sha256": "89355f7e97209b82412eb6abda90308b326fc4a5bca536f46f3a92f2ac0e28e6",
     "windows_default_profile": "windows-pc-directml",
     "windows_explicit_cpu_profile": "windows-pc-cpu",
-    "windows_native_sha256": "bbdfc399c85efeb1519b77569e7c0e3a1cead80f40a1a06a79bf97958ff24927"
+    "windows_native_sha256": "8a7f5248bf45f24f7f282d4dfbe4b73ceb26752ebf811f74f6afe113b10868c9"
   },
   "eligibility_evidence_sha256": "839fa054f0048f5ed79cd4436c380fa536161043447f7b51d55426e025ed0ce4",
   "files": [

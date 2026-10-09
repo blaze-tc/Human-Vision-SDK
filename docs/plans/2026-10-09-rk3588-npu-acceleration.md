@@ -1,6 +1,7 @@
 # RK3588双模式加速接入计划（用户2026-10-09授权）
 
-目标：HumanVisionSettingsDemo可选择NCNN Vulkan或RK3588 NPU，保持业务骨骼API、
+目标：HumanVisionSettingsDemo在Android可选择NCNN Vulkan、RK3588 NPU或CPU，
+PC可选择GPU/CPU，独立“计算模式”一行，保持业务骨骼API、
 区域、稳定ID、初始化/停止语义；以20–25个真实新结果/秒为当前优化目标。
 这是尚未完成的接入计划，不是NPU功能/性能验收。
 
@@ -29,8 +30,9 @@ RKNN创建、运行、取输出及销毁均在有明确生命周期的原生工�
 上下文、输入/输出缓冲区复用；每步检查错误，借用输出在下次run前复制/解码。
 
 初版对现有Vulkan输入提供有测量的预处理与张量交付适配，保留原AHB/sync fd
-所有权和generation拒绝语义。不能用Unity主线程ReadPixels或全帧映射回读
-替代现有生产GPU链路。DMA/RGA可作为后续优化，必须证明fd、stride、格式、
+所有权和generation拒绝语义。Vulkan仍使用原有GPU链路；私有NPU原型允许受限
+异步GPU读回，必须保留源帧年龄、禁止主线程ReadPixels、限制在途缓冲并测量成本。
+DMA/RGA可作为后续优化，必须证明fd、stride、格式、
 缓存一致性及完成同步，单独记录每段成本；不在首版直接宣称零拷贝。
 
 每帧测量input观察、预处理、输入交付、NPU等待、输出读取/反量化、骨骼解码、
@@ -40,13 +42,16 @@ Host发布；报告采样帧号和时间域。NPU模型时间与端到端时间�
 
 ## 配置与UGUI
 
-业务配置使用语义加速预设，界面展示两个实际模式名称：NCNN Vulkan、RK3588 NPU。
+业务配置使用语义加速预设，Android界面展示NCNN Vulkan、RK3588 NPU、CPU；
+PC复用UseWindowsCpu展示GPU/CPU。新增Cpu枚举值不改变已有Graphics/Neural值。
 每个预设绑定独立合格profile/ModelPack。后端模式与模型等级、输入分辨率分别保存。
 日志保存requested/actual/backend/model/precision/core/版本；强制NPU失败时明确报错，
 不能悄悄用Vulkan后仍显示NPU。默认保持现有NCNN Vulkan。
 
 APK可同时含两个后端时，Android metadata使用通过测试的显式profile白名单，
-不接受任意字符串绕过既有模型/依赖校验。切换前先验证能力、资源与合同；失败
+不接受任意字符串绕过既有模型/依赖校验。后续用户要求的CPU复用已安装
+android-cpu-nohands、backend.ort.cpu和真实容量模型，纳入精确五profile白名单。
+CPU等级固定并显示实际模型尺寸，不冒充Vulkan同模型性能。切换前先验证能力、资源与合同；失败
 保留当前会话。成功后退役旧输入/工作者/模型会话，再建立新会话，不共享旧generation。
 UGUI不伪造已安装/支持状态；缺模型、非Rockchip硬件、driver失败分别解释。
 
@@ -62,8 +67,9 @@ UGUI不伪造已安装/支持状态；缺模型、非Rockchip硬件、driver失�
 ORT比较通过3/3，非量化RKNN的PC simulator通过3/3；INT8实际99帧校准候选
 失败3/3并保留拒绝证据。来源/张量/精度工具和独立ARM64/API26设备probe已生成。
 详见[离线报告](../reports/2026-10-09-rknn-offline-validation.md)。
-本机仍没有连接RK3588；用户已明确当前先完成离线验证和测试工具。
-OnePlus300秒视频回归证明NCNN Vulkan画面/骨骼可用，不能验证Rockchip RKNN。
-下一项先用独立probe在RK3588检查实际driver、三样本输出和mask1/7模型时间，
-再推进正式backend/pipeline/UGUI双模式和端到端实机性能。当前仍不能声明“已可用NPU”。
+本机仍没有连接RK3588。用户随后明确要求现在完成真实backend/pipeline/UGUI
+双模式、私有测试APK，先在OnePlus验证Vulkan与不支持NPU时的会话保留。
+该直接指令覆盖之前先硬件后集成的顺序。RK3588的driver、三样本输出、mask1/7
+模型时间及端到端性能仍由用户后续实测；OnePlus不能验证Rockchip RKNN。
+既有300秒结果属于旧APK，更新后的APK必须重新验证。
 现场旧日志已经足够定位大瓶颈，不再以采集同类旧日志代替真实转换/运行验证。

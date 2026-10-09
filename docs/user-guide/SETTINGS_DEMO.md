@@ -32,6 +32,11 @@
 
 ## 模型等级为什么可能不可选
 
+私有双模式版本增加独立“计算模式”一行：PC 为 GPU/CPU，Android 为 NCNN
+Vulkan/RK3588 NPU/CPU。它与模型等级、输入分辨率分开保存。PC 复用
+`UseWindowsCpu`，Android 使用语义 `AccelerationMode`。NPU 实验模型目前只
+有 Low 512×288；选择原因、实际会话和限制见 [双模式实测说明](../reports/2026-10-09-dual-acceleration-integration.md)。
+
 Windows CPU/DirectML 当前安装配置使用固定模型，不提供高/中/低档。菜单置灰时显示这个实际原因，不会将采集分辨率冒充模型等级。Android NCNN/Vulkan 随包有低 512×288、中 640×384、高 960×576 三档；界面启动时先准备并校验资源，无需先打开输入即可选择。损坏或缺失的等级目录会显示具体错误。修改等级后点击应用，等待模型和输入重新启动。
 
 ## 实机诊断日志

@@ -1,3 +1,30 @@
+# 2026-10-09 active milestone: private dual Vulkan / RK3588 NPU integration
+
+Latest direct user instruction advances integration before connected RK3588
+acceptance: implement the real backend, tensor pipeline, private model/profile,
+selectable SettingsDemo and test APK now; verify Vulkan and unsupported-NPU
+preservation on connected OnePlus, then the user tests RK3588. This milestone
+supersedes the former hardware-before-integration ordering below. Physical
+RKNN driver, precision and sustained speed remain open; no production Release
+or claimed NPU speed. The non-quantized candidate passed existing offline gates;
+failed INT8 remains excluded. V1 ABI and current default Vulkan remain intact.
+
+User additionally requires independent Windows GPU/CPU and Android Vulkan/NPU/CPU
+selectors. Private integration and connected OnePlus functional acceptance completed:
+native407/407, Python22/22, scoped Edit103/103, shipping Play17/17 and Overlay11/11
+GREEN. Source task reviews and final artifact/device review approved private scope.
+Actual Unity2021.3.45f1 SettingsDemo final APK built Succeeded/errors0/warnings8,
+SHA fa0db69b23aff9463b68eb5777fbee86e06c4f497be1d79a0c2809903d29a00c;
+all43 indexed assets and four ARM64 native libraries match staging. Final APK
+OnePlus actual CPU->Vulkan, unsupported NPU session retention, and RTSP image/bones
+verified. Metadata-only predecessor cc65 has byte-identical IL2CPP/native/index;
+its300s video fresh-body23.276/s and120s CPU5.165/s remain attributed to cc65.
+Final-fa0 RTSP120s fresh-body15.920/s: 20-25 RTSP target NOT met. Physical RK3588
+NPU/precision/FPS/thermal acceptance and full Handtip/Thumb remain open. No public
+Release. Historical full Unity failures, root-only actual test discovery, inherited
+input-tag and force-stop-tail caveats are recorded, not counted as passing checks.
+Exact receipts/commands/limits: docs/reports/2026-10-09-dual-acceleration-integration.md.
+
 # 2026-10-09 RKNN offline model gates verified; physical NPU gate remains open
 
 User reboot resolved the virtualization blocker. Actual WSL2/Docker Linux image

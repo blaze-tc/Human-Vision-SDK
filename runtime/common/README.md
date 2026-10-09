@@ -17,3 +17,8 @@ Real-model integration is verified by LegacyPlugin in humanvision_native_tests.
 linked pipelines to publish process metrics without extending the versioned plugin
 ABI. Registration happens during pipeline creation, updates reuse an existing slot,
 and RuntimeHost copies the metrics with the matching observation result.
+
+`backend_diagnostics.h` uses a fixed registry to publish optional runtime/driver
+identity, core mask and initialization/input-set/execute/output-get/release times.
+The host reads generic snapshots without depending on vendor implementations.
+Counters and stage snapshots are internal and preserve the existing plugin ABI.

@@ -36,11 +36,11 @@ namespace HumanVision
         internal RuntimeStatsV2Native StatsV2 => _nativeV2;
         internal void RecordSourceArrival(bool rateLimited)
         {
-            if (UsesGpuFrames) Check(RuntimeBindings.HV_RuntimeRecordSourceFrameV2(_handle, rateLimited ? 1u : 0u), "source diagnostics");
+            Check(RuntimeBindings.HV_RuntimeRecordSourceFrameV2(_handle, rateLimited ? 1u : 0u), "source diagnostics");
         }
         internal void SetCaptureProvenance(uint provenance)
         {
-            if (UsesGpuFrames) Check(RuntimeBindings.HV_RuntimeSetCaptureProvenanceV2(_handle, provenance), "capture provenance");
+            Check(RuntimeBindings.HV_RuntimeSetCaptureProvenanceV2(_handle, provenance), "capture provenance");
         }
         internal bool UsesGpuFrames => HumanVisionAndroidFrameRoute.UsesGpu(_config.Profile);
         internal string Diagnostics {
@@ -161,7 +161,7 @@ namespace HumanVision
         }
         public void RefreshStats()
         {
-            if (UsesGpuFrames) {
+            {
                 _nativeV2.Size = (uint)Marshal.SizeOf<RuntimeStatsV2Native>(); _nativeV2.Version = 2;
                 Check(RuntimeBindings.HV_RuntimeGetStatsV2(_handle, ref _nativeV2), "V2 runtime stats");
             }
@@ -171,6 +171,8 @@ namespace HumanVision
         public void ReconfigureMaxBodies(int maxBodies)
         {
             if (maxBodies == MaxBodies) return;
+            if (ProfileId == HumanVisionAndroidAccelerationSelection.NeuralProfile)
+                throw new InvalidOperationException("Neural capacity changes require asynchronous initialization. Use HumanVisionSdk.Initialize with updated full options; the current session is retained.");
             var updated = _config.Clone(); updated.MaxBodies = maxBodies; updated.Validate();
             RenderTexture activeGpuSource = _gpuSourceTexture;
             IntPtr replacement = Create(updated);

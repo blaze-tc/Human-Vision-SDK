@@ -40,6 +40,10 @@ namespace HumanVision.Editor
             new ReadOnlyCollection<HumanVisionAndroidRuntimeModeDescriptor>(new[]
             {
                 new HumanVisionAndroidRuntimeModeDescriptor(
+                    "android-dual-vulkan-npu", "NCNN Vulkan / RK3588 NPU / CPU", "android-ncnn-vulkan",
+                    requiresVulkan: true, requiresGpuBridge: true, requiresNcnn: true,
+                    new[] { "body_pose", "multi_person", "gpu_input", "tensor_inference", "vulkan", "rknn" }),
+                new HumanVisionAndroidRuntimeModeDescriptor(
                     "android-ncnn-vulkan",
                     "NCNN Vulkan",
                     "android-ncnn-vulkan",

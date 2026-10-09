@@ -37,3 +37,13 @@ properties expose descriptive runtime/profile/model/input dimensions without
 making provider-specific types part of gameplay contracts. SettingsLogger owns
 bounded files, credentials redaction and main-thread Unity log subscription.
 Menu annotation relocation is permitted by the user; method signatures remain.
+
+Private acceleration integration adds semantic `HumanVisionAccelerationMode`
+values Graphics=0, Neural=1, Cpu=2 without changing V1. Windows settings retain
+UseWindowsCpu; Android settings use the semantic preference with the exact
+five-profile baked map. A draft preference is distinct from the initialized
+profile. Neural candidate creation/cancel/disposal runs outside the Unity main
+thread; promotion commits the already-installed region revision once, and
+internal replacement retirement stays Busy instead of exposing Stopped. Keep
+the candidate owned by its initializer invocation so event reentrancy cannot
+promote a different request. See ../reports/2026-10-09-dual-acceleration-integration.md.

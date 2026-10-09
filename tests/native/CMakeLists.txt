@@ -234,5 +234,6 @@ target_sources(humanvision_native_tests PRIVATE ../runtime/test_topdown_gpu_pipe
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_yolo_decoder.cpp)
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_yolo_region_candidate_selection.cpp)
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_yolo_gpu_pipeline.cpp)
+target_sources(humanvision_native_tests PRIVATE ../runtime/test_yolo_tensor_pipeline.cpp ../runtime/test_rknn_backend.cpp)
 target_compile_definitions(humanvision_native_tests PRIVATE HV_YOLO_FIXTURE_ROOT="${PROJECT_SOURCE_DIR}/out/android-yolo/device-runs/seven-square416/gpu-fp32-b088221cf8cf4f3c83abad5725a09ebf")
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_region_assignment.cpp)

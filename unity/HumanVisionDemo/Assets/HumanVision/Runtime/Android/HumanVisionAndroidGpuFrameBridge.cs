@@ -21,7 +21,7 @@ namespace HumanVision
         internal static FramePath Select(string profile)
         {
             if (UsesGpu(profile)) return FramePath.Gpu;
-            if (profile == "android-ort-xnnpack" || profile == "android-ort-cpu") return FramePath.Cpu;
+            if (profile == "android-ort-xnnpack" || profile == "android-ort-cpu" || profile == HumanVisionAndroidAccelerationSelection.NeuralProfile || profile == HumanVisionAndroidAccelerationSelection.CpuProfile) return FramePath.Cpu;
             throw new InvalidOperationException("Unsupported Android runtime profile '" + profile + "'. Select a mode in Project Settings > Human Vision > Android Runtime.");
         }
 

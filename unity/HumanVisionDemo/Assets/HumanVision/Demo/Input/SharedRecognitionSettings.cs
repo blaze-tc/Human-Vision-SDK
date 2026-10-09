@@ -17,6 +17,7 @@ namespace HumanVision.Demo
         public int DetectionCadence = 4;
         public bool UseWindowsCpu;
         public ModelInputQuality InputQuality = ModelInputQuality.Medium;
+        public HumanVisionAccelerationMode AccelerationMode = HumanVisionAccelerationMode.Graphics;
 
         public SharedRecognitionSettings Clone()
         {
@@ -30,6 +31,11 @@ namespace HumanVision.Demo
         {
             Validate();
             string profile = baseProfile;
+            if (baseProfile == HumanVisionAndroidAccelerationSelection.CpuProfile) HumanVisionAndroidCpuModelContract.Validate(root);
+            if (baseProfile == HumanVisionAndroidAccelerationSelection.NeuralProfile) {
+                if (InputQuality != ModelInputQuality.Low) throw new InvalidOperationException("RK3588 NPU supports only Low 512×288.");
+                HumanVisionNeuralModelContract.Validate(root);
+            }
             if (baseProfile == HumanVisionModelInputQualities.AdmittedRuntimeMode) {
                 var catalog = HumanVisionModelInputQualities.Load(root);
                 var choices = catalog.ChoicesForMode(baseProfile);
@@ -43,7 +49,7 @@ namespace HumanVision.Demo
 
         public string RuntimeProfileFor(RuntimePlatform platform)
         {
-            return platform == RuntimePlatform.Android ? "auto" : UseWindowsCpu ? "windows-pc-cpu" : "windows-pc-directml";
+            return platform == RuntimePlatform.Android ? "auto" : UseWindowsCpu || AccelerationMode == HumanVisionAccelerationMode.Cpu ? "windows-pc-cpu" : "windows-pc-directml";
         }
 
         public void ResizeRegions(int count)
@@ -55,6 +61,7 @@ namespace HumanVision.Demo
 
         public void Validate()
         {
+            if (!Enum.IsDefined(typeof(HumanVisionAccelerationMode), AccelerationMode)) throw new ArgumentException("Invalid saved acceleration mode.");
             if (!Enum.IsDefined(typeof(ModelInputQuality), InputQuality))
                 throw new ArgumentException("Invalid saved Model Input Quality; choose High, Medium or Low.");
             if (Version != 1 || string.IsNullOrWhiteSpace(AnalysisProfileId) || string.IsNullOrWhiteSpace(ModelPackId) ||

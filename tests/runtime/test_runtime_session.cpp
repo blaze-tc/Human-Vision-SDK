@@ -18,6 +18,15 @@ TEST(RuntimeSession, SemanticProfileProducesAtomicCanonicalSnapshotAndInvalidate
  while(stats.body_sequence==0&&std::chrono::steady_clock::now()<end){ASSERT_EQ(HV_RuntimeCopy(handle,0,bodies,8,&count,&stats),HV_OK);std::this_thread::sleep_for(std::chrono::milliseconds(10));}
  ASSERT_EQ(count,1u);EXPECT_EQ(stats.source_frame_id,42);EXPECT_EQ(bodies[0].observation_timestamp_us,observation_time);
  EXPECT_TRUE(bodies[0].joints[HV_CANONICAL_NOSE].valid);
+ HV_RuntimeStatsV2 measured{};measured.struct_size=sizeof(measured);measured.api_version=HV_RUNTIME_STATS_V2_VERSION;
+ ASSERT_EQ(HV_RuntimeGetStatsV2(handle,&measured),HV_OK);
+ EXPECT_EQ(measured.fresh_observation_frames,1u);
+ EXPECT_EQ(measured.source_frame_id,42);
+ EXPECT_EQ(measured.capture_timestamp_us,observation_time);
+ // Sampling the same observation cannot create another completed inference.
+ ASSERT_EQ(HV_RuntimeCopy(handle,HV_RuntimeClockUs(),bodies,8,&count,&stats),HV_OK);
+ ASSERT_EQ(HV_RuntimeGetStatsV2(handle,&measured),HV_OK);
+ EXPECT_EQ(measured.fresh_observation_frames,1u);EXPECT_GE(measured.output_samples,1u);
  char diagnostics[8192]{};ASSERT_EQ(HV_RuntimeGetDiagnostics(handle,diagnostics,sizeof(diagnostics)),HV_OK);
  const std::string text=diagnostics;
  for(const char* field:{"Profile=cpu","Pipeline=pipeline.topdown","Requested backend=CPU","Actual backend=CPU",

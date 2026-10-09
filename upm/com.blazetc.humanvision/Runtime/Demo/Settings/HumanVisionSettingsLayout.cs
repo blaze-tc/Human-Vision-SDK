@@ -55,6 +55,7 @@ namespace HumanVision.Demo
             var shared=RowBlock(content,96); var people=ColumnBlock(shared,"People settings"); var quality=ColumnBlock(shared,"Model settings");
             view.peopleChoice=Choice(people,"PeopleChoice","人数",Enumerable.Range(1,8).Select(i=>i+" 人").ToArray());
             view.qualityChoice=Choice(quality,"QualityChoice","模型等级",new[]{"准备中"});
+            view.accelerationChoice=Choice(content,"AccelerationChoice","计算模式",Application.platform==RuntimePlatform.Android ? new[]{"NCNN Vulkan","RK3588 NPU","CPU"} : new[]{"GPU","CPU"});
             view.qualityHint=InputPreviewCanvas.Label(content,"实际模型合同加载中",48); view.qualityHint.fontSize=18;
             button(content,"UseRegions","按区域绑定角色");
             var regionTools=RowBlock(content,58); button(regionTools,"EditRegions","拉框 / 编辑"); button(regionTools,"ResetRegions","均分区域");

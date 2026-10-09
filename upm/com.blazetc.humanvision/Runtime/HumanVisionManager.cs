@@ -95,6 +95,10 @@ namespace HumanVision
 
         public bool TryInitialize(HumanVisionConfig requestedConfig)
         {
+            if (requestedConfig?.Profile == HumanVisionAndroidAccelerationSelection.NeuralProfile) {
+                ReportError("Neural model initialization must run asynchronously. Use HumanVisionSdk.Initialize with the Neural acceleration preference.");
+                return false;
+            }
             Shutdown();
             try
             {
@@ -112,6 +116,14 @@ namespace HumanVision
                 ReportError(exception.Message);
                 return false;
             }
+        }
+
+        // The prepared CPU session has no Unity producer or GPU registration. Adoption is main-thread only.
+        internal void AdoptPreparedSession(HumanVisionConfig requestedConfig, HumanVisionRuntimeSession prepared)
+        {
+            if (_session != null || prepared == null) throw new InvalidOperationException("Only an empty manager can adopt a prepared session.");
+            config = requestedConfig.Clone(); _session = prepared;
+            LastError = _lastLoggedError = string.Empty; _nextStatsRefreshTime = 0;
         }
 
         public bool SubmitFrame(
@@ -207,6 +219,15 @@ namespace HumanVision
 
             _session.Dispose();
             _session = null;
+        }
+
+        // Detach only admitted pure CPU sessions; all Unity/GPU registration stays on the main thread.
+        internal HumanVisionRuntimeSession DetachNeuralRuntimeSession()
+        {
+            var runtime = _session as HumanVisionRuntimeSession;
+            if (runtime == null || (runtime.ProfileId != HumanVisionAndroidAccelerationSelection.NeuralProfile && runtime.ProfileId != HumanVisionAndroidAccelerationSelection.CpuProfile) || runtime.UsesGpuFrames) return null;
+            _session = null;
+            return runtime;
         }
 
         private void ReportError(string message)

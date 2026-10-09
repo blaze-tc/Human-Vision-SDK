@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Threading.Tasks;
 using HumanVision.Demo;
 using HumanVision.Input;
 using UnityEngine;
@@ -23,6 +24,12 @@ namespace HumanVision
             // 等待的是帧复制/读回退役，不是在主线程等待推理。
             while (bridge != null && bridge.UnifiedRetirementPending) yield return null;
             source?.Close();
+            var neural = manager != null ? manager.DetachNeuralRuntimeSession() : null;
+            if (neural != null) {
+                var release = Task.Run(() => neural.Dispose());
+                while (!release.IsCompleted) yield return null;
+                if (release.IsFaulted) Debug.LogException(release.Exception.GetBaseException());
+            }
             manager?.Shutdown();
             Complete = true;
             complete?.Invoke();

@@ -21,6 +21,8 @@ namespace HumanVision
         public bool UseWindowsCpu = true;
         /// <summary>平台已声明的输入质量档位；不支持的平台保持真实固定合同。</summary>
         public ModelInputQuality InputQuality = ModelInputQuality.Medium;
+        /// <summary>加速器偏好，与模型等级独立保存；专用加速器不可用时应用失败并保留当前会话。</summary>
+        public HumanVisionAccelerationMode AccelerationMode = HumanVisionAccelerationMode.Graphics;
         /// <summary>可选运行资源根目录；留空时自动从已安装 RuntimeData 准备。</summary>
         [Tooltip("留空自动准备运行资源；开发时可指定已经验证的 Runtime 根目录。")]
         public string RuntimeRoot = "";
@@ -40,7 +42,7 @@ namespace HumanVision
         public void Validate()
         {
             if (Recognition == null || Input == null || !Enum.IsDefined(typeof(InputKind), SourceKind) ||
-                !Enum.IsDefined(typeof(ModelInputQuality), InputQuality))
+                !Enum.IsDefined(typeof(ModelInputQuality), InputQuality) || !Enum.IsDefined(typeof(HumanVisionAccelerationMode), AccelerationMode))
                 throw new ArgumentException("识别配置、输入配置或输入类型无效。");
             Recognition.Validate(); Input.Validate();
             if (float.IsNaN(InputOpenTimeoutSeconds) || float.IsInfinity(InputOpenTimeoutSeconds) || InputOpenTimeoutSeconds < 1)

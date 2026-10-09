@@ -3,12 +3,13 @@
   "api_level": 26,
   "audit": "tools/test/verify_android_native.py",
   "gpu_gate": false,
-  "native_sha256": "71b15097f9fd56d1969a0a9a8eb5fb95aa3aeb88f6103b105006cbf06c5afa92",
+  "native_sha256": "89355f7e97209b82412eb6abda90308b326fc4a5bca536f46f3a92f2ac0e28e6",
   "ncnn_vulkan_symbols_verified": true,
   "q4_local_audit": {
     "compiler_closure_sha256": "ce59884e60b8f9847b99ee4d4ce65af7b97ec199b119dbe63fb7faccea81bd46",
     "distribution_qualified": false,
     "physical_acceptance": false,
     "receipt_sha256": "e4c413b4ae73fd49cbfe350403287b1144fa7795a67663d2758ec4a37b9a68b9"
-  }
+  },
+  "private_dual_experiment": true
 }

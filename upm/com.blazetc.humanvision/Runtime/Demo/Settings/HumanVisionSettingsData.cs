@@ -13,6 +13,8 @@ namespace HumanVision.Demo
         public DemoModeSettings Camera = new DemoModeSettings(), Video = new DemoModeSettings(), Rtsp = new DemoModeSettings();
         public InputKind SourceKind = InputKind.WebCamera;
         public ModelInputQuality InputQuality = ModelInputQuality.Medium;
+        public HumanVisionAccelerationMode AccelerationMode = HumanVisionAccelerationMode.Graphics;
+        public ModelInputQuality GraphicsInputQuality = ModelInputQuality.Medium;
         public bool UseWindowsCpu = true, RtspTcp = true, AutoStart;
         public bool DetailedLogs;
         public float StatisticsInterval = 2, SkeletonLogInterval = 2;
@@ -25,7 +27,8 @@ namespace HumanVision.Demo
         public static HumanVisionSettingsData FromOptions(HumanVisionSdkOptions options, bool autoStart = false)
         {
             var value = new HumanVisionSettingsData { Recognition = options.Recognition.Clone(), SourceKind = options.SourceKind,
-                InputQuality = options.InputQuality, UseWindowsCpu = options.UseWindowsCpu, RtspTcp = options.RtspTcp, AutoStart = autoStart };
+                InputQuality = options.InputQuality, AccelerationMode = options.AccelerationMode, GraphicsInputQuality = options.InputQuality,
+                UseWindowsCpu = options.UseWindowsCpu, RtspTcp = options.RtspTcp, AutoStart = autoStart };
             var mode = JsonUtility.FromJson<DemoModeSettings>(JsonUtility.ToJson(options.Input));
             if (options.SourceKind == InputKind.Video) value.Video = mode;
             else if (options.SourceKind == InputKind.Rtsp) value.Rtsp = mode; else value.Camera = mode;
@@ -34,13 +37,14 @@ namespace HumanVision.Demo
         /// <summary>转成总控启动配置；只有提交时才要求输入地址。</summary>
         public HumanVisionSdkOptions ToOptions(string runtimeRoot = "") => new HumanVisionSdkOptions {
             Recognition = Recognition.Clone(), SourceKind = SourceKind, Input = JsonUtility.FromJson<DemoModeSettings>(JsonUtility.ToJson(Mode)),
-            InputQuality = InputQuality, UseWindowsCpu = UseWindowsCpu, RtspTcp = RtspTcp, RuntimeRoot = runtimeRoot
+            InputQuality = InputQuality, AccelerationMode = AccelerationMode, UseWindowsCpu = UseWindowsCpu, RtspTcp = RtspTcp, RuntimeRoot = runtimeRoot
         };
         /// <summary>验证所有保存模式；未使用模式允许暂时没有地址。</summary>
         public void Validate()
         {
             if (Version != 1 || Recognition == null || Camera == null || Video == null || Rtsp == null ||
-                !Enum.IsDefined(typeof(InputKind), SourceKind) || !Enum.IsDefined(typeof(ModelInputQuality), InputQuality))
+                !Enum.IsDefined(typeof(InputKind), SourceKind) || !Enum.IsDefined(typeof(ModelInputQuality), InputQuality) ||
+                !Enum.IsDefined(typeof(HumanVisionAccelerationMode), AccelerationMode) || !Enum.IsDefined(typeof(ModelInputQuality), GraphicsInputQuality))
                 throw new ArgumentException("设置版本或输入模式无效。");
             Recognition.Validate(); Camera.Validate(); Video.Validate(); Rtsp.Validate();
             if (!Finite(StatisticsInterval) || StatisticsInterval < .2f || StatisticsInterval > 60 ||
@@ -49,5 +53,14 @@ namespace HumanVision.Demo
                 throw new ArgumentException("日志间隔须为 0.2–60 秒，单文件 1–64 MB，保留会话 1–20。");
         }
         private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
+        /// <summary>切换草稿加速器时保留图形后端的独立等级；不会改变已应用或已保存设置。</summary>
+        public void SelectAcceleration(HumanVisionAccelerationMode value)
+        {
+            if (!Enum.IsDefined(typeof(HumanVisionAccelerationMode), value)) throw new ArgumentException("Invalid acceleration mode.");
+            if (value == AccelerationMode) return;
+            if (AccelerationMode == HumanVisionAccelerationMode.Graphics) GraphicsInputQuality = InputQuality;
+            AccelerationMode = value;
+            InputQuality = value == HumanVisionAccelerationMode.Neural ? ModelInputQuality.Low : GraphicsInputQuality;
+        }
     }
 }

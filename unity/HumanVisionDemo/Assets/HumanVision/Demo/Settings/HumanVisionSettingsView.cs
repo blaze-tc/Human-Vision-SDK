@@ -17,7 +17,7 @@ namespace HumanVision.Demo
         [SerializeField] private Text status, qualityHint, sourceHint;
         [SerializeField] private InputField[] fields;
         [SerializeField] private Button[] buttons;
-        [SerializeField] private Dropdown peopleChoice, qualityChoice, cameraChoice, videoChoice, captureChoice;
+        [SerializeField] private Dropdown peopleChoice, qualityChoice, cameraChoice, videoChoice, captureChoice, accelerationChoice;
         [SerializeField] private GameObject cameraPanel, videoPanel, rtspPanel, advancedPanel, regionDetailsPanel;
         [SerializeField] private HumanVisionSettingsRegionHandle[] regionHandles;
         private HumanVisionSettingsController controller;
@@ -33,6 +33,9 @@ namespace HumanVision.Demo
         private Vector2Int[] captureSizes = Array.Empty<Vector2Int>();
         private bool wired, editRegions, fullPreview;
         private int selectedRegion;
+        private RuntimePlatform? executionPlatform;
+        private bool AndroidExecution => (executionPlatform ?? Application.platform) == RuntimePlatform.Android;
+        internal void ConfigureExecutionPlatform(RuntimePlatform platform) { executionPlatform = platform; EnsureAccelerationControl(); }
         public RawImage Preview => preview;
         public HumanVisionOverlay Overlay => overlay;
         public HumanVisionSettingsData Draft => draft?.Clone();
@@ -40,12 +43,14 @@ namespace HumanVision.Demo
         public void Bind(HumanVisionSettingsController owner)
         {
             controller = owner; if (wired) return; wired = true;
+            EnsureAccelerationControl();
             foreach (var button in buttons) {
                 string command = button.name;
                 button.onClick.AddListener(() => controller.Execute(command));
             }
             peopleChoice.onValueChanged.AddListener(_ => controller.Edit(ReadDraft));
             qualityChoice.onValueChanged.AddListener(_ => controller.Edit(ReadDraft));
+            if (accelerationChoice != null) accelerationChoice.onValueChanged.AddListener(_ => controller.Edit(ReadDraft));
             cameraChoice.onValueChanged.AddListener(i => { if (draft != null && i < cameras.Length) { Put("CameraDevice", cameras[i]); } });
             videoChoice.onValueChanged.AddListener(i => { if (draft != null && i < videos.Length) { Put("VideoPath", videos[i]); } });
             captureChoice.onValueChanged.AddListener(_ => controller.Edit(ReadDraft));
@@ -74,6 +79,10 @@ namespace HumanVision.Demo
             value.StatisticsInterval = Number("LogInterval"); value.SkeletonLogInterval = Number("PoseLogInterval");
             value.LogFileMegabytes = Integer("LogFileMB"); value.RetainedLogSessions = Integer("LogSessions");
             if (qualities.Length > qualityChoice.value) value.InputQuality = qualities[qualityChoice.value].Quality;
+            if (accelerationChoice != null) {
+                if (AndroidExecution) value.SelectAcceleration((HumanVisionAccelerationMode)accelerationChoice.value);
+                else { value.UseWindowsCpu = accelerationChoice.value == 1; value.SelectAcceleration(value.UseWindowsCpu ? HumanVisionAccelerationMode.Cpu : HumanVisionAccelerationMode.Graphics); }
+            }
             return value;
         }
         /// <summary>显示独立草稿；主动提交/保存才让配置生效。</summary>
@@ -81,6 +90,7 @@ namespace HumanVision.Demo
         {
             draft = value.Clone(); var mode = draft.Mode;
             peopleChoice.SetValueWithoutNotify(draft.Recognition.MaxBodies - 1);
+            if (accelerationChoice != null) accelerationChoice.SetValueWithoutNotify(AndroidExecution ? (int)draft.AccelerationMode : draft.UseWindowsCpu || draft.AccelerationMode == HumanVisionAccelerationMode.Cpu ? 1 : 0);
             cameraPanel.SetActive(draft.SourceKind == InputKind.WebCamera); videoPanel.SetActive(draft.SourceKind == InputKind.Video); rtspPanel.SetActive(draft.SourceKind == InputKind.Rtsp);
             sourceHint.text = "当前草稿输入：" + draft.SourceKind;
             Put("MaxBodies", draft.Recognition.MaxBodies); Put("CameraDevice", mode.CameraDevice);
@@ -95,6 +105,29 @@ namespace HumanVision.Demo
             Mark("DetailedLogs", "详细骨骼日志", draft.DetailedLogs);
             selectedRegion = Mathf.Clamp(selectedRegion, 0, draft.Recognition.Regions.Length - 1);
             ShowRegionFields(); ShowRegions();
+        }
+        /// <summary>为旧版普通 UGUI Prefab 补齐加速器控件；生成器也可调用并保存资产。</summary>
+        public void EnsureAccelerationControl()
+        {
+            var names = AndroidExecution ? new[] { "NCNN Vulkan", "RK3588 NPU", "CPU" } : new[] { "GPU", "CPU" };
+            if (accelerationChoice != null) {
+                accelerationChoice.ClearOptions(); accelerationChoice.AddOptions(names.ToList());
+                int siblingIndex = accelerationChoice.transform.GetSiblingIndex() - 1;
+                var sibling = siblingIndex >= 0 ? accelerationChoice.transform.parent.GetChild(siblingIndex).GetComponent<Text>() : null;
+                if (sibling != null && (sibling.text == "加速器" || sibling.text == "计算模式")) sibling.text = "计算模式";
+                return;
+            }
+            var parent = qualityHint.transform.parent;
+            int position = qualityHint.transform.GetSiblingIndex(), labelIndex = parent.childCount;
+            accelerationChoice = Choice(parent, "AccelerationChoice", "计算模式", names);
+            var label = parent.GetChild(labelIndex);
+            // Add only these two objects to the existing UGUI. Project diagnostics and all saved references stay intact.
+            label.SetSiblingIndex(position); accelerationChoice.transform.SetSiblingIndex(position + 1);
+            var font = qualityHint.font;
+            if (font != null) {
+                label.GetComponent<Text>().font = font;
+                foreach (var text in accelerationChoice.GetComponentsInChildren<Text>(true)) text.font = font;
+            }
         }
         private void ShowCaptureResolution(DemoModeSettings mode)
         {
@@ -116,7 +149,7 @@ namespace HumanVision.Demo
             qualities = choices ?? Array.Empty<ModelInputQualityChoice>(); qualityChoice.ClearOptions();
             qualityChoice.AddOptions(qualities.Length == 0 ? new List<string> { "固定模型" } : qualities.Select(v =>
                 (v.Quality == ModelInputQuality.Low ? "低" : v.Quality == ModelInputQuality.High ? "高" : "中") + "（" + v.Width + "×" + v.Height + "）").ToList());
-            qualityChoice.interactable = qualities.Length != 0;
+            qualityChoice.interactable = qualities.Length > 1;
             int index = draft == null ? -1 : Array.FindIndex(qualities, v => v.Quality == draft.InputQuality);
             qualityChoice.SetValueWithoutNotify(Mathf.Max(0, index));
             qualityHint.text = HumanVisionSettingsController.Redact(explanation ?? (qualities.Length == 0 ? "此平台使用固定模型。" : "选择此平台支持的模型输入等级。"));
@@ -179,7 +212,8 @@ namespace HumanVision.Demo
         {
             foreach (var button in buttons) button.interactable = !busy || button.name == "Stop";
             foreach (var field in fields) field.interactable = !busy;
-            peopleChoice.interactable = !busy; qualityChoice.interactable = !busy && qualities.Length != 0;
+            peopleChoice.interactable = !busy; qualityChoice.interactable = !busy && qualities.Length > 1;
+            if (accelerationChoice != null) accelerationChoice.interactable = !busy;
             var reset = Array.Find(buttons, b => b.name == "ResetQuality"); if (reset != null) reset.interactable = !busy && qualities.Length > 1;
             cameraChoice.interactable = !busy && cameras.Length != 0; videoChoice.interactable = !busy && videos.Length != 0; captureChoice.interactable = !busy;
             foreach (var region in regionHandles) if (region.gameObject.activeSelf) region.SetRegion(region.Region, editRegions && !busy);

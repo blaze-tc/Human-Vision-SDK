@@ -18,7 +18,6 @@ namespace HumanVision.Editor
         public void OnPreprocessBuild(BuildReport report)
         {
             if (report.summary.platform != BuildTarget.Android) return;
-            if (HumanVisionAndroidGpuGateBuild.IsAuthorizedGateBuild(report)) return;
             var descriptor = HumanVisionAndroidRuntimeModeRegistry.Resolve(HumanVisionAndroidRuntimeSettings.instance.RuntimeModeId);
             var issues = HumanVisionAndroidRuntimeBuildValidator.Validate(descriptor, CaptureEnvironment(descriptor));
             foreach (var issue in issues.Where(issue => !issue.IsError))
@@ -50,6 +49,10 @@ namespace HumanVision.Editor
                 HasBridgeSymbolManifest = HasAuditedStaticNcnn(),
                 HasProfile = HasProjectFile(Path.Combine("profiles", descriptor.ProfileId + ".json")),
                 HasNcnnModelPackAssets = validatedPack,
+                HasNeuralRuntimeAudit = descriptor.Id != "android-dual-vulkan-npu" || HasAuditedNeuralRuntime(),
+                HasNeuralModelPackAssets = descriptor.Id != "android-dual-vulkan-npu" || ValidateNeuralModelPack(Path.Combine(Application.streamingAssetsPath, "HumanVision", "Runtime")),
+                HasCpuRuntimeAudit = descriptor.Id != "android-dual-vulkan-npu" || HasAuditedCpuRuntime(),
+                HasCpuModelPackAssets = descriptor.Id != "android-dual-vulkan-npu" || ValidateCpuModelPack(Path.Combine(Application.streamingAssetsPath, "HumanVision", "Runtime")),
                 // This DTO flag means a verified schema-2 manifest/hash index, not a SHA256SUMS filename.
                 HasNcnnModelPackSha256Index = validatedPack
             };
@@ -69,11 +72,82 @@ namespace HumanVision.Editor
             try
             {
                 var catalog = global::HumanVision.HumanVisionModelInputQualities.Load(runtimeRoot);
-                var profiles = catalog.ProfilesForMode(descriptor.Id);
+                bool dual = descriptor.Id == "android-dual-vulkan-npu";
+                var profiles = catalog.ProfilesForMode(dual ? descriptor.ProfileId : descriptor.Id);
                 foreach (string profile in profiles) ValidateNcnnModelPack(runtimeRoot, profile);
+                if (dual) {
+                    if (profiles.Length != 3) throw new InvalidDataException("The dual build requires all three validated graphics qualities.");
+                    ValidateNeuralModelPack(runtimeRoot);
+                    ValidateCpuModelPack(runtimeRoot);
+                    profiles = profiles.Concat(new[] { HumanVisionAndroidAccelerationSelection.NeuralProfile, HumanVisionAndroidAccelerationSelection.CpuProfile }).ToArray();
+                }
                 return profiles;
             }
             catch (Exception error) { throw new BuildFailedException("Model input quality validation failed: " + error.Message); }
+        }
+        private static bool ValidateNeuralModelPack(string root)
+        {
+            try { HumanVisionNeuralModelContract.Validate(root); return true; }
+            catch (Exception e) { throw new BuildFailedException("Neural model-pack validation failed: " + e.Message); }
+        }
+        private static bool ValidateCpuModelPack(string root)
+        {
+            try { HumanVisionAndroidCpuModelContract.Validate(root); return true; }
+            catch(Exception e) { throw new BuildFailedException("Android CPU model-pack validation failed: "+e.Message); }
+        }
+        [Serializable] private sealed class CpuRuntimeAudit { public string native_sha256, runtime_sha256, abi; public int api_level, ort_api_version; public bool ort_cpu_symbols_verified; }
+        private static bool HasAuditedCpuRuntime()
+        {
+            var importers=PluginImporter.GetAllImporters();
+            var native=importers.FirstOrDefault(value=>Path.GetFileName(value.assetPath)=="libhumanvision.so"&&value.GetCompatibleWithPlatform(BuildTarget.Android));
+            var runtime=importers.FirstOrDefault(value=>Path.GetFileName(value.assetPath)=="libonnxruntime.so"&&value.GetCompatibleWithPlatform(BuildTarget.Android));
+            if(native==null||runtime==null||!HasAndroidArm64Plugin("libonnxruntime.so")) return false;
+            var package=UnityEditor.PackageManager.PackageInfo.FindForAssetPath(native.assetPath);
+            string audit=package==null?Path.Combine(Directory.GetParent(Application.dataPath).FullName,"android-cpu-runtime-symbols.json"):Path.Combine(package.resolvedPath,"android-cpu-runtime-symbols.json");
+            return ValidateCpuRuntimeAudit(ResolveAssetPath(native.assetPath),ResolveAssetPath(runtime.assetPath),audit);
+        }
+        internal static bool ValidateCpuRuntimeAudit(string native,string runtime,string manifest)
+        {
+            try {
+                if(!File.Exists(manifest)) return false;
+                var audit=JsonUtility.FromJson<CpuRuntimeAudit>(File.ReadAllText(manifest));
+                if(audit==null||audit.abi!="arm64-v8a"||audit.api_level!=26||audit.ort_api_version!=23||!audit.ort_cpu_symbols_verified||
+                    audit.runtime_sha256!="cd1285f8955f3abcb0127d1ffaf1e5da7893d2547872a831b4717c0bfe388328") return false;
+                VerifyHash(native,audit.native_sha256); VerifyHash(runtime,audit.runtime_sha256);
+                foreach(var path in new[]{native,runtime}) using(var file=File.OpenRead(path)) {
+                    var header=new byte[20];
+                    if(file.Read(header,0,20)!=20||header[0]!=0x7f||header[1]!='E'||header[2]!='L'||header[3]!='F'||header[4]!=2||header[5]!=1||header[18]!=183||header[19]!=0) return false;
+                }
+                return true;
+            } catch { return false; }
+        }
+        [Serializable] private sealed class NeuralRuntimeAudit { public string native_sha256, runtime_sha256, abi; public int api_level; public bool rknn_tensor_symbols_verified; }
+        private static bool HasAuditedNeuralRuntime()
+        {
+            var importers = PluginImporter.GetAllImporters();
+            var native = importers.FirstOrDefault(value => Path.GetFileName(value.assetPath) == "libhumanvision.so" && value.GetCompatibleWithPlatform(BuildTarget.Android));
+            var runtime = importers.FirstOrDefault(value => Path.GetFileName(value.assetPath) == "librknnrt.so" && value.GetCompatibleWithPlatform(BuildTarget.Android));
+            if (native == null || runtime == null || !HasAndroidArm64Plugin("librknnrt.so")) return false;
+            var package = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(native.assetPath);
+            string audit = package == null ? Path.Combine(Directory.GetParent(Application.dataPath).FullName, "android-neural-runtime-symbols.json") : Path.Combine(package.resolvedPath, "android-neural-runtime-symbols.json");
+            return ValidateNeuralRuntimeAudit(ResolveAssetPath(native.assetPath), ResolveAssetPath(runtime.assetPath), audit);
+        }
+        public static bool ValidateNeuralRuntimeAudit(string native, string runtime, string manifest)
+        {
+            try {
+                if (!File.Exists(manifest)) return false;
+                var audit = JsonUtility.FromJson<NeuralRuntimeAudit>(File.ReadAllText(manifest));
+                if (audit == null || audit.abi != "arm64-v8a" || audit.api_level != 26 || !audit.rknn_tensor_symbols_verified ||
+                    audit.runtime_sha256 != "07a8398be5caed21a1998ffa313e0425bb9e76b154a8dbbc667d71722c009351") return false;
+                VerifyHash(native, audit.native_sha256); VerifyHash(runtime, audit.runtime_sha256);
+                foreach (var path in new[] { native, runtime }) {
+                    using(var file=File.OpenRead(path)) {
+                        var header=new byte[20];
+                        if(file.Read(header,0,20)!=20 || header[0]!=0x7f || header[1]!='E' || header[2]!='L' || header[3]!='F' || header[4]!=2 || header[5]!=1 || header[18]!=183 || header[19]!=0) return false;
+                    }
+                }
+                return true;
+            } catch { return false; }
         }
         internal static bool ValidateNcnnModelPack(string runtimeRoot, string profileId)
         {

@@ -2,6 +2,7 @@
 #include "host/plugin_registry.h"
 #include "humanvision_plugin_v2.h"
 #include "humanvision_plugin_v3.h"
+#include "common/backend_diagnostics.h"
 namespace humanvision::runtime {
 // The owner keeps dynamic query metadata and callback code loaded. Static queries
 // may omit it. Leases retain this module after factory destruction.
@@ -13,7 +14,7 @@ struct GpuPluginModuleV3 {
  HV_PluginApiV3 api{};
  std::shared_ptr<const void> owner;
 };
-struct BackendDiagnostic {std::mutex mutex;HV_BackendSessionInfoV1 info{};std::string creation_failures,model_name;float inference_ms=0;};
+struct BackendDiagnostic {std::mutex mutex;HV_BackendSessionInfoV1 info{};std::string creation_failures,model_name;float inference_ms=0;BackendStageDiagnostics stages{};bool stages_available=false;};
 struct BackendSelectionDiagnostics {std::string requested="uninitialized",actual="uninitialized";};
 struct GpuV3SelectionState {std::mutex mutex;std::map<std::string,unsigned> active;};
 // Immutable ordered candidates. Keep factory alive until pipeline creation ends.

@@ -67,7 +67,7 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
         sourceId=frame.SourceId;generation=frame.Generation;
         try {
             if(manager.UsesAndroidGpuFrames)ValidateGpuGeometry(frame.Width,frame.Height);
-            else if(Application.platform==RuntimePlatform.Android&&source is RtspFrameSource)
+            else if(Application.platform==RuntimePlatform.Android&&source is RtspFrameSource&&manager.ActiveRuntimeProfile!=HumanVisionAndroidAccelerationSelection.NeuralProfile&&manager.ActiveRuntimeProfile!=HumanVisionAndroidAccelerationSelection.CpuProfile)
                 throw new InvalidOperationException("Android hardware RTSP requires the explicitly selected GPU runtime. The existing CPU modes do not accept this source; preview continues.");
             Slot free=null;for(int i=0;i<slots.Length;i++)if(!slots[i].Active){free=slots[i];break;}
             if(free==null){latest=frame.FrameId;return;}
@@ -89,6 +89,9 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
                     accepted=manager.SubmitUnifiedGpuFrame(frame.Texture,free.Target,in frame,timestamp,free.Gpu);
                     if(free.Gpu.Active){lease.RetireAfter(free.Gpu);free.Active=true;}
                 } else {
+                    manager.RecordSourceArrival(false);
+                    if(!ReferenceEquals(provenanceOwner,manager)){provenanceOwner=manager;provenanceSink=manager.SetCaptureProvenance;}
+                    ForwardPublicationProvenance(in frame,provenanceSink);
                     if(cpuBridge==null){cpuBridge=GetComponent<VideoPlayerFrameSource>();if(cpuBridge==null){cpuBridge=gameObject.AddComponent<VideoPlayerFrameSource>();cpuBridge.Configure(manager,null,null);}else cpuBridge.BindManager(manager);cpuBridge.ConfigureLiveInput(true);}
                     free.GpuPath=false;
                     accepted=cpuBridge.TrySubmitUnifiedCpuFrame(frame.Texture,timestamp,out var request);
@@ -126,6 +129,7 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
                 bool complete=slot.GpuPath?slot.Gpu.IsComplete:slot.Cpu.IsComplete;
                 if(!complete||!slot.Lease.IsRetired)continue;
                 if(slot.GpuPath){if(slot.Gpu.Outcome==1)CopiedFrames++;else DroppedUnsubmittedFrames++;slot.Gpu.ReleaseAcknowledgedLease();}
+                else {if(slot.Cpu.Request.hasError)DroppedUnsubmittedFrames++;else CopiedFrames++;}
                 slot.Active=false;
             }
             if(!closing||AnyActive())return;

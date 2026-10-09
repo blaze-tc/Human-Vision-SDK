@@ -5,7 +5,8 @@
     "HumanVision.Runtime",
     "HumanVision.Demo",
     "UnityEngine.UI",
-    "HumanVision.Input"
+    "HumanVision.Input",
+    "HumanVision.Editor"
   ],
   "includePlatforms": [
     "Editor"

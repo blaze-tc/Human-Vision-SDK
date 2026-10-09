@@ -20,7 +20,7 @@ HV_Result HV_CALL Run(void* p,const HV_TensorViewV1* in,uint32_t n,HV_TensorView
   auto started=std::chrono::steady_clock::now();
   auto result=lease.module->api.backend->run(lease.instance,in,n,out,capacity,count,error);
   if(lease.diagnostic){HV_BackendSessionInfoV1 info{};info.struct_size=sizeof(info);info.api_version=HV_PLUGIN_API_V1;
-   if(lease.module->api.backend->session_info(lease.instance,&info)==HV_OK){std::lock_guard<std::mutex> lock(lease.diagnostic->mutex);lease.diagnostic->info=info;lease.diagnostic->inference_ms=std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-started).count();}}
+   if(lease.module->api.backend->session_info(lease.instance,&info)==HV_OK){std::lock_guard<std::mutex> lock(lease.diagnostic->mutex);lease.diagnostic->info=info;lease.diagnostic->inference_ms=std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-started).count();lease.diagnostic->stages_available=CopyBackendDiagnostics(lease.instance,lease.diagnostic->stages);}}
   return result;
  }
  catch(...){if(count)*count=0;Error(error,"Backend run threw across C ABI");return HV_ERR_INTERNAL;}
@@ -59,6 +59,7 @@ HV_Result HV_CALL BackendFactory::Create(void* context,const HV_BackendConfigV1*
     lease->diagnostic->model_name=config->model_path_utf8?std::filesystem::u8path(config->model_path_utf8).filename().u8string():"model";
     auto& info=lease->diagnostic->info;info.struct_size=sizeof(info);info.api_version=HV_PLUGIN_API_V1;
     module->api.backend->session_info(lease->instance,&info);
+    lease->diagnostic->stages_available=CopyBackendDiagnostics(lease->instance,lease->diagnostic->stages);
     {std::lock_guard<std::mutex> lock(factory.diagnostics_mutex_);factory.diagnostics_.push_back(lease->diagnostic);}
     *api=&table;*out=lease.release();return HV_OK;
    }
@@ -74,6 +75,13 @@ std::string BackendFactory::Diagnostics() const {
  for(const auto& diagnostic:diagnostics_){std::lock_guard<std::mutex> item(diagnostic->mutex);auto info=diagnostic->info;
   info.requested[sizeof(info.requested)-1]=0;info.actual[sizeof(info.actual)-1]=0;info.fallback_reason[sizeof(info.fallback_reason)-1]=0;
   if(!result.empty())result+=" | ";result+=diagnostic->model_name+": "+info.requested+" -> "+info.actual+" / "+std::to_string(int(diagnostic->inference_ms))+" ms";
+  if(diagnostic->stages_available){
+   auto stages=diagnostic->stages;stages.runtime_version[255]=stages.driver_version[255]=0;
+   result+="; runtime="+std::string(stages.runtime_version)+"; driver="+stages.driver_version+
+       "; core_mask="+std::to_string(stages.core_mask)+"; initialize_ms="+std::to_string(stages.initialize_ms)+
+       "; input_set_ms="+std::to_string(stages.input_set_ms)+"; execute_ms="+std::to_string(stages.execute_ms)+
+       "; output_get_ms="+std::to_string(stages.output_get_ms)+"; output_release_ms="+std::to_string(stages.output_release_ms);
+  }
   if(!diagnostic->creation_failures.empty()||info.fallback_reason[0])result+=" ("+diagnostic->creation_failures+info.fallback_reason+")";}
  return result;
 }

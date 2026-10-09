@@ -1,0 +1,9 @@
+{
+  "native_sha256": "89355f7e97209b82412eb6abda90308b326fc4a5bca536f46f3a92f2ac0e28e6",
+  "runtime_sha256": "07a8398be5caed21a1998ffa313e0425bb9e76b154a8dbbc667d71722c009351",
+  "abi": "arm64-v8a",
+  "api_level": 26,
+  "rknn_tensor_symbols_verified": true,
+  "distribution_qualified": false,
+  "device_performance_verified": false
+}

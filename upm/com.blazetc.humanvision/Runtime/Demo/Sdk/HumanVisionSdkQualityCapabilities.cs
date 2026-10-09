@@ -15,9 +15,27 @@ namespace HumanVision
         { RuntimeProfile = profile; Message = message; choices = values; Error = error; }
 
         /// <summary>配置时读取已校验的资源目录，无需初始化 Native 或打开摄像头；不要逐帧调用。</summary>
-        public static HumanVisionSdkQualityCapabilities Load(string root, string profile)
+        public static HumanVisionSdkQualityCapabilities Load(string root, string profile) => Load(root, profile, 4);
+        internal static HumanVisionSdkQualityCapabilities Load(string root, string profile, int maxBodies)
         {
             profile = profile ?? "";
+            if (profile == HumanVisionAndroidAccelerationSelection.CpuProfile) {
+                if (string.IsNullOrEmpty(root)) return new HumanVisionSdkQualityCapabilities(profile,"正在准备 Android CPU 模型资源。",Array.Empty<ModelInputQualityChoice>());
+                try {
+                    HumanVisionAndroidCpuModelContract.Validate(root);
+                    var contract=HumanVision.Demo.AnalysisContract.Load(root,profile,maxBodies);
+                    return new HumanVisionSdkQualityCapabilities(profile,"Android CPU 使用固定模型："+contract.ModelPackId+"，骨骼输入 "+contract.PoseWidth+"×"+contract.PoseHeight+
+                        "（1–2 人 192×256；3–8 人 416×416）。不提供独立手部模型；实际设备速度以运行统计为准。",Array.Empty<ModelInputQualityChoice>());
+                } catch(Exception e) { return Failed(profile,e.Message); }
+            }
+            if (profile == HumanVisionAndroidAccelerationSelection.NeuralProfile) {
+                if (string.IsNullOrEmpty(root)) return new HumanVisionSdkQualityCapabilities(profile, "正在准备 RK3588 NPU 模型资源。", Array.Empty<ModelInputQualityChoice>());
+                try {
+                    HumanVisionNeuralModelContract.Validate(root);
+                    return new HumanVisionSdkQualityCapabilities(profile, "RK3588 NPU 仅提供已通过离线数值验证的低等级 512×288。中 / 高暂不可用；设备性能尚待 RK3588 实测。",
+                        new[] { new ModelInputQualityChoice(ModelInputQuality.Low, profile, 512, 288) });
+                } catch (Exception e) { return Failed(profile, e.Message); }
+            }
             if (profile != HumanVisionModelInputQualities.AdmittedRuntimeMode) {
                 string reason = profile.StartsWith("windows-", StringComparison.Ordinal)
                     ? "Windows 使用固定模型。\n高/中/低仅支持 Android NCNN/Vulkan。"

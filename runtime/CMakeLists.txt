@@ -57,8 +57,29 @@ target_sources(humanvision_internal PRIVATE
     plugins/pipeline/simcc/topdown_gpu_pipeline.cpp
     plugins/pipeline/yolo/yolo_decoder.cpp
     plugins/pipeline/yolo/yolo_gpu_pipeline.cpp
+    plugins/pipeline/yolo/yolo_tensor_pipeline.cpp
     plugins/legacy/legacy_pipeline.cpp
     plugins/backend/ort/ort_plugin.cpp)
+target_sources(humanvision_internal PRIVATE plugins/backend/rknn/rknn_backend.cpp plugins/backend/rknn/rknn_android_vendor.cpp)
+# Private experimental Android builds opt in explicitly. Proprietary vendor
+# headers/runtime remain outside the repository and public release packages.
+option(HV_ENABLE_RKNN "Build private RK3588 neural tensor backend" OFF)
+set(HV_RKNN_INCLUDE "${PROJECT_SOURCE_DIR}/out/rknn-toolchain/vendor/include" CACHE PATH "Private pinned RKNN 2.3.2 headers")
+if(HV_ENABLE_RKNN)
+    if(NOT ANDROID)
+        message(FATAL_ERROR "HV_ENABLE_RKNN requires Android; host tests use the injected boundary")
+    endif()
+    if(NOT EXISTS "${HV_RKNN_INCLUDE}/rknn_api.h")
+        message(FATAL_ERROR "Missing private RKNN header; use the pinned toolchain receipt")
+    endif()
+    file(SHA256 "${HV_RKNN_INCLUDE}/rknn_api.h" hv_rknn_header_sha)
+    if(NOT hv_rknn_header_sha STREQUAL "c48e11a6f41b451a5fd1e4ad774ea60252d3d94f78bee9b21ea3d21b21deba9a")
+        message(FATAL_ERROR "Private RKNN 2.3.2 header SHA-256 mismatch")
+    endif()
+    target_include_directories(humanvision_internal PRIVATE "${HV_RKNN_INCLUDE}")
+    target_compile_definitions(humanvision_internal PRIVATE HV_ENABLE_RKNN=1)
+    target_link_libraries(humanvision_internal PRIVATE dl)
+endif()
 target_sources(humanvision_internal PRIVATE
     plugins/backend/ncnn/ncnn_vulkan_backend.cpp
     plugins/backend/ncnn/ncnn_dense_output.cpp)

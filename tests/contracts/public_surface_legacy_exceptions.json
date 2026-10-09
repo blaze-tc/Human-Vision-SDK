@@ -38,6 +38,8 @@
   ],
   "internal_interop_files": [
     "upm/com.blazetc.humanvision/Runtime/NativeBindings.cs",
-    "upm/com.blazetc.humanvision/Runtime/HumanVisionNativeApi.cs"
+    "upm/com.blazetc.humanvision/Runtime/HumanVisionNativeApi.cs",
+    "upm/com.blazetc.humanvision/Runtime/Android/HumanVisionNeuralModelContract.cs",
+    "upm/com.blazetc.humanvision/Runtime/Android/HumanVisionAndroidCpuModelContract.cs"
   ]
 }
