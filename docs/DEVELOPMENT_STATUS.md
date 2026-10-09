@@ -1,3 +1,59 @@
+# 2026-10-09 RKNN offline model gates verified; physical NPU gate remains open
+
+User reboot resolved the virtualization blocker. Actual WSL2/Docker Linux image
+build/import succeeded with fixed RKNN-Toolkit2 2.3.2, source revision42aa1d4,
+Python3.10, CPU Torch2.4.0, ONNX1.16.2, ORT1.19.2 and recorded wheel/environment SHA.
+No matching original PT/ONNX was found: bounded recovery consumes the pinned
+NCNN fused graph/weights exactly; unknown operators/parameters/weight encodings
+and non-pinned hashes fail. Original production model bytes remain unchanged.
+
+Actual NCNN CPU references regenerated for seven/one/empty Low512x288 controls;
+ORT recovery3/3 PASS (max raw8.3923e-5). Actual non-quantized RKNN build/export/PC
+simulator3/3 PASS (maximum17-joint source-coordinate error0.08556px). Actual INT8
+with99 real video calibration frames0/3 PASS, joint errors8.405/10.224px; rejected
+without loosening raw/person/box/joint/confidence gates. These are three-control
+offline numerical results, not full model qualification, NPU FPS or driver proof.
+
+Hash-checked private ARM64/API26 standalone probe and device launcher generated:
+strict shapes, reusable outputs, private dlopen runtime, no ASYNC previous-frame
+mode, no CPU fallback, mask1/7 and per-stage mean/P95/max, raw-output numerical
+comparison. Actual OnePlus is refused before model/runtime upload; executable
+startup-only smoke returns usage/exit2. No SDK backend, UI selector, public ABI,
+production model/profile/native/APK changes were made in this offline stage.
+
+Test-first RED/GREEN: recovery4, simulator3, native probe4, bundle3. Fresh Windows
+17/17, Linux21/21 including actual host-probe failure paths; architecture and
+public-surface guards PASS. Command:
+`py -3.13 -m unittest tests.reference.test_rknn_candidate_conversion tests.reference.test_rknn_ncnn_recovery tests.reference.test_rknn_simulator_gate tests.reference.test_rknn_device_bundle tests.reference.test_settings_device_log_analysis -v`.
+Linux adds test_rknn_device_probe with HV_RKNN_PROBE_HOST_BINARY set to compiled
+out/rknn-toolchain/hv_rknn_probe_host. Boundary commands:
+`py -3.13 tools/maintenance/check_architecture_boundaries.py` and
+`py -3.13 tools/package/check_public_surface.py`. Detailed commands/receipts in report.
+
+Actual OnePlus9Pro 300s HumanVisionSettingsDemo video/Low regression on unchanged
+APK8243b3cd: warm30s, publication24.968FPS, completed23.507FPS, fresh body
+notifications23.309/s;94.815% one-second windows>=20 (minimum17.718). Video,
+box and skeleton visually verified; pipeline/data-quality errors0. Local result
+age P95=134.844ms.9 exported common log files are exact private prefixes;8 equal.
+Original device prefs restored byte-for-byte; app stopped. Legacy top HUD still
+shows0.0 FPS; measured data uses independent diagnostic counters and session logs.
+Current live Editor query:Unity2021.3.45f1,SettingsDemo,compile=false,errors0.
+
+User-requested FPS budget, not device prediction: same-frame native model85.038ms
+of98.202ms. Holding other old costs fixed,2/3/4x model-stage acceleration implies
+17.96/24.09/29.05 processing FPS; adding10ms new input conversion yields15.22/
+19.41/22.51. Current RTSP publication15.33FPS remains a conditional input cap.
+Official INT8 640x640 single-core55.9 model FPS supports exploration, not current
+non-quantized speed. Exact assumptions/source revision and budget saved in report.
+
+Per user, RK3588 is not available for connection now. Sole next gate in this
+user-approved acceleration plan: physical RK3588 standalone precision/driver/
+model-timing test, then real backend/tensor pipeline/selectable modes and SDK
+video/RTSP acceptance. OnePlus SM8350 cannot validate Rockchip NPU. No new Release.
+[Offline report](reports/2026-10-09-rknn-offline-validation.md),
+[tools](../tools/models/rknn/README.md),
+[plan](plans/2026-10-09-rk3588-npu-acceleration.md).
+
 # 2026-10-09 RK3588 field diagnosis — bounded logs verified; NPU gate open
 
 User-authorized field-log analysis and online primary-source research locate the

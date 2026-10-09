@@ -58,6 +58,12 @@ UGUI不伪造已安装/支持状态；缺模型、非Rockchip硬件、driver失�
 报告新结果/逐人速率、P95年龄、输入发布、框/关节精度、CPU/GPU/NPU有效遥测及热状态。
 另测相同RTSP，并区分上游4K解码与GPU竞争；不能把录屏/插值率当推理率。
 
-当前本机Linux转换环境因虚拟化未启用而不能启动，且没有连接RK3588。
-尚未实际生成/运行RKNN模型，因此不能推进成“已可用NPU”或发布支持声明。
+2026-10-09重启后的实际进展：Docker/WSL2已工作，固定NCNN图/权重恢复ONNX的
+ORT比较通过3/3，非量化RKNN的PC simulator通过3/3；INT8实际99帧校准候选
+失败3/3并保留拒绝证据。来源/张量/精度工具和独立ARM64/API26设备probe已生成。
+详见[离线报告](../reports/2026-10-09-rknn-offline-validation.md)。
+本机仍没有连接RK3588；用户已明确当前先完成离线验证和测试工具。
+OnePlus300秒视频回归证明NCNN Vulkan画面/骨骼可用，不能验证Rockchip RKNN。
+下一项先用独立probe在RK3588检查实际driver、三样本输出和mask1/7模型时间，
+再推进正式backend/pipeline/UGUI双模式和端到端实机性能。当前仍不能声明“已可用NPU”。
 现场旧日志已经足够定位大瓶颈，不再以采集同类旧日志代替真实转换/运行验证。

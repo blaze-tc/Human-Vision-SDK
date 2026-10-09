@@ -1,0 +1,13 @@
+# Linux x86_64 / Python 3.10 conversion and simulation environment.
+# The CPU torch build intentionally has no dependency on the host CUDA driver.
+numpy==1.26.4
+protobuf==4.25.4
+psutil==6.1.1
+ruamel.yaml==0.18.10
+scipy==1.14.1
+tqdm==4.67.1
+opencv-python==4.10.0.84
+fast-histogram==0.14
+onnx==1.16.2
+onnxruntime==1.19.2
+torch==2.4.0+cpu

@@ -75,7 +75,11 @@ def main():
     parser.add_argument('--output', required=True, type=Path, help='New candidate directory')
     parser.add_argument('--precision', choices=('non-quantized', 'int8'), default='non-quantized')
     parser.add_argument('--calibration', type=Path)
+    parser.add_argument('--validation-index', type=Path, help='Pinned Low fixture bank; ORT and x86 simulator gates')
+    parser.add_argument('--validation-index-sha256')
     args = parser.parse_args()
+    if bool(args.validation_index) != bool(args.validation_index_sha256):
+        raise ValueError('Validation index and its SHA-256 must be supplied together')
     validate_source(args.onnx, args.source_sha256)
     images = validate_calibration(args.precision, args.calibration)
     if args.output.exists():
@@ -100,6 +104,12 @@ def main():
             any(not isinstance(n, int) or n <= 0 or n > 960 or n % 32 for n in dimensions[2:])):
         raise ValueError('Expected static [1,3,H,W], positive H/W <=960 and multiples of32')
     args.output.mkdir(parents=True)
+    if args.validation_index:
+        from simulator_gate import onnx_gate
+        reference = onnx_gate(args.onnx, args.validation_index, args.validation_index_sha256,
+                              args.output / 'onnx-reference')
+        if not reference['offline_numerical_passed']:
+            raise ValueError('Recovered ONNX failed unchanged NCNN numerical gates')
     output = args.output / 'candidate.rknn'
     dataset = None
     calibration = []
@@ -110,7 +120,7 @@ def main():
     rknn = RKNN(verbose=True)
     try:
         # 图片以 RGB uint8 输入，/255 融入转换合同；后端不能再次执行 /255。
-        rknn.config(mean_values=[[0, 0, 0]], std_values=[[255, 255, 255]], target_platform='rk3588')
+        checked('config', rknn.config(mean_values=[[0, 0, 0]], std_values=[[255, 255, 255]], target_platform='rk3588'))
         checked('load_onnx', rknn.load_onnx(model=str(args.onnx.resolve())))
         checked('build', rknn.build(do_quantization=images is not None,
                                    dataset=str(dataset.resolve()) if dataset else None))
@@ -123,6 +133,12 @@ def main():
                        source_outputs=[dict(name=value.name, shape=shape(value)) for value in graph.output],
                        calibration=calibration)
         (args.output / 'conversion-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n', encoding='utf-8')
+        if args.validation_index:
+            from simulator_gate import rknn_gate
+            comparison = rknn_gate(rknn, args.validation_index, args.validation_index_sha256,
+                                   args.output / 'simulator', receipt['rknn_sha256'])
+            if not comparison['offline_numerical_passed']:
+                raise ValueError('RKNN simulator failed unchanged NCNN numerical gates; candidate is not qualified')
         print('Candidate converted. deployment_ready=false; run independent numerical and RK3588 device gates.')
     finally:
         rknn.release()

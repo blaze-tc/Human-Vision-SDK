@@ -36,3 +36,12 @@ for availability/status fields and measurement boundaries. Analyze a plain folde
 with `python tools/benchmark/analyze_settings_device_log.py SESSION OUTPUT --warmup 30`.
 Do not interpret missing GPU/NPU metrics as idle, GPU render-frame time as utilization,
 or the difference between mismatched SDK/native frame samples as CPU overhead.
+
+For the user-approved RK3588 acceleration experiment, start at
+[RKNN offline/device tools](../../tools/models/rknn/README.md) and the
+[verified offline report](../reports/2026-10-09-rknn-offline-validation.md).
+The fixed non-quantized model passed three PC simulator controls; INT8 was rejected.
+The standalone device probe records input delivery, run call, output wait, release,
+runtime/driver and raw-output errors with no CPU fallback. Repeated static model runs
+are not fresh SDK skeleton FPS. OnePlus SM8350 cannot validate the Rockchip route;
+physical RK3588 driver/model timing remains the next gate before mode integration.
