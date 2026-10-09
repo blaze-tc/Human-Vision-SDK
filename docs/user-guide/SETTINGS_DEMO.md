@@ -41,3 +41,5 @@ Windows CPU/DirectML 当前安装配置使用固定模型，不提供高/中/低
 高级设置中的“详细骨骼日志”增加按间隔输出的 32 语义关节有效性、API 有效性、派生标记、置信度、像素/归一化坐标和独立观测时间。默认统计 2 秒一次，避免逐帧写盘；最多四个文件轮转，按设置保留会话。RTSP 认证和常见密码/token 参数会统一遮盖。打开目录、复制路径或导出 ZIP 后可携带日志定位实机问题；写盘失败会在界面提示。
 
 主菜单 HumanVision 只保留创建 SDK、设置 Demo、安装模型及 Examples。旧示例位于 Tools → Human Vision → Legacy Examples；验收和探针位于 Tools → Human Vision → Development。
+
+Human-Vision-SDK-Test 的 HumanVisionSettingsDemo 已增加 **复制日志文件夹**、硬件使用信息和稀疏原生阶段计时。Android 10+ 自动同步到 Downloads/HumanVisionLogs 的普通会话文件夹，直接获取整个文件夹即可；原有 ZIP 入口继续可用。字段范围、不可用指标、耗时判读和视频复测见 [实机性能日志](DEVICE_PERFORMANCE_LOGS.md)。

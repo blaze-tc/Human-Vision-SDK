@@ -1,0 +1,5 @@
+{
+  "name": "HumanVision.SettingsDiagnostics",
+  "references": ["HumanVision.Runtime", "HumanVision.Demo", "HumanVision.Input", "UnityEngine.UI"],
+  "autoReferenced": true
+}

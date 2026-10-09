@@ -1,3 +1,35 @@
+# 2026-10-09 Settings Demo telemetry — connected-phone video verified
+
+User requested a plain log folder, hardware usage and exact stage costs, plus
+a connected-device video test near20–25 fresh skeleton updates/s. Actual
+Human-Vision-SDK-Test Settings scene/prefab now shows hardware and six-stage
+sparse native timings, counts fresh notifications containing bodies, and copies
+a public Downloads/HumanVisionLogs session folder including SDK/Unity logs.
+Optional tested helper sources and a plain-folder analyzer are preserved in tools.
+
+Test-first hardware/stages RED13/13 -> GREEN13/13; session RED11/12 -> GREEN12/12.
+Geometry overlap RED -> final installed layout/screenshot PASS. Genuine Editor
+video/log/clipboard/ZIP probe PASS; final Console errors0. Android build0errors
+8warnings; API26 closure506 and original48 C/Unity entry points unchanged. All39
+SDK StreamingAssets/10 models and187 embedded hash entries verified.
+
+Final OnePlus9Pro 300s Low/video25FPS run, first30s excluded: publication25.00,
+completed23.87, fresh notifications with bodies23.70/s;97.4% one-second body
+windows >=20, minimum19.693 (not a guarantee of every window). No pipeline errors
+or JNI obsolete warnings.102 complete native samples: model/internal waits
+33.22ms of40.34ms six-stage sum (82.36%). App CPU12.31% of8 cores, device GPU75.86%,
+PSS333.6MB; battery37.3–41.1C, actual thermal status0->3 at~285s. Missing system
+CPU/GPU clock/NPU telemetry explicitly unavailable. Public files verified as
+exact private-file prefixes and analyzers agree; original phone prefs restored.
+
+Final local APK SHA73636c1ef885c1e5b573b5a74ae9b1bde42271790275bde7af8faea0e82c4cd4.
+Qualified FP32 precision, models, processing/synchronization and public API stay
+unchanged. Low quality is a configuration tradeoff; no faster-Medium, RK3588,
+complete-hand/per-person30FPS or indefinite-sustained-performance claim.
+Sole remaining hardware gate: actual RK3588 stage/smoothness retest. No new
+production Release. [Report](reports/2026-10-09-device-performance-telemetry.md),
+[usage](user-guide/DEVICE_PERFORMANCE_LOGS.md).
+
 # 2026-10-08 RK3588 latency follow-up — dominant stage located; device trace ready
 
 New user field logs confirm Fix1 imports frames and produces real RK3588 skeletons.

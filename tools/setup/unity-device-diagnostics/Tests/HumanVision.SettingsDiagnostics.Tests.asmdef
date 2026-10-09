@@ -1,0 +1,7 @@
+{
+  "name": "HumanVision.SettingsDiagnostics.Tests",
+  "references": [],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}

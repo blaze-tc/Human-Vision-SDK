@@ -28,3 +28,11 @@ Per-session diagnostics label the profile, pipeline, requested/actual backend an
 last tensor inference duration. RTMO adds raw/accepted detections and maximum score;
 TopDown adds detector execution cadence and pose-person cost. These are execution
 timings, not proof of accelerator graph coverage.
+
+For the actual Human-Vision-SDK-Test settings scene, the optional project diagnostics
+add a public Downloads session folder, hardware samples and sparse six-stage native
+wall timings. See [device performance logs](../user-guide/DEVICE_PERFORMANCE_LOGS.md)
+for availability/status fields and measurement boundaries. Analyze a plain folder
+with `python tools/benchmark/analyze_settings_device_log.py SESSION OUTPUT --warmup 30`.
+Do not interpret missing GPU/NPU metrics as idle, GPU render-frame time as utilization,
+or the difference between mismatched SDK/native frame samples as CPU overhead.
