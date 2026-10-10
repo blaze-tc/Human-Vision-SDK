@@ -42,4 +42,12 @@ render frame timings. Missing telemetry is unavailable, never fabricated zero.
 The RK3588 follow-up discovers Mali devfreq clocks/load and named CPU/GPU thermal
 zones. It preserves raw native details once, indexes batches in events and measures
 flush wall time. Input frame-log sampling is a separate native Input change; copying
-these C# helpers alone does not enable it. This helper snapshot adds no RKNN backend.
+these C# helpers alone does not enable it. The helper observes the private RKNN route; it does not itself implement a backend.
+Actual NPU activation follows the successful runtime profile, with per-core whole
+**device** load, clock and named thermal zone. Run `RknpuHardwareTests` as well.
+CPU-delivered timing snapshots do not reuse old Vulkan samples. `cpuReadback` in
+pipeline.snapshot/timings includes actual pixel dimensions, bounded pending count,
+completion/submission/rejection counters and GPU-request-to-main-thread-callback
+wall time, normalize/submit/Blit CPU recording means. These cumulative values and
+lastFrameId are separate from the current model result; do not subtract across
+frames to invent precise pipeline gaps.

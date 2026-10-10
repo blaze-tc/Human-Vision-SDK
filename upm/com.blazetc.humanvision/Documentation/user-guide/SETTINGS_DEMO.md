@@ -58,3 +58,8 @@ Windows CPU/DirectML 当前安装配置使用固定模型，不提供高/中/低
 主菜单 HumanVision 只保留创建 SDK、设置 Demo、安装模型及 Examples。旧示例位于 Tools → Human Vision → Legacy Examples；验收和探针位于 Tools → Human Vision → Development。
 
 Human-Vision-SDK-Test 的 HumanVisionSettingsDemo 已增加 **复制日志文件夹**、硬件使用信息和稀疏原生阶段计时。Android 10+ 自动同步到 Downloads/HumanVisionLogs 的普通会话文件夹，直接获取整个文件夹即可；原有 ZIP 入口继续可用。字段范围、不可用指标、耗时判读和视频复测见 [实机性能日志](DEVICE_PERFORMANCE_LOGS.md)。
+
+2026-10-10 现场修复：CPU/NPU 的推理像素尺寸与预览尺寸分别使用，1080p/4K
+预览不再缩错骨骼/框；回读尺寸变更立即隐藏旧结果。日志保持复制整个会话目录，
+新增回读/翻转/送入 SDK 分段与实际像素尺寸。性能含义见
+[日志指南](DEVICE_PERFORMANCE_LOGS.md) 与 [现场报告](https://github.com/blaze-tc/Human-Vision-SDK/blob/codex/unity-sdk-api-settings/docs/reports/2026-10-10-rk3588-field-repair.md)。

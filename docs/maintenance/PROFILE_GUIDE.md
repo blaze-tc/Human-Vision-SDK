@@ -76,7 +76,9 @@ Windows realtime and Android realtime start with auto. Android precision can cop
 auto to a new profile ID and use a single body selection for pipeline.topdown and
 precision-t-26; pose cost then scales with people. This is a configurable accuracy
 tradeoff, not a measured throughput claim. A future RK3588 preset must reference a
-registered, tested backend and compatible pack; no RKNN implementation is shipped.
+registered, tested backend and compatible pack. A private RKNN/tensor route is
+implemented and actual user RK3588 logs confirm its execution; it remains outside
+qualified public UPM distribution and does not certify post-change FPS.
 
 Profile schema=1; `profile` must match filename. Choose either body or body_by_capacity
 (strictly increasing max_people up to8). Each choice names pipeline and modelPack.

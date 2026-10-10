@@ -76,7 +76,9 @@ Input新样本的 `decoded_us → submitted_us` 是本地调度，
 
 应用 CPU 从自身进程所有线程的 CPU 计数差分得到，同时列出 **全部逻辑核容量占比** 和 **一核为 100% 的占比**；后者可超过 100%。Android 从 `sysconf(_SC_CLK_TCK)` 查询计数频率。系统 CPU 用 `/proc/stat` 差分，guest 不重复计算。应用内存用 Android PSS，另记系统可用内存。
 
-GPU 使用率读取可访问的 Adreno KGSL 或已知 Mali 驱动计数，是设备整体负载。KGSL `gpubusy` 已给出驱动统计区间 busy/total，不再按累计计数差分。NPU 负载没有可读取来源时显示不可用；当前 CPU/NCNN Vulkan profile 未使用 NPU。电池温度不冒充 CPU 结温，Android thermal status 不单独证明未降频。CPU 各核频率、GPU 频率能读取时一并写日志。
+GPU 使用率读取可访问的 Adreno KGSL 或已知 Mali 驱动计数，是设备整体负载。KGSL `gpubusy` 已给出驱动统计区间 busy/total，不再按累计计数差分。NPU 负载没有可读取来源时显示不可用；CPU/NCNN Vulkan profile 未使用 NPU。
+私有 RK3588 NPU 模式按成功应用的实际 profile 标记启用，三核负载及其算术
+均值是整个设备在驱动区间的数值，不能当作本应用或单个模型利用率。电池温度不冒充 CPU 结温，Android thermal status 不单独证明未降频。CPU 各核频率、GPU 频率能读取时一并写日志。
 
 RK3588构建自动发现 `/sys/class/devfreq/*gpu*`/`*mali*`，支持Rockchip
 `负载@频率Hz`格式；NPU/DMC节点不算GPU。`cur_freq`独立于负载读取，保留
@@ -105,3 +107,28 @@ python tools/benchmark/analyze_settings_device_log.py "日志会话目录" "anal
 有人时的骨骼帧率。强制退出可能留下最后一条未写完JSON，分析器只忽略未换行的
 坏尾条并记录 `dataQualityWarnings`；完整行或中间损坏仍报错。
 RK3588实测结论与NPU当前状态见[现场分析报告](../reports/2026-10-09-rk3588-field-analysis.md)。
+
+## 2026-10-10 CPU/NPU 输入与分辨率修复
+
+`pipeline.snapshot` / `timings.jsonl` 新增 `cpuReadback`：pixelWidth/pixelHeight
+为实际像素坐标和回读尺寸；preview width/height 独立。readbackMeanMs/
+readbackLastMs/readbackMaximumMs 包括 GPU 排队及 Unity 回调调度，
+normalizeMeanMs 是行翻转，submitMeanMs 是送入 SDK（不等待模型完成），
+blitMeanMs 是 Blit 的 CPU 命令记录耗时。completed/submitted/throttleRejected/
+queueRejected/staleRejected 为桥生命周期累计值；pending 为当前待回读数。
+lastFrameId 不是当前模型 resultFrame，不直接跨帧相减。
+
+RKNN 后端的 input_set_ms、execute_ms、output_get_ms、output_release_ms
+通过每秒 runtime.diagnostics 保留；SDK pre/infer/post 另列，可能对应不同帧。
+图像从纹理送入 CPU 内存不代表模型在 CPU 执行。辨别实际 backend/profile。
+
+SettingsDemo 2D overlay 已修复 HD/4K 预览与 bounded readback 的尺寸混用，
+切换尺寸时不呈现旧几何。新输入桥允许两次回读重叠但不累积长队列；
+新 30 FPS credit 限流容许渲染抖动，模型与 source copy 的所有权保持原合同。
+[本轮现场分析与验证](../reports/2026-10-10-rk3588-field-repair.md) 记录完整依据。
+
+分析器 `tools/benchmark/analyze_settings_device_log.py SESSION_FOLDER OUTPUT_JSON --warmup 15`
+新增 `rknnStagesMs`，只采纳明确 `Actual backend=backend.rknn` 的周期诊断，按当前
+profile 和预热后会话分段关联 input-set / execute / output-get / release。未采到值
+保持不可用；`rknnDiagnosticSamples` 不是推理帧数。`cpuReadbackLatest` 取累计快照
+最近一次值，禁止再次对累计均值求平均或与当前模型结果跨帧相减。

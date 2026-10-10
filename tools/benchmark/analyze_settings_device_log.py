@@ -82,6 +82,32 @@ def parse_input_timing(line):
             'conversionFencePollMs': interval('submitted_us', 'converted_us')}
 
 
+
+def parse_rknn_timing(text):
+    """Read actual backend snapshots; requested profile/input CPU alone proves nothing.
+
+    These are sparse diagnostic samples, with no execution frame ID. Invalid or
+    absent numbers stay unavailable. Do not combine with another result's times.
+    """
+    if not re.search(r'^Actual backend=backend\.rknn\s*$', text, re.MULTILINE):
+        return None
+    def number(name):
+        match=re.search(r'\b'+name+r'=([^;\s]+)',text)
+        try:
+            value=float(match[1]) if match else -1
+            return value if math.isfinite(value) and value>=0 else -1
+        except ValueError:
+            return -1
+    fields={'inputSetMs':'input_set_ms','executeMs':'execute_ms',
+            'outputGetMs':'output_get_ms','outputReleaseMs':'output_release_ms'}
+    result={key:number(value) for key,value in fields.items()}
+    result['backendSumMs']=sum(result.values()) if all(v>=0 for v in result.values()) else -1
+    result['coreMask']=int(number('core_mask'))
+    match=re.search(r'^Profile=(.+)$',text,re.MULTILINE)
+    result['profile']=match[1].strip() if match else ''
+    return result
+
+
 def analyze(folder, warmup):
     metadata_path = folder / 'session.json'
     if not metadata_path.exists():
@@ -95,6 +121,12 @@ def analyze(folder, warmup):
     warnings = []
     timings = json_lines(folder, 'timings', warnings)
     hardware = json_lines(folder, 'hardware', warnings)
+    rknn=[]
+    for event in json_lines(folder,'events',warnings):
+        if event.get('category')=='runtime.diagnostics':
+            sample=parse_rknn_timing(event.get('message',''))
+            if sample:
+                sample['utc']=utc(event['utc']);rknn.append(sample)
     groups = group_active_rows(rows, timings)
     input_samples = []
     for path in sorted(folder.glob('native-*.log*')):
@@ -139,14 +171,24 @@ def analyze(folder, warmup):
         result['unityRenderFrameMs'] = {k: distribution(t[k] for t in timed) for k in ('unityCpuFrameMs','unityGpuFrameMs')}
         result['sdkStagesMs'] = {k: distribution(t[k] for t in timed) for k in ('sdkDetectMs','sdkPoseMs','sdkTrackingMs')}
         result['diagnosticFlushMs'] = distribution(t['diagnosticFlushMs'] for t in timed if 'diagnosticFlushMs' in t)
+        cpu=[t['cpuReadback'] for t in timed if t.get('cpuReadback',{}).get('completed',0)>0]
+        # Snapshot means are cumulative. Select the latest; averaging means or
+        # mixing them with current-result totalMs would give misleading budgets.
+        result['cpuReadbackLatest']=cpu[-1] if cpu else None
+        result['cpuReadbackScope']='Latest bridge-lifetime cumulative snapshot, not this model result; request latency includes GPU queue/Unity callback scheduling; no average-of-averages.'
+        measured_rknn=[n for n in rknn if start_utc<=n['utc']<=end_utc and n['profile']==start['runtime_profile']]
+        result['rknnDiagnosticSamples']=len(measured_rknn)
+        result['rknnStagesMs']={k:distribution(n[k] for n in measured_rknn) for k in ('inputSetMs','executeMs','outputGetMs','outputReleaseMs','backendSumMs')}
+        result['rknnTimingScope']='Actual backend.rknn periodic snapshots; sample count is not inference count; no source frame ID, so do not subtract from SDK/current-result or GPU/readback times.'
+
         measured_input = [s for s in input_samples if start_utc <= s['utc'] <= end_utc]
         result['sparseInputTimingsMs'] = {k: distribution(s[k] for s in measured_input) for k in
                                         ('arrivalToImageObservationMs', 'decodeToSubmitMs', 'conversionFencePollMs')}
         result['inputTimingScope'] = 'Arrival is the latest demux timestamp observed at image acquisition, not a proved same-packet decode duration. Decode-to-submit is local scheduling; conversion completion includes render-thread fence polling. No sensor/network latency or pure GPU duration.'
         sampled = [h for h in hardware if start_utc <= utc(h['utc']) <= end_utc]
-        fields = ('appCpuPercent','appCpuOneCorePercent','systemCpuPercent','gpuPercent','gpuFrequencyMHz','processPssMB','systemAvailableMB','batteryTemperatureC','cpuTemperatureC','gpuTemperatureC')
+        fields = ('appCpuPercent','appCpuOneCorePercent','systemCpuPercent','gpuPercent','gpuFrequencyMHz','processPssMB','systemAvailableMB','batteryTemperatureC','cpuTemperatureC','gpuTemperatureC','npuPercent','npuFrequencyMHz','npuTemperatureC')
         result['hardware'] = {k: distribution(h.get(k, -1) for h in sampled) for k in fields}
-        result['hardwareStatuses'] = {k: sorted({h.get(k,'') for h in sampled}) for k in ('cpuStatus','systemCpuStatus','gpuStatus','gpuFrequencyStatus','npuStatus','memoryStatus','thermalStatus','thermalSensorsStatus','samplerStatus')}
+        result['hardwareStatuses'] = {k: sorted({h.get(k,'') for h in sampled}) for k in ('cpuStatus','systemCpuStatus','gpuStatus','gpuFrequencyStatus','npuStatus','npuFrequencyStatus','memoryStatus','thermalStatus','thermalSensorsStatus','samplerStatus')}
         output.append(result)
     return {'session': folder.name, 'environment': {k: metadata.get(k) for k in ('device','gpu','unity','sdk','inputPackage','graphicsApi','deviceBuildInfo')}, 'groups': output,
             'dataQualityWarnings': warnings,

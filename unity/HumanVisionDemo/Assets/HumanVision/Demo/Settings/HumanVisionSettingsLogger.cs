@@ -134,6 +134,8 @@ namespace HumanVision.Demo
                     if (sdk.TryGetBodyByIndex(i, out var body)) text.Append(" body[").Append(i).Append("]=id:").Append(body.StableTrackId)
                         .Append(",confidence:").Append(Number(body.DetectionConfidence)).Append(",box:").Append(body.BoundingBoxPixels);
                 }
+                if(sdk.FrameBridge!=null && sdk.IsInitialized && !sdk.RuntimeManager.UsesAndroidGpuFrames)
+                    text.Append(" cpuReadback=").Append(JsonUtility.ToJson(sdk.FrameBridge.CpuReadbackStats));
                 Record("statistics", text.ToString()); text.Clear();
             }
             if (settings.DetailedLogs && now >= nextPose && sdk.HasFreshResult && sdk.ResultSequence != lastSequence) {

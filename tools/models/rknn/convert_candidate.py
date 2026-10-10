@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import platform
 import re
+import os
 
 TOOLKIT_VERSION = '2.3.2'
 
@@ -30,8 +31,8 @@ def validate_source(model, expected):
 def validate_calibration(precision, dataset):
     if precision == 'non-quantized':
         return None
-    if precision != 'int8' or dataset is None:
-        raise ValueError('INT8 requires a real calibration image list')
+    if precision not in ('int8', 'hybrid') or dataset is None:
+        raise ValueError('Quantization requires a real calibration image list')
     dataset = Path(dataset).resolve()
     if not dataset.is_file():
         raise ValueError('Missing calibration image list')
@@ -54,6 +55,66 @@ def validate_calibration(precision, dataset):
     return images
 
 
+def validate_hybrid_ranges(graph, ranges):
+    """Validate actual tensor paths; vendor examples use a different export graph."""
+    producers = {name: node for node in graph.node for name in node.output if name}
+    if not isinstance(ranges, list) or not ranges or len(ranges) > 64:
+        raise ValueError('Hybrid ranges must be a bounded nonempty list')
+    seen = set()
+    for pair in ranges:
+        if (not isinstance(pair, list) or len(pair) != 2 or
+                any(not isinstance(name, str) or name not in producers for name in pair)):
+            raise ValueError('Hybrid ranges require two actual produced tensor names')
+        start, end = pair
+        if tuple(pair) in seen:
+            raise ValueError('Duplicate hybrid range')
+        seen.add(tuple(pair))
+        pending, visited = [end], set()
+        while pending:
+            name = pending.pop()
+            if name in visited:
+                continue
+            visited.add(name)
+            if name in producers:
+                pending.extend(producers[name].input)
+        if start not in visited:
+            raise ValueError('Hybrid range does not follow a graph path')
+    return ranges
+
+
+def read_hybrid_config(path, source_hash, graph):
+    if path is None:
+        raise ValueError('Hybrid precision requires a graph-bound config')
+    path = Path(path)
+    if path.stat().st_size > 65536:
+        raise ValueError('Hybrid config is oversized')
+    value = json.loads(path.read_text(encoding='utf-8'))
+    if not isinstance(value, dict) or set(value) != {'schema_version', 'source_onnx_sha256', 'ranges'}:
+        raise ValueError('Hybrid config keys must be exact')
+    if value['schema_version'] != 1 or value['source_onnx_sha256'] != source_hash:
+        raise ValueError('Hybrid config source/schema mismatch')
+    return validate_hybrid_ranges(graph, value['ranges']), sha256(path)
+
+
+def build_hybrid(rknn, dataset, source, output, ranges):
+    # Toolkit intermediate filenames are relative to cwd. Confine each trial to
+    # its new candidate directory; never overwrite another trial's .model/.cfg.
+    original = Path.cwd()
+    try:
+        os.chdir(output)
+        checked('hybrid_step1', rknn.hybrid_quantization_step1(
+            dataset=str(dataset), proposal=False, custom_hybrid=ranges))
+        names = [source.stem + suffix for suffix in ('.model', '.data', '.quantization.cfg')]
+        for name in names:
+            if not Path(name).is_file() or not Path(name).stat().st_size:
+                raise RuntimeError('Missing hybrid intermediate: ' + name)
+        checked('hybrid_step2', rknn.hybrid_quantization_step2(
+            model_input=names[0], data_input=names[1], model_quantization_cfg=names[2]))
+        return {name: sha256(Path(name)) for name in names}
+    finally:
+        os.chdir(original)
+
+
 def candidate_receipt(source_hash, model_hash, precision, toolkit):
     return dict(target='rk3588', toolkit_version=toolkit,
                 source_onnx_sha256=source_hash, rknn_sha256=model_hash,
@@ -73,11 +134,15 @@ def main():
     parser.add_argument('--onnx', required=True, type=Path)
     parser.add_argument('--source-sha256', required=True)
     parser.add_argument('--output', required=True, type=Path, help='New candidate directory')
-    parser.add_argument('--precision', choices=('non-quantized', 'int8'), default='non-quantized')
+    parser.add_argument('--precision', choices=('non-quantized', 'int8', 'hybrid'), default='non-quantized')
     parser.add_argument('--calibration', type=Path)
+    parser.add_argument('--hybrid-config', type=Path, help='SHA-bound actual tensor ranges; hybrid precision only')
     parser.add_argument('--validation-index', type=Path, help='Pinned Low fixture bank; ORT and x86 simulator gates')
     parser.add_argument('--validation-index-sha256')
     args = parser.parse_args()
+    if args.precision != 'hybrid' and args.hybrid_config:
+        raise ValueError('Hybrid config is allowed only with hybrid precision')
+    args.onnx, args.output = args.onnx.resolve(), args.output.resolve()
     if bool(args.validation_index) != bool(args.validation_index_sha256):
         raise ValueError('Validation index and its SHA-256 must be supplied together')
     validate_source(args.onnx, args.source_sha256)
@@ -103,6 +168,8 @@ def main():
     if (len(dimensions) != 4 or dimensions[:2] != [1, 3] or
             any(not isinstance(n, int) or n <= 0 or n > 960 or n % 32 for n in dimensions[2:])):
         raise ValueError('Expected static [1,3,H,W], positive H/W <=960 and multiples of32')
+    hybrid_ranges, hybrid_hash = (read_hybrid_config(args.hybrid_config, args.source_sha256, graph)
+                                  if args.precision == 'hybrid' else (None, None))
     args.output.mkdir(parents=True)
     if args.validation_index:
         from simulator_gate import onnx_gate
@@ -122,8 +189,11 @@ def main():
         # 图片以 RGB uint8 输入，/255 融入转换合同；后端不能再次执行 /255。
         checked('config', rknn.config(mean_values=[[0, 0, 0]], std_values=[[255, 255, 255]], target_platform='rk3588'))
         checked('load_onnx', rknn.load_onnx(model=str(args.onnx.resolve())))
-        checked('build', rknn.build(do_quantization=images is not None,
-                                   dataset=str(dataset.resolve()) if dataset else None))
+        if hybrid_ranges is not None:
+            intermediates = build_hybrid(rknn, dataset.resolve(), args.onnx, args.output, hybrid_ranges)
+        else:
+            checked('build', rknn.build(do_quantization=images is not None,
+                                       dataset=str(dataset.resolve()) if dataset else None))
         checked('export', rknn.export_rknn(str(output.resolve())))
         if not output.is_file() or output.stat().st_size == 0:
             raise RuntimeError('RKNN returned success without a nonempty model')
@@ -132,6 +202,9 @@ def main():
                                   mean=[0, 0, 0], std=[255, 255, 255]),
                        source_outputs=[dict(name=value.name, shape=shape(value)) for value in graph.output],
                        calibration=calibration)
+        if hybrid_ranges is not None:
+            receipt['hybrid'] = dict(config_sha256=hybrid_hash, ranges=hybrid_ranges,
+                                     intermediates_sha256=intermediates)
         (args.output / 'conversion-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n', encoding='utf-8')
         if args.validation_index:
             from simulator_gate import rknn_gate

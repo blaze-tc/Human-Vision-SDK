@@ -93,6 +93,7 @@ namespace HumanVision.TestProject.Diagnostics
             public double freshBodyResultsFps;
             public HardwareSample hardware;
             public NativeStageSample nativeStages;
+            public VideoPlayerFrameSource.CpuReadbackStatistics cpuReadback;
             public string publicLogDirectory, folderSyncStatus;
         }
         /// <summary>流水线汇总与稀疏原生样本分开保存。它们可能属于不同帧，禁止相减制造精确耗时。</summary>
@@ -106,6 +107,8 @@ namespace HumanVision.TestProject.Diagnostics
             public string diagnosticScope = "last main-thread log flush batch and session maximum, not the same inference frame; includes redaction/write/close";
             public int pendingCopies;
             public NativeStageSample native;
+            public VideoPlayerFrameSource.CpuReadbackStatistics cpuReadback;
+            public string cpuReadbackScope = "bridge-lifetime cumulative timing; GPU request-to-main-thread-callback wall time includes GPU queue and Unity scheduling; normalize/submit are CPU wall time; lastFrameId is separate from model resultFrame; pixel dimensions are accepted readback dimensions";
             public string scope = "SDK current-result aggregate and latest complete sparse native frame are separate; frame IDs may differ";
             public string frameClockScope = "Unity CPU/GPU render frame duration, not utilization or SDK model GPU time; -1 means unavailable";
             public string inputScope = "publication FPS/copy queue/local result age; network/decode duration and sensor capture latency not individually instrumented";
@@ -257,13 +260,17 @@ namespace HumanVision.TestProject.Diagnostics
             if (session == null || sdk == null) return;
             try { session.Record("runtime.diagnostics", "reason=" + reason + " initialized=" + sdk.IsInitialized + " " + sdk.RuntimeDiagnostics); }
             catch (Exception e) { session.Record("runtime.diagnostics.failed", reason + ": " + e); }
-            nextNativeDiagnostics = Time.realtimeSinceStartupAsDouble + (sdk.HasFreshResult ? 30 : 5);
+            // 实验 CPU 张量后端每秒保留最新分段值：预处理/推理/解码及 input-set/run/output-get/release。
+            // 这是低频诊断快照，不是逐帧采样；Vulkan 沿用原有稀疏日志频率。
+            nextNativeDiagnostics = Time.realtimeSinceStartupAsDouble + (sdk.RuntimeProfile == "android-rknn-npu-quality-low" ? Math.Max(1, statisticsSeconds) : sdk.HasFreshResult ? 30 : 5);
         }
         private static string Number(double value) => (double.IsNaN(value) || double.IsInfinity(value) ? -1 : value).ToString("F3", Invariant);
         private void CaptureStatistics()
         {
             if (sdk == null || session == null) return;
             FindInputComponents(); double now = Time.realtimeSinceStartupAsDouble;
+            // 按已经建立的运行时标记；切换被拒绝时请求配置不能冒充当前实际后端。
+            hardware?.SetNeuralActive(sdk.IsInitialized && sdk.RuntimeProfile == "android-rknn-npu-quality-low");
             var stats = sdk.Stats; var frame = default(HumanVisionTextureFrame);
             bool published = source != null && source.TryGetLatestFrame(-1, out frame);
             var image = sdk.GetColorImageTex(); var size = sdk.AnalysisInputSize;
@@ -311,7 +318,8 @@ namespace HumanVision.TestProject.Diagnostics
             value.freshBodyResultEvents = bodyResultEvents;
             value.freshBodyResultsFps = now > previousSampleTime ? (bodyResultEvents - previousBodyResultEvents) / (now - previousSampleTime) : 0;
             previousBodyResultEvents = bodyResultEvents; displayedBodyFps = value.freshBodyResultsFps;
-            value.hardware = hardware?.Read(); value.nativeStages = stageTracker.Read();
+            value.cpuReadback=bridge!=null?bridge.CpuReadbackStats:default;
+            value.hardware = hardware?.Read(); value.nativeStages = UsesCpuDeliveredPipeline ? cpuDeliveredStages : stageTracker.Read();
             value.publicLogDirectory = folderMirror?.PublicDirectory ?? ""; value.folderSyncStatus = folderMirror?.Status ?? "";
             if (value.hardware != null && !string.IsNullOrEmpty(value.hardware.utc)) {
                 long stamp = DateTime.Parse(value.hardware.utc, Invariant, DateTimeStyles.RoundtripKind).Ticks;
@@ -325,7 +333,7 @@ namespace HumanVision.TestProject.Diagnostics
                 resultFrame = value.resultFrame, acceptedFrame = value.acceptedFrame, publicationFps = value.publicationFpsEstimate, freshBodyResultsFps = value.freshBodyResultsFps,
                 pipelineTotalMs = value.totalMs, sdkDetectMs = value.detectMs, sdkPoseMs = value.poseMs, sdkTrackingMs = value.trackingMs,
                 resultAgeMs = value.frameAgeMs, publishedAgeMs = value.publishedAgeMs, pendingCopies = value.pendingCopies,
-                native = value.nativeStages, unityCpuFrameMs = unityCpuFrameMs, unityGpuFrameMs = unityGpuFrameMs,
+                native = value.nativeStages, cpuReadback=value.cpuReadback, unityCpuFrameMs = unityCpuFrameMs, unityGpuFrameMs = unityGpuFrameMs,
                 diagnosticFlushMs = session.LastFlushMilliseconds, diagnosticFlushMaximumMs = session.MaximumFlushMilliseconds }));
             if (value.nativeStages.available && value.nativeStages.completedSamples != lastStageSample) {
                 lastStageSample = value.nativeStages.completedSamples; session.Record("timing.native.complete", JsonUtility.ToJson(value.nativeStages));
@@ -432,17 +440,24 @@ namespace HumanVision.TestProject.Diagnostics
             if (copyZipButton != null) copyZipButton.interactable = !string.IsNullOrEmpty(LastExportPath);
             if (skeletonButton != null) skeletonButton.GetComponentInChildren<Text>().text = "骨骼日志：" + (recordSkeletons ? "开启" : "关闭");
             if (hardwareLabel != null) {
-                var h = hardware?.Read(); var n = stageTracker.Read();
+                var h = hardware?.Read(); var n = UsesCpuDeliveredPipeline ? cpuDeliveredStages : stageTracker.Read();
                 hardwareLabel.text = h == null ? "硬件采样准备中" :
                     "应用CPU " + Metric(h.appCpuPercent, "%全核") + " / " + Metric(h.appCpuOneCorePercent, "%一核") + " | 系统CPU " + Metric(h.systemCpuPercent, "%") +
-                    " | GPU " + Metric(h.gpuPercent, "%") + "，频率 " + Metric(h.gpuFrequencyMHz, "MHz") + " | NPU：后端未使用\n" +
-                    "内存PSS " + Metric(h.processPssMB, "MB") + " | 可用 " + Metric(h.systemAvailableMB, "MB") + " | 温度 CPU " + Metric(h.cpuTemperatureC, "℃") + " / GPU " + Metric(h.gpuTemperatureC, "℃") + " / 电池 " + Metric(h.batteryTemperatureC, "℃") +
-                    "\n" + (n.available ? "稀疏帧 " + n.frameId + "：预处理/等待 " + Number(n.importPreprocessRecordMs + n.preprocessSubmitWaitMs) + "ms，模型/内部等待 " + Number(n.extractDownloadMs) +
+                    " | GPU " + Metric(h.gpuPercent, "%") + "，频率 " + Metric(h.gpuFrequencyMHz, "MHz") + " | NPU " + (h.npuActive ? "已启用" : "未启用") + "，设备负载 " + Metric(h.npuPercent, "%") + "，频率 " + Metric(h.npuFrequencyMHz, "MHz") + "\n" +
+                    "内存PSS " + Metric(h.processPssMB, "MB") + " | 可用 " + Metric(h.systemAvailableMB, "MB") + " | 温度 CPU " + Metric(h.cpuTemperatureC, "℃") + " / GPU " + Metric(h.gpuTemperatureC, "℃") + " / NPU " + Metric(h.npuTemperatureC, "℃") + " / 电池 " + Metric(h.batteryTemperatureC, "℃") +
+                    "\n" + (UsesCpuDeliveredPipeline ? "CPU交付管线：预处理 " + Number(sdk.Stats.DetectionMs) + "ms，推理/等待 " + Number(sdk.Stats.PoseMs) + "ms，解码 " + Number(sdk.Stats.TrackingMs) + "ms；实际执行后端见 runtime.diagnostics 日志" :
+                        n.available ? "稀疏帧 " + n.frameId + "：预处理/等待 " + Number(n.importPreprocessRecordMs + n.preprocessSubmitWaitMs) + "ms，模型/内部等待 " + Number(n.extractDownloadMs) +
                         "ms，提交/下载等待 " + Number(n.inferenceSubmitWaitMs) + "ms，输出/释放 " + Number(n.denseOutputCopyMs + n.ownershipReleaseMs) + "ms" : "等待原生阶段计时；不可用原因详见硬件日志") +
-                    "\n" + h.thermalStatus + " | 日志批次 " + Metric(session.LastFlushMilliseconds, "ms") + " | " + (folderMirror?.Status ?? "");
+                    "\n" + (UsesCpuDeliveredPipeline && bridge != null ? "回读 " + Number(bridge.CpuReadbackStats.readbackMeanMs) + "ms（含调度），翻转 " + Number(bridge.CpuReadbackStats.normalizeMeanMs) + "ms，送入SDK " + Number(bridge.CpuReadbackStats.submitMeanMs) + "ms | " : "") + h.thermalStatus + " | 日志批次 " + Metric(session.LastFlushMilliseconds, "ms") + " | " + (folderMirror?.Status ?? "");
             }
         }
         private static string Metric(double number, string unit) => number < 0 ? "不可用" : number.ToString("F1", Invariant) + unit;
+        // CPU/Neural/PC ORT 的计时不能复用此前 Vulkan 会话留下的六段样本。
+        private bool UsesCpuDeliveredPipeline => sdk != null && sdk.IsInitialized && !sdk.RuntimeProfile.StartsWith("android-ncnn-vulkan", StringComparison.Ordinal);
+        private readonly NativeStageSample cpuDeliveredStages = new NativeStageSample {
+            source = "Unavailable for the active CPU-delivered pipeline",
+            modelMeasurement = "Use current SDK pre/infer/post and actual backend RuntimeDiagnostics; previous Vulkan stages do not describe this session."
+        };
         private void OnDisable()
         {
             Application.logMessageReceivedThreaded -= OnUnityLog; Application.lowMemory -= OnLowMemory;

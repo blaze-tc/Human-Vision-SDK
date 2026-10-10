@@ -157,8 +157,8 @@ namespace HumanVision.Demo
             return OverlayGeometry.SourceToOverlay(
                 sourcePoint,
                 videoRect,
-                frameSource.SourceWidth,
-                frameSource.SourceHeight);
+                frameSource.ResultPixelWidth,
+                frameSource.ResultPixelHeight);
         }
 
         private void DrawRectangle(

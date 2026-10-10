@@ -1,5 +1,6 @@
 #include "plugins/pipeline/yolo/yolo_tensor_pipeline.h"
 #include "plugins/pipeline/yolo/yolo_decoder.h"
+#include "plugins/pipeline/yolo/yolo_rgb_preprocess.h"
 #include "common/config_io.h"
 #include "common/pipeline_diagnostics.h"
 #include "picosha2/picosha2.h"
@@ -167,6 +168,7 @@ struct Instance {
         if(session)try{host.release_backend(host.context,backend,session);}catch(...){}
     }
     void Preprocess(const HV_VideoFrame& frame,int channels,bool rgb) noexcept {
+        if(yolo::TryFastRgbPreprocess(frame,pixels.data()))return;
         if(source_width!=frame.width||source_height!=frame.height){
             BuildAxis(frame.width,horizontal,true);BuildAxis(frame.height,vertical,false);
             source_width=frame.width;source_height=frame.height;

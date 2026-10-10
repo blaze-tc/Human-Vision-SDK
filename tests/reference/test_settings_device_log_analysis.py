@@ -51,5 +51,18 @@ class SettingsDeviceLogAnalysisTests(unittest.TestCase):
         self.assertEqual(sample['decodeToSubmitMs'], -1)
 
 
+    def test_rknn_breakdown_requires_the_actual_backend_and_valid_times(self):
+        text = "Profile=android-rknn-npu-quality-low\nActual backend=backend.rknn\nBackend sessions=body.rknn: backend.rknn -> backend.rknn / 44 ms; core_mask=7; input_set_ms=11.25; execute_ms=29.5; output_get_ms=3.75; output_release_ms=0.002"
+        self.assertTrue(hasattr(analysis, 'parse_rknn_timing'))
+        sample = analysis.parse_rknn_timing(text)
+        self.assertEqual(sample['coreMask'], 7)
+        self.assertEqual(sample['executeMs'], 29.5)
+        self.assertEqual(sample['backendSumMs'], 44.502)
+        self.assertIsNone(analysis.parse_rknn_timing(text.replace('Actual backend=backend.rknn', 'Actual backend=backend.ort.cpu')))
+        self.assertEqual(analysis.parse_rknn_timing(text.replace('execute_ms=29.5', 'execute_ms=NaN'))['executeMs'], -1)
+        self.assertEqual(analysis.parse_rknn_timing(text.replace('execute_ms=29.5', 'execute_ms=-2'))['executeMs'], -1)
+        self.assertEqual(analysis.parse_rknn_timing(text.replace('execute_ms=29.5;', ''))['backendSumMs'], -1)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -272,7 +272,7 @@ namespace HumanVision.Demo
         private bool _externalRowsBottomUp;
         private Texture _liveTexture;
         private double _nextLiveSubmitTime;
-        private GpuFrameAdmissionPolicy _gpuAdmission;
+        private GpuFrameAdmissionPolicy _gpuAdmission, _cpuAdmission;
         private long _livePendingFrameId = -1;
         private double _livePendingTime;
         public bool LivePreview => _livePreview;
@@ -293,7 +293,7 @@ namespace HumanVision.Demo
             LastError = string.Empty;
             if (manager != null && !manager.UsesAndroidGpuFrames && !_rowOrderReady && !_rowProbePending && SystemInfo.supportsAsyncGPUReadback) BeginRowOrderProbe();
             maxAnalysisWidth = Math.Max(64, analysisWidth); maxAnalysisHeight = Math.Max(64, analysisHeight);
-            _liveTexture = null; _nextLiveSubmitTime = 0; _livePendingFrameId = -1;
+            _liveTexture = null; _nextLiveSubmitTime = 0; _livePendingFrameId = -1; _cpuAdmission.Reset();
         }
 
         private void PresentLiveTexture(Texture texture)
@@ -308,8 +308,34 @@ namespace HumanVision.Demo
 
         public int SourceWidth { get; private set; }
         public int SourceHeight { get; private set; }
+        // Pixel joints/bounds use the accepted inference image, never the independent
+        // preview texture. HD and 4K previews can share a bounded 1280x720 readback.
+        internal int ResultPixelWidth => manager != null && manager.UsesAndroidGpuFrames ? SourceWidth :
+            _renderTexture != null ? _renderTexture.width : SourceWidth;
+        internal int ResultPixelHeight => manager != null && manager.UsesAndroidGpuFrames ? SourceHeight :
+            _renderTexture != null ? _renderTexture.height : SourceHeight;
         public long ReadbackDrops { get; private set; }
         public long ReadbackErrors { get; private set; }
+        /// <summary>CPU/NPU 输入传递计时；回读墙钟时间包含 GPU 排队及 Unity 回调调度。
+        /// 累计均值和最近一次耗时不等于当前模型结果耗时，禁止跨帧直接相减。</summary>
+        [Serializable] public struct CpuReadbackStatistics {
+            public int pixelWidth, pixelHeight, pending;
+            public long completed, submitted, throttleRejected, queueRejected, staleRejected, lastFrameId;
+            public double readbackMeanMs, readbackLastMs, readbackMaximumMs;
+            public double normalizeMeanMs, submitMeanMs, blitMeanMs;
+        }
+        private CpuReadbackStatistics _cpuReadbackStats;
+        private double _readbackSumMs, _normalizeSumMs, _submitSumMs, _blitSumMs;
+        /// <summary>无分配的统计副本；completed 为回调计数，submitted 为成功送达 SDK 的计数。</summary>
+        public CpuReadbackStatistics CpuReadbackStats { get {
+            var value=_cpuReadbackStats;
+            value.pixelWidth=ResultPixelWidth;value.pixelHeight=ResultPixelHeight;
+            for(int i=0;i<_slots.Length;i++)if(_slots[i]!=null&&_slots[i].Busy)value.pending++;
+            return value;
+        } }
+        private static double ElapsedMilliseconds(long started) =>
+            (System.Diagnostics.Stopwatch.GetTimestamp()-started)*1000d/System.Diagnostics.Stopwatch.Frequency;
+
         public long FullFrameReadbackRequests { get; private set; }
         public int MaxOverlayLagFrames => maxOverlayLagFrames;
         public string CurrentVideoPath { get; private set; }
@@ -348,7 +374,7 @@ namespace HumanVision.Demo
                 } finally {
                     _rowProbePending = false;
                     RenderTexture.ReleaseTemporary(source); RenderTexture.ReleaseTemporary(target);
-                    Destroy(marker);
+                    DestroyOwnedTexture(marker);
                 }
             });
         }
@@ -391,10 +417,12 @@ namespace HumanVision.Demo
             if (_livePreview) {
                 double now = Time.realtimeSinceStartupAsDouble;
                 // Keep preview independent; read back only a frame the worker can use.
-                if (now < _nextLiveSubmitTime) return false;
-                // Keep the native latest-frame slot fresh while inference is busy.
-                // One GPU request at a time still bounds readback memory and work.
-                for (int i = 0; i < _slots.Length; i++) if (_slots[i].Busy) return false;
+                if (!_cpuAdmission.CanSubmit(now)) { _cpuReadbackStats.throttleRejected++; return false; }
+                // Two reads overlap GPU completion with source arrival. This removes
+                // the previous single-read barrier; native inference remains serial,
+                // latest-frame-wins, with exact source leases retained by the adapter.
+                int pending=0;for(int i=0;i<_slots.Length;i++)if(_slots[i].Busy)pending++;
+                if(pending>=2){_cpuReadbackStats.queueRejected++;return false;}
             }
             var size = AnalysisRenderTextureGeometry.CalculateTargetSize(texture.width, texture.height,
                 maxAnalysisWidth, maxAnalysisHeight);
@@ -406,8 +434,11 @@ namespace HumanVision.Demo
             _acceptReadbacks = true;
             int index = FindAvailableSlot();
             if (index < 0) { ReadbackDrops++; return false; }
+            long blitStarted=System.Diagnostics.Stopwatch.GetTimestamp();
             Graphics.Blit(texture, _renderTexture);
+            _blitSumMs+=ElapsedMilliseconds(blitStarted);
             ReadbackSlot slot = _slots[index];
+            slot.ReadbackStarted=System.Diagnostics.Stopwatch.GetTimestamp();
             slot.Busy = true;
             slot.FrameId = _nextSubmissionFrameId++;
             slot.TimestampUs = timestampUs;
@@ -416,8 +447,10 @@ namespace HumanVision.Demo
                 _presentationFrameId = slot.FrameId;
                 _livePendingFrameId = slot.FrameId; _livePendingTime = Time.realtimeSinceStartupAsDouble;
                 _nextLiveSubmitTime = _livePendingTime + 1.0 / 30.0;
+                _cpuAdmission.RecordAccepted();
             } else CapturePresentationFrame(slot.FrameId);
             ++FullFrameReadbackRequests;
+            _cpuReadbackStats.blitMeanMs=_blitSumMs/FullFrameReadbackRequests;
             slot.Request = AsyncGPUReadback.RequestIntoNativeArray(ref slot.Buffer, _renderTexture,
                 0, TextureFormat.RGBA32, slot.Completion);
             _lastUnifiedReadback=slot.Request;LatestQueuedFrameId=slot.FrameId;
@@ -449,7 +482,8 @@ namespace HumanVision.Demo
 
         public bool CanPresentResult(long resultFrameId)
         {
-            if(_unifiedSource!=null&&_inputAdapter!=null)return _inputAdapter.CanPresentResult(resultFrameId);
+            if(_unifiedSource!=null&&_inputAdapter!=null)return CanPresentUnifiedResult(
+                resultFrameId, manager != null && manager.UsesAndroidGpuFrames);
 #if HV_TOPDOWN_EVAL
             if (EvaluationCanPresentHeldResult != null)
                 return _acceptReadbacks && EvaluationCanPresentHeldResult(resultFrameId);
@@ -464,6 +498,13 @@ namespace HumanVision.Demo
                 resultFrameId,
                 _minimumUsableResultFrameId,
                 maxOverlayLagFrames);
+        }
+
+        internal bool CanPresentUnifiedResult(long resultFrameId, bool usesGpuFrames) {
+            // Unified GPU submission runs directly through the input adapter, so it
+            // never opens the CPU readback pool. CPU/NPU alone need its resize fence.
+            return _inputAdapter != null && _inputAdapter.CanPresentResult(resultFrameId) &&
+                (usesGpuFrames || (_acceptReadbacks && resultFrameId >= _minimumUsableResultFrameId));
         }
 
         private void Awake()
@@ -702,6 +743,13 @@ namespace HumanVision.Demo
             ReadbackSlot slot = _slots[slotIndex];
             try
             {
+                if(slot.ReadbackStarted>0) {
+                    double elapsed=ElapsedMilliseconds(slot.ReadbackStarted);
+                    _cpuReadbackStats.completed++;_cpuReadbackStats.lastFrameId=slot.FrameId;
+                    _cpuReadbackStats.readbackLastMs=elapsed;
+                    _cpuReadbackStats.readbackMaximumMs=Math.Max(_cpuReadbackStats.readbackMaximumMs,elapsed);
+                    _readbackSumMs+=elapsed;_cpuReadbackStats.readbackMeanMs=_readbackSumMs/_cpuReadbackStats.completed;
+                }
                 if (request.hasError)
                 {
                     ReadbackErrors++;
@@ -714,11 +762,13 @@ namespace HumanVision.Demo
                     return;
                 }
 
-                if (slot.FrameId < _minimumUsableResultFrameId)
+                if (slot.FrameId < _minimumUsableResultFrameId || slot.FrameId<=_latestSubmittedFrameId)
                 {
-                    return;
+                    _cpuReadbackStats.staleRejected++;
+                    return; // A delayed completion cannot replace a newer accepted frame.
                 }
 
+                long normalizeStarted=System.Diagnostics.Stopwatch.GetTimestamp();
                 NativeArray<byte> submissionBuffer = slot.Buffer;
                 if (_normalizeReadbackRows)
                 {
@@ -730,6 +780,7 @@ namespace HumanVision.Demo
                     submissionBuffer = slot.TopLeftBuffer;
                 }
 
+                double normalizeMs=ElapsedMilliseconds(normalizeStarted);
                 long submissionTimestampUs = slot.TimestampUs;
                 if (manager.UsesRuntimeProfile && !manager.UsesAndroidGpuFrames)
                 {
@@ -740,6 +791,7 @@ namespace HumanVision.Demo
                     catch (ArgumentException error) { SetError(error.Message); return; }
                 }
                 IntPtr data = (IntPtr)NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(submissionBuffer);
+                long submitStarted=System.Diagnostics.Stopwatch.GetTimestamp();
                 if (manager.SubmitFrame(
                     data,
                     slot.Width,
@@ -750,13 +802,17 @@ namespace HumanVision.Demo
                     submissionTimestampUs,
                     slot.Buffer.Length))
                 {
+                    _cpuReadbackStats.submitted++;
+                    _normalizeSumMs+=normalizeMs;_submitSumMs+=ElapsedMilliseconds(submitStarted);
+                    _cpuReadbackStats.normalizeMeanMs=_normalizeSumMs/_cpuReadbackStats.submitted;
+                    _cpuReadbackStats.submitMeanMs=_submitSumMs/_cpuReadbackStats.submitted;
                     _latestSubmittedFrameId = Math.Max(_latestSubmittedFrameId, slot.FrameId);
                     PresentationFrameChanged?.Invoke();
                 }
             }
             finally
             {
-                slot.Busy = false;
+                slot.Busy = false;slot.ReadbackStarted=0;
             }
         }
 
@@ -975,6 +1031,10 @@ namespace HumanVision.Demo
             PresentationFrameChanged?.Invoke();
         }
 
+        private static void DestroyOwnedTexture(UnityEngine.Object texture) {
+            if(Application.isPlaying)Destroy(texture);else DestroyImmediate(texture);
+        }
+
         private void ReleaseReadbackResources()
         {
             bool hasOutstandingRequest = false;
@@ -1022,14 +1082,15 @@ namespace HumanVision.Demo
                 }
 
                 slot.Texture.Release();
-                Destroy(slot.Texture);
+                DestroyOwnedTexture(slot.Texture);
             }
             _presentationSlots = Array.Empty<PresentationSlot>();
 
             if (_renderTexture != null)
             {
+                if(RenderTexture.active==_renderTexture)RenderTexture.active=null;
                 _renderTexture.Release();
-                Destroy(_renderTexture);
+                DestroyOwnedTexture(_renderTexture);
                 _renderTexture = null;
             }
         }
@@ -1079,6 +1140,7 @@ namespace HumanVision.Demo
             internal bool Busy;
             internal long FrameId;
             internal long TimestampUs;
+            internal long ReadbackStarted;
         }
 
         private sealed class PresentationSlot

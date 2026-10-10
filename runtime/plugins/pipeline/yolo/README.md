@@ -75,3 +75,11 @@ and architecture guards. Tests bind actual saved seven/one/empty PC simulator
 outputs and input oracles; injectable plumbing is not physical NPU acceptance.
 Missing/pin-mismatched assets fail before backend creation; malformed output
 shapes, names, bytes or nonfinite values indicate backend/ModelPack mismatch.
+
+The tensor preprocessor's private `yolo_rgb_preprocess.h` specializes exactly
+512x288 identity, 1024x576 2:1 and 1280x720 5:2. ARM64 NEON uses bounded loads
+and matches the old uint8 staged integer rounding byte-for-byte; other ratios
+retain the cached general interpolator. It never changes normalized output,
+canonical mapping, model bytes or backend precision. Validate all formats and
+padded rows with `YoloRgbPreprocess.*` plus the actual ARM64 pixel/timing probe.
+No host/OnePlus preprocess measurement constitutes RK3588 model throughput.

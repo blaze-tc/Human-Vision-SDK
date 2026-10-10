@@ -238,3 +238,4 @@ target_sources(humanvision_native_tests PRIVATE ../runtime/test_yolo_tensor_pipe
 target_compile_definitions(humanvision_native_tests PRIVATE HV_YOLO_FIXTURE_ROOT="${PROJECT_SOURCE_DIR}/out/android-yolo/device-runs/seven-square416/gpu-fp32-b088221cf8cf4f3c83abad5725a09ebf")
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_region_assignment.cpp)
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_ncnn_dispatch_budget.cpp)
+target_sources(humanvision_native_tests PRIVATE ../runtime/test_yolo_rgb_preprocess.cpp)

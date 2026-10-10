@@ -15,7 +15,10 @@ namespace HumanVision.TestProject.Diagnostics
     {
         public string utc = "", cpuSource = "", systemCpuSource = "/proc/stat", gpuSource = "", gpuStatus = "not sampled";
         public string systemCpuStatus = "not sampled", cpuStatus = "not sampled", memoryStatus = "not sampled";
-        public string npuStatus = "device NPU load unavailable; current CPU/NCNN Vulkan profiles do not use NPU", npuSource = "";
+        public string npuStatus = "not sampled", npuSource = "", npuFrequencySource = "", npuFrequencyStatus = "unavailable";
+        public bool npuActive;
+        public double[] npuCorePercent = Array.Empty<double>();
+        public double npuFrequencyMHz = -1, npuTemperatureC = -1;
         public string samplerStatus = "not sampled";
         public string gpuFrequencySource = "", gpuFrequencyStatus = "unavailable", thermalSensorsStatus = "unavailable";
         public double cpuTemperatureC = -1, gpuTemperatureC = -1;
@@ -73,6 +76,31 @@ namespace HumanVision.TestProject.Diagnostics
             return fields.Length == 2 && long.TryParse(fields[0], out long busy) && long.TryParse(fields[1], out long total) &&
                 busy >= 0 && total > 0 && busy <= total ? busy * 100d / total : -1;
         }
+        /// <summary>
+        /// Rockchip rknpu_debugger.c 的 load 节点报告整个设备的驱动统计区间，不能当作本应用占比。
+        /// 三核值分别保留；%2.d 会把零打印为空格，所以空数字百分号是该驱动的合法零值。
+        /// 重复核、缺核、溢出值或其它格式返回空数组，不能用零伪装不可用。
+        /// </summary>
+        public static double[] RknpuCoreLoads(string raw)
+        {
+            string value = (raw ?? "").Trim();
+            const string prefix = "NPU load:";
+            if (!value.StartsWith(prefix, StringComparison.Ordinal)) return Array.Empty<double>();
+            value = value.Substring(prefix.Length).Trim();
+            string[] fields = value.TrimEnd(',').Split(',');
+            if (fields.Length < 1 || fields.Length > 3) return Array.Empty<double>();
+            var result = new double[fields.Length];
+            for (int i = 0; i < fields.Length; i++) {
+                var match = Regex.Match(fields[i].Trim(), fields.Length == 1 && !fields[i].Contains("Core") ?
+                    @"^(?<load>\d+(?:\.\d+)?)?\s*%$" : @"^Core(?<core>[0-2]):\s*(?<load>\d+(?:\.\d+)?)?\s*%$", RegexOptions.CultureInvariant);
+                if (!match.Success || (match.Groups["core"].Success && match.Groups["core"].Value != i.ToString(CultureInfo.InvariantCulture))) return Array.Empty<double>();
+                string number = match.Groups["load"].Value;
+                if (number.Length == 0) result[i] = 0;
+                else if (!double.TryParse(number, NumberStyles.Float, CultureInfo.InvariantCulture, out result[i]) ||
+                    double.IsNaN(result[i]) || double.IsInfinity(result[i]) || result[i] < 0 || result[i] > 100) return Array.Empty<double>();
+            }
+            return result;
+        }
     }
 
     /// <summary>两秒一次后台采样；/proc/sysfs/JNI IO 不进入识别或 Unity 主线程热路径。</summary>
@@ -87,10 +115,13 @@ namespace HumanVision.TestProject.Diagnostics
         private long previousProcess = -1;
         private double previousSeconds;
         private SystemCpuTicks previousSystem = new SystemCpuTicks();
+        private volatile bool neuralActive;
         private readonly DeviceSysfsTelemetry sysfs = new DeviceSysfsTelemetry("/sys/class/devfreq", "/sys/class/thermal", "/sys/class/kgsl/kgsl-3d0");
         public DeviceHardwareSampler(int logicalCores) { cores = Math.Max(1, logicalCores); }
         public void Start() { worker = new Thread(Run) { IsBackground = true, Name = "HV hardware diagnostics" }; worker.Start(); }
         public HardwareSample Read() { lock (gate) return latest; }
+        /// <summary>主线程按真正运行的配置更新；请求失败时沿用原会话，不能按下拉框的请求值标记 NPU 已启用。</summary>
+        public void SetNeuralActive(bool active) { neuralActive = active; }
         private static string ReadFile(string path, out string status)
         {
             try { string raw = File.ReadAllText(path); status = "available"; return raw; }
@@ -103,7 +134,7 @@ namespace HumanVision.TestProject.Diagnostics
 #endif
             try {
                 do {
-                    var value = new HardwareSample { utc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture), logicalCores = cores, elapsed_s = clock.Elapsed.TotalSeconds };
+                    var value = new HardwareSample { utc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture), logicalCores = cores, elapsed_s = clock.Elapsed.TotalSeconds, npuActive = neuralActive };
                     value.intervalSeconds = value.elapsed_s - previousSeconds;
                     try { Capture(value); value.samplerStatus = "completed"; } catch (Exception e) { value.samplerStatus = e.GetType().Name + ": " + e.Message; }
                     previousSeconds = value.elapsed_s;

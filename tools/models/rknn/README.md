@@ -1,6 +1,8 @@
 # RK3588 候选恢复、转换与验证
 
-此目录是离线模型和独立设备工具，尚无可运行的SDK RKNN后端或合格NPU ModelPack。
+此目录是离线模型与独立设备工具。私有 SDK 已接入 backend.rknn 与
+pipeline.yolo.tensor；2026-10-10 用户提供的 RK3588 日志确认 NPU 实际执行。
+这不等于公开分发资格或新优化包的设备性能验收。
 依据：[官方工具](https://github.com/airockchip/rknn-toolkit2)、
 [官方姿态示例](https://github.com/airockchip/rknn_model_zoo/tree/main/examples/yolov8_pose)、
 [SDK接入计划](../../../docs/plans/2026-10-09-rk3588-npu-acceleration.md)。
@@ -116,3 +118,26 @@ HV_RKNN_PROBE_HOST_BINARY=/path/to/compiled/host/probe python -m unittest tests.
 ```
 
 host probe使用Linux g++、相同vendor头和`-std=c++17 -O2 -Wall -Wextra -Werror -ldl`。
+
+## 图绑定混合量化候选（2026-10-10）
+
+使用 `--precision hybrid --calibration calibration.txt --hybrid-config hybrid.json`。
+配置只接受 schema_version=1、实际 source_onnx_sha256 和 ranges 三个字段；
+ranges 是最多64个 `[start_tensor,end_tensor]`，必须是此图真正产出的张量、
+沿图路径存在并且不重复。不能照搬官方示例其它图的节点名称。
+
+```json
+{"schema_version":1,"source_onnx_sha256":"实际64位SHA","ranges":[["实际起点输出","实际终点输出"]]}
+```
+
+工具实际调用 Toolkit2 hybrid_quantization_step1/step2，校验返回码及
+.model/.data/.quantization.cfg 中间件，再执行原 simulator gate。Toolkit 可能
+优化掉源图别名；这种 SDK 端失败必须保留，不能冒充已生成模型。
+2026-10-10 三个导出候选仍未通过原始张量/关节门槛，第四个范围在导出前被
+Toolkit 拒绝，全部不进入设备包。校准来自99个真实视频帧，但单一视频并不
+证明数据代表性。参见 [现场修复报告](../../../docs/reports/2026-10-10-rk3588-field-repair.md)。
+
+`tools/benchmark/rknn_preprocess_probe.cpp` 对比真实旧缓存系数循环与新精确
+NEON 输入预处理，包含四种像素格式及 padded stride；它不执行模型。
+必须先逐字节相同，再报告实际壁钟。OnePlus 的 CPU 预处理速度不能标记为
+RK3588 NPU FPS。native `YoloRgbPreprocess.*` / Python `test_rknn*.py` 是维护入口。

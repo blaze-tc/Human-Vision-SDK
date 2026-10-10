@@ -57,3 +57,13 @@ actual file URLs with `HumanVisionSettingsView.SetBundledVideos`; refresh retain
 an empty custom path resolves the selected item, and external saved paths show the
 custom option. Focused tests: `HumanVisionSettingsDemoTests.ResolutionDropdown` and
 `BundledVideoChoicesSurviveRefreshAndResolveAnEmptyCustomPath`.
+
+SettingsDemo retains its 2D COCO overlay: boxes/joints in pixels use the accepted
+inference/readback dimensions, whereas aspect-fit layout uses preview dimensions.
+CPU/NPU bounds can be 1280x720 with a 1920/4K preview. Hide pre-resize results;
+never compensate by changing normalized joints. Two CPU readbacks may overlap
+with source leases preserved; frame IDs/dimensions stay immutable per slot,
+older completion cannot replace newer submission, and bounded credit admission
+preserves jittered 30 FPS arrivals. `CpuReadbackStats` is a value snapshot with
+bridge-lifetime wall times; readback latency includes GPU queue/Unity callback
+scheduling. Test `InputAdapterTests`, including all four resolutions and transitions.

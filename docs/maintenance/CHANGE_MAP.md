@@ -20,3 +20,6 @@ After focused checks, run the architecture guard.
 | Release runtime | [release guide](RELEASE_GUIDE.md) | gameplay | full release gates |
 
 | Unity gameplay API / UGUI settings | Runtime/HumanVisionSkeletonQueries.cs; Demo/Sdk; Demo/Settings | [guide](../user-guide/UNITY_SDK.md), [settings](../user-guide/SETTINGS_DEMO.md) | HumanVisionSdkQueryTests / HumanVisionSdkLifecycleTests / HumanVisionSdkRuntimeTests / HumanVisionSettingsDemoTests |
+
+| Private NPU pixel preprocessing / hybrid candidates | [tensor pipeline](../../runtime/plugins/pipeline/yolo/README.md), [RKNN tools](../../tools/models/rknn/README.md) | canonical decoder, public ABI, shipping model bytes | YoloRgbPreprocess.*, YoloTensorPipeline.*, test_rknn*.py; actual ARM64 whole-byte oracle |
+| SettingsDemo resolution / CPU-NPU feed | [renderer](../../unity/HumanVisionDemo/Assets/HumanVision/Demo/README.md), VideoPlayerFrameSource, HumanVisionOverlay | model decoding, input-source lifetime | InputAdapterTests; accepted-pixel vs preview geometry; source lease/fence checks |

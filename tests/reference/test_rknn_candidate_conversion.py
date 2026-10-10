@@ -4,6 +4,7 @@ import hashlib
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -43,6 +44,40 @@ class RknnConversionTests(unittest.TestCase):
         self.assertFalse(receipt['numerical_gate_passed'])
         self.assertFalse(receipt['device_performance_verified'])
         self.assertEqual(receipt['target'], 'rk3588')
+
+    def test_hybrid_requires_real_calibration(self):
+        with self.assertRaisesRegex(ValueError, 'calibration'):
+            self.tool().validate_calibration('hybrid', None)
+
+    def test_hybrid_ranges_must_exist_and_follow_graph_edges(self):
+        # Pure graph contract test; this does not simulate vendor inference.
+        node = lambda ins, outs: SimpleNamespace(input=ins, output=outs)
+        graph = SimpleNamespace(node=[node(['image'], ['head']), node(['head'], ['points']),
+                                      node(['image'], ['boxes'])])
+        tool = self.tool()
+        self.assertEqual(tool.validate_hybrid_ranges(graph, [['head', 'points']]), [['head', 'points']])
+        for ranges in [[], [['missing', 'points']], [['points', 'head']],
+                       [['head', 'boxes']], [['head', 'points'], ['head', 'points']],
+                       [['head']], [['image', 'points']]]:
+            with self.assertRaises(ValueError, msg=str(ranges)):
+                tool.validate_hybrid_ranges(graph, ranges)
+
+    def test_hybrid_config_binds_source_and_preserves_candidate_status(self):
+        import json
+        tool = self.tool()
+        graph = SimpleNamespace(node=[SimpleNamespace(input=['image'], output=['head']),
+                                      SimpleNamespace(input=['head'], output=['points'])])
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'hybrid.json'
+            value = dict(schema_version=1, source_onnx_sha256='a'*64, ranges=[['head', 'points']])
+            path.write_text(json.dumps(value), encoding='utf-8')
+            self.assertEqual(tool.read_hybrid_config(path, 'a'*64, graph)[0], value['ranges'])
+            with self.assertRaisesRegex(ValueError, 'source'):
+                tool.read_hybrid_config(path, 'b'*64, graph)
+            value['ignore_accuracy_failure'] = True
+            path.write_text(json.dumps(value), encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'keys'):
+                tool.read_hybrid_config(path, 'a'*64, graph)
 
 
 if __name__ == '__main__':

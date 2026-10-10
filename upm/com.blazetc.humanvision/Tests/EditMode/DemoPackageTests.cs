@@ -26,7 +26,10 @@ namespace HumanVision.Tests
         {
             runtime = Path.Combine(Application.streamingAssetsPath, "HumanVision", "Runtime");
             index = Path.Combine(runtime, "index.json"); receipt = Path.Combine(runtime, "staged-runtime.json");
-            if (File.Exists(receipt)) File.Delete(receipt);
+            // Installer fixtures replace the whole runtime index. Never remove a
+            // real application's staged receipt or overwrite its private NPU assets.
+            // Run this class in the disposable package-import project instead.
+            if (File.Exists(receipt)) Assert.Ignore("Installer mutation fixtures require a disposable project without a staged-runtime receipt.");
             Prepare(); before = File.ReadAllText(index);
         }
         [TearDown] public void TearDown()

@@ -19,12 +19,14 @@ namespace HumanVision.TestProject.Diagnostics
     /// </summary>
     public sealed class DeviceSysfsTelemetry
     {
-        private readonly string devfreqRoot, thermalRoot, kgslRoot;
-        private string[] gpuNodes = Array.Empty<string>(), thermalNodes = Array.Empty<string>();
+        private readonly string devfreqRoot, thermalRoot, kgslRoot, npuDebugRoot, npuProcRoot;
+        private string[] gpuNodes = Array.Empty<string>(), thermalNodes = Array.Empty<string>(), npuNodes = Array.Empty<string>();
         private string gpuDiscovery = "not scanned", thermalDiscovery = "not scanned";
         private DateTime nextDiscovery = DateTime.MinValue;
         public DeviceSysfsTelemetry(string devfreqRoot, string thermalRoot, string kgslRoot)
-        { this.devfreqRoot = devfreqRoot; this.thermalRoot = thermalRoot; this.kgslRoot = kgslRoot; }
+            : this(devfreqRoot, thermalRoot, kgslRoot, "/sys/kernel/debug/rknpu", "/proc/debug/rknpu") { }
+        public DeviceSysfsTelemetry(string devfreqRoot, string thermalRoot, string kgslRoot, string npuDebugRoot, string npuProcRoot)
+        { this.devfreqRoot = devfreqRoot; this.thermalRoot = thermalRoot; this.kgslRoot = kgslRoot; this.npuDebugRoot = npuDebugRoot; this.npuProcRoot = npuProcRoot; }
 
         private static string Read(string path, out string status)
         {
@@ -43,9 +45,54 @@ namespace HumanVision.TestProject.Diagnostics
             if (DateTime.UtcNow >= nextDiscovery) {
                 gpuNodes = Discover(devfreqRoot, p => { string n = Path.GetFileName(p).ToLowerInvariant(); return n.Contains("gpu") || n.Contains("mali"); }, out gpuDiscovery);
                 thermalNodes = Discover(thermalRoot, p => Path.GetFileName(p).StartsWith("thermal_zone", StringComparison.Ordinal), out thermalDiscovery);
+                npuNodes = Discover(devfreqRoot, p => Path.GetFileName(p).ToLowerInvariant().Contains("npu"), out _);
                 nextDiscovery = DateTime.UtcNow.AddSeconds(30); // 低频重新发现；不逐帧扫描设备文件树。
             }
-            CaptureGpu(sample); CaptureThermal(sample);
+            CaptureGpu(sample); CaptureNpu(sample); CaptureThermal(sample);
+        }
+        private void CaptureNpu(HardwareSample sample)
+        {
+            var failures = new List<string>();
+            // 只读真实 BSP debug/proc 节点。文件不可访问时保留路径和错误，不申请 root。
+            foreach (string node in new[] { npuDebugRoot, npuProcRoot }.Distinct()) {
+                string path = Path.Combine(node, "load"), raw = Read(path, out string status);
+                double[] loads = HardwareMetrics.RknpuCoreLoads(raw);
+                CaptureNpuClock(sample, Path.Combine(node, "freq"), "");
+                if (loads.Length > 0) {
+                    sample.npuSource = path; sample.npuCorePercent = loads; sample.npuPercent = loads.Average();
+                    sample.npuStatus = "available; whole device driver interval; arithmetic core mean; raw=" + raw;
+                    return;
+                }
+                failures.Add(path + ": " + (status == "available" ? "invalid driver load format: " + raw : status));
+            }
+            // 部分 BSP 仅开放 devfreq；该负载没有逐核值，不能推测三核各自占比。
+            foreach (string node in npuNodes) {
+                string path = Path.Combine(node, "load"), raw = Read(path, out string status);
+                CaptureNpuClock(sample, Path.Combine(node, "cur_freq"), raw);
+                double load = HardwareMetrics.DevfreqLoadPercent(raw);
+                if (load >= 0) {
+                    sample.npuSource = path; sample.npuPercent = load;
+                    sample.npuStatus = "available; whole device devfreq interval; per-core unavailable; raw=" + raw;
+                    return;
+                }
+                failures.Add(path + ": " + (status == "available" ? "invalid devfreq load: " + raw : status));
+            }
+            sample.npuSource = npuDebugRoot + "; " + npuProcRoot;
+            sample.npuStatus = "unavailable; " + string.Join("; ", failures);
+        }
+        private static void CaptureNpuClock(HardwareSample sample, string path, string loadRaw)
+        {
+            if (sample.npuFrequencyMHz >= 0) return;
+            string raw = Read(path, out string status);
+            if (long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out long hz) && hz > 0) {
+                sample.npuFrequencyMHz = hz / 1000000d; sample.npuFrequencySource = path;
+                sample.npuFrequencyStatus = "available; Hz";
+            } else {
+                double embedded = HardwareMetrics.DevfreqFrequencyMHz(loadRaw);
+                sample.npuFrequencySource = path;
+                sample.npuFrequencyStatus = "unavailable; " + status + "; raw=" + raw;
+                if (embedded >= 0) { sample.npuFrequencyMHz = embedded; sample.npuFrequencySource = Path.Combine(Path.GetDirectoryName(path), "load"); sample.npuFrequencyStatus = "available; Hz embedded in load"; }
+            }
         }
         private void CaptureGpu(HardwareSample sample)
         {
@@ -107,6 +154,7 @@ namespace HumanVision.TestProject.Diagnostics
                     value.temperatureC = milli / 1000d; value.status = "available; millidegrees Celsius";
                     string lower = type.ToLowerInvariant();
                     if (lower.Contains("gpu")) sample.gpuTemperatureC = Math.Max(sample.gpuTemperatureC, value.temperatureC);
+                    if (lower.Contains("npu")) sample.npuTemperatureC = Math.Max(sample.npuTemperatureC, value.temperatureC);
                     if (lower.Contains("cpu") || lower.Contains("bigcore") || lower.Contains("littlecore") || lower.Contains("soc"))
                         sample.cpuTemperatureC = Math.Max(sample.cpuTemperatureC, value.temperatureC);
                 } else if (status == "available") value.status = "invalid type/temp: " + typeStatus + "; raw=" + raw;

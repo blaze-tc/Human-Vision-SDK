@@ -1,6 +1,47 @@
-# 2026-10-10 active follow-up: OnePlus inference execution optimization
+# 2026-10-10 completed software follow-up: RK3588 field repair / NPU preparation
 
-Sole active plan: docs/plans/2026-10-10-oneplus-inference-throughput.md.
+Completed verifiable scope: docs/plans/2026-10-10-rknn-offline-optimization.md.
+Report: docs/reports/2026-10-10-rk3588-field-repair.md.
+User RK3588 logs prove backend.rknn execution (runtime2.3.2/driver0.9.2/core7):
+720p publication13.763/s, model completion5.690/s, backend47.372ms/SDK61.626ms.
+Actual decoder consumes4K H264. Preview and bounded CPU pixel dimensions differed,
+causing HD/4K overlay scaling errors. Fix accepted-pixel mapping and resize fence;
+CPU/NPU readbacks overlap within2 slots, preserve exact leases and reject stale
+callbacks;30FPS credit policy removes alternating-arrival deadline loss.
+Unified GPU acceptance bypasses CPU-only readiness; real final APK reverified.
+Exact identity/2:1/720p5:2 ARM64 NEON preprocessing preserves all12 whole-byte
+fixtures. OnePlus720pRGBA1.33055->0.330519ms is preprocessing only, not NPU FPS.
+Three actual hybrid conversions failed unchanged numerical gates, none deployed.
+
+Verification: native414/414; ARM64 API26 build;48 C exports retained; RKNN Linux
+reference25/25; Python conversion6/6 and log analyzer5/5; Unity input16/16,
+NPU contracts20/20, diagnostic hardware11/11 and session12/12; architecture,
+public surface and package Git newline guards PASS. Editor errors0.
+Unity full attempt337 pass/65 fail/32 skip is NOT a passing full release gate:
+fixture isolation/environment/defaults were unsuitable and installer mutated
+private Runtime index.43 original files SHA revalidated/restored; installer
+fixtures now skip staged application projects (8 skipped, not8 passed).
+
+Final private APK build Succeeded/errors0/warnings8;282648322 bytes;
+SHA256 d98d31d8b50304ee687299899fca1a59034ff74f1985c4cbfedefb9ed487ea84.
+Native eb7e1141c4409a16dba1cef8580caeea8b4ed2f93374f0567f6c07daf030e353;
+APK's43 indexed files verified. Final OnePlus CPU RTSP4K-source640/720/1080/4K
+matrix: real skeleton accepted/aligned;24.293-24.876 input/s,6.015-6.589 fresh
+body/s. Final Vulkan video150s:20.536 completed/19.661 fresh body/s, thermal3;
+RTSP60s17.701 completed/16.794 fresh body/s, thermal3. These are functional/hot
+regressions, not stable20-25 acceptance or evidence of an equal-temperature gain.
+Same APK after natural idle thermal0, video150s:24.177 completed/23.243 fresh
+body/s,88.976% body windows>=20, minimum17.741; thermal3 returns at the tail.
+Cold/hot evidence is retained; still no sustained20-25 acceptance.
+Original app preferences restored byte-exact; original server/VLC preserved.
+CPU readback and NPU stage/hardware scopes are documented and analyzer updated.
+Private RKNN vendor/models/APK remain outside public Release distribution.
+**Open physical gate:** post-change RK3588 throughput/driver performance is not
+measured; OnePlus cannot execute or certify RK3588 NPU. No invented FPS promise.
+
+# 2026-10-10 completed follow-up: OnePlus inference execution optimization
+
+Completed plan: docs/plans/2026-10-10-oneplus-inference-throughput.md.
 User asks to continue true inference FPS optimization. Winograd23 rejected after
 two interleaved real tensor trials per size (5.9%/7.0% slower). Bounded256K
 private dispatch candidate passed13 numerical fixtures and actual OnePlus
