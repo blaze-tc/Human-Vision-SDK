@@ -16,7 +16,7 @@ int main(int argc,char** argv) {
  const int w=std::atoi(argv[4]),h=std::atoi(argv[5]),threads=std::atoi(argv[7]),runs=std::atoi(argv[8]);
  const std::string mode=argv[6];const bool gpu=mode!="cpu";
  if(w<32||h<32||w>960||h>640||w%32||h%32||threads<1||threads>8||runs<1||runs>200||
-    (mode!="cpu"&&mode!="baseline"&&mode!="sgemm"&&mode!="no-local-memory"))return 2;
+    (mode!="cpu"&&mode!="baseline"&&mode!="sgemm"&&mode!="no-local-memory"&&mode!="winograd23"))return 2;
  // Declare lifetime before Net/VkMat so all tensors/network die before reclaim.
  struct GpuLifetime {
   bool enabled;const ncnn::VulkanDevice* device=nullptr;
@@ -35,6 +35,9 @@ int main(int argc,char** argv) {
  net.opt.use_fp16_packed=false;net.opt.use_fp16_storage=false;net.opt.use_fp16_arithmetic=false;
  net.opt.use_subgroup_ops=false;net.opt.use_packing_layout=true;
  net.opt.use_winograd_convolution=mode!="sgemm";
+ // Isolate the official 2x2-output-tile Winograd path. This keeps the FP32
+ // tensor/model contract; it is a device experiment, not a shipping default.
+ net.opt.use_winograd43_convolution=mode!="winograd23";
  net.opt.use_sgemm_convolution=true;net.opt.use_shader_local_memory=mode!="no-local-memory";
  net.opt.blob_vkallocator=blob;net.opt.workspace_vkallocator=blob;net.opt.staging_vkallocator=staging;
  if(net.load_param(argv[1])||net.load_model(argv[2]))return 4;
@@ -63,6 +66,6 @@ int main(int argc,char** argv) {
   if(!f||std::fwrite(v,sizeof(float),size_t(columns)*rows,f)!=size_t(columns)*rows)return 9;std::fclose(f);
  }
  double sum=0;for(double ms:times)sum+=ms;std::sort(times.begin(),times.end());
- std::printf("{\"mode\":\"%s\",\"threads\":%d,\"mean_ms\":%.6f,\"p95_ms\":%.6f,\"max_ms\":%.6f}\n",mode.c_str(),threads,sum/times.size(),times[(times.size()-1)*95/100],times.back());
+ std::printf("{\"mode\":\"%s\",\"threads\":%d,\"winograd23\":%s,\"winograd43\":%s,\"mean_ms\":%.6f,\"p95_ms\":%.6f,\"max_ms\":%.6f}\n",mode.c_str(),threads,net.opt.use_winograd23_convolution?"true":"false",net.opt.use_winograd43_convolution?"true":"false",sum/times.size(),times[(times.size()-1)*95/100],times.back());
  return 0;
 }

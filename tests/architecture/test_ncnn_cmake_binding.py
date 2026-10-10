@@ -127,13 +127,18 @@ class NcnnCmakeBindingTests(unittest.TestCase):
         return path
 
     def configure(self, build, ncnn_root, stale_dir=None, extra_args=None):
+        # These tests configure imported-target binding; they never execute a
+        # model or link the fake receipt archives. Keep ORT include discovery
+        # inside the fixture so a missing local dependency cannot mask the gate.
+        ort_fixture = build.parent / "ort-fixture"
+        (ort_fixture / "include").mkdir(parents=True, exist_ok=True)
         command = [str(CMAKE), "--fresh", "-S", str(ROOT), "-B", str(build), "-G", "Ninja",
             f"-DCMAKE_MAKE_PROGRAM={NINJA}",
             f"-DCMAKE_TOOLCHAIN_FILE={NDK / 'build/cmake/android.toolchain.cmake'}",
             "-DANDROID_ABI=arm64-v8a", "-DANDROID_PLATFORM=android-26", "-DANDROID_STL=c++_static",
             "-DCMAKE_BUILD_TYPE=Release", "-DBUILD_TESTING=OFF", "-DHV_ENABLE_RTSP=ON",
             f"-DHV_NCNN_ROOT={ncnn_root}",
-            f"-DHV_ONNXRUNTIME_ROOT={ROOT / 'out/live-deps/ort-android'}",
+            f"-DHV_ONNXRUNTIME_ROOT={ort_fixture}",
             f"-DHV_FFMPEG_INCLUDE={ROOT / 'out/live-deps/ffmpeg-headers'}",
             f"-DHV_FFMPEG_LIB_DIR={ROOT / 'out/live-deps/ffmpeg-android'}",
         ]
@@ -141,6 +146,27 @@ class NcnnCmakeBindingTests(unittest.TestCase):
             command.append(f"-Dncnn_DIR={stale_dir}")
         command.extend(extra_args or [])
         return subprocess.run(command, capture_output=True, text=True, encoding="utf-8")
+
+    def test_dispatch_experiment_requires_private_receipt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            temp = Path(temp)
+            expected = self.make_root(temp / "expected")
+            result = self.configure(temp / "build", expected, extra_args=[
+                "-DHV_ANDROID_NCNN_DISPATCH_EXPERIMENT=ON", "-DHV_ANDROID_TOPDOWN_EVAL_TRACE=ON"])
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("Dispatch experiment requires a private copied ncnn receipt", result.stdout + result.stderr)
+
+    def test_dispatch_experiment_cannot_enter_normal_build(self):
+        with tempfile.TemporaryDirectory() as temp:
+            temp = Path(temp)
+            expected = self.make_root(temp / "expected")
+            path = expected.parent / "build-receipt.json"
+            value = json.loads(path.read_text(encoding="utf-8"))
+            value["dispatch_experiment"] = {"kind": "hv-ncnn-private-dispatch-experiment-v1", "pending_dispatch_budget": 262144}
+            path.write_text(json.dumps(value), encoding="utf-8")
+            result = self.configure(temp / "build", expected)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("Private dispatch ncnn is prohibited without explicit experiment flag", result.stdout + result.stderr)
 
     def test_stale_ncnn_dir_is_reset_to_verified_root(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -1,3 +1,29 @@
+# 2026-10-10 active follow-up: OnePlus inference execution optimization
+
+Sole active plan: docs/plans/2026-10-10-oneplus-inference-throughput.md.
+User asks to continue true inference FPS optimization. Winograd23 rejected after
+two interleaved real tensor trials per size (5.9%/7.0% slower). Bounded256K
+private dispatch candidate passed13 numerical fixtures and actual OnePlus
+SettingsDemo300s Low/MaxBodies4: fresh body24.478/s,273/273 warmed windows>=20,
+minimum21.621; original before/after23.403/22.716. Mixed thermal0/3 is recorded,
+not a constant speedup claim. Backend38.828->33.884ms. Report:
+docs/reports/2026-10-10-oneplus-inference-throughput.md.
+Device/precision scoped candidate keeps original decisions for other GPUs;
+native411/411, policy3/3, sourceguard5/5, CMake9/9, architecture PASS;
+16 fixed numerical fixtures PASS, including960. Final scoped APK300s PASS:
+fresh body24.507/s,273/273 warmed windows>=20, minimum22.610,
+backend33.461ms, no pipeline/data errors. CPU60s functional regression:
+fresh body7.506/s, backend125.888ms, thermal3; not a CPU speedup claim.
+Current camera RTSP120s: publication/completion14.427/s, backend47.918ms,
+thermal0, no pipeline/data errors; lacks sustained people, not body FPS acceptance.
+Conversion completion polling mean23.198ms includes render scheduling; source
+publication needs further paired sender/decode/conversion measurement before
+attributing RTSP stalls. Unity Editor errors0; exact original preferences restored.
+Sealed private install configure/build PASS. Bounded OnePlus follow-up completed;
+private source/tooling and maintenance/performance docs verified for commit.
+Shipping UPM native remains original; explicit private-build
+flag/receipt are mandatory. No RK3588/NPU or full-hand/per-person30 claim.
+
 # 2026-10-10 user clarification: improve actual skeleton inference FPS
 
 The user confirms skeleton continuity is adequate; the requested optimization

@@ -8,6 +8,7 @@ After focused checks, run the architecture guard.
 | Swap RTMO weights or compatible model | [pack](../../modelpacks/rtmo-t-416/README.md), then profile | Unity, Host, tracker | RtmoPlugin, ModelPack |
 | Add pose algorithm | [pipeline](../../runtime/plugins/pipeline/rtmo/README.md) | Unity, common tracker | new plugin fixture + RuntimeSession |
 | Add RKNN or another accelerator | [backend](../../runtime/plugins/backend/ort/README.md) | Unity, pose decoder | BackendPlugin, BackendFactory |
+| Qualify private NCNN command batching | [NCNN backend](../../runtime/plugins/backend/ncnn/README.md), tools/benchmark/ncnn_dispatch_experiment.py | weights, public ABI, input lifecycle | NcnnDispatchBudget; test_ncnn_dispatch_experiment.py; test_ncnn_cmake_binding.py; real fresh-result capture |
 | Change identity association | [services](../../runtime/services/README.md), body_services.cpp | pipeline decoder | CommonServices |
 | Change smoothing or prediction | [services](../../runtime/services/README.md), Sample/Observe | pipeline decoder | CommonServices |
 | Change derived structural joints | [services](../../runtime/services/README.md), Derive | gameplay, observed model indices | CommonServices |

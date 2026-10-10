@@ -52,11 +52,48 @@ hv_mobile_ncnn_probe model.param model.bin input.fp32 width height mode threads 
 This probe is limited to the existing raw YOLO pose contract, input in0 and
 out0/out1, columns65/51. Exact aligned CHW RGB float32 input uses the model's
 1/255 normalization and114 letterbox. Modes cpu, baseline, sgemm and
-no-local-memory keep FP32 storage/arithmetic, disable subgroups, and preserve
+no-local-memory and winograd23 keep FP32 storage/arithmetic, disable subgroups, and preserve
 internal packing. GPU measurements include output download; CPU measurements
 use the same tensors. If the pinned NCNN build disables OpenMP, the CPU thread
 parameter cannot create an OpenMP pool; report that limitation explicitly.
 GPU allocator/tensor/network lifetime is owned and retired on every return.
+
+`winograd23` disables only the official Winograd43 convolution option; FP32
+weights, tensors and output boundaries stay fixed. The JSON result reports the
+effective Winograd23/43 flags. It is an isolated candidate, not a profile default.
+
+For a separate bounded command-batching experiment, use
+`../ncnn_dispatch_experiment.py --source VERIFIED_CACHE --archive PINNED_ZIP
+--output out/NEW_EXPERIMENT --adreno-only`. This validates every cached source file against
+the complete archive/audited patch chain, copies it into a new directory, and
+changes the fallback dispatch budget to 256K only for the qualified Adreno660
+FP32 option combination. Other devices/precisions keep upstream decisions.
+The copied `hv_dispatch_budget.h` is separately hashed; its C++11-compatible
+policy has real native unit tests. Omitting --adreno-only is a deliberately
+broader private probe for isolated comparison, never a release default.
+The preparation preserves CPU-transition
+and final GPU waits, error handling and device score. The receipt explicitly
+sets shipping_eligible=false. Build with the pinned flags and capture actual
+library hashes; a real SDK build requires an explicit
+`HV_ANDROID_NCNN_DISPATCH_EXPERIMENT=ON` and that private receipt. Normal builds
+reject this dependency. Never overwrite the audited cache or relabel the private
+copy as the original pinned library. This experiment is not RK3588 acceptance.
+
+Configure `out/NEW_EXPERIMENT/source` into `out/NEW_EXPERIMENT/build`, using the
+exact flags in third_party/ncnn/provenance.json, ARM64/API26 and install prefix
+`out/NEW_EXPERIMENT/install`. After building target install, run:
+
+```powershell
+py -3.13 tools/benchmark/ncnn_dispatch_experiment.py --seal-install out/NEW_EXPERIMENT
+```
+
+Sealing checks the complete copied source manifest, actual CMake flags/install
+prefix, static archive format and all seven library hashes, then writes
+build-receipt.json. Pass the resulting install to the SDK's HV_NCNN_ROOT and
+enable both HV_ANDROID_TOPDOWN_EVAL_TRACE and
+HV_ANDROID_NCNN_DISPATCH_EXPERIMENT explicitly. Never hand-edit the receipt to
+make an unverified library pass. The measured OnePlus result is in
+[the throughput report](../../../docs/reports/2026-10-10-oneplus-inference-throughput.md).
 
 ## Acceptance and results
 
