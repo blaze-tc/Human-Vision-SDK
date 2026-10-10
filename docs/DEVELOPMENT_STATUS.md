@@ -1,3 +1,51 @@
+# 2026-10-10 Tasks VIDEO probe complete; UnityPlugin comparison remains open
+
+User-approved disposable comparison executed on connected OnePlus LE2120 /
+SM8350 / Adreno660 / Android14. Plan: docs/plans/2026-10-10-mediapipe-comparison.md.
+Report: docs/reports/2026-10-10-mediapipe-oneplus-comparison.md. No production SDK,
+model, native, ABI or installed SDK APK changes in this follow-up.
+
+Pinned Tasks1.1.0 + official Lite/Full float16/1; eight real CPU/GPU capacity1/4
+VIDEO cases, two unpaced single-person cases and a raw GPU smoke completed.
+Same user's45-65s clip1024x576/25fps/seven visible people; capacities are not
+one/four-visible-person acceptance. All500 PNG/RGBA pixels match byte-for-byte.
+Separate input paths: raw RGBA versus SDK MP4; no universal speedup factor.
+MediaPipe fresh body1:13.600-17.360/s, body4:4.839-8.839/s, thermal0; GPU native
+Tensor write synchronization error remains recorded, not certified resolved.
+
+Fixed SDK APK1efc actual clip capacity1/4 CPU/Vulkan and independent Vulkan1
+retest completed. Vulkan4 fresh body22.482/s,95.3125% all warmed windows>=20,
+lowest19.661; target still not fully stable. Vulkan1 completed23.519/s but fresh
+body10.200/s; retest23.833/11.972. CPU1 completed14.837/body8.413, CPU4 both7.121
+and thermal3; no equal-temperature CPU speedup claim. Vulkan4 sparse native
+extract/download33.939ms of40.846ms, includes model GPU execution/waits/download,
+not pure copy or a layer profile. Returned body/identity continuity is separate
+from compute throughput and complete per-person joint/hand acceptance.
+
+Capacity1 empty native/public counts agree. Existing-source geometric probe
+verified capacity1 fresh1->0->1 for A->B->A observations; capacity2 accepts B.
+Candidate truncation before stable track association is a reproduced mechanism
+consistent with intermittent empties, not a proof of every field empty result.
+Priority next gates: candidate/identity continuity and actual homuler UnityPlugin
+async input/display comparison. Current multi-person Vulkan remains the baseline;
+MediaPipe CPU/GPU route selection is open, not decided by this Bitmap VIDEO probe.
+User reports the plugin skeleton is smoother. Pinned source review confirms
+current sample defaults LIVE_STREAM/CPUAsync/one pose, independent input preview;
+GPU texture input is optional and GLES3-specific. Old v0.14.4 Pose Tracking uses
+smoothing and FlowLimiter. No actual UnityPlugin APK performance measured here.
+See report for pinned source identities and differing Unity/MediaPipe versions.
+
+Test-first analyzer RED/GREEN6/6, ARM64 probe build/install hash match, existing
+BodyServices diagnostic build/run, architecture/public-surface PASS, actual
+Unity Editor compile errors0. Four SDK captures report one incomplete hardware
+tail each; analyzer explicitly excludes/reports them. No fabricated passing
+full regression or hardware acceptance. Exact SDK preferences restored each
+capture; RtspServer/VLC/Unity preserved. Full JSONL audit additionally reports
+the corresponding four events tail fragments; timings/skeleton JSONL complete.
+Local complete evidence:
+Human-Vision-SDK-Test/DiagnosticsVerification/MediaPipe-Comparison-20261010/.
+RK3588/NPU/full-hand and production integration gates remain open; no Release.
+
 # 2026-10-10 SettingsDemo final device completion
 
 Computer camera preset now resolves empty IP from the baked build computer;
