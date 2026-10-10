@@ -115,7 +115,11 @@ namespace HumanVision.Demo
                                 if (Application.platform != RuntimePlatform.Android) next.SelectAcceleration(next.UseWindowsCpu ? HumanVisionAccelerationMode.Cpu : HumanVisionAccelerationMode.Graphics); break;
                             case "DetailedLogs": next.DetailedLogs = !next.DetailedLogs; break;
                             case "ResetQuality": next.InputQuality = ModelInputQuality.Medium; break;
-                            case "BuildRtsp": case "BuildRtspVideo": next.Mode.RtspUrl = HumanVisionRtspComputerHost.BuildUrl(next.Mode.RtspComputerHost, command == "BuildRtsp"); break;
+                            case "BuildRtsp": case "BuildRtspVideo":
+                                // 手动电脑 IP 优先；留空时读取构建时写入场景的电脑地址。
+                                // 不从手机网卡推断推流电脑，且只修改草稿，Apply 才打开输入。
+                                next.Mode.RtspComputerHost = HumanVisionRtspComputerHost.Resolve(gameObject.scene, next.Mode.RtspComputerHost);
+                                next.Mode.RtspUrl = HumanVisionRtspComputerHost.BuildUrl(next.Mode.RtspComputerHost, command == "BuildRtsp"); break;
                             default: return;
                         }
                         next.Validate(); draft = next; break;

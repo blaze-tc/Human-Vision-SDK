@@ -1,5 +1,16 @@
 # Symptom-first debugging
 
+## OnePlus performance follow-up
+
+See [the measured CPU/Vulkan report](../reports/2026-10-09-oneplus-performance.md).
+Android ORT CPU uses a bounded intra-op pool (up to four); accelerator pools
+remain unchanged. Capture the PID-scoped HumanVisionCpu initialization line in
+native logs before interpreting CPU usage. Distinguish Low512x288 from
+Medium640x384 and RTSP published dimensions; compare source/generation groups
+after warmup. Completion polling reads a signaled Vulkan fence without waiting,
+while cache/pipeline destruction remains on render callbacks. A root-suite-only
+UnitySkills test result is zero executed leaf tests, not passing evidence.
+
 | Symptom | First evidence | Inspect / focused test | Likely cause; do not change first |
 |---|---|---|---|
 | Unity FPS drops | render FPS, allocations, GPU readback | Unity Demo/Runtime; managed tests | main-thread copies or per-object drawing; not model weights |

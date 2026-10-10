@@ -189,7 +189,10 @@ bool InitializeResources(){
  sem.pNext=&export_info;if(api.CreateSemaphore(d,&sem,nullptr,&release_semaphore)!=VK_SUCCESS)return failed();
  initialized=true;return true;
 }
-void Poll(){
+// Caller holds mutex. Query the real fence without waiting or submitting work.
+// This part is also safe at a main-thread metadata read: no Unity API calls or
+// Vulkan resource destruction. A not-ready/error fence keeps its image leased.
+void PollConversionCompletion(){
  if(inflight){auto status=api.GetFenceStatus(api.unity.device,fence);if(status==VK_NOT_READY)return;if(status!=VK_SUCCESS){Error("poll conversion GPU fence",status);return;}
   completed_token=token;++counters.completes;inflight=false;
   if(production){
@@ -205,6 +208,10 @@ void Poll(){
   if(ShouldLogInputFrame(token,!production))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","gpu_color_completed sequence=%llu generation=%llu pts_us=%lld received_us=%lld decoded_us=%lld submitted_us=%lld converted_us=%lld cpu_image_readbacks=0 target_width=%u target_height=%u applied_rotation=%d applied_mirror=%d source_matrix=%u source_range=%u transfer=%u primaries=%u color_space=%u",(unsigned long long)token,(unsigned long long)active->generation,(long long)active->pts_us,(long long)active->received_us,(long long)active->decoded_us,(long long)diagnostic_submitted_us,(long long)NowUs(),target_width,target_height,rotation,mirror,active->matrix,active->color_range,active->transfer,active->primaries,0u);
   ReturnImage(active);retired.notify_all();
  }
+}
+void Poll(){
+ PollConversionCompletion();
+ if(inflight)return;
  BufferIdentity removed;while(buffer_registry.TakeRemoved(removed))cache.Remove(removed.buffer);
  if(closing)cache.RemoveAll();cache.Collect();if(production)frame_ring.Collect(completed_token);
 }
@@ -344,7 +351,16 @@ HV_INPUT_API int HV_INPUT_CALL HV_Input_BindGpuTargets(HV_InputHandle h,void* co
  hvinput::frame_ring.Begin(generation);hvinput::frame_ring.Collect(hvinput::completed_token);hvinput::published_frame={};return 0;
 }
 HV_INPUT_API int HV_INPUT_CALL HV_Input_GetGpuGeometry(HV_InputHandle h,uint32_t* w,uint32_t* he,uint64_t* g){std::lock_guard<std::mutex> lock(hvinput::mutex);if(!h||h!=hvinput::owner||!w||!he||!g)return HV_INPUT_INVALID;if(!hvinput::pending)return HV_INPUT_NO_FRAME;*w=hvinput::pending->crop_right-hvinput::pending->crop_left;*he=hvinput::pending->crop_bottom-hvinput::pending->crop_top;*g=hvinput::pending->generation;return 0;}
-HV_INPUT_API int HV_INPUT_CALL HV_Input_PollGpuFrame(HV_InputHandle h,uint64_t after,HV_InputGpuFrame* f){std::lock_guard<std::mutex> lock(hvinput::mutex);if(!h||h!=hvinput::owner||!f)return HV_INPUT_INVALID;if(hvinput::closing||hvinput::published_frame.frame.sequence<=after||!hvinput::published_frame.frame.sequence)return HV_INPUT_NO_FRAME;*f=hvinput::published_frame;hvinput::frame_ring.Observe(f->slot,f->frame.sequence);return 0;}
+HV_INPUT_API int HV_INPUT_CALL HV_Input_PollGpuFrame(HV_InputHandle h,uint64_t after,HV_InputGpuFrame* f){
+ std::lock_guard<std::mutex> lock(hvinput::mutex);
+ if(!h||h!=hvinput::owner||!f)return HV_INPUT_INVALID;
+ // Previously the main thread could only see a completion polled at the next
+ // render callback, adding another Unity frame before preview/submission. Read
+ // an already-signaled fence here; unfinished GPU work still returns NO_FRAME.
+ if(hvinput::initialized)hvinput::PollConversionCompletion();
+ if(hvinput::closing||hvinput::published_frame.frame.sequence<=after||!hvinput::published_frame.frame.sequence)return HV_INPUT_NO_FRAME;
+ *f=hvinput::published_frame;hvinput::frame_ring.Observe(f->slot,f->frame.sequence);return 0;
+}
 HV_INPUT_API int HV_INPUT_CALL HV_Input_ReleaseGpuSlot(HV_InputHandle h,uint32_t slot,uint64_t sequence){std::lock_guard<std::mutex> lock(hvinput::mutex);if(!h||h!=hvinput::owner||slot>=3)return HV_INPUT_INVALID;hvinput::frame_ring.Release(slot,sequence);hvinput::frame_ring.Collect(hvinput::completed_token);return 0;}
 HV_INPUT_API int HV_INPUT_CALL HV_Input_GpuRetired(HV_InputHandle h){return hvinput::InputGpuRetired(h)?1:0;}
 HV_INPUT_API int HV_INPUT_CALL HV_Input_GpuCopyActive(HV_InputHandle h){std::lock_guard<std::mutex> lock(hvinput::mutex);return h==hvinput::owner&&hvinput::active&&hvinput::inflight;}

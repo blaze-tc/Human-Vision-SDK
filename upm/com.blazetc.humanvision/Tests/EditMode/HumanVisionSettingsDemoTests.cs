@@ -82,6 +82,23 @@ namespace HumanVision.Tests
             view.SetBusy(true);
             foreach (var button in view.GetComponentsInChildren<Button>(true)) Assert.That(button.interactable, Is.EqualTo(button.name == "Stop"));
         }
+        [TestCase("", true, "192.168.8.40", "videodevice")]
+        [TestCase("10.3.4.5", true, "10.3.4.5", "videodevice")]
+        [TestCase("", false, "192.168.8.40", "video-1.mp4")]
+        public void SettingsRtspPresetUsesBakedComputerWhenHostIsEmpty(string manual, bool camera, string expectedHost, string path)
+        {
+            root = new GameObject("settings computer host");
+            root.AddComponent<HumanVisionRtspComputerHost>().Configure("192.168.8.40");
+            var sdk = root.AddComponent<HumanVisionSdk>(); sdk.InitializeOnStart = false;
+            var view = HumanVisionSettingsView.Create(root.transform);
+            var controller = root.AddComponent<HumanVisionSettingsController>(); controller.Configure(sdk, view);
+            var data = new HumanVisionSettingsData { SourceKind = HumanVision.Input.InputKind.Rtsp };
+            data.Rtsp.RtspComputerHost = manual; view.Bind(controller); view.ShowDraft(data);
+            controller.Execute(camera ? "BuildRtsp" : "BuildRtspVideo");
+            Assert.That(view.Draft.Rtsp.RtspComputerHost, Is.EqualTo(expectedHost));
+            Assert.That(view.Draft.Rtsp.RtspUrl, Is.EqualTo("rtsp://" + expectedHost + ":554/" + path));
+            Assert.False(sdk.IsInitialized); Assert.Null(controller.Active);
+        }
         [Test] public void InvalidUiFieldDoesNotReplaceDraftOrInitializeSdk()
         {
             root = new GameObject("invalid settings"); var sdk = root.AddComponent<HumanVisionSdk>(); sdk.InitializeOnStart = false;

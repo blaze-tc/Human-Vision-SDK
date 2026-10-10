@@ -24,7 +24,7 @@
   "Runtime/Plugins/Android/arm64-v8a/libavcodec.so": "6808f8e77223680a1e2ac195178032300e55d950dede4aa2fa91009987d96296",
   "Runtime/Plugins/Android/arm64-v8a/libavformat.so": "cb9b15ab4c136d40d67b32fbf31f4c155c150e7d43c37174307503595905abd7",
   "Runtime/Plugins/Android/arm64-v8a/libavutil.so": "92136c3c0535b9817f6f72d45d272476ac83d5211785c7e1f06f7ec65954d9ef",
-  "Runtime/Plugins/Android/arm64-v8a/libhumanvision_input.so": "d3968a4f12d1cf7882c04312c7f0ad095c4a18b894846e2beafb758e9f582628",
+  "Runtime/Plugins/Android/arm64-v8a/libhumanvision_input.so": "5ad008563b23ef5281c7387800cb47bd79f7542de85cc7b493e70714a8b6c2b3",
   "Runtime/Plugins/Android/arm64-v8a/libswresample.so": "8cadca3419da79d3919a9498bee8619696b15faba03cf43bbcfda0a1aec7b5a3",
   "Runtime/Plugins/Android/arm64-v8a/libswscale.so": "aaae7e3a11b68c0306056fa3d463d94069d250f9a1f83dd1f67a5e9074d17aff",
   "Runtime/Plugins/x86_64/avcodec-61.dll": "f0c5373f00734d0090471c75a49caf282912e6b085c4c29976ec36df3c9c586e",
@@ -55,6 +55,6 @@
   "Tests/PlayMode/InputPreviewDemoTests.cs": "eb84273d8e1b12cf74c55f67c43b676747a6fc2737e853c439f63a16449128c6",
   "Tests/PlayMode/RtspPreviewTests.cs": "3b2ad2dd7335bb6b0b6c33980d74e249d1ce7e2b3c0f921d1c65202ec06a3b20",
   "Tests/PlayMode/UnitySourceLifecycleTests.cs": "5873a81d89726f4828e63c76608068dd64249860056ec7dda0267147683b5ca7",
-  "native-payload.json": "0b63cb330f5daeceaa12b4a89b387a2f7474ff724cd729b9ef746d9b9f7f0bbb",
+  "native-payload.json": "5f775550a918da14fdfc4ab86f2ea097b80e11c63ad2d46fa8cc95f291b59a76",
   "package.json": "358cabc30ea4fabb952db73cad15a68a0eadd7fa9aa7f6193b3020d09b34356d"
 }

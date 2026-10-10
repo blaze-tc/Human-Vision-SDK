@@ -1,4 +1,5 @@
 #include "backend/onnx/onnx_runtime_backend.h"
+#include "backend/onnx/android_thread_policy.h"
 #include "test_support.h"
 
 #include <gtest/gtest.h>
@@ -8,6 +9,17 @@
 #include <vector>
 
 namespace {
+
+TEST(OnnxRuntimeBackend, AndroidCpuUsesBoundedPoolWithoutChangingAccelerators) {
+    using humanvision::OnnxRuntimeProvider;
+    using humanvision::AndroidOrtIntraOpThreads;
+    EXPECT_EQ(AndroidOrtIntraOpThreads(OnnxRuntimeProvider::Cpu, 8), 4);
+    EXPECT_EQ(AndroidOrtIntraOpThreads(OnnxRuntimeProvider::Cpu, 2), 2);
+    EXPECT_EQ(AndroidOrtIntraOpThreads(OnnxRuntimeProvider::Cpu, 0), 1);
+    EXPECT_EQ(AndroidOrtIntraOpThreads(OnnxRuntimeProvider::Xnnpack, 8), 1);
+    EXPECT_EQ(AndroidOrtIntraOpThreads(OnnxRuntimeProvider::Qnn, 8), 1);
+    EXPECT_EQ(AndroidOrtIntraOpThreads(OnnxRuntimeProvider::PlatformAccelerated, 8), 1);
+}
 
 TEST(OnnxRuntimeBackend, ExplicitGpuRequestNeverSilentlyFallsBack) {
     humanvision::OnnxRuntimeBackend backend(true);

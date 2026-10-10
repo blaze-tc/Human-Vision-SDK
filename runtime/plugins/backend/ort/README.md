@@ -41,3 +41,14 @@ decoding, identities, regions, Host implementation or Unity dependencies.
 execution, dimensions and unsupported-provider handling. These are automated
 functional checks, not device performance measurements. General multi-input and
 non-float models are not supported by this transitional implementation.
+
+## Android CPU thread policy (2026-10-09)
+
+Explicit ORT CPU sessions now use min(4, hardware_concurrency) intra-op workers,
+falling back to1 if the processor count is unknown. Sequential execution,
+inter-op1 and disabled spinning remain. XNNPACK/NNAPI/QNN pools are unchanged;
+this is not a Vulkan or NPU setting. The private policy lives in
+native/src/backend/onnx/android_thread_policy.h. Each Android initialization logs
+requested_provider, intra_op, inter_op, execution and spinning as HumanVisionCpu.
+See docs/reports/2026-10-09-oneplus-performance.md for measured device scope and
+limits; CPU and GPU profiles can use different models and are not an EP-only A/B.

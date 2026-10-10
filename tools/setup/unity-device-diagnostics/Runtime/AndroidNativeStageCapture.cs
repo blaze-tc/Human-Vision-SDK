@@ -22,6 +22,17 @@ namespace HumanVision.TestProject.Diagnostics
         {
             this.enqueue = enqueue ?? throw new ArgumentNullException(nameof(enqueue));
         }
+        /// <summary>
+        /// 只采集本应用的模型、输入及 CPU 初始化配置。保留末尾静音过滤，避免其它标签
+        /// 淹没诊断记录；此纯函数也可在 Editor 中验证，无需依赖 Android JNI。
+        /// </summary>
+        internal static string[] BuildLogcatCommand(int pid)
+        {
+            if (pid <= 0) throw new ArgumentOutOfRangeException(nameof(pid));
+            // -T 1 从当前尾部开始，不清空系统缓冲；--pid 限制为本次应用进程。
+            return new[] { "/system/bin/logcat", "-b", "main", "-v", "threadtime", "-T", "1", "--pid=" + pid,
+                "HV_TOPDOWN_NCNN:V", "ncnn:V", "HVInputGate:I", "HumanVisionCpu:I", "*:S" };
+        }
         public void Start()
         {
             if (worker != null) throw new InvalidOperationException("Native stage capture has already started.");
@@ -44,9 +55,7 @@ namespace HumanVision.TestProject.Diagnostics
                 using (var runtimeClass = new AndroidJavaClass("java.lang.Runtime"))
                 using (var runtime = runtimeClass.CallStatic<AndroidJavaObject>("getRuntime")) {
                     int pid = androidProcess.CallStatic<int>("myPid");
-                    // -T 1 从当前尾部开始，不清空系统缓冲；--pid 严格限制为当前应用。
-                    string[] command = { "/system/bin/logcat", "-b", "main", "-v", "threadtime", "-T", "1", "--pid=" + pid,
-                        "HV_TOPDOWN_NCNN:V", "ncnn:V", "HVInputGate:I", "*:S" };
+                    string[] command = BuildLogcatCommand(pid);
                     using (var ownedProcess = runtime.Call<AndroidJavaObject>("exec", new object[] { command })) {
                         lock (processLock) { process = ownedProcess; if (stopping) process.Call("destroy"); }
                         try {

@@ -3,7 +3,7 @@
   "api_level": 26,
   "audit": "tools/test/verify_android_native.py",
   "gpu_gate": false,
-  "native_sha256": "89355f7e97209b82412eb6abda90308b326fc4a5bca536f46f3a92f2ac0e28e6",
+  "native_sha256": "5fd4366a82e4ef038e4e72c311a3302912d6c0cd331e96904ffa123bcb794f5e",
   "ncnn_vulkan_symbols_verified": true,
   "q4_local_audit": {
     "compiler_closure_sha256": "ce59884e60b8f9847b99ee4d4ce65af7b97ec199b119dbe63fb7faccea81bd46",

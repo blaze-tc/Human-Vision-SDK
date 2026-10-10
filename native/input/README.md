@@ -86,3 +86,14 @@ compiler hash. Device proof: `tools/test/collect_android_input_gate.ps1 -Gate Li
 matrix/range/crop options identify encoded source fixtures and actual pixel checks.
 Missing formats/features reject explicitly. A request or entry point is not proof
 that Unity enabled a capability; actual device capture and GPU gate establish it.
+
+## Nonblocking Android publication polling (candidate2026-10-09)
+
+The GPU metadata getter can check an already-signaled conversion fence before
+observing its exact output slot, instead of waiting for the next render callback
+and another managed update. Pending/error fences keep the AImage lease and never
+publish a new frame. No GPU wait/queue submission, Unity API call or Vulkan object
+destruction occurs in this completion-only helper; render-event Poll still drains
+removed imports and retires resources. The session mutex serializes both paths.
+The three-slot observation/copy-lease contract and C exports are unchanged.
+This is a pacing/latency candidate; see the OnePlus report for actual acceptance.

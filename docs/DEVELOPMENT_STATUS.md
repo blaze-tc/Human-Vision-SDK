@@ -1,3 +1,50 @@
+# 2026-10-10 SettingsDemo final device completion
+
+Computer camera preset now resolves empty IP from the baked build computer;
+BuildProcessor includes HumanVisionSettingsDemo. Both bugs reproduced RED,
+then SettingsDemo26/26 and SharedQualityUi37/37 GREEN; diagnostic40/40 unchanged.
+Actual phone preset fills computer192.168.1.40/videodevice, real RTSP opens and
+saves Low/Vulkan1280x720/30 with AutoStartfalse. Final APK
+1efc3ba975618156d7fa227fc87306c095da005b8e0edb1315646fad38ee7a82,
+Succeeded/errors0/warnings8/00:02:45; native/index/43 model assets unchanged.
+Same APK120s bundled Vulkan Low video: completed23.293/s, fresh body22.917/s,
+94.118% of85 windows>=20, min17.751, no pipeline errors. Stable target unmet.
+Report and user evidence in docs/reports/2026-10-09-oneplus-performance.md and
+actual test project DiagnosticsVerification/OnePlus-Optimization-20261009/.
+
+# 2026-10-09 active follow-up: OnePlus verified changes; performance target partial
+
+Sole follow-up plan: docs/plans/2026-10-09-oneplus-cpu-gpu-performance.md.
+Verified: Android CPU-only bounded ORT intra-op4; nonblocking completed-fence
+input metadata publication; PID-scoped CPU initialization log export. Model
+asset bytes and V1 C ABI unchanged. Report: docs/reports/2026-10-09-oneplus-performance.md.
+
+CPU policy RED/GREEN; Windows SDK native408/408; Input49/49; ARM64 builds PASS.
+Native log test RED (missing method) then independent Unity diagnostic40/40 GREEN.
+Actual Editor compile errors0. REST root-suite-only1/1 is excluded. Offline
+analyzer/RKNN17/17; phone ORT error guards4/4; architecture/public-surface/Input
+isolation PASS. Performance reference APK Succeeded/errors0/warnings8/00:03:15;
+SHA a3ffeb5ca648ee01fd3c9f837807587cfee451f5a35ac4db827b931a7dc7c200.
+SDK native5fd4366a82e4ef038e4e72c311a3302912d6c0cd331e96904ffa123bcb794f5e;
+Input5ad008563b23ef5281c7387800cb47bd79f7542de85cc7b493e70714a8b6c2b3.
+43 Runtime assets/hash bindings verified. Actual CPU init4 captured in private
+and public native logs. CPU video and camera Vulkan show genuine bones.
+
+Same-video CPU5.421/s -> CPU4 runs8.223/s and final7.463/s. Final thermal status3
+means severe throttling; older control0, so no fixed speedup claim. USB camera
+Low candidate25.076/s, publication29.100/s, all144 body windows>=20. Final fixed
+Wi-Fi Low300s completed23.297/s, publication29.093/s;92.748% of262 body windows
+>=20, min16.749. Stable20-25 target remains unmet. Residual GPU extract/download
+32.802ms (~81.4% sparse total), not Unity render FPS. Medium Wi-Fi15.538/s
+reproduces ~16 FPS. Mixed640/4K run excluded from fixed-config acceptance.
+Latest user confirms pauses, not backtracking; no claimed frame-order/all-pause fix.
+
+Verified implementation is ready for continued field tests; model/execution-path
+qualification remains the next performance gate. RK3588 physical/NPU timing,
+full hand observations and distribution eligibility remain open. No public
+Release for this private experimental APK. User evidence folder:
+Human-Vision-SDK-Test/DiagnosticsVerification/OnePlus-Optimization-20261009/.
+
 # 2026-10-09 active milestone: private dual Vulkan / RK3588 NPU integration
 
 Latest direct user instruction advances integration before connected RK3588

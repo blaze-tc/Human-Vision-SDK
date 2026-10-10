@@ -1,5 +1,16 @@
 # Symptom-first debugging
 
+## OnePlus performance follow-up
+
+See [the measured CPU/Vulkan report](../reports/2026-10-09-oneplus-performance.md).
+Android ORT CPU uses a bounded intra-op pool (up to four); accelerator pools
+remain unchanged. Capture the PID-scoped HumanVisionCpu initialization line in
+native logs before interpreting CPU usage. Distinguish Low512x288 from
+Medium640x384 and RTSP published dimensions; compare source/generation groups
+after warmup. Completion polling reads a signaled Vulkan fence without waiting,
+while cache/pipeline destruction remains on render callbacks. A root-suite-only
+UnitySkills test result is zero executed leaf tests, not passing evidence.
+
 | Symptom | First evidence | Inspect / focused test | Likely cause; do not change first |
 |---|---|---|---|
 | Unity FPS drops | render FPS, allocations, GPU readback | Unity Demo/Runtime; managed tests | main-thread copies or per-object drawing; not model weights |
@@ -28,3 +39,20 @@ Per-session diagnostics label the profile, pipeline, requested/actual backend an
 last tensor inference duration. RTMO adds raw/accepted detections and maximum score;
 TopDown adds detector execution cadence and pose-person cost. These are execution
 timings, not proof of accelerator graph coverage.
+
+For the actual Human-Vision-SDK-Test settings scene, the optional project diagnostics
+add a public Downloads session folder, hardware samples and sparse six-stage native
+wall timings. See [device performance logs](../user-guide/DEVICE_PERFORMANCE_LOGS.md)
+for availability/status fields and measurement boundaries. Analyze a plain folder
+with `python tools/benchmark/analyze_settings_device_log.py SESSION OUTPUT --warmup 30`.
+Do not interpret missing GPU/NPU metrics as idle, GPU render-frame time as utilization,
+or the difference between mismatched SDK/native frame samples as CPU overhead.
+
+For the user-approved RK3588 acceleration experiment, start at
+[RKNN offline/device tools](../../tools/models/rknn/README.md) and the
+[verified offline report](../reports/2026-10-09-rknn-offline-validation.md).
+The fixed non-quantized model passed three PC simulator controls; INT8 was rejected.
+The standalone device probe records input delivery, run call, output wait, release,
+runtime/driver and raw-output errors with no CPU fallback. Repeated static model runs
+are not fresh SDK skeleton FPS. OnePlus SM8350 cannot validate the Rockchip route;
+physical RK3588 driver/model timing remains the next gate before mode integration.

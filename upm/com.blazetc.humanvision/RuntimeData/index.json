@@ -1,10 +1,10 @@
 {
   "binding_correction": {
-    "composition_id": "model-input-qualities-q4-reviewed-source-native-candidate",
+    "composition_id": "oneplus-cpu4-nonblocking-input-completion-local",
     "distribution_qualified": false,
     "hardware_fps_acceptance": false,
-    "input_native_sha256": "d3968a4f12d1cf7882c04312c7f0ad095c4a18b894846e2beafb758e9f582628",
-    "sdk_native_sha256": "89355f7e97209b82412eb6abda90308b326fc4a5bca536f46f3a92f2ac0e28e6",
+    "input_native_sha256": "5ad008563b23ef5281c7387800cb47bd79f7542de85cc7b493e70714a8b6c2b3",
+    "sdk_native_sha256": "5fd4366a82e4ef038e4e72c311a3302912d6c0cd331e96904ffa123bcb794f5e",
     "windows_default_profile": "windows-pc-directml",
     "windows_explicit_cpu_profile": "windows-pc-cpu",
     "windows_native_sha256": "8a7f5248bf45f24f7f282d4dfbe4b73ceb26752ebf811f74f6afe113b10868c9"

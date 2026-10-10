@@ -22,7 +22,7 @@
     "Runtime/Plugins/Android/arm64-v8a/libavformat.so.meta": "b287d499bca97626b1ed1b184b7428d7034f721b53922483bbefc2536cefb94f",
     "Runtime/Plugins/Android/arm64-v8a/libavutil.so": "92136c3c0535b9817f6f72d45d272476ac83d5211785c7e1f06f7ec65954d9ef",
     "Runtime/Plugins/Android/arm64-v8a/libavutil.so.meta": "c0ed11897780e5bf3a5e3d5176da47581134722a4c4081bb9f0a30c7414619a8",
-    "Runtime/Plugins/Android/arm64-v8a/libhumanvision_input.so": "d3968a4f12d1cf7882c04312c7f0ad095c4a18b894846e2beafb758e9f582628",
+    "Runtime/Plugins/Android/arm64-v8a/libhumanvision_input.so": "5ad008563b23ef5281c7387800cb47bd79f7542de85cc7b493e70714a8b6c2b3",
     "Runtime/Plugins/Android/arm64-v8a/libhumanvision_input.so.meta": "625f38056b240c9d3592dca3db9421e076b790470a0443dd4893fe4af16d7485",
     "Runtime/Plugins/Android/arm64-v8a/libswresample.so": "8cadca3419da79d3919a9498bee8619696b15faba03cf43bbcfda0a1aec7b5a3",
     "Runtime/Plugins/Android/arm64-v8a/libswresample.so.meta": "19acc4b6112ec0da7c9184284cb0839bda2dc87c18bbdb5c17981f1d1f597fb9",

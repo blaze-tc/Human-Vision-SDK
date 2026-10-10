@@ -1,4 +1,5 @@
 #include "backend/onnx/onnx_runtime_backend.h"
+#include "backend/onnx/android_thread_policy.h"
 
 #include <onnxruntime_cxx_api.h>
 #if defined(HV_USE_DIRECTML)
@@ -14,9 +15,11 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <thread>
 #if defined(__ANDROID__)
 #include <sys/stat.h>
 #include <nnapi_provider_factory.h>
+#include <android/log.h>
 #endif
 
 namespace humanvision {
@@ -92,14 +95,16 @@ OnnxRuntimeBackend::OnnxRuntimeBackend(OnnxRuntimeProvider provider, bool allow_
     impl_->session_options.SetGraphOptimizationLevel(
         GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
 #if defined(__ANDROID__)
-    // Keep ORT's own pool to one non-spinning thread. The XNNPACK EP owns its
-    // separately configured four-thread pool when that provider is selected.
-    impl_->session_options.SetIntraOpNumThreads(1);
+    // CPU needs intra-operator parallelism. XNNPACK/accelerators retain one ORT
+    // thread so their own worker pools do not compete. All pools remain non-spinning.
+    const int intra_threads = AndroidOrtIntraOpThreads(provider, std::thread::hardware_concurrency());
+    impl_->session_options.SetIntraOpNumThreads(intra_threads);
     impl_->session_options.SetInterOpNumThreads(1);
     impl_->session_options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
     impl_->session_options.AddConfigEntry("session.intra_op.allow_spinning", "0");
     impl_->session_options.AddConfigEntry("session.inter_op.allow_spinning", "0");
     impl_->session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+    __android_log_print(ANDROID_LOG_INFO, "HumanVisionCpu", "ort_thread_configuration requested_provider=%d intra_op=%d inter_op=1 execution=sequential spinning=0", static_cast<int>(provider), intra_threads);
 #else
     impl_->session_options.SetIntraOpNumThreads(0);
 #endif

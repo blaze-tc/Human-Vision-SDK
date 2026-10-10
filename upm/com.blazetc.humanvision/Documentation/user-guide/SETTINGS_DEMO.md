@@ -24,6 +24,16 @@
 
 ## 项目接入
 
+OnePlus 9 Pro 性能测试可先选 **NCNN Vulkan、模型等级 Low（512×288）、
+RTSP 发布上限 1280×720、30 FPS**。电脑摄像头快捷地址为
+`rtsp://电脑局域网IP:554/videodevice`；选择较低等级可能减少小人体/远距离
+识别能力，需要用实际场地验证。模型等级与相机发布尺寸独立，CPU 当前
+固定 RTMO 模型，不套用此 Vulkan 档位。实测数值、Wi-Fi 与 USB 的区别及
+限制见 [OnePlus 性能报告](../reports/2026-10-09-oneplus-performance.md)。
+手机构建中的“电脑摄像头/电脑视频”按钮优先使用填写的推流电脑 IP；
+留空时使用构建时写入场景的电脑 LAN IP。电脑网络变更后可直接填写新的
+IP；按钮只修改草稿，点击应用才开始连接。它不会使用手机自己的 IP。
+
 控制器 Inspector 显式绑定 SDK、View。可通过 `ReturnRequested` 绑定游戏返回逻辑，或者设置 `returnScene`；指定场景需加入 Build Settings。返回会先应用当前草稿，失败留在设置界面。指定返回场景前安全停止 SDK；如要跨场景保持会话，可在自己的返回事件中管理 SDK 生命周期。
 
 桌面示例尝试加载系统中文字体；Android/发行构建建议在 `uiFont` 中指定有授权且包含中文字符的 Font 资产。所有控件都是 UGUI，可直接改样式、大小和引用；不要删除必需引用。
@@ -31,6 +41,11 @@
 质量选择只显示本构建已声明的实际档位。Windows 固定合同不显示可切换档位；不把采集分辨率称作模型分辨率。RTSP 快捷按钮使用 Happytime 的 `rtsp://局域网IP:554/videodevice` 或 `video-1.mp4`，实际服务器仍需自行启动。
 
 ## 模型等级为什么可能不可选
+
+私有双模式版本增加独立“计算模式”一行：PC 为 GPU/CPU，Android 为 NCNN
+Vulkan/RK3588 NPU/CPU。它与模型等级、输入分辨率分开保存。PC 复用
+`UseWindowsCpu`，Android 使用语义 `AccelerationMode`。NPU 实验模型目前只
+有 Low 512×288；选择原因、实际会话和限制见 [双模式实测说明](../reports/2026-10-09-dual-acceleration-integration.md)。
 
 Windows CPU/DirectML 当前安装配置使用固定模型，不提供高/中/低档。菜单置灰时显示这个实际原因，不会将采集分辨率冒充模型等级。Android NCNN/Vulkan 随包有低 512×288、中 640×384、高 960×576 三档；界面启动时先准备并校验资源，无需先打开输入即可选择。损坏或缺失的等级目录会显示具体错误。修改等级后点击应用，等待模型和输入重新启动。
 
@@ -41,3 +56,5 @@ Windows CPU/DirectML 当前安装配置使用固定模型，不提供高/中/低
 高级设置中的“详细骨骼日志”增加按间隔输出的 32 语义关节有效性、API 有效性、派生标记、置信度、像素/归一化坐标和独立观测时间。默认统计 2 秒一次，避免逐帧写盘；最多四个文件轮转，按设置保留会话。RTSP 认证和常见密码/token 参数会统一遮盖。打开目录、复制路径或导出 ZIP 后可携带日志定位实机问题；写盘失败会在界面提示。
 
 主菜单 HumanVision 只保留创建 SDK、设置 Demo、安装模型及 Examples。旧示例位于 Tools → Human Vision → Legacy Examples；验收和探针位于 Tools → Human Vision → Development。
+
+Human-Vision-SDK-Test 的 HumanVisionSettingsDemo 已增加 **复制日志文件夹**、硬件使用信息和稀疏原生阶段计时。Android 10+ 自动同步到 Downloads/HumanVisionLogs 的普通会话文件夹，直接获取整个文件夹即可；原有 ZIP 入口继续可用。字段范围、不可用指标、耗时判读和视频复测见 [实机性能日志](DEVICE_PERFORMANCE_LOGS.md)。

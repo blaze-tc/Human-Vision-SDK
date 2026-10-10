@@ -23,6 +23,18 @@ namespace HumanVision.TestProject.Tests
         }
         private static T Field<T>(object value, string name) => (T)value.GetType().GetField(name).GetValue(value);
 
+        [Test] public void NativeLogCommandCapturesCpuConfigurationForThisProcessOnly()
+        {
+            var method = Find("AndroidNativeStageCapture").GetMethod("BuildLogcatCommand", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(method, Is.Not.Null, "Missing testable, PID-scoped native log command");
+            var command = (string[])method.Invoke(null, new object[] { 12345 });
+            Assert.That(command, Does.Contain("--pid=12345"));
+            Assert.That(command, Does.Contain("HumanVisionCpu:I"));
+            Assert.That(command, Does.Contain("HVInputGate:I"));
+            Assert.That(command, Does.Contain("HV_TOPDOWN_NCNN:V"));
+            Assert.That(command.Last(), Is.EqualTo("*:S"));
+        }
+
         [TestCase("72@800000000Hz\n", 72d)]
         [TestCase("0@200000000Hz", 0d)]
         [TestCase("100%", 100d)]
