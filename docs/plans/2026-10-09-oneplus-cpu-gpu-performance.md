@@ -30,3 +30,14 @@ Capture and compare the actual image/bones and graceful fence/lease retirement;
 if the improvement is not established, retain the CPU-only verified artifact.
 No GPU queue wait in a metadata getter; only nonblocking real-fence status is
 allowed. Destruction and target reconfiguration stay on render callbacks.
+
+## User clarification 2026-10-10
+
+Skeleton continuity is adequate in the user's current use case. The primary
+objective remains higher actual fresh skeleton recognition FPS, not visual
+smoothing or higher preview/render FPS. Focus on model execution and its waits,
+then qualify faster execution/model candidates against preserved recognition
+quality on the same OnePlus/video. Keep per-person results, source timestamps,
+actual returned bodies, thermal state and stage timing in the acceptance record.
+The separate seven-person/capacity1 empty-result finding remains a regression
+case; it is not a substitute for the requested model throughput optimization.

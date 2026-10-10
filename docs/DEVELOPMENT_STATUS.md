@@ -1,3 +1,13 @@
+# 2026-10-10 user clarification: improve actual skeleton inference FPS
+
+The user confirms skeleton continuity is adequate; the requested optimization
+is the rate of newly completed skeleton recognition. Primary follow-up returns
+to measured model/backend execution cost and real same-device result throughput.
+Smoothing, repeated drawing, render FPS and interpolation are not improvements
+to this target. Capacity1 intermittent-empty findings from the seven-person
+comparison remain recorded as a separate case; they do not redefine the user's
+current problem. No new performance improvement is claimed by this clarification.
+
 # 2026-10-10 Tasks VIDEO probe complete; UnityPlugin comparison remains open
 
 User-approved disposable comparison executed on connected OnePlus LE2120 /
@@ -26,8 +36,8 @@ Capacity1 empty native/public counts agree. Existing-source geometric probe
 verified capacity1 fresh1->0->1 for A->B->A observations; capacity2 accepts B.
 Candidate truncation before stable track association is a reproduced mechanism
 consistent with intermittent empties, not a proof of every field empty result.
-Priority next gates: candidate/identity continuity and actual homuler UnityPlugin
-async input/display comparison. Current multi-person Vulkan remains the baseline;
+Comparison follow-up gates: candidate/identity continuity in the seven-person
+capacity1 fixture and actual homuler UnityPlugin inference throughput comparison. Current multi-person Vulkan remains the baseline;
 MediaPipe CPU/GPU route selection is open, not decided by this Bitmap VIDEO probe.
 User reports the plugin skeleton is smoother. Pinned source review confirms
 current sample defaults LIVE_STREAM/CPUAsync/one pose, independent input preview;
