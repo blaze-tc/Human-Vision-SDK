@@ -1,5 +1,11 @@
 # RKNN backend review evidence
 
+2026-10-11 follow-up: [native I/O report](../../../../docs/reports/2026-10-11-rknn-native-io.md)
+records 426/426 native tests, ARM64 API26 audit, independent OnePlus conversion
+probe and explicit simulator limitations. Native/shared I/O candidates use full
+same-frame output equality and total-backend timing qualification. Physical
+RK3588 throughput and native memory correctness remain open.
+
 Recorded 2026-10-09 in the `unity-sdk-api-settings` worktree. This is focused
 non-hardware evidence. No connected RK3588 inference, numerical parity, NPU graph
 coverage, complete skeleton throughput or sustained thermal performance is claimed.

@@ -66,7 +66,8 @@ struct Pipeline {
 
 TEST(YoloTensorPipeline, InitializesExactBackendSynchronouslyAndReleasesOnce){
     Pipeline p;ASSERT_EQ(p.Create(),HV_OK)<<p.message;EXPECT_EQ(p.recorded.creates,1);EXPECT_EQ(p.recorded.runs,0);EXPECT_EQ(p.recorded.provider,"backend.rknn");
-    const auto options=Json::parse(p.recorded.options);EXPECT_EQ(options,Json({{"runtime_library","librknnrt.so"},{"core_mask",7},{"input_layout","nhwc"},{"input_type","uint8"}}));
+    const auto options=Json::parse(p.recorded.options);EXPECT_EQ(options,Json({{"runtime_library","librknnrt.so"},{"core_mask",7},{"input_layout","nhwc"},{"input_type","uint8"},
+        {"input_transform",{{"mean",{0,0,0}},{"norm",{1./255.,1./255.,1./255.}}}}}));
     EXPECT_EQ(std::filesystem::u8path(p.recorded.model),std::filesystem::canonical(root/"non-quantized/candidate.rknn"));p.api.pipeline->destroy(p.instance);p.instance=nullptr;EXPECT_EQ(p.recorded.releases,1);
 }
 TEST(YoloTensorPipeline, RejectsUnqualifiedManifestAndProfileBeforeBackendCreation){

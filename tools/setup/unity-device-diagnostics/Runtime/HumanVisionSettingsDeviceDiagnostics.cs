@@ -62,6 +62,29 @@ namespace HumanVision.TestProject.Diagnostics
         public string LastExportPath { get; private set; } = "";
         public string LastWriteError => session?.LastWriteError ?? "";
         public bool RecordSkeletons => recordSkeletons;
+        private readonly FreshSkeletonCounter personCounter=new FreshSkeletonCounter();
+        private readonly int[] coco17={27,28,30,29,31,5,12,6,13,7,14,18,22,19,23,20,24};
+        private ulong personSource,personGeneration;
+        private double personWindowStart;
+        public string BenchmarkPhase { get; private set; }="interactive";
+        [Serializable] private sealed class PersonWindow {
+            public string utc,phase,sourceId,generation;
+            public int evictions;
+            public FreshSkeletonCounter.Sample person;
+        }
+        /// <summary>低频自动对照标记，与原始阶段日志写入同一个会话文件夹。</summary>
+        public void RecordBenchmark(string phase,string status) {
+            FlushPersons();BenchmarkPhase=phase;personCounter.Reset();personWindowStart=Time.realtimeSinceStartupAsDouble;
+            uiMessage=phase=="interactive"?"对照结束，日志已保存":"自动对照："+phase;
+            session?.Record("benchmark.phase",phase+" "+status);session?.Flush(2048);
+        }
+        private void FlushPersons() {
+            double now=Time.realtimeSinceStartupAsDouble;
+            if(personWindowStart>0)personCounter.Drain(now-personWindowStart,sample=>session?.WriteJsonLine("persons.jsonl",
+                JsonUtility.ToJson(new PersonWindow {utc=DateTime.UtcNow.ToString("O",Invariant),phase=BenchmarkPhase,
+                    sourceId=personSource.ToString(Invariant),generation=personGeneration.ToString(Invariant),evictions=personCounter.Evictions,person=sample})));
+            personWindowStart=now;
+        }
 
         // 以下 DTO 是低频日志格式，使用可序列化字段。无结果/无坐标用显式有效位和 -1，禁止写 NaN/Infinity。
         [Serializable] private sealed class EnvironmentRecord
@@ -230,11 +253,28 @@ namespace HumanVision.TestProject.Diagnostics
             ++resultEvents; lastSdkResultAdvance = Time.realtimeSinceStartupAsDouble;
             // 只统计含人体的新鲜通知；无人的完成结果也会发 ResultUpdated，不能算骨骼更新。
             if (sdk.HasFreshResult && sdk.GetUsersCount() > 0) ++bodyResultEvents;
+            if(sdk.HasFreshResult) {
+                if(adapter==null)FindInputComponents();
+                ulong id=adapter!=null?adapter.SourceId:0, generation=adapter!=null?adapter.SourceGeneration:0;
+                if(id!=personSource || generation!=personGeneration) {
+                    FlushPersons();personCounter.Reset();personSource=id;personGeneration=generation;
+                }
+                for(int i=0;i<sdk.GetMaxBodies();i++) {
+                    if(!sdk.CopySkeletonByIndex(i,joints,out var metadata))continue;
+                    int observed=0;
+                    for(int j=0;j<coco17.Length;j++) {var joint=joints[coco17[j]];
+                        if(joint.Position.Valid && !joint.Position.IsDerived && joint.PredictionMilliseconds==0 &&
+                            joint.ObservationTimestampUs==metadata.ObservationTimestampUs)++observed;
+                    }
+                    if(observed>0)personCounter.Observe(metadata.StableTrackId,sequence,metadata.SourceFrameId,
+                        metadata.ObservationTimestampUs,observed==17,sdk.ResultAgeMilliseconds);
+                }
+            }
             // 计数仅来自真正的 ResultUpdated 通知，详细坐标稍后按间隔采样，不重复把渲染帧当成新识别。
             if (resultEvents == 1) session.Record("result.first", "sequence=" + sequence + " sourceFrame=" + sdk.SourceFrameId + " users=" + sdk.GetUsersCount());
         }
         private void OnSdkError(string error) { session?.Record("sdk.error", error); CaptureNativeDiagnostics("sdk.error"); nextStats = 0; }
-        private void OnStopped() { session?.Record("sdk.stopped", "Runtime and input retired"); manager = null; source = null; adapter = null; bridge = null; decoder = null; nextStats = 0; }
+        private void OnStopped() { FlushPersons();personCounter.Reset();session?.Record("sdk.stopped", "Runtime and input retired"); manager = null; source = null; adapter = null; bridge = null; decoder = null; nextStats = 0; }
         private void OnUserEntered(int index, long id) => session?.Record("user.entered", "slot=" + index + " stableTrackId=" + id);
         private void OnUserExited(int index, long id) => session?.Record("user.exited", "slot=" + index + " stableTrackId=" + id);
         private void OnRegionChanged(int index, HumanVisionRegionOccupancy state) => session?.Record("region.changed", "slot=" + index + " state=" + state);
@@ -268,6 +308,7 @@ namespace HumanVision.TestProject.Diagnostics
         private void CaptureStatistics()
         {
             if (sdk == null || session == null) return;
+            FlushPersons();
             FindInputComponents(); double now = Time.realtimeSinceStartupAsDouble;
             // 按已经建立的运行时标记；切换被拒绝时请求配置不能冒充当前实际后端。
             hardware?.SetNeuralActive(sdk.IsInitialized && sdk.RuntimeProfile == "android-rknn-npu-quality-low");

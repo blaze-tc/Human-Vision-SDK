@@ -68,6 +68,13 @@ target_sources(humanvision_internal PRIVATE plugins/backend/rknn/rknn_backend.cp
 # Private experimental Android builds opt in explicitly. Proprietary vendor
 # headers/runtime remain outside the repository and public release packages.
 option(HV_ENABLE_RKNN "Build private RK3588 neural tensor backend" OFF)
+option(HV_RKNN_INPUT_MEMORY_EXPERIMENT "Private runtime-qualified shared input experiment and same-APK baseline selector" OFF)
+if(HV_RKNN_INPUT_MEMORY_EXPERIMENT)
+    if(NOT ANDROID OR NOT HV_ENABLE_RKNN)
+        message(FATAL_ERROR "HV_RKNN_INPUT_MEMORY_EXPERIMENT requires the private Android RKNN build")
+    endif()
+    target_compile_definitions(humanvision_internal PRIVATE HV_RKNN_INPUT_MEMORY_EXPERIMENT=1)
+endif()
 set(HV_RKNN_INCLUDE "${PROJECT_SOURCE_DIR}/out/rknn-toolchain/vendor/include" CACHE PATH "Private pinned RKNN 2.3.2 headers")
 if(HV_ENABLE_RKNN)
     if(NOT ANDROID)

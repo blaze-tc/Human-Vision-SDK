@@ -34,6 +34,8 @@ namespace HumanVision.Demo
         public UnityEvent ReturnRequested => returnRequested;
         public HumanVisionSdk Sdk => sdk;
         public HumanVisionSettingsView View => view;
+        /// <summary>自动化工具临时状态；结束时必须清除，不写入用户配置。</summary>
+        public string OperationNotice { get; set; } = "";
         /// <summary>生成器设置引用；场景中也可以在 Inspector 手动绑定。</summary>
         public void Configure(HumanVisionSdk controller, HumanVisionSettingsView settingsView, Font font = null)
         { sdk = controller; view = settingsView; uiFont = font; sdk.InitializeOnStart = false; }
@@ -203,11 +205,10 @@ namespace HumanVision.Demo
             if (texture != null) view.Preview.GetComponent<UnityEngine.UI.AspectRatioFitter>().aspectRatio = (float)texture.width / texture.height;
             view.SetBusy(Busy);
             if (Time.realtimeSinceStartupAsDouble < nextStatus) return; nextStatus = Time.realtimeSinceStartupAsDouble + .2;
-            var stats = sdk.Stats;
             string occupancy = "";
             for (int i = 0; i < sdk.GetMaxBodies(); i++) occupancy += " " + i + ":" + (sdk.TryGetRegionOccupancy(i, out bool occupied) ? occupied ? "有人" : "无人" : "未知");
-            view.SetStatus(Redact(message) + "\nSDK " + sdk.State + " / Input " + sdk.InputState + "　实际人数 " + sdk.GetUsersCount() + "/" + sdk.GetMaxBodies() +
-                "　输入 " + stats.InputFps.ToString("F1") + " / 推理 " + stats.InferenceFps.ToString("F1") + " FPS　结果 " + sdk.ResultSequence + " / 帧 " + sdk.SourceFrameId + "\n槽位观测：" + occupancy);
+            view.SetStatus(Redact(string.IsNullOrEmpty(OperationNotice) ? message : OperationNotice) + "\nSDK " + sdk.State + " / Input " + sdk.InputState + "　实际人数 " + sdk.GetUsersCount() + "/" + sdk.GetMaxBodies() +
+                "　输入 " + sdk.InputPublicationFps.ToString("F1") + " / 新结果 " + sdk.FreshResultFps.ToString("F1") + " FPS　结果 " + sdk.ResultSequence + " / 帧 " + sdk.SourceFrameId + "\n槽位观测：" + occupancy);
             try { logger?.Tick(sdk); } catch (Exception e) { message = "日志写入失败：" + Redact(e.Message); }
             if (logger != null && !string.IsNullOrEmpty(logger.LastWriteError)) message = "日志写入失败：" + logger.LastWriteError;
         }

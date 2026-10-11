@@ -43,6 +43,17 @@ namespace HumanVision.TestProject.Tests
             Assert.That(Read("timings-*.jsonl"), Does.Contain("modelIncludesGpuWait"));
         }
 
+        [Test] public void PerPersonEvidenceIsWrittenAndIncludedInExport()
+        {
+            Call("WriteJsonLine", "persons.jsonl", "{\"trackId\":42,\"freshFps\":23.5}");
+            string zip = (string)Call("Export", "", Array.Empty<string>());
+            Assert.That(Read("persons-*.jsonl"), Does.Contain("23.5"));
+            using (var archive = ZipFile.OpenRead(zip))
+                Assert.That(archive.Entries.Any(e => e.Name.StartsWith("persons-")), Is.True);
+            var rejected = Assert.Throws<TargetInvocationException>(() => Call("WriteJsonLine", "../persons.jsonl", "{}"));
+            Assert.That(rejected.InnerException, Is.TypeOf<ArgumentException>());
+        }
+
         [Test] public void BundledVideoUrlUsesApkSchemeAndEscapesEachPathSegment()
         {
             var resolver = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("HumanVision.TestProject.Diagnostics.HumanVisionSettingsBundledVideos"))

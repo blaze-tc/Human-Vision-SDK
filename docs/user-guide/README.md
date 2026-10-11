@@ -8,6 +8,7 @@
 | --- | --- |
 | [单组件 Unity 使用](UNITY_SDK.md) | 挂载总控、初始化、区域与骨骼查询 |
 | [UGUI 设置 Demo](SETTINGS_DEMO.md) | 参考 Setting 界面、应用/保存、输入与区域编辑 |
+| [RK3588 联合优化自动对照](RK3588_COMBINED_COMPARISON.md) | 私有测试包的一次安装对照、逐人帧率、日志文件夹与验收边界 |
 | [第一次安装使用引导](FIRST_INSTALL.md) | 安装双包/模型、void Start初始化、摄像头输入、骨骼回调读取、停止释放；可选Hierarchy右键创建菜单 |
 | [技术栈文档](TECH_STACK.md) | Unity/Input/Runtime/插件/后端/模型分层、异步数据流和生命周期 |
 | [平台测试效果文档](PLATFORM_TEST_RESULTS.md) | SDK发布验证与历史真机测量、数字的含义、平台覆盖与复测方法 |

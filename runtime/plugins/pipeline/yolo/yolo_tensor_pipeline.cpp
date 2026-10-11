@@ -216,7 +216,11 @@ HV_Result HV_CALL Create(const HV_PipelineConfigV1* config,const HV_HostServices
     try {
         const auto manifest=Json::parse(config->model_manifest_utf8),profile=Json::parse(config->options_utf8);
         const auto path=Validate(manifest,profile,std::filesystem::u8path(config->asset_root_utf8)).u8string();
-        const auto options=manifest.at("models").at(0).at("backend_options").dump();
+        auto backend_options=manifest.at("models").at(0).at("backend_options");
+        // Validate() already pins the model and its compiled normalization. Pass
+        // that contract explicitly; the generic backend must never guess /255.
+        backend_options["input_transform"]=manifest.at("models").at(0).at("input_contract").at("normalization");
+        const auto options=backend_options.dump();
         auto self=std::make_unique<Instance>(*host,config->max_bodies);
         const HV_BackendConfigV1 backend_config{sizeof(backend_config),HV_PLUGIN_API_V1,path.c_str(),options.c_str(),"backend.rknn"};
         const auto status=host->create_backend(host->context,&backend_config,&self->backend,&self->session,error);

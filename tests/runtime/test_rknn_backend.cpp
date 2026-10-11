@@ -1,5 +1,7 @@
 #include "plugins/backend/rknn/rknn_backend.h"
 #include "plugins/backend/rknn/rknn_vendor_boundary.h"
+#include "plugins/backend/rknn/rknn_input_qualification.h"
+#include "plugins/backend/rknn/rknn_native_input.h"
 #include "common/backend_diagnostics.h"
 #include <gtest/gtest.h>
 #include <algorithm>
@@ -10,8 +12,72 @@
 #include <limits>
 #include <stdexcept>
 #include <vector>
+#include <thread>
+#include <chrono>
 
 namespace {
+TEST(RknnNativeInput, PacksRgbHalfWithQueriedRowAndChannelPadding) {
+    using namespace humanvision::runtime::rknn;
+    NativeInputTransform transform;
+    const float mean[3]={0,0,0},norm[3]={1.f/255,1.f/255,1.f/255};
+    ASSERT_TRUE(transform.Configure(mean,norm));
+    NativeInputLayout layout;
+    ASSERT_TRUE(layout.Configure(2,2,3,4,48));
+    const uint8_t rgb[]={0,255,0,255,0,255,255,255,255,0,0,0};
+    std::array<uint16_t,25> packed;packed.fill(0xdead);
+    ASSERT_TRUE(transform.Pack(rgb,sizeof(rgb),layout,packed.data(),48));
+    EXPECT_EQ(packed[0],0);EXPECT_EQ(packed[1],0x3c00);EXPECT_EQ(packed[3],0);
+    EXPECT_EQ(packed[4],0x3c00);EXPECT_EQ(packed[8],0);EXPECT_EQ(packed[11],0);
+    EXPECT_EQ(packed[12],0x3c00);EXPECT_EQ(packed[14],0x3c00);EXPECT_EQ(packed[24],0xdead);
+    EXPECT_FALSE(transform.Pack(rgb,sizeof(rgb)-1,layout,packed.data(),48));
+    EXPECT_FALSE(transform.Pack(rgb,sizeof(rgb),layout,packed.data(),47));
+}
+TEST(RknnNativeInput, RejectsUnsupportedLayoutAndUnboundedNormalization) {
+    using namespace humanvision::runtime::rknn;
+    NativeInputLayout a;
+    EXPECT_FALSE(a.Configure(512,288,511,3,512*288*6));
+    EXPECT_FALSE(a.Configure(512,288,512,2,512*288*4));
+    EXPECT_FALSE(a.Configure(UINT32_MAX,288,UINT32_MAX,3,UINT32_MAX));
+    EXPECT_FALSE(a.Configure(512,288,512,3,1));
+    NativeInputTransform transform;float mean[3]={0,0,0},norm[3]={1,1,1};
+    norm[2]=std::numeric_limits<float>::infinity();EXPECT_FALSE(transform.Configure(mean,norm));
+    norm[2]=10000;EXPECT_FALSE(transform.Configure(mean,norm));
+    norm[2]=1;ASSERT_TRUE(transform.Configure(mean,norm));
+    EXPECT_EQ(transform.Value(0,255),0x5bf8); // exact IEEE half representation of 255
+}
+TEST(RknnNativeInput, RoundsSubnormalTiesEvenAndRejectsUnalignedDestination) {
+    using namespace humanvision::runtime::rknn;
+    NativeInputTransform transform;
+    const float mean[3]={0,0,0},norm[3]={0x1p-25f,-0x1p-25f,1};
+    ASSERT_TRUE(transform.Configure(mean,norm));
+    EXPECT_EQ(transform.Value(0,1),0);EXPECT_EQ(transform.Value(0,3),2);
+    EXPECT_EQ(transform.Value(0,5),2);EXPECT_EQ(transform.Value(1,3),0x8002);
+    NativeInputLayout layout;ASSERT_TRUE(layout.Configure(1,1,1,3,6));
+    const uint8_t rgb[3]={1,3,5};alignas(2) uint8_t memory[8]{};
+    EXPECT_FALSE(transform.Pack(rgb,3,layout,memory+1,6));
+}
+TEST(RknnInputQualification, SameFrameBitEqualityIncludesEveryValueAndRejectsNonfinite) {
+    float a[]={0,1,2,3},b[]={0,1,2,3};
+    EXPECT_TRUE(humanvision::runtime::rknn::InputQualification::Equal(a,b,4));
+    b[3]=3.00001f;EXPECT_FALSE(humanvision::runtime::rknn::InputQualification::Equal(a,b,4));
+    b[3]=std::numeric_limits<float>::quiet_NaN();EXPECT_FALSE(humanvision::runtime::rknn::InputQualification::Equal(a,b,4));
+    EXPECT_FALSE(humanvision::runtime::rknn::InputQualification::Equal(a,b,0));
+}
+TEST(RknnInputQualification, TwoWarmupsAndFiveComparisonsRequireAtLeastFivePercentGain) {
+    using Q=humanvision::runtime::rknn::InputQualification;
+    Q fast,slow;
+    for(int i=0;i<6;++i){fast.Observe(true,50,40);slow.Observe(true,50,49);}
+    EXPECT_EQ(fast.state,Q::State::Pending);EXPECT_EQ(slow.state,Q::State::Pending);
+    fast.Observe(true,50,40);slow.Observe(true,50,49);
+    EXPECT_EQ(fast.state,Q::State::Accepted);EXPECT_EQ(slow.state,Q::State::Rejected);
+    EXPECT_EQ(fast.measured,5u);EXPECT_DOUBLE_EQ(fast.baseline_ms,250);
+}
+TEST(RknnInputQualification, WarmupMismatchOrInvalidTimingRejectsImmediately) {
+    using Q=humanvision::runtime::rknn::InputQualification;
+    Q q;q.Observe(false,50,20);EXPECT_EQ(q.state,Q::State::Rejected);
+    Q bad;bad.Observe(true,0,20);EXPECT_EQ(bad.state,Q::State::Rejected);
+    Q nan;nan.Observe(true,50,std::numeric_limits<double>::quiet_NaN());EXPECT_EQ(nan.state,Q::State::Rejected);
+}
 using namespace humanvision::runtime::rknn;
 struct State {
     std::vector<std::string> events;
@@ -19,6 +85,8 @@ struct State {
     std::string throw_stage;
     bool partial_init = false, nan = false, changed_buffer = false, changed_index=false, changed_bytes=false;
     uint32_t mask = 0, runs = 0, input_count = 1;
+    bool candidate=false, candidate_mismatch=false, slow_baseline=false;
+    unsigned candidate_runs=0,candidate_drops=0,candidate_retries=0;
     const void* model = nullptr;
     uint32_t model_bytes = 0;
     Attribute input{0, 4, {1, 3, 2, 4}, 24, "in0", Layout::Nchw, Type::Float32};
@@ -46,6 +114,7 @@ public:
     int OutputAttribute(Context, Attribute& a) override { a=s.outputs.at(a.index);return s.Step("output_query"); }
     int PrepareOutputs(const OutputBuffer*, uint32_t) override { return s.Step("prepare"); }
     int InputsSet(Context, const void* rgb, uint32_t bytes) override {
+        if(s.slow_baseline)std::this_thread::sleep_for(std::chrono::milliseconds(2));
         EXPECT_EQ(bytes,24u);EXPECT_EQ(static_cast<const unsigned char*>(rgb)[0],255u);
         EXPECT_EQ(s.model_bytes,4u);EXPECT_EQ(static_cast<const unsigned char*>(s.model)[0],1u);
         return s.Step("inputs_set");
@@ -61,6 +130,22 @@ public:
         return 0;
     }
     int OutputsRelease(Context, uint32_t) noexcept override { return s.Step("release"); }
+    bool PrepareInputCandidate(const void*,uint32_t,const Attribute&,const Attribute*,const OutputBuffer*,uint32_t,uint32_t) override {
+        return s.candidate;
+    }
+    int CandidateInputsSet(const void*,uint32_t) override {return s.Step("candidate_set");}
+    int CandidateRun() override {++s.candidate_runs;return s.Step("candidate_run");}
+    int CandidateOutputsGet(OutputBuffer* out,uint32_t n) override {
+        for(uint32_t i=0;i<n;++i)for(uint32_t j=0;j<out[i].bytes/4;++j)
+            out[i].data[j]=float(10*i+j+s.runs)+(s.candidate_mismatch?0.01f:0);
+        return s.Step("candidate_get");
+    }
+    int CandidateOutputsRelease(uint32_t) noexcept override {return s.Step("candidate_release");}
+    void DropInputCandidate() noexcept override {++s.candidate_drops;}
+    bool NextInputCandidate() override {
+        if(!s.candidate_retries)return false;
+        --s.candidate_retries;s.candidate_mismatch=false;return true;
+    }
     void Destroy(Context) noexcept override {
         EXPECT_EQ(s.model_bytes,4u);
         EXPECT_EQ(static_cast<const unsigned char*>(s.model)[0],1u);
@@ -109,6 +194,67 @@ TEST_F(RknnBackend, PublishesQueriedBorrowedShapesAndReusesBuffers) {
     HV_BackendSessionInfoV1 info{sizeof(info),1};ASSERT_EQ(plugin.backend->session_info(session,&info),HV_OK);
     EXPECT_STREQ(info.actual,"backend.rknn");EXPECT_STREQ(info.requested,"backend.rknn");EXPECT_EQ(info.accelerated,1u);EXPECT_EQ(info.fallback_reason[0],0);
     Diagnostics diag;ASSERT_TRUE(GetRknnDiagnostics(session,diag));EXPECT_STREQ(diag.driver_version,"test-driver");EXPECT_EQ(diag.core_mask,7u);EXPECT_EQ(diag.completed_runs,2u);
+}
+TEST_F(RknnBackend, InputCandidateMismatchNeverReplacesBaselineAndDisablesCandidate) {
+    loader.state.candidate=true;loader.state.candidate_mismatch=true;
+    config.options_utf8="{\"input_memory\":\"auto\"}";
+    ASSERT_EQ(Create(),HV_OK);ASSERT_EQ(Run(),HV_OK);
+    EXPECT_EQ(loader.state.candidate_runs,1u);
+    EXPECT_EQ(loader.state.candidate_drops,1u);
+    EXPECT_FLOAT_EQ(static_cast<const float*>(outputs[0].data)[0],1);
+    ASSERT_EQ(Run(),HV_OK);EXPECT_EQ(loader.state.candidate_runs,1u);
+    EXPECT_FLOAT_EQ(static_cast<const float*>(outputs[0].data)[0],2);
+}
+TEST_F(RknnBackend, RejectedNativeCandidateTriesConservativeCandidateWithoutPublishingMismatch) {
+    loader.state.candidate=true;loader.state.candidate_mismatch=true;loader.state.candidate_retries=1;
+    config.options_utf8="{\"input_memory\":\"auto\"}";
+    ASSERT_EQ(Create(),HV_OK);ASSERT_EQ(Run(),HV_OK);
+    EXPECT_FLOAT_EQ(static_cast<const float*>(outputs[0].data)[0],1);
+    EXPECT_EQ(loader.state.candidate_retries,0u);
+    humanvision::runtime::BackendStageDiagnostics diagnostic;
+    ASSERT_TRUE(humanvision::runtime::CopyBackendDiagnostics(session,diagnostic));
+    EXPECT_NE(std::string(diagnostic.input_path).find("previous=shared-input-qualified"),std::string::npos);
+    EXPECT_NE(std::string(diagnostic.input_path).find("qualification-error-or-mismatch"),std::string::npos);
+    ASSERT_EQ(Run(),HV_OK);EXPECT_EQ(loader.state.candidate_runs,2u);
+    EXPECT_FLOAT_EQ(static_cast<const float*>(outputs[0].data)[0],2);
+}
+TEST_F(RknnBackend, ExplicitInputTransformIsValidatedWithoutChangingLegacyInputContract) {
+    config.options_utf8="{\"input_transform\":{\"mean\":[0,0,0],\"norm\":[0.003921568627,0.003921568627,0.003921568627]}}";
+    ASSERT_EQ(Create(),HV_OK)<<detail;ASSERT_EQ(Run(),HV_OK);
+    EXPECT_EQ(loader.state.runs,1u);
+}
+TEST_F(RknnBackend, RejectsInvalidOrUnboundedExplicitTransform) {
+    for(const char* text:{"{\"input_transform\":{\"mean\":[0,0],\"norm\":[1,1,1]}}",
+        "{\"input_transform\":{\"mean\":[0,0,0],\"norm\":[1,1,10000]}}",
+        "{\"input_transform\":{\"mean\":[0,0,0],\"norm\":[1,1,1],\"unknown\":true}}"}) {
+        config.options_utf8=text;EXPECT_EQ(Create(),HV_ERR_INVALID_ARGUMENT);EXPECT_EQ(session,nullptr);
+    }
+}
+TEST_F(RknnBackend, InputCandidateFailuresDoNotInvalidateTheCompletedBaselineFrame) {
+    loader.state.candidate=true;loader.state.fail="candidate_run";
+    config.options_utf8="{\"input_memory\":\"auto\"}";
+    ASSERT_EQ(Create(),HV_OK);ASSERT_EQ(Run(),HV_OK);
+    EXPECT_EQ(loader.state.candidate_runs,1u);EXPECT_EQ(loader.state.candidate_drops,1u);
+    EXPECT_EQ(count,2u);EXPECT_FLOAT_EQ(static_cast<const float*>(outputs[0].data)[0],1);
+    ASSERT_EQ(Run(),HV_OK);EXPECT_EQ(loader.state.candidate_runs,1u);
+}
+TEST_F(RknnBackend, QualifiedInputFailureRerunsSameFrameOnOriginalContext) {
+    for(const char* stage:{"candidate_set","candidate_run","candidate_get","candidate_release"}) {
+        loader.state=State{};loader.state.candidate=true;loader.state.slow_baseline=true;
+        config.options_utf8="{\"input_memory\":\"auto\"}";
+        ASSERT_EQ(Create(),HV_OK);
+        for(int i=0;i<7;i++)ASSERT_EQ(Run(),HV_OK)<<detail;
+        ASSERT_EQ(loader.state.candidate_drops,0u);
+        ASSERT_EQ(Run(),HV_OK)<<detail;
+        EXPECT_EQ(loader.state.runs,7u)<<"Qualified frame must use candidate only";
+        loader.state.fail=stage;
+        ASSERT_EQ(Run(),HV_OK)<<stage<<": "<<detail;
+        EXPECT_EQ(loader.state.runs,8u)<<"Failure must rerun original context on the same supplied input";
+        EXPECT_EQ(count,2u);EXPECT_FLOAT_EQ(static_cast<const float*>(outputs[0].data)[0],8);
+        EXPECT_EQ(loader.state.candidate_drops,1u);
+        Diagnostics diagnostics;ASSERT_TRUE(GetRknnDiagnostics(session,diagnostics));EXPECT_EQ(diagnostics.completed_runs,9u);
+        plugin.backend->destroy(session);session=nullptr;
+    }
 }
 TEST_F(RknnBackend, InsufficientCapacityAndInvalidInputNeverRunVendor) {
     ASSERT_EQ(Create(),HV_OK);EXPECT_EQ(Run(1),HV_ERR_INVALID_ARGUMENT);EXPECT_EQ(count,0u);EXPECT_EQ(loader.state.runs,0u);

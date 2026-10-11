@@ -53,37 +53,47 @@ public static class HumanVisionSettingsDiagnosticsSetup
         Font font = canvas.GetComponentsInChildren<Text>(true).First(t => t.font != null).font;
         var previous = canvas.transform.Find("Device diagnostics bar");
         if (previous != null) UnityEngine.Object.DestroyImmediate(previous.gameObject);
-        // 为底部常驻日志条腾出空间；其余设置控件及原有布局引用均保留。
+        // 将日志/硬件移到右侧，让左侧 16:9 视频利用完整高度，避免日志挤出宽黑边。
         var preview = canvas.transform.Find("Preview panel") as RectTransform;
-        if (preview != null) preview.anchorMin = new Vector2(0, .34f);
+        if (preview != null) { preview.anchorMin = new Vector2(0, .16f); preview.anchorMax = new Vector2(.66f,.92f); }
+        var modes = canvas.transform.Find("Mode bar") as RectTransform;
+        if (modes != null) { modes.anchorMin=new Vector2(0,.92f);modes.anchorMax=new Vector2(.66f,1); }
+        var actions = canvas.transform.Find("Actions") as RectTransform;
+        if (actions != null) { actions.anchorMin=Vector2.zero;actions.anchorMax=new Vector2(.66f,.08f); }
+        var settings = canvas.transform.Find("Settings panel") as RectTransform;
+        if (settings != null) { settings.anchorMin=new Vector2(.66f,.44f);settings.anchorMax=Vector2.one; }
         var statusPanel = canvas.transform.Find("Runtime status") as RectTransform;
-        if (statusPanel != null) { statusPanel.anchorMin = new Vector2(0, .26f); statusPanel.anchorMax = new Vector2(.72f, .34f); }
+        if (statusPanel != null) { statusPanel.anchorMin = new Vector2(0, .08f); statusPanel.anchorMax = new Vector2(.66f, .16f); }
         var panelObject = new GameObject("Device diagnostics bar", typeof(RectTransform), typeof(Image));
         panelObject.transform.SetParent(canvas.transform, false);
-        var rect = (RectTransform)panelObject.transform; rect.anchorMin = new Vector2(0, .16f); rect.anchorMax = new Vector2(.72f, .26f);
+        // The benchmark locks configuration only; log-folder/export/cancel actions remain clickable.
+        panelObject.AddComponent<CanvasGroup>().ignoreParentGroups = true;
+        var rect = (RectTransform)panelObject.transform; rect.anchorMin = new Vector2(.66f, 0); rect.anchorMax = new Vector2(1, .20f);
         rect.offsetMin = new Vector2(8, 3); rect.offsetMax = new Vector2(-8, -3); panelObject.GetComponent<Image>().color = new Color(.08f, .13f, .19f, 1);
         var labelObject = new GameObject("Device log path", typeof(RectTransform), typeof(Text)); labelObject.transform.SetParent(rect, false);
-        var labelRect = (RectTransform)labelObject.transform; labelRect.anchorMin = new Vector2(0, .51f); labelRect.anchorMax = Vector2.one;
+        var labelRect = (RectTransform)labelObject.transform; labelRect.anchorMin = new Vector2(0, .50f); labelRect.anchorMax = Vector2.one;
         labelRect.offsetMin = new Vector2(6, 0); labelRect.offsetMax = new Vector2(-6, 0);
-        var label = labelObject.GetComponent<Text>(); label.font = font; label.fontSize = 13; label.color = Color.white; label.raycastTarget = false;
-        label.horizontalOverflow = HorizontalWrapMode.Overflow; label.verticalOverflow = VerticalWrapMode.Truncate;
+        var label = labelObject.GetComponent<Text>(); label.font = font; label.fontSize = 16; label.color = Color.white; label.raycastTarget = false;
+        label.horizontalOverflow = HorizontalWrapMode.Wrap; label.verticalOverflow = VerticalWrapMode.Truncate;
         label.text = "实机日志：进入运行后自动创建会话；普通 Unity 日志和详细骨骼默认开启。";
         var copy = Button(rect, "Copy device log path", "复制日志路径", 0, font);
         copy.GetComponentInChildren<Text>().text = "复制日志文件夹";
         var export = Button(rect, "Export device logs", "导出日志 ZIP", 1, font);
         var zip = Button(rect, "Copy exported ZIP path", "复制 ZIP 路径", 2, font);
         var skeleton = Button(rect, "Toggle skeleton capture", "骨骼日志：开启", 3, font);
+        var compare = Button(rect, "Run combined comparison", "一键自动对照", 4, font);
+        var cancelGroup=compare.gameObject.AddComponent<CanvasGroup>();cancelGroup.ignoreParentGroups=true;
         var oldHardware = canvas.transform.Find("Device hardware bar");
         if (oldHardware != null) UnityEngine.Object.DestroyImmediate(oldHardware.gameObject);
         var hardwareObject = new GameObject("Device hardware bar", typeof(RectTransform), typeof(Image));
         hardwareObject.transform.SetParent(canvas.transform, false);
-        var hardwareRect = (RectTransform)hardwareObject.transform; hardwareRect.anchorMin = new Vector2(0, .08f); hardwareRect.anchorMax = new Vector2(.72f, .16f);
+        var hardwareRect = (RectTransform)hardwareObject.transform; hardwareRect.anchorMin = new Vector2(.66f, .20f); hardwareRect.anchorMax = new Vector2(1, .44f);
         hardwareRect.offsetMin = new Vector2(8, 3); hardwareRect.offsetMax = new Vector2(-8, -3); hardwareObject.GetComponent<Image>().color = new Color(.08f, .13f, .19f, 1);
         var hardwareTextObject = new GameObject("Hardware usage and native stages", typeof(RectTransform), typeof(Text));
         hardwareTextObject.transform.SetParent(hardwareRect, false);
         var hardwareTextRect = (RectTransform)hardwareTextObject.transform; hardwareTextRect.anchorMin = Vector2.zero; hardwareTextRect.anchorMax = Vector2.one;
         hardwareTextRect.offsetMin = new Vector2(6, 2); hardwareTextRect.offsetMax = new Vector2(-6, -2);
-        var hardwareText = hardwareTextObject.GetComponent<Text>(); hardwareText.font = font; hardwareText.fontSize = 12;
+        var hardwareText = hardwareTextObject.GetComponent<Text>(); hardwareText.font = font; hardwareText.fontSize = 16;
         hardwareText.color = Color.white; hardwareText.raycastTarget = false; hardwareText.horizontalOverflow = HorizontalWrapMode.Wrap;
         hardwareText.text = "硬件指标与真实阶段耗时：运行后自动采样；无权限的指标明确显示不可用。";
         var diagnostics = target.GetComponent<HumanVisionSettingsDeviceDiagnostics>() ?? target.gameObject.AddComponent<HumanVisionSettingsDeviceDiagnostics>();
@@ -91,6 +101,8 @@ public static class HumanVisionSettingsDiagnosticsSetup
         if (target.GetComponent<HumanVisionSettingsBundledVideos>() == null) target.gameObject.AddComponent<HumanVisionSettingsBundledVideos>();
         string version = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(IHumanVisionFrameSource).Assembly)?.version ?? "unknown";
         diagnostics.Configure(target, label, copy, export, zip, skeleton, version, hardwareText);
+        var comparison=target.GetComponent<HumanVisionCombinedBenchmark>()??target.gameObject.AddComponent<HumanVisionCombinedBenchmark>();
+        comparison.Configure(target,diagnostics,compare);EditorUtility.SetDirty(comparison);
         EditorUtility.SetDirty(diagnostics);
         // 标明高级区里的兼容入口，原 SDK 日志会被合并到实机 ZIP 中。
         foreach (var button in canvas.GetComponentsInChildren<Button>(true)) {
@@ -101,12 +113,15 @@ public static class HumanVisionSettingsDiagnosticsSetup
     private static Button Button(Transform parent, string name, string title, int index, Font font)
     {
         var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button)); go.transform.SetParent(parent, false);
-        var rect = (RectTransform)go.transform; rect.anchorMin = new Vector2(index / 4f, 0); rect.anchorMax = new Vector2((index + 1) / 4f, .49f);
+        // Three file actions above, two larger capture/comparison actions below.
+        int column=index<3?index:index-3;float columns=index<3?3f:2f;
+        var rect = (RectTransform)go.transform; rect.anchorMin = new Vector2(column / columns, index<3?.25f:0);
+        rect.anchorMax = new Vector2((column + 1) / columns, index<3?.50f:.25f);
         rect.offsetMin = new Vector2(4, 2); rect.offsetMax = new Vector2(-4, -2); go.GetComponent<Image>().color = new Color(.12f, .28f, .40f);
         var textGo = new GameObject("Text", typeof(RectTransform), typeof(Text)); textGo.transform.SetParent(go.transform, false);
         var textRect = (RectTransform)textGo.transform; textRect.anchorMin = Vector2.zero; textRect.anchorMax = Vector2.one; textRect.offsetMin = textRect.offsetMax = Vector2.zero;
-        var text = textGo.GetComponent<Text>(); text.font = font; text.text = title; text.color = Color.white; text.fontSize = 18;
-        text.resizeTextForBestFit = true; text.resizeTextMinSize = 12; text.resizeTextMaxSize = 18; text.alignment = TextAnchor.MiddleCenter; text.raycastTarget = false;
+        var text = textGo.GetComponent<Text>(); text.font = font; text.text = title; text.color = Color.white; text.fontSize = 20;
+        text.resizeTextForBestFit = true; text.resizeTextMinSize = 16; text.resizeTextMaxSize = 20; text.alignment = TextAnchor.MiddleCenter; text.raycastTarget = false;
         return go.GetComponent<Button>();
     }
     [MenuItem("Tools/Human Vision/Development/Verify Settings Demo diagnostics bindings")]
@@ -123,11 +138,12 @@ public static class HumanVisionSettingsDiagnosticsSetup
             if (!button.gameObject.activeInHierarchy) throw new Exception("Diagnostic button is hidden: " + name);
         }
         if (!target.RecordSkeletons) throw new Exception("Detailed skeleton sampling must be enabled for device test.");
-        // y=0..0.08 是 SDK 原有应用/停止/返回按钮区；新增硬件条不得遮住这些入口。
+        // 右侧三块连续且互不遮挡；左侧视频/状态/操作条保留各自区域。
         var hardwareRect = (RectTransform)((Text)serialized.FindProperty("hardwareLabel").objectReferenceValue).transform.parent;
         var diagnosticsRect = (RectTransform)((Text)serialized.FindProperty("logPathLabel").objectReferenceValue).transform.parent;
-        if (hardwareRect.anchorMin.y < .08f || diagnosticsRect.anchorMin.y < hardwareRect.anchorMax.y)
-            throw new Exception("Hardware/log panels overlap the original action buttons or each other.");
+        if (hardwareRect.anchorMin.x < .66f || diagnosticsRect.anchorMin.x < .66f ||
+            diagnosticsRect.anchorMax.y > hardwareRect.anchorMin.y || hardwareRect.anchorMax.y > .44f)
+            throw new Exception("Hardware/log panels overlap the video or settings controls.");
         if (target.GetComponent<HumanVisionSettingsBundledVideos>() == null || Resources.Load<TextAsset>(HumanVisionSettingsBundledVideos.ResourceName) == null)
             throw new Exception("Settings Demo is missing its real StreamingAssets video catalog.");
         var view = UnityEngine.Object.FindObjectOfType<HumanVisionSettingsController>().View;
@@ -243,7 +259,8 @@ public static class HumanVisionSettingsDiagnosticsSetup
         bool localFix = File.Exists(Path.Combine(Root, "Assets/HumanVisionSettingsDemo/Resources/HumanVisionDeviceBuildInfo.json"));
         var identity = localFix ? JsonUtility.FromJson<BuildIdentity>(File.ReadAllText(Path.Combine(Root, "Assets/HumanVisionSettingsDemo/Resources/HumanVisionDeviceBuildInfo.json"))) : null;
         bool outputFix = identity != null && (identity.label ?? "").StartsWith("RK3588-Fix2-", StringComparison.Ordinal);
-        string apk = Path.Combine(Root, "Builds", identity != null && (identity.label ?? "").StartsWith("RK3588-Optimization-", StringComparison.Ordinal) ? "HumanVisionSettingsDemo-RK3588-Optimization.apk" :
+        string apk = Path.Combine(Root, "Builds", identity != null && (identity.label ?? "").StartsWith("RK3588-Dual-Experimental-", StringComparison.Ordinal) ? "HumanVisionSettingsDemo-Vulkan-NPU-Experimental.apk" :
+            identity != null && (identity.label ?? "").StartsWith("RK3588-Optimization-", StringComparison.Ordinal) ? "HumanVisionSettingsDemo-RK3588-Optimization.apk" :
             identity != null && identity.hardware_diagnostics ? "HumanVisionSettingsDemo-HardwareDiagnostics.apk" : identity != null && identity.native_stage_trace ? "HumanVisionSettingsDemo-PerformanceTrace.apk" :
             outputFix ? "HumanVisionSettingsDemo-RK3588-Fix2.apk" : localFix ? "HumanVisionSettingsDemo-RK3588-Fix1.apk" : "HumanVisionSettingsDemo-DeviceDiagnostics.apk");
         var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions { scenes = new[] { ScenePath }, locationPathName = apk, target = BuildTarget.Android, options = BuildOptions.None });

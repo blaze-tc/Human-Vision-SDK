@@ -27,7 +27,47 @@ Run accepts one tightly packed RGB UINT8 tensor `[1,H,W,3]`. Actual queried
 NCHW or NHWC model attributes determine H and W; a mismatched shape/name/byte
 count fails before any vendor execution. `rknn_inputs_set` receives UINT8 NHWC
 with `pass_through=0`, allowing the runtime's compiled input conversion. The
-backend does not divide pixels by 255 or define model normalization.
+baseline backend does not divide pixels by 255 or define model normalization.
+The pipeline may supply an explicit private `input_transform` object containing
+three `mean` and three `norm` values from its validated model contract. This is
+parsed once; it does not change the public UINT8 input contract or model bytes.
+
+## Qualified I/O optimization (private experiment)
+
+`HV_RKNN_INPUT_MEMORY_EXPERIMENT` plus `input_memory:auto` (or the existing
+device comparison override) creates an independent candidate context. It tries:
+
+1. Queried native NHWC FP16 input with pipeline-supplied normalization and shared
+   FP32 outputs. A 3×256 lookup table combines normalization and half conversion;
+   row/channel padding follows the query, is zeroed, and stays within 4 MiB.
+2. Shared UINT8 input plus shared FP32 outputs, retaining compiled normalization.
+3. Shared UINT8 input with the original `outputs_get` path.
+
+Each candidate must match every FP32 output bit on the same frame, including two
+warm-ups, and improve total backend time by at least 5% over five measured pairs.
+Qualification publishes only the baseline result. Unsupported layouts, binding
+errors, output differences or inadequate gains try the next candidate. An error
+after qualification reruns that same input on the independent baseline context.
+This is bounded preferred-path selection, not an exhaustive fastest-route search.
+
+Input/output memories are allocated and bound once per candidate; steady-state
+runs use explicit TO_DEVICE/FROM_DEVICE cache sync and reusable buffers. Dense
+FP32 shared outputs follow the vendor API example; blocked layouts are rejected.
+The native input uses pass_through=1 only with validated FP16/NHWC/nonquantized
+attributes. No camera/gralloc layout is guessed and RGA remains disabled.
+Candidate transitions can allocate/recreate on the worker during qualification;
+the stable path does not grow application buffers. Vendor allocations remain
+outside the application's control.
+
+`input_path` logs selected/testing path, current comparison counts/times and the
+last rejected candidate/reason/times. `native-fp16-io-qualified`,
+`shared-io-qualified` and `shared-input-qualified` identify accepted routes;
+`legacy-*` identifies qualification or fallback, never a claimed optimization.
+
+The PC RKNN simulator accepts an explicit FP32 normalization control, but rejects
+native FP16 input. Its result cannot qualify the native memory path. RK3588
+driver correctness and sustained per-person throughput require the device gate.
+See [throughput evidence](../../../../docs/reports/2026-10-11-rknn-native-io.md).
 
 ## Produces
 

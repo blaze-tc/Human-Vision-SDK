@@ -15,6 +15,7 @@ struct BackendStageDiagnostics {
     float execute_ms = 0;
     float output_get_ms = 0;
     float output_release_ms = 0;
+    char input_path[512]{}; // Internal only: bounded qualification/fallback evidence, no ABI change.
 };
 namespace detail {
 struct BackendDiagnosticSlot { const void* owner = nullptr; BackendStageDiagnostics value{}; };

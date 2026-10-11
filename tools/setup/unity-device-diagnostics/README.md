@@ -51,3 +51,28 @@ completion/submission/rejection counters and GPU-request-to-main-thread-callback
 wall time, normalize/submit/Blit CPU recording means. These cumulative values and
 lastFrameId are separate from the current model result; do not subtract across
 frames to invent precise pipeline gaps.
+
+The combined repair adds **一键自动对照** to the persistent diagnostics bar.
+It tests GPU pixel fixtures, independent RTSP preview, bundled video and RTSP
+recognition in one installation. Identified RK3588 devices run NPU baseline,
+qualified candidate and repeated baseline; other devices explicitly skip RKNN
+and compare CPU/Vulkan. A final 300-second local-video phase checks sustained
+behavior. Each phase has a 15-second warm-up; normal measurements last 60 seconds.
+Cancel restores temporary environment switches and the prior runtime/draft;
+saved settings are never written. Logs remain in the same copied session folder.
+
+`persons.jsonl` records stable-ID windows, real fresh observations, complete
+COCO-17 observations, source/generation and local result age. Duplicate frames,
+repeated observations and predicted/derived joints cannot increase complete
+counts. Known absent tracks emit zero, and 64-track retention evictions are
+explicit. `benchmark.phase` markers delimit measured intervals; never include
+warm-up, restoration or pixel fixtures in FPS. Existing global event FPS is
+still distinct from these per-person rates. Candidate labels are requests:
+inspect `input_path` and `cpuReadback.modelReadback` for the actual qualified or
+fallback path. No RK3588 target FPS is certified by the OnePlus run.
+
+`python tools/benchmark/analyze_combined_benchmark.py SESSION OUTPUT_JSON` summarizes
+only completed `MEASURE BEGIN/END` intervals from `persons.jsonl`. Repeated baseline
+phases remain separate; cancelled phases cannot become passing measurements.
+Known absent tracks retain zero windows. Spatial accuracy requires inspection of
+the recorded video; complete COCO-17 is not a full 32-joint accuracy certificate.

@@ -81,6 +81,8 @@ std::string BackendFactory::Diagnostics() const {
        "; core_mask="+std::to_string(stages.core_mask)+"; initialize_ms="+std::to_string(stages.initialize_ms)+
        "; input_set_ms="+std::to_string(stages.input_set_ms)+"; execute_ms="+std::to_string(stages.execute_ms)+
        "; output_get_ms="+std::to_string(stages.output_get_ms)+"; output_release_ms="+std::to_string(stages.output_release_ms);
+   stages.input_path[sizeof(stages.input_path)-1]=0;
+   if(stages.input_path[0])result+="; input_path="+std::string(stages.input_path);
   }
   if(!diagnostic->creation_failures.empty()||info.fallback_reason[0])result+=" ("+diagnostic->creation_failures+info.fallback_reason+")";}
  return result;

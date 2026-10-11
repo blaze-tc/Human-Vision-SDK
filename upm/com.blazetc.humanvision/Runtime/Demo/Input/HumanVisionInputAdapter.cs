@@ -19,7 +19,19 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
     private HumanVisionInputAdapter nextRetirement;
     private sealed class CpuFence:ISourceCopyFence {
         internal AsyncGPUReadbackRequest Request;
-        public bool IsComplete=>Request.done;
+        internal GraphicsFence CopyFence;
+        internal bool HasCopyFence, HasRequest;
+        public bool IsComplete {
+            get {
+                if(HasRequest && Request.done)return true;
+                // The source is no longer needed after the actual GPU copy. The
+                // bridge separately retains the owned snapshot until readback completes.
+                if(!HasCopyFence)return false;
+                try {return CopyFence.passed;}
+                catch(NotSupportedException){return false;}
+                catch(InvalidOperationException){return false;}
+            }
+        }
     }
     private sealed class Slot {
         internal readonly HumanVisionAndroidFrameCopyFence Gpu=new HumanVisionAndroidFrameCopyFence();
@@ -44,6 +56,9 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
         minimumSequence=manager!=null?manager.ResultSequence:0;
     }
     public void Detach() {
+        // Readback callbacks may outlive a binding. Retire their frame identities
+        // before accepting a different source, even if its local frame IDs restart.
+        if(cpuBridge!=null)cpuBridge.InvalidateCpuInputGeneration();
         source=null;PreviewTexture=null;LatestPreviewFrameId=-1;firstSubmitted=submitted=-1;
         closing=gpuActive||AnyActive();
         if(closing)RetirementPump.Watch(this);
@@ -60,6 +75,8 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
         if(manager==null||!manager.IsInitialized){latest=frame.FrameId;LastError="SDK is not initialized; independent preview continues.";return;}
         if(closing)return;
         if(sourceId!=0&&(sourceId!=frame.SourceId||generation!=frame.Generation)) {
+            // Retire CPU result identity immediately on reconnect/mirror changes.
+            if(cpuBridge!=null)cpuBridge.InvalidateCpuInputGeneration();
             closing=gpuActive||AnyActive();minimumSequence=manager.ResultSequence;firstSubmitted=submitted=-1;
             sourceId=generation=0;
             if(closing){RetirementPump.Watch(this);return;}
@@ -94,8 +111,8 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
                     ForwardPublicationProvenance(in frame,provenanceSink);
                     if(cpuBridge==null){cpuBridge=GetComponent<VideoPlayerFrameSource>();if(cpuBridge==null){cpuBridge=gameObject.AddComponent<VideoPlayerFrameSource>();cpuBridge.Configure(manager,null,null);}else cpuBridge.BindManager(manager);cpuBridge.ConfigureLiveInput(true);}
                     free.GpuPath=false;
-                    accepted=cpuBridge.TrySubmitUnifiedCpuFrame(frame.Texture,timestamp,out var request);
-                    if(accepted){free.Cpu.Request=request;lease.RetireAfter(free.Cpu);free.Active=true;}
+                    accepted=cpuBridge.TrySubmitUnifiedCpuFrame(frame.Texture,timestamp,out var request,out var copyFence,out var hasCopyFence);
+                    if(accepted){free.Cpu.Request=request;free.Cpu.HasRequest=true;free.Cpu.CopyFence=copyFence;free.Cpu.HasCopyFence=hasCopyFence;lease.RetireAfter(free.Cpu);free.Active=true;}
                 }
                 if(!free.Active)lease.Dispose();
                 if(accepted){submitted=manager.UsesAndroidGpuFrames?frame.FrameId:cpuBridge.LatestQueuedFrameId;if(firstSubmitted<0)firstSubmitted=submitted;}
@@ -104,6 +121,10 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
                 // The bridge binds its native token before Execute. Unknown queued
                 // completion retains the exact input lease and both strong textures.
                 if(free.Gpu.Active&&!free.Active){lease.RetireAfter(free.Gpu);free.Active=true;}
+                else if(!free.GpuPath && !free.Active && cpuBridge!=null && cpuBridge.TryGetQueuedSourceCopy(out var pendingCopy)) {
+                    free.Cpu.HasRequest=false;free.Cpu.HasCopyFence=true;free.Cpu.CopyFence=pendingCopy;
+                    lease.RetireAfter(free.Cpu);free.Active=true;
+                }
                 else if(!free.Active)lease.Dispose();
                 throw;
             }
@@ -129,7 +150,7 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
                 bool complete=slot.GpuPath?slot.Gpu.IsComplete:slot.Cpu.IsComplete;
                 if(!complete||!slot.Lease.IsRetired)continue;
                 if(slot.GpuPath){if(slot.Gpu.Outcome==1)CopiedFrames++;else DroppedUnsubmittedFrames++;slot.Gpu.ReleaseAcknowledgedLease();}
-                else {if(slot.Cpu.Request.hasError)DroppedUnsubmittedFrames++;else CopiedFrames++;}
+                else {if(!slot.Cpu.HasRequest || slot.Cpu.Request.done&&slot.Cpu.Request.hasError)DroppedUnsubmittedFrames++;else CopiedFrames++;}
                 slot.Active=false;
             }
             if(!closing||AnyActive())return;

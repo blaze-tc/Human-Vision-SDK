@@ -123,7 +123,7 @@ namespace HumanVision.TestProject.Diagnostics
         /// <summary>主线程低频序列化的骨骼、硬件和阶段记录；白名单防止任意路径写入。</summary>
         public void WriteJsonLine(string file, string json)
         {
-            if (file != "skeletons.jsonl" && file != "hardware.jsonl" && file != "timings.jsonl")
+            if (file != "skeletons.jsonl" && file != "hardware.jsonl" && file != "timings.jsonl" && file != "persons.jsonl")
                 throw new ArgumentException("Unknown diagnostics stream.", nameof(file));
             Write(file, Redact(json) + "\n");
         }

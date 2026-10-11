@@ -1,3 +1,42 @@
+# 2026-10-11 active: RKNN throughput follow-up
+
+Sole active follow-up: `docs/plans/2026-10-11-rknn-throughput.md`, extending the
+combined repair toward 20–25 FPS through qualified native tensor I/O. Hardware
+throughput remains unverified; model bytes and numerical gates stay unchanged.
+
+Native FP16 normalization/packing and reusable output candidate implemented with
+strict same-frame qualification and conservative retry. Native CTest 426/426,
+ARM64 API26 audit and architecture/public-surface checks pass. OnePlus packing
+oracle checks 3,072 values; simulator FP32 normalization controls pass seven/one/
+empty, while native FP16 simulation is unsupported. Evidence and conditional
+40–50 ms budget: `docs/reports/2026-10-11-rknn-native-io.md`.
+
+Combined NativeIO APK `1365344855552187785a4e1402b15e608715e4292287b4df3052ec35aa092f69`
+built (0 errors/8 warnings), installed and completed OnePlus automatic regression:
+6 pixel cases, video/RTSP CPU+Vulkan, 300s video. Whole-result rates video Vulkan
+24.82/23.02 sustained; not per-person or RK3588 acceptance. APK/report delivered
+to the test project's `真实设备日志/联合优化-20261011` directory. RK3588 gate remains open.
+
+# 2026-10-10 combined RK3588 second-field repair
+
+Previous combined plan: docs/plans/2026-10-10-rk3588-combined-repair.md. User requests one combined delivery; original model/ABI preserved. Source publication 11.826/s, completed 8.425/s, cumulative CPU readback 136.613ms and 673 queue rejections. No post-change RK3588 performance claim.
+
+Final OnePlus delivery and UI verification: `docs/reports/2026-10-10-combined-oneplus-verification.md`.
+APK SHA256 `34f7b6f0afb42f8750f0c092ffe496ab9e12d5d6a672052842fdcf70f1d8d859`;
+actual Vulkan HUD, video/skeleton, comparison cancellation, restored dropdown and
+log-folder copying verified. RK3588 stable per-person FPS acceptance remains open.
+
+Integrated candidate verification: native CTest 420/420 (including failures after
+shared-input qualification); Unity actual leaves: input/geometry 22/22, exact
+model readback 4/4, streamed archive video/cancel 6/6, diagnostics 51/51, per-person
+deduplication 1/1. ARM64 API26 audit passes with 506 resolved strong imports and
+50 unchanged HV/UnityPlugin exports. Private binary SHA256
+`26d94dba9100275790e7088593bf78e7a853ca0ea14c69b1dfbf63668396277b`.
+Same-package comparison, actual-device pixel fixtures, public log-folder access,
+and per-person `persons.jsonl` are integrated; physical execution and RK3588
+20–25 FPS acceptance remain open. RGA remains disabled; see
+`docs/maintenance/RK3588_RGA_ASSESSMENT.md` for evidence and compatibility gates.
+
 # 2026-10-10 completed software follow-up: RK3588 field repair / NPU preparation
 
 Completed verifiable scope: docs/plans/2026-10-10-rknn-offline-optimization.md.

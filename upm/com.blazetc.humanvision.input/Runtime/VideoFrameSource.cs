@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.IO;
 using UnityEngine;
 using UnityEngine.Video;
 
@@ -144,6 +146,12 @@ namespace HumanVision.Input
         private VideoPlayer.FrameReadyEventHandler ready;
         private VideoPlayer.ErrorEventHandler error;
         private bool paused;
+        private ArchiveVideoCache.Transfer extraction;
+        private Coroutine extractionRoutine;
+        private string openingLocation;
+        /// <summary>True only while a bundled archive asset is streamed to local disk.
+        /// Hosts may allow this bounded preparation before starting their decode timeout.</summary>
+        public bool IsPreparingLocalAsset => extraction != null;
 
         public override void Open(HumanVisionSourceSettings settings)
         {
@@ -156,20 +164,59 @@ namespace HumanVision.Input
             {
                 BeginOutput();
                 State = InputSourceState.Opening;
+                openingLocation = settings.Location;
+                OpenLocation(openingLocation);
+            }
+            catch (Exception ex) { Fail(ex.Message); }
+        }
+
+        private void OpenLocation(string location)
+        {
+            if (ArchiveVideoCache.RequiresExtraction(location))
+            {
+                string path = ArchiveVideoCache.Destination(Path.Combine(Application.persistentDataPath,
+                    "HumanVisionVideoCache"), location);
+                if (ArchiveVideoCache.IsComplete(path)) { StartPlayer(path); return; }
+                extraction = new ArchiveVideoCache.Transfer(location, path);
+                Debug.Log("HumanVision video: extracting APK asset to " + path, this);
+                extractionRoutine = StartCoroutine(WaitForExtraction(extraction, ActiveGeneration));
+                return;
+            }
+            StartPlayer(location);
+        }
+
+        private IEnumerator WaitForExtraction(ArchiveVideoCache.Transfer transfer, ulong generation)
+        {
+            double deadline=Time.realtimeSinceStartupAsDouble+90;
+            while (!transfer.IsDone && Time.realtimeSinceStartupAsDouble<deadline) yield return null;
+            if (!ReferenceEquals(extraction, transfer) || generation != ActiveGeneration) yield break;
+            extractionRoutine = null;
+            extraction = null;
+            try
+            {
+                if(!transfer.IsDone)throw new IOException("Bundled video extraction timed out after 90 seconds. Check device storage and free space.");
+                string path = transfer.Commit();
+                Debug.Log("HumanVision video: local cache ready, bytes=" + new FileInfo(path).Length + ", path=" + path, this);
+                StartPlayer(path);
+            }
+            catch (Exception ex) { Fail(ex.Message); }
+            finally { transfer.Dispose(); }
+        }
+
+        private void StartPlayer(string location)
+        {
                 var owner = new GameObject("HumanVision video decoder") { hideFlags = HideFlags.HideAndDontSave };
                 DontDestroyOnLoad(owner);
                 player = owner.AddComponent<VideoPlayer>();
                 player.playOnAwake = false;
                 player.source = VideoSource.Url;
-                player.url = settings.Location;
+                player.url = location;
                 player.renderMode = VideoRenderMode.APIOnly;
                 player.audioOutputMode = VideoAudioOutputMode.None;
                 player.isLooping = true;
                 player.sendFrameReadyEvents = true;
                 Attach();
                 player.Play();
-            }
-            catch (Exception ex) { Fail(ex.Message); }
         }
 
         private void Attach()
@@ -210,6 +257,7 @@ namespace HumanVision.Input
         private void Fail(string message)
         {
             LastError = message;
+            Debug.LogError("HumanVision video: " + message, this);
             Close();
             State = InputSourceState.Error;
         }
@@ -217,7 +265,16 @@ namespace HumanVision.Input
         public void Pause()
         {
             CheckThread();
-            if (player == null || paused) return;
+            if (paused) return;
+            if (player == null)
+            {
+                if (extraction == null) return;
+                CancelExtraction();
+                paused = true;
+                RetireOutput();
+                State = PendingRetirementCount == 0 ? InputSourceState.Stopped : InputSourceState.Closing;
+                return;
+            }
             paused = true;
             Detach();
             player.Pause();
@@ -228,14 +285,14 @@ namespace HumanVision.Input
         public void Resume()
         {
             CheckThread();
-            if (player == null || !paused) return;
+            if (!paused) return;
             try
             {
                 BeginOutput();
                 paused = false;
                 State = InputSourceState.Opening;
-                Attach();
-                player.Play();
+                if (player == null) OpenLocation(openingLocation);
+                else { Attach(); player.Play(); }
             }
             catch (Exception ex) { Fail(ex.Message); }
         }
@@ -244,6 +301,7 @@ namespace HumanVision.Input
         {
             CheckThread();
             State = InputSourceState.Closing;
+            CancelExtraction();
             Detach();
             if (player != null)
             {
@@ -258,6 +316,13 @@ namespace HumanVision.Input
         }
 
         private void Update() { PollRetirement(); }
+        private void CancelExtraction()
+        {
+            // Do not depend on StopCoroutine disposing the iterator: explicitly abort and remove its partial file.
+            if (extractionRoutine != null) { StopCoroutine(extractionRoutine); extractionRoutine = null; }
+            extraction?.Dispose();
+            extraction = null;
+        }
         private void OnApplicationPause(bool value) { if (value) Pause(); else Resume(); }
     }
 }

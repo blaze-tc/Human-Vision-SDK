@@ -1,10 +1,14 @@
 #include "plugins/backend/rknn/rknn_vendor_boundary.h"
+#include "plugins/backend/rknn/rknn_input_qualification.h"
+#include "plugins/backend/rknn/rknn_native_input.h"
 #include "common/backend_diagnostics.h"
 #include "json/json.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -21,7 +25,7 @@ void Error(HV_ErrorBufferV1* out, const char* text) noexcept {
 void StageError(HV_ErrorBufferV1* out, const char* stage, int code) {
     Error(out,(std::string("RKNN ")+stage+" failed ("+std::to_string(code)+"); no fallback").c_str());
 }
-struct Options { std::string library="librknnrt.so";uint32_t mask=7; };
+struct Options { std::string library="librknnrt.so";uint32_t mask=7;bool input_memory=false,transform=false;float mean[3]{},norm[3]{}; };
 bool ParseOptions(const char* text, Options& out, HV_ErrorBufferV1* error) {
     if (!text || !*text) return true;
     try {
@@ -40,6 +44,17 @@ bool ParseOptions(const char* text, Options& out, HV_ErrorBufferV1* error) {
                 if (!value.is_string() || value!="nhwc") throw std::invalid_argument("input_layout must be nhwc");
             } else if (key=="input_type") {
                 if (!value.is_string() || value!="uint8") throw std::invalid_argument("input_type must be uint8");
+            } else if (key=="input_memory") {
+                if (!value.is_string() || (value!="legacy" && value!="auto")) throw std::invalid_argument("input_memory must be legacy or auto");
+                out.input_memory=value=="auto";
+            } else if (key=="input_transform") {
+                if(!value.is_object()||value.size()!=2||!value.contains("mean")||!value.contains("norm")||
+                    !value["mean"].is_array()||!value["norm"].is_array()||value["mean"].size()!=3||value["norm"].size()!=3)
+                    throw std::invalid_argument("input_transform requires exactly three mean and norm values");
+                for(unsigned c=0;c<3;++c){out.mean[c]=value["mean"][c].get<float>();out.norm[c]=value["norm"][c].get<float>();}
+                NativeInputTransform check;
+                if(!check.Configure(out.mean,out.norm))throw std::invalid_argument("input_transform exceeds finite FP16 bounds");
+                out.transform=true;
             } else throw std::invalid_argument("unknown option");
         }
         return true;
@@ -64,6 +79,14 @@ struct Session {
     std::vector<Attribute> attributes;
     std::vector<std::vector<float>> buffers;
     std::vector<OutputBuffer> output_buffers;
+    std::vector<std::vector<float>> candidate_buffers;
+    std::vector<OutputBuffer> candidate_outputs;
+    InputQualification qualification;
+    bool candidate_available=false;
+    const char* input_path="legacy-requested";
+    char previous_candidate[64]{};
+    const char* previous_reason="none";
+    double previous_baseline_ms=0,previous_candidate_ms=0;
     Diagnostics diagnostic;
     bool borrowed=false,poisoned=false;
     void Publish() noexcept {
@@ -73,6 +96,12 @@ struct Session {
         value.core_mask=diagnostic.core_mask;value.initialize_ms=float(diagnostic.init_ms);
         value.input_set_ms=float(diagnostic.inputs_set_ms);value.execute_ms=float(diagnostic.run_ms);
         value.output_get_ms=float(diagnostic.outputs_get_ms);value.output_release_ms=float(diagnostic.outputs_release_ms);
+        std::snprintf(value.input_path,sizeof(value.input_path),"%s; compared=%u; measured=%u; baseline_ms=%.3f; candidate_ms=%.3f; testing=%s; previous=%s; reason=%s; previous_baseline_ms=%.3f; previous_candidate_ms=%.3f",
+            input_path,qualification.compared,qualification.measured,
+            qualification.measured?qualification.baseline_ms/qualification.measured:0,
+            qualification.measured?qualification.candidate_ms/qualification.measured:0,
+            candidate_available?vendor->InputCandidateName():"none",previous_candidate,previous_reason,
+            previous_baseline_ms,previous_candidate_ms);
         try { PublishBackendDiagnostics(this,value); } catch (...) {}
     }
     int Release() noexcept {
@@ -85,11 +114,48 @@ struct Session {
     }
     ~Session() {
         try { UnregisterBackendDiagnostics(this); } catch (...) {}
-        if (vendor) { Release();if (context) vendor->Destroy(context); }
+        if (vendor) { Release();if(candidate_available)vendor->DropInputCandidate();if (context) vendor->Destroy(context); }
         // Vendor/library is destroyed before model memory, after native context.
         vendor.reset();
     }
 };
+void DisableCandidate(Session& s,const char* reason) noexcept {
+    if(s.candidate_available)s.vendor->DropInputCandidate();
+    s.candidate_available=false;s.qualification.state=InputQualification::State::Rejected;s.input_path=reason;
+}
+void RetryCandidate(Session& s,const char* reason) {
+    std::snprintf(s.previous_candidate,sizeof(s.previous_candidate),"%s",s.vendor->InputCandidateName());
+    s.previous_reason=reason;
+    s.previous_baseline_ms=s.qualification.measured?s.qualification.baseline_ms/s.qualification.measured:0;
+    s.previous_candidate_ms=s.qualification.measured?s.qualification.candidate_ms/s.qualification.measured:0;
+    bool next=false;
+    try {next=s.vendor->NextInputCandidate();}catch(...){}
+    if(next){s.qualification=InputQualification{};s.input_path="legacy-qualifying-next-io";}
+    else DisableCandidate(s,reason);
+}
+bool CandidateRun(Session& s,const void* rgb,std::vector<OutputBuffer>& targets,double& total_ms,bool publish_stages) {
+    auto all=Clock::now(),start=all;
+    int status=s.vendor->CandidateInputsSet(rgb,s.input_bytes);
+    const double input_ms=Elapsed(start);if(status)return false;
+    start=Clock::now();status=s.vendor->CandidateRun();const double run_ms=Elapsed(start);if(status)return false;
+    start=Clock::now();status=s.vendor->CandidateOutputsGet(targets.data(),uint32_t(targets.size()));
+    const double get_ms=Elapsed(start);if(status)return false;
+    bool valid=true;
+    for(size_t i=0;i<targets.size();++i) {
+        auto& expected=publish_stages?s.buffers[i]:s.candidate_buffers[i];
+        const auto& view=targets[i];
+        if(view.index!=i||view.data!=expected.data()||view.bytes!=expected.size()*sizeof(float)) {valid=false;break;}
+        for(float value:expected)if(!std::isfinite(value)){valid=false;break;}
+        if(!valid)break;
+    }
+    start=Clock::now();status=s.vendor->CandidateOutputsRelease(uint32_t(targets.size()));
+    const double release_ms=Elapsed(start);total_ms=Elapsed(all);
+    if(publish_stages) {
+        s.diagnostic.inputs_set_ms=input_ms;s.diagnostic.run_ms=run_ms;
+        s.diagnostic.outputs_get_ms=get_ms;s.diagnostic.outputs_release_ms=release_ms;
+    }
+    return !status&&valid;
+}
 bool ReadModel(const char* path, std::vector<unsigned char>& data, HV_ErrorBufferV1* error) {
     std::ifstream file(std::filesystem::u8path(path),std::ios::binary|std::ios::ate);
     const auto size=file?file.tellg():std::streampos(-1);
@@ -120,7 +186,18 @@ HV_Result HV_CALL Run(void* value, const HV_TensorViewV1* input, uint32_t inputs
         auto& s=*session;s.diagnostic.inputs_set_ms=s.diagnostic.run_ms=s.diagnostic.outputs_get_ms=s.diagnostic.outputs_release_ms=0;
         // Reset descriptor copies in case a vendor changed returned pointers/sizes.
         for (size_t i=0;i<s.buffers.size();++i) s.output_buffers[i]={uint32_t(i),s.buffers[i].data(),uint32_t(s.buffers[i].size()*sizeof(float))};
-        auto started=Clock::now();const int input_status=s.vendor->InputsSet(s.context,input->data,s.input_bytes);s.diagnostic.inputs_set_ms=Elapsed(started);
+        bool candidate_result=false;double candidate_total=0;
+        if(s.candidate_available&&s.qualification.state==InputQualification::State::Accepted) {
+            try {candidate_result=CandidateRun(s,input->data,s.output_buffers,candidate_total,true);}
+            catch(...) {candidate_result=false;}
+            if(!candidate_result) {
+                DisableCandidate(s,"legacy-after-shared-input-error");
+                for(size_t i=0;i<s.buffers.size();++i)s.output_buffers[i]={uint32_t(i),s.buffers[i].data(),uint32_t(s.buffers[i].size()*sizeof(float))};
+            }
+        }
+        if(!candidate_result) {
+        const auto baseline_start=Clock::now();
+        auto started=baseline_start;const int input_status=s.vendor->InputsSet(s.context,input->data,s.input_bytes);s.diagnostic.inputs_set_ms=Elapsed(started);
         if (input_status) { StageError(error,"inputs_set",input_status);return HV_ERR_INTERNAL; }
         started=Clock::now();const int run_status=s.vendor->Run(s.context);s.diagnostic.run_ms=Elapsed(started);
         if (run_status) { StageError(error,"run",run_status);return HV_ERR_INTERNAL; }
@@ -136,6 +213,23 @@ HV_Result HV_CALL Run(void* value, const HV_TensorViewV1* input, uint32_t inputs
         const int release_status=s.Release();
         if (release_status) { StageError(error,"outputs_release",release_status);return HV_ERR_INTERNAL; }
         if (invalid) { Error(error,invalid);return HV_ERR_INTERNAL; }
+        const double baseline_total=Elapsed(baseline_start);
+        if(s.candidate_available&&s.qualification.state==InputQualification::State::Pending) {
+            bool valid=false;double candidate_ms=0;
+            try {
+                for(size_t i=0;i<s.candidate_buffers.size();++i)s.candidate_outputs[i]={uint32_t(i),s.candidate_buffers[i].data(),uint32_t(s.candidate_buffers[i].size()*sizeof(float))};
+                valid=CandidateRun(s,input->data,s.candidate_outputs,candidate_ms,false);
+                for(size_t i=0;valid&&i<s.buffers.size();++i)
+                    valid=InputQualification::Equal(s.buffers[i].data(),s.candidate_buffers[i].data(),s.buffers[i].size());
+            } catch(...) {valid=false;}
+            s.qualification.Observe(valid,baseline_total,candidate_ms);
+            if(!valid)RetryCandidate(s,"legacy-after-qualification-error-or-mismatch");
+            else if(s.qualification.state==InputQualification::State::Rejected)RetryCandidate(s,"legacy-shared-input-not-faster");
+            else if(s.qualification.state==InputQualification::State::Accepted)s.input_path=s.vendor->InputCandidateName();
+            // Publish the original baseline frame during qualification. Extra
+            // candidate executions never increment completed_runs or result FPS.
+        }
+        }
         for (size_t i=0;i<s.attributes.size();++i) {
             const auto& a=s.attributes[i];auto& v=output[i];v.struct_size=sizeof(v);v.api_version=1;
             v.name=a.name;v.element_type=1;v.rank=a.rank;
@@ -177,6 +271,12 @@ HV_Result CreateRknnSession(const HV_BackendConfigV1* config, void** out, HV_Err
     }
     try {
         Options options;if (!ParseOptions(config->options_utf8,options,error))return HV_ERR_INVALID_ARGUMENT;
+#if defined(HV_RKNN_INPUT_MEMORY_EXPERIMENT)
+        // Private APK comparison only; production builds ignore this environment
+        // switch entirely. It selects a candidate, never bypasses qualification.
+        const char* input_mode=std::getenv("HV_RKNN_INPUT_MEMORY_MODE");
+        options.input_memory=!(input_mode&&std::strcmp(input_mode,"legacy")==0);
+#endif
         auto s=std::make_unique<Session>();
         if (!ReadModel(config->model_path_utf8,s->model,error))return HV_ERR_MODEL_LOAD;
         std::string detail;s->vendor=loader.Load(options.library.c_str(),detail);
@@ -215,6 +315,24 @@ HV_Result CreateRknnSession(const HV_BackendConfigV1* config, void** out, HV_Err
         }
         status=s->vendor->PrepareOutputs(s->output_buffers.data(),outputs);
         if (status) { StageError(error,"output preparation",status);return HV_ERR_MODEL_LOAD; }
+        if(options.input_memory) {
+            s->input_path="legacy-shared-input-unavailable";
+            // The additional oracle buffers are bounded separately from the
+            // baseline backend budget; no per-frame allocation after initialization.
+            if(total<=4ull*1024*1024/sizeof(float)&&s->input_bytes<=4u*1024*1024) {
+                s->candidate_buffers.resize(outputs);s->candidate_outputs.resize(outputs);
+                for(uint32_t i=0;i<outputs;++i) {
+                    s->candidate_buffers[i].resize(s->buffers[i].size());
+                    s->candidate_outputs[i]={i,s->candidate_buffers[i].data(),uint32_t(s->candidate_buffers[i].size()*sizeof(float))};
+                }
+                try {
+                    if(options.transform)s->vendor->ConfigureInputTransform(options.mean,options.norm);
+                    s->candidate_available=s->vendor->PrepareInputCandidate(s->model.data(),uint32_t(s->model.size()),
+                        s->input,s->attributes.data(),s->candidate_outputs.data(),outputs,options.mask);
+                } catch(...) {s->vendor->DropInputCandidate();}
+                if(s->candidate_available)s->input_path="legacy-qualifying-shared-input";
+            } else s->input_path="legacy-shared-input-oracle-budget-exceeded";
+        }
         RegisterBackendDiagnostics(s.get());s->Publish();
         *out=s.release();return HV_OK;
     } catch (const std::exception& e) { Error(error,e.what());return HV_ERR_INTERNAL; }

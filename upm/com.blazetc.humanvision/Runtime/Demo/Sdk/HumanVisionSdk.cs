@@ -25,6 +25,8 @@ namespace HumanVision
         private HumanVisionManager manager;
         private VideoPlayerFrameSource bridge;
         private IHumanVisionFrameSource source;
+        private readonly HumanVisionObservedRate publicationRate = new HumanVisionObservedRate();
+        private readonly HumanVisionObservedRate resultRate = new HumanVisionObservedRate();
         private HumanVisionSdkLifetime host, retirement;
         private HumanVisionSdkOptions active;
         private HumanVisionSkeletonQueries raw, sampled;
@@ -76,6 +78,10 @@ namespace HumanVision
         public InputSourceState InputState => source?.State ?? InputSourceState.Stopped;
         /// <summary>最近统计信息；统计与输入/渲染 FPS 不等价。</summary>
         public HumanVisionStats Stats => manager != null ? manager.Stats : default;
+        /// <summary>最近约一秒主线程观测到的不同输入发布帧/秒；停止、换源时清零。</summary>
+        public double InputPublicationFps => publicationRate.Rate;
+        /// <summary>最近约一秒被 SDK 接受的新来源帧结果/秒，含明确无人结果；不是逐人骨骼或渲染帧率。</summary>
+        public double FreshResultFps => resultRate.Rate;
         /// <summary>当前实际 Runtime 配置和诊断字符串，用于实机日志；尚未初始化时为空。</summary>
         public string RuntimeProfile => manager != null && manager.IsInitialized ? manager.ActiveRuntimeProfile : "";
         public string RuntimeDiagnostics => manager != null && manager.IsInitialized ? manager.RuntimeDiagnostics : "";
@@ -205,8 +211,17 @@ namespace HumanVision
                 string error = LastError; yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); yield break;
             }
             double deadline = Time.realtimeSinceStartupAsDouble + candidate.InputOpenTimeoutSeconds;
+            double archiveDeadline=Time.realtimeSinceStartupAsDouble+90;
             while (token == operation && source != null && source.State != InputSourceState.Streaming &&
-                source.State != InputSourceState.Error && Time.realtimeSinceStartupAsDouble < deadline) yield return null;
+                source.State != InputSourceState.Error) {
+                double now=Time.realtimeSinceStartupAsDouble;
+                // A 100 MB APK video may take longer than the decoder-open timeout
+                // to extract on slow storage. Extraction has its own bounded deadline.
+                if(source is VideoFrameSource video && video.IsPreparingLocalAsset && now<archiveDeadline)
+                    deadline=now+candidate.InputOpenTimeoutSeconds;
+                if(now>=deadline)break;
+                yield return null;
+            }
             if (token != operation || !isActiveAndEnabled) yield break;
             if (source != null && source.State == InputSourceState.Streaming) { active = candidate.Clone(); options = candidate.Clone(); State = HumanVisionSdkState.Running; LastError = ""; }
             else { string error = string.IsNullOrEmpty(source?.LastError) ? "输入未在规定时间内进入流送状态。" : source.LastError;
@@ -272,6 +287,7 @@ namespace HumanVision
             stopAfterRetirement = discardCandidate;
             if (discardCandidate) { initialization?.Abandon(); initialization = null; }
             ++operation; acceptResults = sourceFresh = false; sourceId = sourceGeneration = 0;
+            publicationRate.Reset(Time.realtimeSinceStartupAsDouble); resultRate.Reset(Time.realtimeSinceStartupAsDouble);
             raw?.Clear(); sampled?.Clear(); RefreshIdentityEvents();
             if (manager != null) manager.ResultUpdated -= OnResult;
             if (host != null) {
@@ -294,9 +310,12 @@ namespace HumanVision
                 freshInput = age >= 0 && age <= (active?.Recognition.MaximumResultAgeMilliseconds ?? 1000) * 1000d;
                 if (sourceId != 0 && (sourceId != frame.SourceId || sourceGeneration != frame.Generation)) {
                     raw?.Clear(); sampled?.Clear(); minimumSequence = ResultSequence;
+                    publicationRate.Reset(Time.realtimeSinceStartupAsDouble); resultRate.Reset(Time.realtimeSinceStartupAsDouble);
                 }
                 sourceId = frame.SourceId; sourceGeneration = frame.Generation;
+                if (freshInput) publicationRate.Observe(frame.FrameId);
             }
+            publicationRate.Tick(Time.realtimeSinceStartupAsDouble); resultRate.Tick(Time.realtimeSinceStartupAsDouble);
             sourceFresh = freshInput;
             if (HasFreshResult && manager != null) {
                 sampled.Clear();
@@ -319,6 +338,7 @@ namespace HumanVision
             // 无区域模式也需要版本隔离，防止重新配置前的晚到结果被当成当前观测。
             if (!manager.TryCopyRegionAssignments(regionIndices, out long currentRevision) || currentRevision != revision) return;
             if (!raw.Observe(manager.Bodies, manager.BodyCount, sequence, manager.SourceFrameId, manager.SourceTimestampUs, true)) return;
+            resultRate.Observe(manager.SourceFrameId);
             RefreshIdentityEvents(); ResultUpdated?.Invoke(sequence);
         }
         private int[] regionIndices = Array.Empty<int>();

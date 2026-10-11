@@ -32,6 +32,20 @@ public:
     virtual int Run(Context) = 0;
     virtual int OutputsGet(Context, OutputBuffer*, uint32_t count) = 0;
     virtual int OutputsRelease(Context, uint32_t count) noexcept = 0;
+    // Optional private input-memory experiment. A separate context preserves the
+    // original inputs_set route as a safe fallback; no public ABI addition.
+    virtual bool PrepareInputCandidate(const void*, uint32_t, const Attribute&, const Attribute*,
+        const OutputBuffer*, uint32_t, uint32_t) { return false; }
+    // Only a validated model/pipeline contract may provide normalization. The
+    // generic backend never infers it from a model name or tensor dimensions.
+    virtual void ConfigureInputTransform(const float*, const float*) {}
+    virtual bool NextInputCandidate() { return false; }
+    virtual const char* InputCandidateName() const { return "shared-input-qualified"; }
+    virtual int CandidateInputsSet(const void*, uint32_t) { return -1; }
+    virtual int CandidateRun() { return -1; }
+    virtual int CandidateOutputsGet(OutputBuffer*, uint32_t) { return -1; }
+    virtual int CandidateOutputsRelease(uint32_t) noexcept { return -1; }
+    virtual void DropInputCandidate() noexcept {}
     virtual void Destroy(Context) noexcept = 0;
 };
 class Loader {

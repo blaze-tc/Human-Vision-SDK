@@ -12,9 +12,33 @@ namespace HumanVision.Tests
 {
     public sealed class HumanVisionSettingsDemoTests
     {
+        [Test] public void ObservedFpsCountsDistinctFramesClearsOnStallAndResetsForNewSource()
+        {
+            var rate = new HumanVisionObservedRate(); rate.Reset(100);
+            for (int i = 0; i < 25; ++i) { rate.Observe(i); rate.Observe(i); }
+            rate.Tick(101); Assert.That(rate.Rate, Is.EqualTo(25));
+            rate.Observe(12); rate.Observe(24); rate.Tick(102);
+            Assert.That(rate.Rate, Is.Zero, "Duplicate/stale frames and render updates cannot increase FPS.");
+            rate.Reset(200); Assert.That(rate.Rate, Is.Zero);
+            rate.Observe(0); rate.Tick(201); Assert.That(rate.Rate, Is.EqualTo(1), "A new source may restart frame IDs.");
+            rate.Tick(210); Assert.That(rate.Rate, Is.Zero, "A stalled input must not retain its previous FPS.");
+        }
         private Type Find(string name) => typeof(HumanVisionSdk).Assembly.GetType("HumanVision.Demo." + name);
         private GameObject root;
         [TearDown] public void Cleanup() { if (root != null) UnityEngine.Object.DestroyImmediate(root); }
+        [Test] public void FullscreenRestoresCustomPreviewAndSidePanelVisibility()
+        {
+            root=new GameObject("wide settings test");
+            var view=HumanVisionSettingsView.Create(root.transform);
+            var preview=(RectTransform)view.transform.Find("Preview panel");
+            preview.anchorMin=new Vector2(0,.14f);preview.anchorMax=new Vector2(.66f,.94f);
+            var logs=new GameObject("Device diagnostics bar",typeof(RectTransform));logs.transform.SetParent(view.transform,false);
+            var hardware=new GameObject("Device hardware bar",typeof(RectTransform));hardware.transform.SetParent(view.transform,false);hardware.SetActive(false);
+            view.ToggleFullscreen();Assert.That(preview.anchorMax.x,Is.EqualTo(1));Assert.That(logs.activeSelf,Is.False);
+            view.ToggleFullscreen();Assert.That(preview.anchorMin,Is.EqualTo(new Vector2(0,.14f)));
+            Assert.That(preview.anchorMax,Is.EqualTo(new Vector2(.66f,.94f)));Assert.That(logs.activeSelf,Is.True);
+            Assert.That(hardware.activeSelf,Is.False);Assert.That(view.Preview.GetComponent<AspectRatioFitter>().aspectMode,Is.EqualTo(AspectRatioFitter.AspectMode.FitInParent));
+        }
         [Test] public void LayoutIsEditableUguiWithReferenceProportionsAndAllControls()
         {
             var type = Find("HumanVisionSettingsView"); Assert.NotNull(type, "Settings view is missing.");

@@ -32,6 +32,8 @@ namespace HumanVision.Demo
         };
         private Vector2Int[] captureSizes = Array.Empty<Vector2Int>();
         private bool wired, editRegions, fullPreview;
+        private Vector2 normalPreviewMin,normalPreviewMax;
+        private readonly bool[] normalSidePanelVisibility=new bool[3];
         private int selectedRegion;
         private RuntimePlatform? executionPlatform;
         private bool AndroidExecution => (executionPlatform ?? Application.platform) == RuntimePlatform.Android;
@@ -205,8 +207,18 @@ namespace HumanVision.Demo
         }
         public void ToggleFullscreen()
         {
-            fullPreview = !fullPreview; transform.Find("Settings panel").gameObject.SetActive(!fullPreview);
-            var panel = (RectTransform)transform.Find("Preview panel"); panel.anchorMax = new Vector2(fullPreview ? 1 : .72f, .92f);
+            var panel=(RectTransform)transform.Find("Preview panel");
+            string[] sidePanels={"Settings panel","Device diagnostics bar","Device hardware bar"};
+            if(!fullPreview) {normalPreviewMin=panel.anchorMin;normalPreviewMax=panel.anchorMax;}
+            for(int i=0;i<sidePanels.Length;i++) {
+                var side=transform.Find(sidePanels[i]);if(side==null)continue;
+                if(!fullPreview) {normalSidePanelVisibility[i]=side.gameObject.activeSelf;side.gameObject.SetActive(false);}
+                else side.gameObject.SetActive(normalSidePanelVisibility[i]);
+            }
+            fullPreview=!fullPreview;
+            // Keep the configured layout on return; never force the old 72% split.
+            panel.anchorMin=fullPreview?new Vector2(0,.07f):normalPreviewMin;
+            panel.anchorMax=fullPreview?new Vector2(1,normalPreviewMax.y):normalPreviewMax;
         }
         public void SetBusy(bool busy)
         {
