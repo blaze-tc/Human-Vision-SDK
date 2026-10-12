@@ -34,6 +34,8 @@ namespace HumanVision.Demo
         public UnityEvent ReturnRequested => returnRequested;
         public HumanVisionSdk Sdk => sdk;
         public HumanVisionSettingsView View => view;
+        /// <summary>自动化工具临时状态；结束时必须清除，不写入用户配置。</summary>
+        public string OperationNotice { get; set; } = "";
         /// <summary>生成器设置引用；场景中也可以在 Inspector 手动绑定。</summary>
         public void Configure(HumanVisionSdk controller, HumanVisionSettingsView settingsView, Font font = null)
         { sdk = controller; view = settingsView; uiFont = font; sdk.InitializeOnStart = false; }
@@ -115,7 +117,11 @@ namespace HumanVision.Demo
                                 if (Application.platform != RuntimePlatform.Android) next.SelectAcceleration(next.UseWindowsCpu ? HumanVisionAccelerationMode.Cpu : HumanVisionAccelerationMode.Graphics); break;
                             case "DetailedLogs": next.DetailedLogs = !next.DetailedLogs; break;
                             case "ResetQuality": next.InputQuality = ModelInputQuality.Medium; break;
-                            case "BuildRtsp": case "BuildRtspVideo": next.Mode.RtspUrl = HumanVisionRtspComputerHost.BuildUrl(next.Mode.RtspComputerHost, command == "BuildRtsp"); break;
+                            case "BuildRtsp": case "BuildRtspVideo":
+                                // 手动电脑 IP 优先；留空时读取构建时写入场景的电脑地址。
+                                // 不从手机网卡推断推流电脑，且只修改草稿，Apply 才打开输入。
+                                next.Mode.RtspComputerHost = HumanVisionRtspComputerHost.Resolve(gameObject.scene, next.Mode.RtspComputerHost);
+                                next.Mode.RtspUrl = HumanVisionRtspComputerHost.BuildUrl(next.Mode.RtspComputerHost, command == "BuildRtsp"); break;
                             default: return;
                         }
                         next.Validate(); draft = next; break;
@@ -176,6 +182,8 @@ namespace HumanVision.Demo
         }
         private void ConnectRenderer()
         {
+            // The bridge selects the displayed snapshot in LateUpdate before the skeleton renders.
+            sdk.FrameBridge.Configure(sdk.RuntimeManager,view.Preview,view.Preview.GetComponent<UnityEngine.UI.AspectRatioFitter>());
             view.Overlay.Configure(sdk.RuntimeManager, sdk.FrameBridge); sdk.ScreenTarget = view.Preview.rectTransform;
             logger?.Record("runtime.initialized", "elapsedMs=" + ((Time.realtimeSinceStartupAsDouble-applyStarted)*1000).ToString("F1") + " root=" + sdk.RuntimeRootPath +
                 " requestedMode=" + draft.AccelerationMode + " actualMode=" + sdk.ActiveAccelerationMode + " profile=" + sdk.RuntimeProfile + " modelPack=" + sdk.ActiveModelPack + " analysis=" + sdk.AnalysisInputSize + " diagnostics=" + sdk.RuntimeDiagnostics);
@@ -199,13 +207,17 @@ namespace HumanVision.Demo
             if (texture != null) view.Preview.GetComponent<UnityEngine.UI.AspectRatioFitter>().aspectRatio = (float)texture.width / texture.height;
             view.SetBusy(Busy);
             if (Time.realtimeSinceStartupAsDouble < nextStatus) return; nextStatus = Time.realtimeSinceStartupAsDouble + .2;
-            var stats = sdk.Stats;
             string occupancy = "";
             for (int i = 0; i < sdk.GetMaxBodies(); i++) occupancy += " " + i + ":" + (sdk.TryGetRegionOccupancy(i, out bool occupied) ? occupied ? "有人" : "无人" : "未知");
-            view.SetStatus(Redact(message) + "\nSDK " + sdk.State + " / Input " + sdk.InputState + "　实际人数 " + sdk.GetUsersCount() + "/" + sdk.GetMaxBodies() +
-                "　输入 " + stats.InputFps.ToString("F1") + " / 推理 " + stats.InferenceFps.ToString("F1") + " FPS　结果 " + sdk.ResultSequence + " / 帧 " + sdk.SourceFrameId + "\n槽位观测：" + occupancy);
+            view.SetStatus(Redact(string.IsNullOrEmpty(OperationNotice) ? message : OperationNotice) + "\nSDK " + sdk.State + " / Input " + sdk.InputState + "　实际人数 " + sdk.GetUsersCount() + "/" + sdk.GetMaxBodies() +
+                "　输入 " + sdk.InputPublicationFps.ToString("F1") + " / 新结果 " + sdk.FreshResultFps.ToString("F1") + " FPS\n" + FrameStatus() + "　槽位：" + occupancy);
             try { logger?.Tick(sdk); } catch (Exception e) { message = "日志写入失败：" + Redact(e.Message); }
             if (logger != null && !string.IsNullOrEmpty(logger.LastWriteError)) message = "日志写入失败：" + logger.LastWriteError;
+        }
+        private string FrameStatus(){
+            if(sdk.FrameBridge==null)return "输入 / 结果帧：未启动";
+            var p=sdk.FrameBridge.PresentationStats;
+            return "输入帧 "+p.inputFrame+" / 结果源帧 "+p.resultFrame+" / 显示帧 "+p.displayFrame+"（显示延时 "+p.delayMs.ToString("F0")+"ms）";
         }
         private void Guard(Action work) { try { work(); } catch (Exception e) { message = Redact(e.Message); logger?.Record("configuration.rejected", e.GetType().Name + ": " + e.Message, e.StackTrace); } }
         /// <summary>UI/日志错误文本去除 RTSP 凭据；原始输入地址仅存在于编辑字段和用户配置文件。</summary>

@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstring>
+#include "common/finite_tensor.h"
 
 namespace humanvision::runtime::rknn {
 // Qualification uses complete FP32 tensors from the SAME RGB frame. Warm-up
@@ -14,10 +15,10 @@ public:
     double baseline_ms = 0, candidate_ms = 0;
     static bool Equal(const float* baseline, const float* candidate, size_t count) {
         if (!baseline || !candidate || !count) return false;
-        for (size_t i=0;i<count;++i)
-            if (!std::isfinite(baseline[i]) || !std::isfinite(candidate[i]) ||
-                std::memcmp(baseline+i,candidate+i,sizeof(float))) return false;
-        return true;
+        // A whole-buffer comparison is equivalent to per-value bit equality,
+        // including signed zero. Once equal, validate only one copy for NaNs.
+        return count<=SIZE_MAX/sizeof(float) &&
+            std::memcmp(baseline,candidate,count*sizeof(float))==0 && AllFinite(baseline,count);
     }
     void Observe(bool equal, double baseline, double candidate) {
         if (state != State::Pending) return;

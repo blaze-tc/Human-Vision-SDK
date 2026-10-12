@@ -128,7 +128,20 @@ std::filesystem::path Validate(const Json& manifest,const Json& profile,const st
         simulator.at("fixtures").at(i).at("expected_people")==people[i],
         "YOLO tensor seven/one/empty offline numerical controls must all pass");
     const auto path=Asset(root,model.at("asset_path"));
-    CheckHash(path,model_sha);return path;
+    CheckHash(path,model_sha);
+    if(!profile.contains("private_graph_candidate"))return path;
+    Require(profile.at("private_graph_candidate")=="folded-output","Unqualified private model candidate");
+    // This is an additional private comparison, never a replacement of the
+    // baseline pack or a waiver of its numerical admission contract. Pin the
+    // graph rewrite, actual compilation and seven/one/empty simulator receipts.
+    const char* files[]={"graph.json","conversion.json","comparison.json","folded-output.rknn"};
+    const char* hashes[]={"31228539a990d44618f740368e811cfbc66001ff9445791a86f2d082edd40af3",
+        "489c9ffc5c1c9761b89c0b6b51672c9e7c63cc4793215f5bee5a23ed0a1c6d6d",
+        "f28500f793c299928de0c7e0a677d6e44d8cf2d250b82d6026c6ae3907622b10",
+        "be4d785b8d4c87c9339423ec894afbb35c6baf41eb5b930e4c76f00d4301c643"};
+    std::filesystem::path selected;
+    for(int i=0;i<4;++i){selected=Asset(root,std::string("candidates/folded-output/")+files[i]);CheckHash(selected,hashes[i]);}
+    return selected;
 }
 
 struct Axis {
@@ -220,6 +233,15 @@ HV_Result HV_CALL Create(const HV_PipelineConfigV1* config,const HV_HostServices
         // Validate() already pins the model and its compiled normalization. Pass
         // that contract explicitly; the generic backend must never guess /255.
         backend_options["input_transform"]=manifest.at("models").at(0).at("input_contract").at("normalization");
+#if defined(HV_RKNN_INPUT_MEMORY_EXPERIMENT)
+        // Only the private comparison coordinator supplies per-instance cores.
+        // Canonical profile/model bytes and the default three-core path stay pinned.
+        if(profile.contains("private_instance_core_mask")) {
+            const auto& mask=profile.at("private_instance_core_mask");
+            Require(mask.is_number_integer()&&(mask==1||mask==2||mask==4),"Invalid private instance core mask");
+            backend_options["core_mask"]=mask;
+        }
+#endif
         const auto options=backend_options.dump();
         auto self=std::make_unique<Instance>(*host,config->max_bodies);
         const HV_BackendConfigV1 backend_config{sizeof(backend_config),HV_PLUGIN_API_V1,path.c_str(),options.c_str(),"backend.rknn"};

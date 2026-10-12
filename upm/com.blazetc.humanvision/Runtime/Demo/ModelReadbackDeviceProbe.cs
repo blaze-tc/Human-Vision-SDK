@@ -12,6 +12,7 @@ namespace HumanVision.Demo
     {
         public static IEnumerator Run(Action<string,bool> report)
         {
+            yield return PresentationDeviceProbe.Run(report);
             var shader=Resources.Load<Shader>("HumanVisionExactRgbReadback");
             if(!SystemInfo.supportsAsyncGPUReadback || shader==null || !shader.isSupported) {
                 report("model RGB probe unsupported on this graphics API",false);yield break;

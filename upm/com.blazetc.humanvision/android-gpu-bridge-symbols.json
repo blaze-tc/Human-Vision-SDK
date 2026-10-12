@@ -3,13 +3,29 @@
   "api_level": 26,
   "audit": "tools/test/verify_android_native.py",
   "gpu_gate": false,
-  "native_sha256": "5fd4366a82e4ef038e4e72c311a3302912d6c0cd331e96904ffa123bcb794f5e",
+  "native_sha256": "8689efb872d76a825595ec4701375cf0c3c0f44d27a12d9bf2a8c9240ece4681",
   "ncnn_vulkan_symbols_verified": true,
-  "q4_local_audit": {
-    "compiler_closure_sha256": "ce59884e60b8f9847b99ee4d4ce65af7b97ec199b119dbe63fb7faccea81bd46",
-    "distribution_qualified": false,
+  "rk3588_stride_fix": {
+    "label": "RK3588-Fix1-20261008",
+    "base_revision": "4a2792a647da7a53c9603e68703c3360ab63ccff",
+    "local_evaluation_only": true,
     "physical_acceptance": false,
-    "receipt_sha256": "e4c413b4ae73fd49cbfe350403287b1144fa7795a67663d2758ec4a37b9a68b9"
+    "native_tests": "379/379",
+    "stride": "zero preserved, real Vulkan import remains required"
   },
-  "private_dual_experiment": true
+  "diagnostic_build": {
+    "stages": true,
+    "per_layer_gpu_queries": false,
+    "precision": "qualified FP32 unchanged",
+    "sample": "first3/every64",
+    "base_revision": "bea077c",
+    "api26_strong_imports": 506,
+    "public_c_unity_exports": 48
+  },
+  "private_dual_experiment": true,
+  "private_dispatch_experiment": true,
+  "distribution_qualified": false,
+  "device_performance_verified": false,
+  "input_memory_candidate": "same-frame complete-output and timing qualification",
+  "followup_audit": "out/recognition-hotpath-20261011/android-audit.log"
 }

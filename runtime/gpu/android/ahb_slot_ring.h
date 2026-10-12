@@ -122,7 +122,7 @@ public:
     SlotResult PublishSubmitted(const SlotToken&, SyncFd& fd);
     // Failed publication leaves fd owned by the caller for retry/error cleanup.
     SlotResult PublishReady(const SlotToken&, SyncFd& fd);
-    SlotResult ClaimNewest(SlotToken& token, SlotMetadata& metadata);
+    SlotResult ClaimNewest(SlotToken& token, SlotMetadata& metadata, uint32_t max_consumers=1);
     // Native worker takes a superseded ready frame's fence for a GPU-only
     // ownership drain before its AHB can be reused.
     SlotResult ClaimDropped(SlotToken& token, SlotMetadata& metadata, SyncFd& fd);

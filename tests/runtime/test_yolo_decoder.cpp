@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <cmath>
 #include "picosha2/picosha2.h"
 
 void BeginNativeAllocationProbe() noexcept;
@@ -36,6 +37,23 @@ TEST(YoloDecoder, EmptyMalformedNonfiniteAndCapacity) {
     views[0].dimensions[0]++;kp.back()=std::numeric_limits<float>::quiet_NaN();
     EXPECT_FALSE(decoder.Decode(views,2,g,123,bodies.data(),scores.data(),8,count));kp.back()=0;
     EXPECT_FALSE(decoder.Decode(views,2,g,123,bodies.data(),scores.data(),0,count));
+}
+TEST(YoloDecoder, BackgroundShortcutPreservesRoundedThresholdAndAcceptedScores) {
+    Geometry g{};ASSERT_TRUE(BuildGeometry(1024,576,512,288,g));
+    const int rows=AnchorCount(512,288),anchor=64*18+32;
+    std::vector<float> det(rows*65,-80),kp(rows*51,0);
+    for(int i=0;i<64;++i)det[anchor*65+i]=0;
+    HV_TensorViewV1 views[]={View("out0",det,rows,65),View("out1",kp,rows,51)};
+    Decoder decoder(512,288);HV_BodyObservationV1 bodies[8]{};float scores[8]{};uint32_t count=0;
+    const float boundary=float(std::log(1./3.));
+    for(float logit:{-80.f,-1.1001f,-1.1f,boundary-0.00001f,
+        std::nextafter(boundary,-INFINITY),boundary,std::nextafter(boundary,INFINITY),boundary+0.00001f,0.f,80.f}) {
+        det[anchor*65+64]=logit;
+        const float expected=float(1./(1.+std::exp(-std::clamp(double(logit),-80.,80.))));
+        ASSERT_TRUE(decoder.Decode(views,2,g,123,bodies,scores,8,count));
+        EXPECT_EQ(count,expected<.25f?0u:1u)<<logit;
+        if(count)EXPECT_EQ(scores[0],expected);
+    }
 }
 TEST(YoloDecoder, Rectangle512ExactLandscapeGeometryAndRealArms) {
     EXPECT_EQ(AnchorCount(512,288),3024);EXPECT_EQ(AnchorCount(512),0);

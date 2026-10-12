@@ -156,7 +156,7 @@ Overlay 跟随已经保持宽高比的 Preview，骨骼才能和图像对齐。�
 
 ## 7. 初始化代码：准备资源、创建会话、打开相机
 
-1. 打开完整示例文件 [SdkCameraQuickStart.cs](examples/SdkCameraQuickStart.cs)，复制**整个文件**。
+1. 打开完整示例文件 [SdkCameraQuickStart.cs](examples/SdkCameraQuickStart.cs.txt)，复制**整个文件**。
 2. 在 `Assets/Scripts` 创建 C# 文件 `SdkCameraQuickStart.cs`，用完整示例替换自动生成的内容并保存。文件名必须与类名一致。
 3. 等 Unity 编译结束，将脚本拖到 VisionRoot。`RequireComponent` 会自动添加 HumanVisionManager、VideoPlayerFrameSource，以及桥所需的 VideoPlayer；无需再添加相机门面。
 4. 在 `Sdk Camera Quick Start` 组件中绑定：
@@ -199,7 +199,7 @@ Windows 想测试 GPU 时，可在这个例子中将 Profile 改为 `windows-pc-
 
 ## 8. 骨骼调用代码：人数、身份和关节点
 
-1. 打开完整示例 [SdkSkeletonReader.cs](examples/SdkSkeletonReader.cs)，复制整个文件到 `Assets/Scripts/SdkSkeletonReader.cs`。
+1. 打开完整示例 [SdkSkeletonReader.cs](examples/SdkSkeletonReader.cs.txt)，复制整个文件到 `Assets/Scripts/SdkSkeletonReader.cs`。
 2. 等编译结束，把脚本拖到**同一个 VisionRoot**。它会找到已有 Manager/Bridge，不需要手动绑定。
 3. Minimum Confidence 首次保持 `0.35`。
 4. 保存场景，点击 Play；站到镜头前。

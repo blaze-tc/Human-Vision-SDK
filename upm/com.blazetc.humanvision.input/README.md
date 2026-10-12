@@ -15,6 +15,14 @@ or reduce its encoded-stream/decode workload. Choose a camera substream separate
 when those costs also need to be reduced. New-generation diagnostics distinguish
 decoded geometry, requested maximum and published output.
 
+The Settings Demo now labels RTSP resolution as an output image size limit:
+this image feeds both preview and recognition; model input dimensions remain a
+separate quality setting. Camera mode requests a capture size, while local video
+plays at its source size. The Android input candidate drains codec output on a
+separate bounded worker so a network read cannot stall ready decoded frames.
+Per-second native decode/GPU cadence logs accompany Unity publication counters;
+changing this scheduling does not guarantee a camera or device frame rate.
+
 Install Input first using:
 
 ```

@@ -27,3 +27,35 @@ Removing/renaming a public type/member, changing enum values, Count, array order
 native layout, GUID or timestamp meaning is breaking. Add semantic members instead.
 Run check_public_surface.py after regenerating UPM and compile_managed.ps1, followed
 by managed regression/ABI tests where applicable.
+
+HumanVisionSdk adds coroutine lifecycle, cloned configuration, indexed semantic queries and source-age validation. Runtime/HumanVisionSkeletonQueries owns query rules; Demo/Sdk owns Input composition and retirement; Demo/Settings owns editable UGUI and persistence. See ../user-guide/UNITY_SDK.md and SETTINGS_DEMO.md. Existing native/managed V1 signatures and script GUIDs remain frozen.
+
+HumanVisionSdkQualityCapabilities reports real selectable levels, profile and
+unavailability reasons. PrepareInputQualities prepares Android indexed capabilities
+before input initialization; Windows fixed-model behavior is explicit. Diagnostic
+properties expose descriptive runtime/profile/model/input dimensions without
+making provider-specific types part of gameplay contracts. SettingsLogger owns
+bounded files, credentials redaction and main-thread Unity log subscription.
+Menu annotation relocation is permitted by the user; method signatures remain.
+
+Private acceleration integration adds semantic `HumanVisionAccelerationMode`
+values Graphics=0, Neural=1, Cpu=2 without changing V1. Windows settings retain
+UseWindowsCpu; Android settings use the semantic preference with the exact
+five-profile baked map. A draft preference is distinct from the initialized
+profile. Neural candidate creation/cancel/disposal runs outside the Unity main
+thread; promotion commits the already-installed region revision once, and
+internal replacement retirement stays Busy instead of exposing Stopped. Keep
+the candidate owned by its initializer invocation so event reentrancy cannot
+promote a different request. See ../reports/2026-10-09-dual-acceleration-integration.md.
+
+## 2026-10-12 configuration assets
+
+HumanVisionSdkPreset owns project defaults and clones all mutable data. InitializeFromPreset
+accepts camera name/RTSP URL/video path in gameplay code. The public facade adds StartSdk,
+RestartSdk, TryGetInputFrame and copied 2D/world-plane skeletons; no V1 member is removed.
+Settings seeds all three independent input tabs from asset defaults when no saved file exists.
+World vectors remain a plane projection (SupportsMetric3D=false).
+The current tested UPM C# changes have been reconciled into canonical Runtime/Demo/Editor/Tests;
+never regenerate current packages from an older checkout. Published samples are Settings only.
+Legacy callable builder classes remain for Editor API compatibility, without menu entries.
+See ../user-guide/SDK_CONFIGURATION.md and ../reports/2026-10-12-sdk-preset-api.md.

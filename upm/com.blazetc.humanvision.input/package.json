@@ -9,13 +9,7 @@
   "description": "Independent Camera, Video and RTSP frames and preview for Windows x64 and Android ARM64; no inference or model dependency.",
   "displayName": "Human Vision Input",
   "name": "com.blazetc.humanvision.input",
-  "samples": [
-    {
-      "description": "Standalone video, camera and RTSP preview without inference or models.",
-      "displayName": "InputPreview",
-      "path": "Samples~/InputPreview"
-    }
-  ],
+  "samples": [],
   "unity": "2021.3",
-  "version": "0.1.0-preview.4"
+  "version": "0.1.0-preview.5"
 }

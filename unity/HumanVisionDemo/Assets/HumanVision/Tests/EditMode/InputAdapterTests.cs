@@ -138,6 +138,21 @@ public sealed class InputAdapterTests {
         }
         UnityEngine.Object.DestroyImmediate(go);
     }
+    [Test] public void TemporarilyUnreadyConsumerRetriesLatestFrameWithoutInferringItTwice() {
+        var source=new Source();var go=new GameObject("CPU retry latest source");
+        try {
+            var manager=go.AddComponent<HumanVisionManager>();var session=new RecordingSession();Set(manager,"_session",session);
+            var bridge=CpuBridge(go);bridge.BindUnifiedSource(source);Set(bridge,"_rowOrderReady",false);
+            var adapter=go.GetComponent<HumanVisionInputAdapter>();adapter.Tick();
+            Assert.That(session.Count,Is.Zero);Assert.That(adapter.LatestPreviewFrameId,Is.EqualTo(source.FrameId));
+            Set(bridge,"_rowOrderReady",true);adapter.Tick();
+            UnityEngine.Rendering.AsyncGPUReadback.WaitAllRequests();source.Retirement.Poll();adapter.Tick();
+            Assert.That(session.Count,Is.EqualTo(1),"The only pending source frame must survive temporary admission failure.");
+            Set(bridge,"_cpuAdmission",default(GpuFrameAdmissionPolicy));adapter.Tick();
+            UnityEngine.Rendering.AsyncGPUReadback.WaitAllRequests();
+            Assert.That(session.Count,Is.EqualTo(1),"Retry must stop after this source frame was accepted.");
+        } finally {DestroyCpuTestObject(go,source);UnityEngine.Object.DestroyImmediate(source.Texture);}
+    }
     [Test] public void CpuAdapterPreservesConfiguredPreviewBindings() {
         var source=new Source();var go=new GameObject("CPU adapter bindings");var displayGo=new GameObject("preview",typeof(RectTransform),typeof(UnityEngine.UI.RawImage),typeof(UnityEngine.UI.AspectRatioFitter));
         try {
@@ -169,7 +184,7 @@ public sealed class InputAdapterTests {
     }
     // Actual GPU readback geometry differs from the preview at HD/4K. Check all
     // corners as well as the center; checking only a visible 720p scene missed this.
-    [TestCase(640,360)] [TestCase(1280,720)]
+    [TestCase(640,480)] [TestCase(640,360)] [TestCase(1280,720)]
     [TestCase(1920,1080)] [TestCase(3840,2160)]
     public void OverlayMapsAcceptedCpuPixelsToFullPreviewAtEveryResolution(int width,int height) {
         var source=new Source(width,height);var go=new GameObject("resolution readback");
@@ -206,6 +221,36 @@ public sealed class InputAdapterTests {
             Assert.That(timing.readbackMaximumMs,Is.GreaterThanOrEqualTo(timing.readbackMeanMs));
         } finally {DestroyCpuTestObject(go,source);UnityEngine.Object.DestroyImmediate(source.Texture);}
     }
+    [Test] public void UnifiedReadbacksOwnIndependentSnapshotsAndExposeSourceCopyFence() {
+        var signature = new[] { typeof(Texture), typeof(long), typeof(UnityEngine.Rendering.AsyncGPUReadbackRequest).MakeByRefType(),
+            typeof(UnityEngine.Rendering.GraphicsFence).MakeByRefType(), typeof(bool).MakeByRefType() };
+        var submit = typeof(VideoPlayerFrameSource).GetMethod("TrySubmitUnifiedCpuFrame", BindingFlags.Instance | BindingFlags.NonPublic,
+            null, signature, null);
+        Assert.That(submit, Is.Not.Null, "Decode texture retirement must have its own copy fence, independent of readback completion.");
+        var source = new Source(1280,720); var go = new GameObject("independent CPU snapshots");
+        try {
+            var manager = go.AddComponent<HumanVisionManager>(); var session = new RecordingSession(); Set(manager,"_session",session);
+            var bridge = CpuBridge(go); bridge.Configure(manager,null,null); Set(bridge,"_rowOrderReady",true); bridge.ConfigureLiveInput(true);
+            int limit = SystemInfo.supportsGraphicsFence ? 4 : 2;
+            var textures = new System.Collections.Generic.HashSet<object>();
+            for(int i=0;i<limit;i++) {
+                Set(bridge,"_cpuAdmission",default(GpuFrameAdmissionPolicy));
+                var args = new object[]{source.Texture,(long)i,default(UnityEngine.Rendering.AsyncGPUReadbackRequest),
+                    default(UnityEngine.Rendering.GraphicsFence),false};
+                Assert.That(submit.Invoke(bridge,args),Is.True);
+                Assert.That((bool)args[4],Is.EqualTo(SystemInfo.supportsGraphicsFence));
+                var slots = (Array)Get(bridge,"_slots");
+                var slot = slots.GetValue(i);
+                var snapshot = slot.GetType().GetField("Snapshot",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(slot);
+                Assert.That(snapshot,Is.Not.Null); Assert.That(textures.Add(snapshot),Is.True,"Pending reads cannot share a mutable snapshot.");
+            }
+            Set(bridge,"_cpuAdmission",default(GpuFrameAdmissionPolicy));
+            Assert.That(submit.Invoke(bridge,new object[]{source.Texture,99L,default(UnityEngine.Rendering.AsyncGPUReadbackRequest),
+                default(UnityEngine.Rendering.GraphicsFence),false}),Is.False,"Readback work must remain bounded.");
+            UnityEngine.Rendering.AsyncGPUReadback.WaitAllRequests(); Assert.That(session.Count,Is.EqualTo(limit));
+            Assert.That(bridge.CpuReadbackStats.pending,Is.Zero);
+        } finally {DestroyCpuTestObject(go,source);UnityEngine.Object.DestroyImmediate(source.Texture);}
+    }
     [Test] public void ResolutionChangeHidesPreviousGeometryUntilANewAcceptedResult() {
         var source=new Source(640,360);var larger=new Texture2D(1920,1080,TextureFormat.RGBA32,false,true);var go=new GameObject("geometry fence");
         try {
@@ -217,6 +262,31 @@ public sealed class InputAdapterTests {
             Assert.That(bridge.CanPresentResult(first),Is.False,"Old pixels must not be drawn against a new readback geometry.");
             UnityEngine.Rendering.AsyncGPUReadback.WaitAllRequests();
         } finally {DestroyCpuTestObject(go,source);UnityEngine.Object.DestroyImmediate(larger);UnityEngine.Object.DestroyImmediate(source.Texture);}
+    }
+    [TestCase(640,360)] [TestCase(1280,720)] [TestCase(1920,1080)] [TestCase(3840,2160)]
+    public void QualifiedModelReadbackSubmits512AndFencesPreviousGeometry(int width,int height) {
+        var source=new Source(width,height);var go=new GameObject("qualified model readback");
+        try {
+            var manager=go.AddComponent<HumanVisionManager>();var session=new RecordingSession();Set(manager,"_session",session);
+            var bridge=CpuBridge(go);Set(bridge,"_rowOrderReady",true);bridge.BindUnifiedSource(source);
+            var adapter=go.GetComponent<HumanVisionInputAdapter>();adapter.Tick();
+            UnityEngine.Rendering.AsyncGPUReadback.WaitAllRequests();source.Retirement.Poll();session.Sequence=1;
+            long baseline=bridge.LatestSubmittedFrameId;
+            Set(bridge,"_modelReadback",new ModelReadbackQualification());
+            Set(bridge,"_modelReadbackMaterial",new Material(Resources.Load<Shader>("HumanVisionExactRgbReadback")));
+            for(int i=0;i<4;i++) {
+                source.FrameId++;Set(bridge,"_cpuAdmission",default(GpuFrameAdmissionPolicy));adapter.Tick();
+                UnityEngine.Rendering.AsyncGPUReadback.WaitAllRequests();source.Retirement.Poll();
+                Assert.That(session.Width,Is.EqualTo(i<3?Math.Min(width,1280):512));
+            }
+            Assert.That(session.Count,Is.EqualTo(5));Assert.That(session.Bytes,Is.EqualTo(512*288*4));
+            Assert.That(bridge.ResultPixelWidth,Is.EqualTo(512));Assert.That(bridge.ResultPixelHeight,Is.EqualTo(288));
+            Assert.That(bridge.CanPresentResult(baseline),Is.False);
+            Assert.That(bridge.CpuReadbackStats.modelReadback,Is.EqualTo("qualified-exact-rgb"));
+            bridge.InvalidateCpuInputGeneration();
+            Assert.That(bridge.CanPresentResult(bridge.LatestSubmittedFrameId),Is.False,"Reconnect must invalidate previous results immediately.");
+            Assert.That(bridge.CpuReadbackStats.comparedFrames,Is.Zero);
+        } finally {DestroyCpuTestObject(go,source);UnityEngine.Object.DestroyImmediate(source.Texture);}
     }
     [Test] public void UnifiedGpuPresentationDoesNotRequireCpuReadbackReadiness() {
         var source=new Source();var go=new GameObject("independent GPU acceptance");
@@ -231,6 +301,40 @@ public sealed class InputAdapterTests {
             Assert.That((bool)gate.Invoke(bridge,new object[]{accepted,false}),Is.False,"CPU geometry retirement still hides old results.");
             Assert.That((bool)gate.Invoke(bridge,new object[]{accepted+1,true}),Is.False,"GPU must still pass the actual adapter frame range.");
         } finally {DestroyCpuTestObject(go,source);UnityEngine.Object.DestroyImmediate(source.Texture);}
+    }
+    [UnityEngine.TestTools.UnityTest]
+    public System.Collections.IEnumerator CompletedReadbackStatusSurvivesWaitingForSlowerPeer() {
+        var source=new Source(640,360);var go=new GameObject("expired primary request");
+        try {
+            var manager=go.AddComponent<HumanVisionManager>();var session=new RecordingSession();Set(manager,"_session",session);
+            var bridge=CpuBridge(go);bridge.Configure(manager,null,null);Set(bridge,"_rowOrderReady",true);bridge.ConfigureLiveInput(true);
+            Assert.That(bridge.SubmitExternalTexture(source.Texture,1),Is.True);
+            var slot=((Array)Get(bridge,"_slots")).GetValue(0);
+            // Hold completion as though the paired model-size read finishes later.
+            Set(slot,"ProbePending",true);
+            while(!(bool)Get(slot,"PrimaryDone"))yield return null;
+            yield return null;yield return null;
+            var request=(UnityEngine.Rendering.AsyncGPUReadbackRequest)Get(slot,"Request");
+            Assert.That(request.hasError,Is.True,"Unity has disposed the already completed request.");
+            Assert.That((bool)Get(slot,"PrimaryError"),Is.False,"The actual completion succeeded.");
+            Set(slot,"ProbePending",false);
+            typeof(VideoPlayerFrameSource).GetMethod("CompleteReadback",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(bridge,new object[]{0});
+            Assert.That(session.Count,Is.EqualTo(1));Assert.That(bridge.ReadbackErrors,Is.Zero);
+        } finally {DestroyCpuTestObject(go,source);UnityEngine.Object.DestroyImmediate(source.Texture);}
+    }
+    [Test] public void RebindingRejectsOutstandingReadbackFromPreviousSource() {
+        var oldSource=new Source(640,360);var newSource=new Source(640,360);var go=new GameObject("rebind identity");
+        try {
+            var manager=go.AddComponent<HumanVisionManager>();var session=new RecordingSession();Set(manager,"_session",session);
+            var bridge=CpuBridge(go);Set(bridge,"_rowOrderReady",true);bridge.BindUnifiedSource(oldSource);
+            var adapter=go.GetComponent<HumanVisionInputAdapter>();adapter.Tick();
+            UnityEngine.Rendering.AsyncGPUReadback.WaitAllRequests();oldSource.Retirement.Poll();adapter.Tick();
+            Set(bridge,"_cpuAdmission",default(GpuFrameAdmissionPolicy));
+            Assert.That(bridge.SubmitExternalTexture(oldSource.Texture,2),Is.True);
+            bridge.BindUnifiedSource(newSource);
+            UnityEngine.Rendering.AsyncGPUReadback.WaitAllRequests();
+            Assert.That(session.Count,Is.EqualTo(1),"A retired source must never submit its late readback into the new source session.");
+        } finally {DestroyCpuTestObject(go,oldSource);UnityEngine.Object.DestroyImmediate(oldSource.Texture);UnityEngine.Object.DestroyImmediate(newSource.Texture);}
     }
     [Test] public void CpuAdmissionKeepsThirtyFpsAcrossAlternatingUnityIntervals() {
         var field=typeof(VideoPlayerFrameSource).GetField("_cpuAdmission",BindingFlags.Instance|BindingFlags.NonPublic);

@@ -151,7 +151,12 @@ HV_InputGpuFrame published_frame{};
 uint64_t decoded_drops=0,old_generation_rejections=0;
 AndroidDecodedImage* pending=nullptr;AndroidDecodedImage* active=nullptr;
 bool enabled=false,initialized=false,closing=false,paused=false,inflight=false;
-void ReturnImage(AndroidDecodedImage*& p){if(p){if(production&&!inflight)frame_ring.Cancel(output_slot);p->Reset();p=nullptr;retired.notify_all();}}
+void ReturnImage(AndroidDecodedImage*& p){if(p){
+ // AccessQueue runs after the render callback drops this mutex. A newer decoded
+ // pending image can be replaced during that gap; returning it must not cancel
+ // the output slot already acquired for the distinct active image.
+ if(production&&!inflight&&(p==active||!active))frame_ring.Cancel(output_slot);
+ p->Reset();p=nullptr;retired.notify_all();}}
 
 HV_InputHandle owner=nullptr;void* unity_texture=nullptr;uint32_t target_width=0,target_height=0;uint64_t target_generation=0;
 void ProductionErrorText(const char* stage,const char* detail){
@@ -163,6 +168,29 @@ VkCommandPool command_pool=VK_NULL_HANDLE;VkCommandBuffer command=VK_NULL_HANDLE
 VkSemaphore wait_semaphore=VK_NULL_HANDLE,release_semaphore=VK_NULL_HANDLE;
 VkImageView target_view=VK_NULL_HANDLE;VkImage last_target=VK_NULL_HANDLE;
 UnityVulkanImage target{};CacheEntry* source_entry=nullptr;bool target_dirty=false,retire_target=false;int fail_target_view=0;
+// One bounded log per second, outside per-pixel work. These are host observation
+// intervals (including queue/fence polling), not GPU execution timestamps.
+struct InputCadence {
+ int64_t report_us=0,submitted_us=0,decode_wait_us=0,completion_wait_us=0;
+ uint64_t events=0,busy=0,empty=0,complete=0,last_drops=0,last_overwrites=0;
+} cadence;
+void ReportInputCadence(){
+ if(!production)return;
+ const auto now=NowUs();
+ if(!cadence.report_us){cadence.report_us=now;cadence.last_drops=frame_ring.Drops();cadence.last_overwrites=decoded_drops;return;}
+ const auto elapsed=now-cadence.report_us;if(elapsed<1000000)return;
+ __android_log_print(ANDROID_LOG_INFO,"HVInputGate",
+  "input_gpu_cadence generation=%llu interval_ms=%.3f render_events=%llu busy_events=%llu no_image_events=%llu completed=%llu converted_fps=%.3f slot_drops=%llu pending_replaced=%llu decoded_to_submit_mean_ms=%.3f submit_to_observed_fence_mean_ms=%.3f host_observation_not_gpu_execution=1",
+  (unsigned long long)target_generation,elapsed/1000.0,(unsigned long long)cadence.events,
+  (unsigned long long)cadence.busy,(unsigned long long)cadence.empty,(unsigned long long)cadence.complete,
+  cadence.complete*1000000.0/elapsed,(unsigned long long)(frame_ring.Drops()-cadence.last_drops),
+  (unsigned long long)(decoded_drops-cadence.last_overwrites),
+  cadence.complete?cadence.decode_wait_us/1000.0/cadence.complete:0,
+  cadence.complete?cadence.completion_wait_us/1000.0/cadence.complete:0);
+ cadence.report_us=now;cadence.events=cadence.busy=cadence.empty=cadence.complete=0;
+ cadence.decode_wait_us=cadence.completion_wait_us=0;
+ cadence.last_drops=frame_ring.Drops();cadence.last_overwrites=decoded_drops;
+}
 void LogContract(const char* label,int slot,const ImageContract& c){
  __android_log_print(ANDROID_LOG_ERROR,"HVInputGate","ahb_cache_contract label=%s slot=%d external_format=%llu format=%u features=%u model=%u range=%u x_chroma=%u y_chroma=%u width=%u height=%u components=%u,%u,%u,%u",label,slot,(unsigned long long)c.external_format,c.format,c.features,c.model,c.range,c.x_chroma,c.y_chroma,c.width,c.height,c.components[0],c.components[1],c.components[2],c.components[3]);
 }
@@ -195,6 +223,8 @@ bool InitializeResources(){
 void PollConversionCompletion(){
  if(inflight){auto status=api.GetFenceStatus(api.unity.device,fence);if(status==VK_NOT_READY)return;if(status!=VK_SUCCESS){Error("poll conversion GPU fence",status);return;}
   completed_token=token;++counters.completes;inflight=false;
+  ++cadence.complete;cadence.decode_wait_us+=cadence.submitted_us-active->decoded_us;
+  cadence.completion_wait_us+=NowUs()-cadence.submitted_us;
   if(production){
    if(!closing&&frame_ring.Complete(output_slot,completed_token)){
     auto& f=published_frame.frame;f={};f.size=sizeof(f);f.version=1;f.sequence=token;f.generation=active->generation;f.width=target_width;f.height=target_height;
@@ -243,6 +273,7 @@ void UNITY_INTERFACE_API SubmitOnUnityQueue(int,void*){
  if(api.EndCommandBuffer(command)!=VK_SUCCESS){Error("end color command");ReturnImage(active);return;}
  VkPipelineStageFlags stage=VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};submit.waitSemaphoreCount=waited?1:0;submit.pWaitSemaphores=waited?&wait_semaphore:nullptr;submit.pWaitDstStageMask=waited?&stage:nullptr;submit.commandBufferCount=1;submit.pCommandBuffers=&command;submit.signalSemaphoreCount=1;submit.pSignalSemaphores=&release_semaphore;
  auto result=api.QueueSubmit(api.unity.graphicsQueue,1,&submit,fence);if(result!=VK_SUCCESS){Error("serialized Unity queue color submit",result);ReturnImage(active);return;}
+ cadence.submitted_us=NowUs();
  active->gpu_submitted=true;inflight=true;++token;++counters.submits;++counters.ownership_acquires;++counters.ownership_returns;cache.Used(*source_entry,token);if(production)frame_ring.Queue(output_slot,token);
  if(!gpu_sync.SignalReleaseFdAndReturnOwnership(active->release_fd)){Error("export actual GPU release sync fd");return;}active->CountReleaseFd();++counters.exports;
  if(ShouldLogInputFrame(token,!production)){
@@ -281,7 +312,9 @@ void InputCopyProbeEvent();
 void InputRenderEvent(int id){
  if(id==event_id+1){InputCopyProbeEvent();return;}
  if(id!=event_id)return;bool submit=false;
- {std::lock_guard<std::mutex> lock(mutex);if(!enabled)return;if(initialized)Poll();if(retire_target&&!inflight&&!active){if(production){for(auto& view:output_views)if(view){api.DestroyImageView(api.unity.device,view,nullptr);view=VK_NULL_HANDLE;++counters.target_views_destroyed;}output_images={};output_textures={};target_view=VK_NULL_HANDLE;}if(target_view){api.DestroyImageView(api.unity.device,target_view,nullptr);target_view=VK_NULL_HANDLE;++counters.target_views_destroyed;}last_target=VK_NULL_HANDLE;unity_texture=nullptr;retire_target=false;}if(closing||paused||inflight||active||!pending)return;
+ {std::lock_guard<std::mutex> lock(mutex);if(!enabled)return;if(initialized)Poll();
+ ++cadence.events;if(inflight||active)++cadence.busy;else if(!pending)++cadence.empty;ReportInputCadence();
+ if(retire_target&&!inflight&&!active){if(production){for(auto& view:output_views)if(view){api.DestroyImageView(api.unity.device,view,nullptr);view=VK_NULL_HANDLE;++counters.target_views_destroyed;}output_images={};output_textures={};target_view=VK_NULL_HANDLE;}if(target_view){api.DestroyImageView(api.unity.device,target_view,nullptr);target_view=VK_NULL_HANDLE;++counters.target_views_destroyed;}last_target=VK_NULL_HANDLE;unity_texture=nullptr;retire_target=false;}if(closing||paused||inflight||active||!pending)return;
  if(production){
   frame_ring.Collect(completed_token);
   if(!output_textures[0])return;

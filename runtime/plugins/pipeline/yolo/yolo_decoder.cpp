@@ -1,4 +1,5 @@
 #include "plugins/pipeline/yolo/yolo_decoder.h"
+#include "common/finite_tensor.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -77,13 +78,15 @@ bool Decoder::Decode(const HV_TensorViewV1* views,uint32_t view_count,const Geom
         else if(Tensor(views[i],"out1",rows,51)){if(kp)return false;kp=static_cast<const float*>(views[i].data);}
         else return false;
     }
-    if(!det||!kp||!std::all_of(det,det+rows*65,[](float v){return std::isfinite(v);})||
-       !std::all_of(kp,kp+rows*51,[](float v){return std::isfinite(v);}))return false;
+    if(!det||!kp||!AllFinite(det,size_t(rows)*65)||!AllFinite(kp,size_t(rows)*51))return false;
     int offset=0;
     for(int stride:{8,16,32}) {
         const int grid=target_/stride,grid_height=height_/stride;
         for(int k=0;k<grid*grid_height;++k){
             const int anchor=offset+k;const float* row=det+anchor*65;
+            // sigmoid(-1.1) < 0.25 by a safe margin. Skip exp only for definite
+            // background; retain the original rounded score test near threshold.
+            if(row[64]<-1.1f)continue;
             const float score=float(Sigmoid(row[64]));if(score<.25f)continue;
             Proposal p{};p.score=score;p.anchor=anchor;p.x=k%grid;p.y=k/grid;p.stride=stride;
             double distances[4]{};

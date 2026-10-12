@@ -12,6 +12,8 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
     private HumanVisionManager provenanceOwner;
     private Action<uint> provenanceSink;
     private ulong sourceId,generation;
+    private ulong observedSource,observedGeneration;
+    private long observedFrame=-1;
     private long latest=-1,firstSubmitted=-1,submitted=-1,minimumSequence;
     private bool gpuActive,closing,watched;
     private HumanVisionAndroidSourceRetirement retirement;
@@ -53,6 +55,7 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
     public void Bind(IHumanVisionFrameSource newSource) {
         if(newSource==null)throw new ArgumentNullException(nameof(newSource));
         Detach();source=newSource;latest=-1;firstSubmitted=submitted=-1;sourceId=generation=0;
+        observedSource=observedGeneration=0;observedFrame=-1;
         minimumSequence=manager!=null?manager.ResultSequence:0;
     }
     public void Detach() {
@@ -82,13 +85,17 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
             if(closing){RetirementPump.Watch(this);return;}
         }
         sourceId=frame.SourceId;generation=frame.Generation;
+        // Rendering can retry the same fresh source while a readback slot or
+        // admission credit is unavailable. Count the source publication once.
+        bool newlyObserved=observedSource!=frame.SourceId||observedGeneration!=frame.Generation||observedFrame!=frame.FrameId;
+        if(newlyObserved){manager.RecordSourceArrival(false);observedSource=frame.SourceId;observedGeneration=frame.Generation;observedFrame=frame.FrameId;}
         try {
             if(manager.UsesAndroidGpuFrames)ValidateGpuGeometry(frame.Width,frame.Height);
             else if(Application.platform==RuntimePlatform.Android&&source is RtspFrameSource&&manager.ActiveRuntimeProfile!=HumanVisionAndroidAccelerationSelection.NeuralProfile&&manager.ActiveRuntimeProfile!=HumanVisionAndroidAccelerationSelection.CpuProfile)
                 throw new InvalidOperationException("Android hardware RTSP requires the explicitly selected GPU runtime. The existing CPU modes do not accept this source; preview continues.");
             Slot free=null;for(int i=0;i<slots.Length;i++)if(!slots[i].Active){free=slots[i];break;}
-            if(free==null){latest=frame.FrameId;return;}
-            if(!source.TryAcquireSourceCopyLease(in frame,out var lease)){latest=frame.FrameId;return;}
+            if(free==null)return;
+            if(!source.TryAcquireSourceCopyLease(in frame,out var lease))return;
             free.Lease=lease;
             bool accepted=false;
             try {
@@ -102,11 +109,9 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
                     gpuActive=true;free.GpuPath=true;
                     if(!ReferenceEquals(provenanceOwner,manager)){provenanceOwner=manager;provenanceSink=manager.SetCaptureProvenance;}
                     ForwardPublicationProvenance(in frame,provenanceSink);
-                    manager.RecordSourceArrival(false);
                     accepted=manager.SubmitUnifiedGpuFrame(frame.Texture,free.Target,in frame,timestamp,free.Gpu);
                     if(free.Gpu.Active){lease.RetireAfter(free.Gpu);free.Active=true;}
                 } else {
-                    manager.RecordSourceArrival(false);
                     if(!ReferenceEquals(provenanceOwner,manager)){provenanceOwner=manager;provenanceSink=manager.SetCaptureProvenance;}
                     ForwardPublicationProvenance(in frame,provenanceSink);
                     if(cpuBridge==null){cpuBridge=GetComponent<VideoPlayerFrameSource>();if(cpuBridge==null){cpuBridge=gameObject.AddComponent<VideoPlayerFrameSource>();cpuBridge.Configure(manager,null,null);}else cpuBridge.BindManager(manager);cpuBridge.ConfigureLiveInput(true);}
@@ -128,7 +133,10 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
                 else if(!free.Active)lease.Dispose();
                 throw;
             }
-            latest=frame.FrameId;
+            // A temporary rejection must not retire this source frame. On the
+            // next Unity tick TryGetLatestFrame supplies it or a newer one;
+            // acceptance retires it exactly once without creating a frame queue.
+            if(accepted)latest=frame.FrameId;
         } catch(Exception error){LastError=error.Message;latest=frame.FrameId;}
     }
     internal static void ForwardPublicationProvenance(in HumanVisionTextureFrame frame,Action<uint> forward) {

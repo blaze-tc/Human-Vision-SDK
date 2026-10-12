@@ -47,10 +47,25 @@ public:
     bool Pack(const void* rgb,uint32_t rgb_bytes,const NativeInputLayout& layout,void* memory,uint32_t capacity)const {
         if(!ready||!rgb||!memory||reinterpret_cast<uintptr_t>(memory)%alignof(uint16_t)||!layout.bytes||capacity<layout.bytes||
             uint64_t(layout.width)*layout.height*3!=rgb_bytes)return false;
-        // The buffer is reused; initialize padding as well, so prior frames cannot
-        // influence an implementation that vector-loads a complete padded pixel.
-        std::memset(memory,0,layout.bytes);
         auto* dst=static_cast<uint16_t*>(memory);auto* src=static_cast<const uint8_t*>(rgb);
+        if(layout.channels==3) {
+            // RGB values are overwritten. Clear only row/allocation padding,
+            // avoiding a full zero pass followed by a full write pass.
+            const size_t row_values=size_t(layout.stride)*3;
+            for(uint32_t y=0;y<layout.height;++y) {
+                auto* row=dst+size_t(y)*row_values;
+                for(uint32_t x=0;x<layout.width;++x,src+=3,row+=3) {
+                    row[0]=table[0][src[0]];row[1]=table[1][src[1]];row[2]=table[2][src[2]];
+                }
+                std::memset(row,0,size_t(layout.stride-layout.width)*6);
+            }
+            const size_t used=row_values*layout.height*2;
+            std::memset(static_cast<unsigned char*>(memory)+used,0,layout.bytes-used);
+            return true;
+        }
+        // Other queried channel layouts keep all padding initialized so old
+        // frames cannot influence vector loads of a complete native pixel.
+        std::memset(memory,0,layout.bytes);
         for(uint32_t y=0;y<layout.height;++y) {
             auto* row=dst+size_t(y)*layout.stride*layout.channels;
             for(uint32_t x=0;x<layout.width;++x)for(unsigned c=0;c<3;++c)

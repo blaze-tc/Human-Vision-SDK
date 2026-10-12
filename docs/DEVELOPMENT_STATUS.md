@@ -1,4 +1,90 @@
-# 2026-10-11 active: RKNN throughput follow-up
+## 2026-10-12 当前：SDK 配置资产、统一 API 与 Settings 封装
+
+本轮按用户要求整理初始化、图像/骨骼/区域/生命周期 API，增加 ScriptableObject 默认配置，
+地址在初始化代码中传入。公共样例只保留 Settings，保留 V1 兼容与既有性能改动。
+当前版本 SDK 0.4.0-preview.7 / Input 0.1.0-preview.5，Git 开发分支交付；
+完整历史原生夹具缺失，本轮不发布新的 Release、不宣称 RK3588 性能验收完成。
+新增测试、独立 2022.3 导入、Android 构建与 OnePlus 回归见
+[本轮报告](reports/2026-10-12-sdk-preset-api.md)；接入见
+[配置资产与统一 API](user-guide/SDK_CONFIGURATION.md)。
+
+## 2026-10-12 当前：RTSP 输入帧率与分辨率语义
+
+本轮根据 RK3588 20261012 实测日志处理输入供帧。新增独立 MediaCodec 输出领取线程、
+Unity 帧末 GPU 调度机会、pending 替换不取消 active 槽位、逐段 cadence 日志；
+设置界面区分摄像头请求尺寸、RTSP 解码后输出上限与视频文件尺寸。模型与实例数未变。
+输入原生测试 50/50，ARM64 构建通过；Unity 新调度生命周期测试先失败后 1/1 通过，
+设置测试 26/26，修改后的完整重开生命周期测试 19/19。最终 APK 构建成功（0 errors，
+8 warnings），47 个运行时文件与输入原生绑定哈希核验通过。OnePlus 同包自动对照五阶段
+完成，14 项 GPU 像素检查零差异；视频和骨骼显示、RTSP 停止重连/后台恢复验证完成。
+RTSP 纯预览 29.65 FPS，初始低档 Vulkan 输入 28.37 / 新结果 27.55 FPS；热机后输入
+20.21 / 新结果 18.76 FPS，解码仍约 30 FPS。多人视频短测逐人新骨骼约 24.1、完整
+COCO-17 18.74–20.36 FPS；后续热机持续新结果 18.60 FPS。不能据此宣称稳定 20–25
+完整骨骼 FPS 或 RK3588 性能达标，也不能用这次非同温顺序测试宣称明确提速。
+证据与局限：[输入调度报告](reports/2026-10-12-input-cadence.md)。
+
+## 2026-10-11 最终包 OnePlus 应用对照补充
+
+最终 APK 已安装并完成像素检查、视频/RTSP CPU/Vulkan 短测及 300 秒持续测量。
+14 项 GPU 像素检查零差异；无日志解析警告或记录的 Unity/采集器异常。
+视频 Vulkan 低档短测新结果 24.45 FPS，持续均值 22.62、末分钟 19.02 FPS；
+逐人完整 COCO-17 短测 18.81–20.38 FPS，尚未验收稳定 20–25 FPS。
+本轮 PC RTSP 源独立 PTS 测量约 9.985 FPS，预览 9.98 FPS；RK3588 尚未实测。
+详见 docs/reports/2026-10-11-recognition-hotpath.md，交付目录含同包与完整日志。
+
+# 2026-10-11 当前：明日 RK3588 单包识别回归准备
+
+用户要求在 2026-10-12 RK3588 测试前完成已知、可验证的识别优化，并使用一个
+安装包对照。继续固定单实例，保持原始模型、骨骼精度和帧身份合同。
+新增：ARM64 全量有限值检查、RKNN 密集 FP16 输出转换、RGB 输入仅清理填充、
+YOLO 背景候选提前筛除、RKNN 资格检查整块比较。原生 447/447；实际 OnePlus
+ARM64 全半精度位型/控制模式及真实七人解码逐位一致。输入与解码/转换局部
+节省约几十分之一毫秒，不代表 NPU 模型速度或 20–25 FPS 已验收。
+最终 APK 构建、47 个文件索引审计、ADB 安装及 OnePlus 完整应用对照通过执行。
+实际帧率与未达标项见上方补充及 reports/2026-10-11-recognition-hotpath.md。
+
+# 2026-10-11 当前：单实例画面跟随与 OnePlus 回归
+
+后续用户决策取代早期多实例计划：CPU/Vulkan/RKNN 入口固定单实例；移除多实例
+UI/对照阶段。热机 A/B/A/B 证实 Vulkan 双实例更慢；RK3588 不据此冒充实测。
+最终原生 443/443，Unity 显示历史 4/4，OnePlus 快照像素 8/8、模型 RGB 6/6。
+最终单实例 APK 已构建、索引/原生哈希审计、安装；设备最终烟测已记录本地视频和 RTSP 骨骼显示；热机新结果约 12.8 FPS，性能目标未通过。
+报告含 20↔12 FPS、输入发布速率、热限制证据和统计口径：
+[单实例/跟随实测](reports/2026-10-11-instance-pool-following.md)。
+持续逐人 20–25 FPS 与 RK3588 硬件验收仍开放。下方保留历史执行记录。
+
+## 2026-10-11 crowd selection and instance telemetry
+
+- Full-frame candidates reach common tracking before public capacity selection.
+  Foreground/completeness ranking and hysteresis preserve raw timestamps/regions.
+  See runtime/services/README.md.
+- Device UI and pipeline.snapshot include actual busy / total body instances,
+  fallback reason and explicit missing telemetry.
+- Native: tools/test/run_native_tests.ps1, 440/440 (native-selection-final.log).
+  Unity instance tests 5/5 (8d8eadca). Android build/API-26 closure passed, native SHA
+  8e85512152cd6854645f6c36ceeeb8ee550eb202abbeaca2ce93750917285df9.
+- Earlier OnePlus comparison: four 60 s phases complete; 300 s phase cancelled.
+  Latest combined APK device verification pending; RK3588 performance unverified.
+
+# 2026-10-11 active: four-path visual following follow-up
+
+User authorized all four optimizations plus bounded concurrent model-instance
+evaluation and connected OnePlus regression. Active plan:
+`docs/plans/2026-10-11-four-path-following.md`. Work in progress; no new performance
+acceptance claimed. Prior native-I/O evidence below remains the baseline.
+
+Implemented bounded independent instance pool, monotonic completion, capture-time
+admission credit and managed latest-frame retry, RKNN cache/native-FP16-output
+candidates, and a pinned graph-layout candidate in the same private APK suite.
+Fresh native 436/436, input 49/49, Unity InputAdapter 22/22, graph 3/3, staging
+2/2 and analyzer 2/2 passed. Android API26 native dependency and architecture /
+public-surface audits passed. See [implementation/evidence](reports/2026-10-11-instance-pool-following.md).
+RGA currently adds actual AHB/library capability evidence only: the official NDK
+library lacks the documented platform AHB importer. Direct RGA-to-NPU integration
+and RK3588 performance are open; no 20–25 FPS or zero-copy claim. APK/OnePlus
+regression is in progress.
+
+# 2026-10-11 completed software: RKNN throughput follow-up
 
 Sole active follow-up: `docs/plans/2026-10-11-rknn-throughput.md`, extending the
 combined repair toward 20–25 FPS through qualified native tensor I/O. Hardware

@@ -76,3 +76,29 @@ only completed `MEASURE BEGIN/END` intervals from `persons.jsonl`. Repeated base
 phases remain separate; cancelled phases cannot become passing measurements.
 Known absent tracks retain zero windows. Spatial accuracy requires inspection of
 the recorded video; complete COCO-17 is not a full 32-joint accuracy certificate.
+
+## Actual inference-instance counters (2026-10-11)
+
+Visible status: 推理实例：busy / total（忙碌 / 总数）. Every `pipeline.snapshot`
+contains `inferenceInstances.busy`, `total`, `fallback`, `scope`, sampled at the
+statistics cadence (one second default). They count actual created body-pipeline
+instances, not requested instances or NPU cores. Busy includes pipeline waits;
+0/1 can be a normal idle instant. Stopped is 0/0; unavailable is -1 and is displayed
+explicitly. CPU, Vulkan and RKNN share this definition. Native diagnostic keys:
+`Inference instances=`, `Active inference instances=`, `Instance pool fallback=`.
+Run `InferenceInstanceTests` and inspect actual device records; this is not usage.
+
+## Single-instance following update (2026-10-11)
+
+Production composition now uses one body instance for CPU, Vulkan and RKNN. The
+experimental instance button and benchmark multi-instance phases are removed.
+`presentation` logs actual input/submitted/result/display and bracketing pose
+frame IDs, actual delay, and display mode. Derived display interpolation never
+increases raw fresh-result or per-person counters. The source publication FPS
+is measured after Unity receives a new usable texture; it is not camera-rated
+FPS or a count of Unity redraws. Local video-1.mp4 is 25 FPS.
+
+Presentation snapshot pixel checks cover four sizes and both mirror states.
+Run PresentationPoseHistoryTests for identity, timeout and low-rate continuity.
+See docs/reports/2026-10-11-instance-pool-following.md for device evidence and
+unverified acceptance boundaries.

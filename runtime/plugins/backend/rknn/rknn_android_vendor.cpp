@@ -1,5 +1,6 @@
 #include "plugins/backend/rknn/rknn_vendor_boundary.h"
 #include "plugins/backend/rknn/rknn_native_input.h"
+#include "plugins/backend/rknn/rknn_native_output.h"
 #if defined(__ANDROID__) && defined(HV_ENABLE_RKNN)
 #include "rknn_api.h"
 #include <dlfcn.h>
@@ -55,11 +56,18 @@ class AndroidVendor final : public Vendor {
     NativeInputLayout input_layout;
     bool transform_ready=false;
     int candidate_step=-1;
+    // Each optimized cache mode retains a default-cache counterpart. Drivers
+    // rejecting explicit ownership fall through without affecting the baseline.
+    bool NativeInput() const {return candidate_step<=2;}
+    bool NativeOutput() const {return candidate_step==0;}
+    bool SharedOutput() const {return candidate_step<=4;}
+    bool ExplicitCache() const {return candidate_step==0||candidate_step==1||candidate_step==3||candidate_step==5;}
     const void* candidate_model=nullptr;
     uint32_t candidate_model_bytes=0,candidate_mask=0,candidate_output_count=0;
     Attribute candidate_attribute;
     const Attribute* candidate_output_attributes=nullptr;
     std::vector<rknn_tensor_mem*> candidate_output_mems;
+    std::vector<NativeOutputLayout> candidate_output_layouts;
     int QueryAttribute(Context context, Attribute& a, rknn_query_cmd command) {
         rknn_tensor_attr native{};native.index=a.index;
         const int result=query(rknn_context(context),command,&native,sizeof(native));if(result)return result;
@@ -125,14 +133,17 @@ public:
         transform_ready=input_transform.Configure(mean,norm);
     }
     const char* InputCandidateName() const override {
-        return candidate_step==0?"native-fp16-io-qualified":candidate_step==1?"shared-io-qualified":"shared-input-qualified";
+        static const char* names[]={"native-fp16-output-explicit-cache","native-fp16-io-explicit-cache",
+            "native-fp16-io-qualified","shared-io-explicit-cache","shared-io-qualified",
+            "shared-input-explicit-cache","shared-input-qualified"};
+        return candidate_step>=0&&candidate_step<7?names[candidate_step]:"none";
     }
     bool NextInputCandidate() override {
         DropInputCandidate();
         // Try the direct native input + shared outputs, then shared uint8 I/O,
         // then the earlier input-only candidate. Each needs a new numerical gate.
-        while(++candidate_step<3) {
-            if(candidate_step==0&&!transform_ready)continue;
+        while(++candidate_step<7) {
+            if(NativeInput()&&!transform_ready)continue;
             if(PrepareCandidateStep())return true;
         }
         return false;
@@ -143,7 +154,13 @@ public:
         const auto count=candidate_output_count,mask=candidate_mask;
         const auto reject=[this](){DropInputCandidate();return false;};
         // This context is independent: failure cannot poison the baseline input binding.
-        if(init(&candidate_context,const_cast<void*>(model),bytes,0,nullptr)||!candidate_context)return reject();
+        uint32_t flags=0;
+        if(ExplicitCache()) {
+            flags=RKNN_FLAG_DISABLE_FLUSH_INPUT_MEM_CACHE;
+            // outputs_get owns its own cache maintenance and forbids this flag.
+            if(SharedOutput())flags|=RKNN_FLAG_DISABLE_FLUSH_OUTPUT_MEM_CACHE;
+        }
+        if(init(&candidate_context,const_cast<void*>(model),bytes,flags,nullptr)||!candidate_context)return reject();
         if(core(candidate_context,static_cast<rknn_core_mask>(mask)))return reject();
         uint32_t inputs=0,output_count=0;
         if(IoCount(Context(candidate_context),inputs,output_count)||inputs!=1||output_count!=count)return reject();
@@ -155,13 +172,13 @@ public:
             for(uint32_t d=0;d<a.rank;++d)if(a.dimensions[d]!=outputs[i].dimensions[d])return reject();
         }
         rknn_tensor_attr attr{};
-        if(query(candidate_context,candidate_step==0?RKNN_QUERY_NATIVE_NHWC_INPUT_ATTR:RKNN_QUERY_INPUT_ATTR,&attr,sizeof(attr)))return reject();
+        if(query(candidate_context,NativeInput()?RKNN_QUERY_NATIVE_NHWC_INPUT_ATTR:RKNN_QUERY_INPUT_ATTR,&attr,sizeof(attr)))return reject();
         const uint32_t height=uint32_t(input_attr.dimensions[input_attr.layout==Layout::Nchw?2:1]);
         const uint32_t width=uint32_t(input_attr.dimensions[input_attr.layout==Layout::Nchw?3:2]);
         const uint64_t rgb_bytes=uint64_t(width)*height*3;
         if(attr.n_dims!=4||std::strcmp(attr.name,input_attr.name))return reject();
         uint64_t allocation=std::max(rgb_bytes,uint64_t(attr.size_with_stride));
-        if(candidate_step==0) {
+        if(NativeInput()) {
             allocation=attr.size_with_stride?attr.size_with_stride:attr.size;
             if(attr.type!=RKNN_TENSOR_FLOAT16||attr.fmt!=RKNN_TENSOR_NHWC||attr.qnt_type!=RKNN_TENSOR_QNT_NONE||
                 attr.dims[0]!=1||attr.dims[1]!=height||attr.dims[2]!=width||
@@ -172,7 +189,7 @@ public:
         candidate_bytes=uint32_t(rgb_bytes);
         candidate_input=create_mem(candidate_context,uint32_t(allocation));
         if(!candidate_input||!candidate_input->virt_addr||candidate_input->size<allocation)return reject();
-        if(candidate_step==0) {
+        if(NativeInput()) {
             // Exact queried native layout plus explicit model transform. Runtime
             // must not normalize/transpose a second time; equality is checked later.
             attr.pass_through=1;
@@ -183,19 +200,32 @@ public:
         }
         if(set_io_mem(candidate_context,candidate_input,&attr))return reject();
         candidate_outputs.resize(count);
-        if(candidate_step<2) {
+        if(SharedOutput()) {
             candidate_output_mems.assign(count,nullptr);
+            candidate_output_layouts.resize(count);
             uint64_t total=0;
             for(uint32_t i=0;i<count;++i) {
                 rknn_tensor_attr output{};output.index=i;
-                if(query(candidate_context,RKNN_QUERY_OUTPUT_ATTR,&output,sizeof(output))||
+                if(query(candidate_context,NativeOutput()?RKNN_QUERY_NATIVE_OUTPUT_ATTR:RKNN_QUERY_OUTPUT_ATTR,&output,sizeof(output))||
                     output.n_elems!=outputs[i].elements||output.fmt==RKNN_TENSOR_NC1HWC2)return reject();
-                const uint64_t bytes=uint64_t(output.n_elems)*sizeof(float);total+=bytes;
+                uint64_t bytes=uint64_t(output.n_elems)*sizeof(float);
+                if(NativeOutput()) {
+                    uint64_t dims[8]{};
+                    if(output.type!=RKNN_TENSOR_FLOAT16||output.qnt_type!=RKNN_TENSOR_QNT_NONE||
+                        output.n_dims>8||output.index!=i||std::strcmp(output.name,outputs[i].name))return reject();
+                    for(uint32_t d=0;d<output.n_dims;++d)dims[d]=output.dims[d];
+                    bytes=output.size_with_stride?output.size_with_stride:output.size;
+                    if(!candidate_output_layouts[i].Configure(outputs[i].rank,outputs[i].dimensions,
+                        output.n_dims,dims,output.n_elems,bytes))return reject();
+                    const auto layout=output.fmt==RKNN_TENSOR_NCHW?Layout::Nchw:
+                        output.fmt==RKNN_TENSOR_NHWC?Layout::Nhwc:Layout::Unknown;
+                    if(layout==Layout::Unknown||layout!=outputs[i].layout)return reject();
+                } else output.type=RKNN_TENSOR_FLOAT32;
+                total+=bytes;
                 if(!bytes||total>4ull*1024*1024)return reject();
                 // Official RKNN memory API supports requested dense float outputs.
                 // Keep queried dimensions/order; unsupported drivers fail binding
                 // or the subsequent full output comparison, never get guessed padding.
-                output.type=RKNN_TENSOR_FLOAT32;
                 auto*& memory=candidate_output_mems[i];memory=create_mem(candidate_context,uint32_t(bytes));
                 if(!memory||!memory->virt_addr||memory->size<bytes||set_io_mem(candidate_context,memory,&output))return reject();
             }
@@ -204,21 +234,26 @@ public:
     }
     int CandidateInputsSet(const void* rgb,uint32_t bytes) override {
         if(!candidate_context||!candidate_input||bytes!=candidate_bytes||!rgb)return -1;
-        if(candidate_step==0) {
+        if(NativeInput()) {
             if(!input_transform.Pack(rgb,bytes,input_layout,candidate_input->virt_addr,candidate_input->size))return -1;
         } else std::memcpy(candidate_input->virt_addr,rgb,bytes);
         // Explicit CPU-to-device cache synchronization; timing includes this copy/sync.
-        return mem_sync(candidate_context,candidate_input,RKNN_MEMORY_SYNC_TO_DEVICE);
+        return ExplicitCache()?mem_sync(candidate_context,candidate_input,RKNN_MEMORY_SYNC_TO_DEVICE):0;
     }
     int CandidateRun() override {return run(candidate_context,nullptr);}
     int CandidateOutputsGet(OutputBuffer* out,uint32_t count) override {
         if(count!=candidate_outputs.size())return -1;
-        if(candidate_step<2) {
+        if(SharedOutput()) {
             for(uint32_t i=0;i<count;++i) {
                 auto* memory=candidate_output_mems[i];
-                if(!out[i].data||out[i].index!=i||out[i].bytes!=candidate_output_attributes[i].elements*sizeof(float)||
-                    memory->size<out[i].bytes||mem_sync(candidate_context,memory,RKNN_MEMORY_SYNC_FROM_DEVICE))return -1;
-                std::memcpy(out[i].data,memory->virt_addr,out[i].bytes);
+                if(!out[i].data||out[i].index!=i||out[i].bytes!=candidate_output_attributes[i].elements*sizeof(float))return -1;
+                if(ExplicitCache()&&mem_sync(candidate_context,memory,RKNN_MEMORY_SYNC_FROM_DEVICE))return -1;
+                if(NativeOutput()) {
+                    if(!candidate_output_layouts[i].Decode(memory->virt_addr,memory->size,out[i].data,out[i].bytes))return -1;
+                } else {
+                    if(memory->size<out[i].bytes)return -1;
+                    std::memcpy(out[i].data,memory->virt_addr,out[i].bytes);
+                }
             }
             return 0;
         }

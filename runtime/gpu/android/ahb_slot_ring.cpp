@@ -205,16 +205,17 @@ SlotResult AhbSlotRing::PublishReady(const SlotToken& token,SyncFd& fd) {
     slot.state.compare_exchange_strong(expected,AhbSlotState::ReadyForNcnn,std::memory_order_acq_rel);
     return SlotResult::Ok;
 }
-SlotResult AhbSlotRing::ClaimNewest(SlotToken& token,SlotMetadata& metadata) {
+SlotResult AhbSlotRing::ClaimNewest(SlotToken& token,SlotMetadata& metadata,uint32_t max_consumers) {
     token={};metadata={};if(!accepting_.load(std::memory_order_acquire))return SlotResult::Closed;
     std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);if(!lock.owns_lock())return SlotResult::Busy;
     if(!accepting_.load(std::memory_order_acquire))return SlotResult::Closed;
-    // One observation owns the consumer queue until final release completion.
-    // Leave pending frames intact and do not advance last_claimed_frame_ until
-    // that observation is retired; newest selection then coalesces them once.
+    // Single-instance remains the default. An explicit independent GPU pool may
+    // occupy two slots, preserving the third for the next source copy.
+    if(max_consumers<1||max_consumers>=kSlotCount)return SlotResult::Invalid;
+    uint32_t occupied=0;
     for(const auto& slot:slots_){const auto state=slot.state.load(std::memory_order_acquire);
-        if(state==AhbSlotState::InferenceRunning||state==AhbSlotState::ConsumerReleasePending)return SlotResult::NoReady;
-    }
+        if(state==AhbSlotState::InferenceRunning||state==AhbSlotState::ConsumerReleasePending)++occupied;}
+    if(occupied>=max_consumers)return SlotResult::NoReady;
     uint32_t best=kSlotCount;const auto gen=generation_.load(std::memory_order_acquire);
     for(uint32_t i=0;i<kSlotCount;++i){const auto& slot=slots_[i];
         if(slot.state.load(std::memory_order_acquire)!=AhbSlotState::ReadyForNcnn)continue;

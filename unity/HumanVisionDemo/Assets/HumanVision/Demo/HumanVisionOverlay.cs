@@ -89,7 +89,7 @@ namespace HumanVision.Demo
             vertexHelper.Clear();
             if (manager == null || frameSource == null ||
                 frameSource.SourceWidth <= 0 || frameSource.SourceHeight <= 0 ||
-                manager.BodyCount <= 0 || manager.Bodies == null ||
+                frameSource.DisplayBodyCount <= 0 || frameSource.DisplayBodies == null ||
                 !frameSource.CanPresentResult(manager.SourceFrameId))
             {
                 return;
@@ -100,10 +100,10 @@ namespace HumanVision.Demo
                 frameSource.SourceWidth,
                 frameSource.SourceHeight);
 
-            int bodyCount = Mathf.Min(manager.BodyCount, manager.Bodies.Length);
+            int bodyCount = Mathf.Min(frameSource.DisplayBodyCount, frameSource.DisplayBodies.Length);
             for (int bodyIndex = 0; bodyIndex < bodyCount; bodyIndex++)
             {
-                HumanVisionBody body = manager.Bodies[bodyIndex];
+                HumanVisionBody body = frameSource.DisplayBodies[bodyIndex];
                 Color32 bodyColor = BodyColors[bodyIndex % BodyColors.Length];
                 DrawBody(vertexHelper, body, videoRect, bodyColor);
             }

@@ -2,6 +2,40 @@
 #include "services/region_mask.h"
 #include <gtest/gtest.h>
 using namespace humanvision::runtime;
+namespace {
+// Seven real observations compete for four public slots; identities are supplied
+// only to isolate selection policy from the separate geometric tracker tests.
+HV_ObservationFrameV1 Crowd(int64_t time) {
+ HV_ObservationFrameV1 f{};f.width=f.height=1000;f.source_timestamp_us=time;f.source_frame_id=time;f.body_count=7;
+ const int coco[]{27,28,30,29,31,5,12,6,13,7,14,18,22,19,23,20,24};
+ for(int i=0;i<7;++i){auto& b=f.bodies[i];b.bbox_px={float(i*130),100,100,float(300+i*70)};b.confidence=.9F;
+  for(int k:coco){auto& j=b.joints[k];j.valid=1;j.confidence=.9F;j.x_px=b.bbox_px.x+50;j.y_px=200;j.x_norm=j.x_px/1000;j.y_norm=.2F;j.observation_timestamp_us=time;}}
+ return f;
+}
+}
+TEST(CommonServices, CrowdSelectsFrontCompletePeopleAndKeepsSlotsAcrossOrderJitter) {
+ BodyServices s;s.Configure(4,nullptr,0,1);int32_t ids[]{1,2,3,4,5,6,7};
+ auto f=Crowd(1000000);for(auto& j:f.bodies[6].joints)j.valid=0; // Closest, but not a usable skeleton.
+ s.Observe(f,1,false,nullptr,ids);auto first=s.Raw();ASSERT_EQ(first.count,4u);
+ for(uint32_t i=0;i<first.count;++i)EXPECT_GE(first.bodies[i].bbox_px.x,260.F);
+ EXPECT_EQ(first.bodies[0].bbox_px.x,650.F);
+ for(int step=1;step<15;++step){f=Crowd(1000000+step*50000);for(auto& j:f.bodies[6].joints)j.valid=0;
+  std::reverse(f.bodies,f.bodies+7);int32_t reversed[]{7,6,5,4,3,2,1};
+  s.Observe(f,1,false,nullptr,reversed);auto next=s.Raw();ASSERT_EQ(next.count,4u);
+  for(int i=0;i<4;++i)EXPECT_EQ(next.bodies[i].track_id,first.bodies[i].track_id);}
+}
+TEST(CommonServices, CrowdRequiresSustainedImprovementAndDoesNotPublishMissingAsFresh) {
+ BodyServices s;s.Configure(1,nullptr,0,1);int32_t ids[]{1,2};
+ auto make=[](int64_t time,bool improve){auto f=Crowd(time);f.body_count=2;f.bodies[0].bbox_px.height=500;f.bodies[1].bbox_px.height=400;
+  if(improve)for(int k=0;k<32;++k)f.bodies[0].joints[k].valid=0;return f;};
+ s.Observe(make(1000000,false),1,false,nullptr,ids);auto id=s.Raw().bodies[0].track_id;
+ s.Observe(make(1050000,true),1,false,nullptr,ids);EXPECT_EQ(s.Raw().bodies[0].track_id,id);
+ s.Observe(make(1100000,false),1,false,nullptr,ids);EXPECT_EQ(s.Raw().bodies[0].track_id,id);
+ for(int step=1;step<=20;++step)s.Observe(make(1100000+step*50000,true),1,false,nullptr,ids);
+ ASSERT_EQ(s.Raw().count,1u);EXPECT_NE(s.Raw().bodies[0].track_id,id);
+ auto missing=make(2150000,false);missing.body_count=0;s.Observe(missing,1,false);EXPECT_EQ(s.Raw().count,0u);
+ s.Configure(1,nullptr,0,2);s.Observe(make(2200000,false),1,false,nullptr,ids);EXPECT_EQ(s.Raw().count,0u);
+}
 TEST(CommonServices, MaskRemovesPixelsBeforeInference){
  uint8_t pixels[12]{1,2,3,4,5,6,7,8,9,10,11,12};HV_VideoFrame frame{sizeof(frame),4,1,12,HV_PIXEL_BGR24,1,1,pixels,12};
  HV_Rect region{0,0,.5F,1};humanvision::FrameBuffer result;std::string error;
@@ -190,4 +224,29 @@ TEST(CommonServices, RegionConstraintRetainsSlotIdentityAcrossCrossingAndOldFram
  auto after=s.Raw();ASSERT_EQ(after.count,2u);
  for(int i=0;i<2;++i){EXPECT_EQ(after.bodies[i].region_index,before.bodies[i].region_index);EXPECT_EQ(after.bodies[i].track_id,before.bodies[i].track_id);}
  s.Observe(Frame(1,1000000,600),4);EXPECT_EQ(s.Raw().bodies[0].source_frame_id,2);
+}
+
+TEST(CommonServices, CrowdSelectionIsResolutionAndMirrorInvariantWithoutCropIds) {
+ for(int width:{640,1024,1280,1920})for(bool mirror:{false,true}){
+  BodyServices s;s.Configure(4,nullptr,0,1);std::array<int64_t,4> chosen{};
+  for(int step=0;step<20;++step){auto f=Crowd(1000000+step*50000);f.width=width;f.height=width*9/16;
+   for(int i=0;i<7;++i){auto& b=f.bodies[i];b.confidence=(step+i)%2?.99F:.7F;
+    b.bbox_px.x=(mirror?1000-b.bbox_px.x-b.bbox_px.width:b.bbox_px.x)*width/1000;
+    b.bbox_px.y*=f.height/1000.F;b.bbox_px.width*=width/1000.F;b.bbox_px.height*=f.height/1000.F;
+    for(auto& j:b.joints){j.x_norm=mirror?1-j.x_norm:j.x_norm;j.x_px=j.x_norm*width;j.y_px=j.y_norm*f.height;}}
+   if(step%2)std::reverse(f.bodies,f.bodies+7);s.Observe(f,1,false);auto result=s.Raw();ASSERT_EQ(result.count,4u);
+   for(int i=0;i<4;++i){if(!step)chosen[i]=result.bodies[i].track_id;
+    EXPECT_EQ(result.bodies[i].track_id,chosen[i]);EXPECT_EQ(result.bodies[i].source_frame_id,f.source_frame_id);
+    EXPECT_GE(result.bodies[i].bbox_px.height/f.height,.5F);}
+  }
+ }
+}
+TEST(CommonServices, CrowdMissingIncumbentReleasesSlotAfterGraceAndLimitsAllCapacities) {
+ for(int capacity=1;capacity<=8;++capacity){BodyServices s;s.Configure(capacity,nullptr,0,1);
+  auto f=Crowd(1000000);s.Observe(f,1,false);EXPECT_EQ(s.Raw().count,uint32_t(std::min(capacity,7)));}
+ BodyServices s;s.Configure(1,nullptr,0,1);auto f=Crowd(1000000);s.Observe(f,1,false);
+ auto first=s.Raw().bodies[0].track_id;
+ f=Crowd(1100000);f.body_count=6;s.Observe(f,1,false);EXPECT_EQ(s.Raw().count,0u);
+ f=Crowd(1400000);f.body_count=6;s.Observe(f,1,false);ASSERT_EQ(s.Raw().count,1u);
+ EXPECT_NE(s.Raw().bodies[0].track_id,first);EXPECT_EQ(s.Raw().bodies[0].source_frame_id,1400000);
 }

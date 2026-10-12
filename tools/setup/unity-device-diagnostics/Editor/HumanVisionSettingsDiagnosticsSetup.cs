@@ -55,7 +55,7 @@ public static class HumanVisionSettingsDiagnosticsSetup
         if (previous != null) UnityEngine.Object.DestroyImmediate(previous.gameObject);
         // 将日志/硬件移到右侧，让左侧 16:9 视频利用完整高度，避免日志挤出宽黑边。
         var preview = canvas.transform.Find("Preview panel") as RectTransform;
-        if (preview != null) { preview.anchorMin = new Vector2(0, .16f); preview.anchorMax = new Vector2(.66f,.92f); }
+        if (preview != null) { preview.anchorMin = new Vector2(0, .185f); preview.anchorMax = new Vector2(.66f,.92f); }
         var modes = canvas.transform.Find("Mode bar") as RectTransform;
         if (modes != null) { modes.anchorMin=new Vector2(0,.92f);modes.anchorMax=new Vector2(.66f,1); }
         var actions = canvas.transform.Find("Actions") as RectTransform;
@@ -63,7 +63,7 @@ public static class HumanVisionSettingsDiagnosticsSetup
         var settings = canvas.transform.Find("Settings panel") as RectTransform;
         if (settings != null) { settings.anchorMin=new Vector2(.66f,.44f);settings.anchorMax=Vector2.one; }
         var statusPanel = canvas.transform.Find("Runtime status") as RectTransform;
-        if (statusPanel != null) { statusPanel.anchorMin = new Vector2(0, .08f); statusPanel.anchorMax = new Vector2(.66f, .16f); }
+        if (statusPanel != null) { statusPanel.anchorMin = new Vector2(0, .08f); statusPanel.anchorMax = new Vector2(.66f, .185f); }
         var panelObject = new GameObject("Device diagnostics bar", typeof(RectTransform), typeof(Image));
         panelObject.transform.SetParent(canvas.transform, false);
         // The benchmark locks configuration only; log-folder/export/cancel actions remain clickable.
@@ -103,6 +103,8 @@ public static class HumanVisionSettingsDiagnosticsSetup
         diagnostics.Configure(target, label, copy, export, zip, skeleton, version, hardwareText);
         var comparison=target.GetComponent<HumanVisionCombinedBenchmark>()??target.gameObject.AddComponent<HumanVisionCombinedBenchmark>();
         comparison.Configure(target,diagnostics,compare);EditorUtility.SetDirty(comparison);
+        var instanceControls=target.GetComponent<HumanVisionInstanceControls>();
+        if(instanceControls!=null)UnityEngine.Object.DestroyImmediate(instanceControls);
         EditorUtility.SetDirty(diagnostics);
         // 标明高级区里的兼容入口，原 SDK 日志会被合并到实机 ZIP 中。
         foreach (var button in canvas.GetComponentsInChildren<Button>(true)) {
@@ -113,7 +115,7 @@ public static class HumanVisionSettingsDiagnosticsSetup
     private static Button Button(Transform parent, string name, string title, int index, Font font)
     {
         var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button)); go.transform.SetParent(parent, false);
-        // Three file actions above, two larger capture/comparison actions below.
+        // Three file actions above, capture/comparison actions below.
         int column=index<3?index:index-3;float columns=index<3?3f:2f;
         var rect = (RectTransform)go.transform; rect.anchorMin = new Vector2(column / columns, index<3?.25f:0);
         rect.anchorMax = new Vector2((column + 1) / columns, index<3?.50f:.25f);
@@ -254,6 +256,15 @@ public static class HumanVisionSettingsDiagnosticsSetup
     public static void BuildAndroid()
     {
         if (EditorApplication.isPlaying) throw new Exception("Exit Play Mode before building.");
+        // Refresh the serialized diagnostic version from the package actually being built.
+        string inputVersion = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(IHumanVisionFrameSource).Assembly)?.version ?? "unknown";
+        foreach (var item in UnityEngine.Object.FindObjectsOfType<HumanVisionSettingsDeviceDiagnostics>(true)) {
+            var serialized = new SerializedObject(item);
+            serialized.FindProperty("inputPackageVersion").stringValue = inputVersion;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorSceneManager.MarkSceneDirty(item.gameObject.scene);
+        }
+        EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
         PlayerSettings.enableFrameTimingStats = true;
         UpdateBundledVideoCatalog(); VerifyScene(); Directory.CreateDirectory(Path.Combine(Root, "Builds")); Directory.CreateDirectory(Evidence);
         bool localFix = File.Exists(Path.Combine(Root, "Assets/HumanVisionSettingsDemo/Resources/HumanVisionDeviceBuildInfo.json"));

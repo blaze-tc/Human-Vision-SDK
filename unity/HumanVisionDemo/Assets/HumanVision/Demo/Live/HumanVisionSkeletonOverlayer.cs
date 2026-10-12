@@ -7,6 +7,7 @@ namespace HumanVision
 {
     // Pooled semantic objects on a display image plane, with no metric depth.
     // A transparent camera composition keeps them visible beneath overlay UI.
+    [DefaultExecutionOrder(200)]
     public sealed class HumanVisionSkeletonOverlayer : MonoBehaviour
     {
         public HumanVisionCameraManager manager;
@@ -105,8 +106,8 @@ namespace HumanVision
             if (_visionManager != null) {
                 bool regions = _settings != null && _settings.UseRegions;
                 bool assignmentsReady = !regions || canonical || _visionManager.TryCopyRegionAssignments(_assignments, out _);
-                var sampled = _visionManager.SampledBodies;
-                int sampledCount = sampled == null ? 0 : Mathf.Min(_visionManager.SampledBodyCount, sampled.Length);
+                var sampled = _frameSource.UsesPresentationTimeline ? _frameSource.DisplayBodies : _visionManager.SampledBodies;
+                int sampledCount = sampled == null ? 0 : Mathf.Min(_frameSource.UsesPresentationTimeline ? _frameSource.DisplayBodyCount : _visionManager.SampledBodyCount, sampled.Length);
                 if (assignmentsReady) for (int body = 0; body < sampledCount; body++) {
                     var candidate = sampled[body]; if (candidate == null) continue;
                     int slot = SkeletonImagePlane.DisplaySlot(body, canonical ? candidate.RegionIndex : regions ? _assignments[body] : -1, regions);

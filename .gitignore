@@ -20,3 +20,10 @@ unity/HumanVisionDemo/Builds/
 unity/HumanVisionDemo/Assets/Plugins/x86_64/*.dll
 unity/HumanVisionDemo/Assets/StreamingAssets/HumanVision/Models/*.onnx
 .worktrees/
+
+# Private RK3588 runtime: public redistribution not qualified by the SDK.
+/upm/com.blazetc.humanvision/Runtime/Plugins/Android/arm64-v8a/librknnrt.so
+/upm/com.blazetc.humanvision/Runtime/Plugins/Android/arm64-v8a/librknnrt.so.meta
+/check0_base_optimize.onnx
+/check2_correct_ops.onnx
+/check3_fuse_ops.onnx

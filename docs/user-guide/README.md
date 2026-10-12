@@ -1,3 +1,5 @@
+> 当前分支新增 ScriptableObject 默认配置、代码指定输入源及统一查询 API，请先阅读 [当前接入说明](SDK_CONFIGURATION.md)。下文含已发布版本和兼容 API 的历史说明。
+
 # Human Vision SDK 中文使用文档
 
 适用版本：SDK **0.4.0-preview.6** / Input **0.1.0-preview.4**。更新日期：2026-10-07。[版本下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.6)

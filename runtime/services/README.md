@@ -16,7 +16,7 @@ processing a new observation. Body presentation expiry does not mutate Raw().
 Hand point validity and hand request eligibility retain their independent 200 ms
 expiry. Sampling does not increase measured inference FPS. Missing
 structural joints may be explicitly marked derived; hands are never fabricated.
-Hand requests rotate across both sides of all active tracks; independently timed
+Hand requests rotate across both sides of selected active tracks; independently timed
 hand observations merge only into the matching track and revision.
 
 Internal `Diagnostics(now_us)` exposes cadence, hold, track lifetime, sample age,
@@ -29,3 +29,25 @@ buffer before pipeline execution. The original camera image is preserved.
 
 Acceptance: `tools/test/run_native_tests.ps1 -Filter CommonServices`.
 Hardware latency and crossing/occlusion quality require physical acceptance.
+
+## Bounded foreground selection (2026-10-11)
+
+Full-frame RTMO and YOLO routes admit up to the model/plugin candidate capacity
+(maximum eight) before selecting `MaxBodies` public slots. Top-down ROI inference
+retains its work budget. Tracking identities and display slots are separate.
+Without explicit regions, rank uses 65% measured COCO-17 completeness (valid,
+non-derived, finite, confidence >= 0.3) and 35% normalized box height. Apparent
+height is an RGB foreground heuristic, not measured metric depth. Other schema
+points and derived joints cannot inflate this rank. The raw skeleton is unchanged.
+
+Rank smoothing uses dt/(dt+250 ms). A challenger must exceed the weakest selected
+person by 0.08 for 500 ms; short losses reserve a slot for 350 ms. Fresh raw results
+never include a missing person. Current explicit crop identities can replace a
+missing identity immediately when current observations fit the public capacity.
+New selection keeps the incumbent display slots; only the weakest slot changes.
+Configured regions retain their existing assignment and binding behavior.
+
+Regression includes seven-to-four selection, shuffled detections, transient
+incompleteness, sustained challengers, loss, capacity 1..8, rejected revisions,
+four resolutions and mirror without synthetic tracking IDs. Exact real-world
+crossing and foreground preference remain scene-dependent.

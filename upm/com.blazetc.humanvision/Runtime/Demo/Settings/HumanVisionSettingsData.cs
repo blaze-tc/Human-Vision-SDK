@@ -16,6 +16,10 @@ namespace HumanVision.Demo
         public HumanVisionAccelerationMode AccelerationMode = HumanVisionAccelerationMode.Graphics;
         public ModelInputQuality GraphicsInputQuality = ModelInputQuality.Medium;
         public bool UseWindowsCpu = true, RtspTcp = true, AutoStart;
+        /// <summary>输入启动等待上限（秒），默认读取配置资产；设置界面始终打开输入。</summary>
+        public float InputOpenTimeoutSeconds = 15;
+        /// <summary>默认 Runtime 目录，留空自动准备；Controller 显式目录优先。</summary>
+        public string RuntimeRoot = "";
         public bool DetailedLogs;
         public float StatisticsInterval = 2, SkeletonLogInterval = 2;
         public int LogFileMegabytes = 8, RetainedLogSessions = 3;
@@ -28,16 +32,20 @@ namespace HumanVision.Demo
         {
             var value = new HumanVisionSettingsData { Recognition = options.Recognition.Clone(), SourceKind = options.SourceKind,
                 InputQuality = options.InputQuality, AccelerationMode = options.AccelerationMode, GraphicsInputQuality = options.InputQuality,
-                UseWindowsCpu = options.UseWindowsCpu, RtspTcp = options.RtspTcp, AutoStart = autoStart };
-            var mode = JsonUtility.FromJson<DemoModeSettings>(JsonUtility.ToJson(options.Input));
-            if (options.SourceKind == InputKind.Video) value.Video = mode;
-            else if (options.SourceKind == InputKind.Rtsp) value.Rtsp = mode; else value.Camera = mode;
+                UseWindowsCpu = options.UseWindowsCpu, RtspTcp = options.RtspTcp, AutoStart = autoStart,
+                InputOpenTimeoutSeconds = options.InputOpenTimeoutSeconds, RuntimeRoot = options.RuntimeRoot };
+            // 三种输入继承相同的图像/镜像默认值，各自持有副本，切换页签互不改写。
+            string inputJson = JsonUtility.ToJson(options.Input);
+            value.Camera = JsonUtility.FromJson<DemoModeSettings>(inputJson);
+            value.Video = JsonUtility.FromJson<DemoModeSettings>(inputJson);
+            value.Rtsp = JsonUtility.FromJson<DemoModeSettings>(inputJson);
             return value;
         }
         /// <summary>转成总控启动配置；只有提交时才要求输入地址。</summary>
         public HumanVisionSdkOptions ToOptions(string runtimeRoot = "") => new HumanVisionSdkOptions {
             Recognition = Recognition.Clone(), SourceKind = SourceKind, Input = JsonUtility.FromJson<DemoModeSettings>(JsonUtility.ToJson(Mode)),
-            InputQuality = InputQuality, AccelerationMode = AccelerationMode, UseWindowsCpu = UseWindowsCpu, RtspTcp = RtspTcp, RuntimeRoot = runtimeRoot
+            InputQuality = InputQuality, AccelerationMode = AccelerationMode, UseWindowsCpu = UseWindowsCpu, RtspTcp = RtspTcp, RuntimeRoot = string.IsNullOrWhiteSpace(runtimeRoot) ? RuntimeRoot : runtimeRoot,
+            InputOpenTimeoutSeconds = InputOpenTimeoutSeconds
         };
         /// <summary>验证所有保存模式；未使用模式允许暂时没有地址。</summary>
         public void Validate()
@@ -47,6 +55,8 @@ namespace HumanVision.Demo
                 !Enum.IsDefined(typeof(HumanVisionAccelerationMode), AccelerationMode) || !Enum.IsDefined(typeof(ModelInputQuality), GraphicsInputQuality))
                 throw new ArgumentException("设置版本或输入模式无效。");
             Recognition.Validate(); Camera.Validate(); Video.Validate(); Rtsp.Validate();
+            if (!Finite(InputOpenTimeoutSeconds) || InputOpenTimeoutSeconds < 1)
+                throw new ArgumentException("输入启动超时须为至少一秒的有限值。");
             if (!Finite(StatisticsInterval) || StatisticsInterval < .2f || StatisticsInterval > 60 ||
                 !Finite(SkeletonLogInterval) || SkeletonLogInterval < .2f || SkeletonLogInterval > 60 ||
                 LogFileMegabytes < 1 || LogFileMegabytes > 64 || RetainedLogSessions < 1 || RetainedLogSessions > 20)

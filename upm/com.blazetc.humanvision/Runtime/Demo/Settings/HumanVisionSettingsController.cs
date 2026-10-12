@@ -182,6 +182,8 @@ namespace HumanVision.Demo
         }
         private void ConnectRenderer()
         {
+            // The bridge selects the displayed snapshot in LateUpdate before the skeleton renders.
+            sdk.FrameBridge.Configure(sdk.RuntimeManager,view.Preview,view.Preview.GetComponent<UnityEngine.UI.AspectRatioFitter>());
             view.Overlay.Configure(sdk.RuntimeManager, sdk.FrameBridge); sdk.ScreenTarget = view.Preview.rectTransform;
             logger?.Record("runtime.initialized", "elapsedMs=" + ((Time.realtimeSinceStartupAsDouble-applyStarted)*1000).ToString("F1") + " root=" + sdk.RuntimeRootPath +
                 " requestedMode=" + draft.AccelerationMode + " actualMode=" + sdk.ActiveAccelerationMode + " profile=" + sdk.RuntimeProfile + " modelPack=" + sdk.ActiveModelPack + " analysis=" + sdk.AnalysisInputSize + " diagnostics=" + sdk.RuntimeDiagnostics);
@@ -208,9 +210,14 @@ namespace HumanVision.Demo
             string occupancy = "";
             for (int i = 0; i < sdk.GetMaxBodies(); i++) occupancy += " " + i + ":" + (sdk.TryGetRegionOccupancy(i, out bool occupied) ? occupied ? "有人" : "无人" : "未知");
             view.SetStatus(Redact(string.IsNullOrEmpty(OperationNotice) ? message : OperationNotice) + "\nSDK " + sdk.State + " / Input " + sdk.InputState + "　实际人数 " + sdk.GetUsersCount() + "/" + sdk.GetMaxBodies() +
-                "　输入 " + sdk.InputPublicationFps.ToString("F1") + " / 新结果 " + sdk.FreshResultFps.ToString("F1") + " FPS　结果 " + sdk.ResultSequence + " / 帧 " + sdk.SourceFrameId + "\n槽位观测：" + occupancy);
+                "　输入 " + sdk.InputPublicationFps.ToString("F1") + " / 新结果 " + sdk.FreshResultFps.ToString("F1") + " FPS\n" + FrameStatus() + "　槽位：" + occupancy);
             try { logger?.Tick(sdk); } catch (Exception e) { message = "日志写入失败：" + Redact(e.Message); }
             if (logger != null && !string.IsNullOrEmpty(logger.LastWriteError)) message = "日志写入失败：" + logger.LastWriteError;
+        }
+        private string FrameStatus(){
+            if(sdk.FrameBridge==null)return "输入 / 结果帧：未启动";
+            var p=sdk.FrameBridge.PresentationStats;
+            return "输入帧 "+p.inputFrame+" / 结果源帧 "+p.resultFrame+" / 显示帧 "+p.displayFrame+"（显示延时 "+p.delayMs.ToString("F0")+"ms）";
         }
         private void Guard(Action work) { try { work(); } catch (Exception e) { message = Redact(e.Message); logger?.Record("configuration.rejected", e.GetType().Name + ": " + e.Message, e.StackTrace); } }
         /// <summary>UI/日志错误文本去除 RTSP 凭据；原始输入地址仅存在于编辑字段和用户配置文件。</summary>

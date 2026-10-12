@@ -229,6 +229,32 @@ TEST_F(YoloRegionCandidateFixture, CandidateBudgetHonorsSmallerPackAndPluginLimi
     }
 }
 
+TEST_F(YoloRegionCandidateFixture, SavedRealSevenPeopleKeepFourIdentitiesWhenCandidateOrderChanges) {
+    HV_GpuObservationFrameV3 observation{};
+    ProcessComposition(*resolved, observation); ASSERT_FALSE(HasFatalFailure());
+    ASSERT_EQ(observation.v1.body_count, 7u);
+    BodyServices services; services.Configure(4, nullptr, 0, 0);
+    services.Observe(observation.v1, 0, false);
+    const auto original = services.Raw(); ASSERT_EQ(original.count, 4u);
+    // Replay the hash-pinned real tensor observation with shuffled admission order.
+    // This checks selection identity only; it is not a fresh-FPS benchmark.
+    for (int step = 1; step <= 60; ++step) {
+        auto frame = observation.v1;
+        frame.source_frame_id += step; frame.source_timestamp_us += step * 33333;
+        std::rotate(frame.bodies, frame.bodies + step % 7, frame.bodies + 7);
+        for (uint32_t i = 0; i < frame.body_count; ++i)
+            for (auto& joint : frame.bodies[i].joints)
+                joint.observation_timestamp_us = frame.source_timestamp_us;
+        services.Observe(frame, 0, false);
+        const auto result = services.Raw(); ASSERT_EQ(result.count, 4u);
+        for (uint32_t i = 0; i < result.count; ++i) {
+            EXPECT_EQ(result.bodies[i].track_id, original.bodies[i].track_id);
+            EXPECT_EQ(result.bodies[i].source_frame_id, frame.source_frame_id);
+            EXPECT_FLOAT_EQ(result.bodies[i].bbox_px.x, original.bodies[i].bbox_px.x);
+        }
+    }
+}
+
 TEST_F(YoloRegionCandidateFixture, TopDownRetainsPublicRoiCapacity) {
     RuntimeProfile configuration = *resolved;
     auto module = std::make_shared<GpuPluginModuleV3>();

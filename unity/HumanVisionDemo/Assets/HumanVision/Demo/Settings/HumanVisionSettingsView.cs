@@ -32,6 +32,8 @@ namespace HumanVision.Demo
         };
         private Vector2Int[] captureSizes = Array.Empty<Vector2Int>();
         private bool wired, editRegions, fullPreview;
+        private Vector2 normalPreviewMin,normalPreviewMax;
+        private readonly bool[] normalSidePanelVisibility=new bool[3];
         private int selectedRegion;
         private RuntimePlatform? executionPlatform;
         private bool AndroidExecution => (executionPlatform ?? Application.platform) == RuntimePlatform.Android;
@@ -93,6 +95,18 @@ namespace HumanVision.Demo
             if (accelerationChoice != null) accelerationChoice.SetValueWithoutNotify(AndroidExecution ? (int)draft.AccelerationMode : draft.UseWindowsCpu || draft.AccelerationMode == HumanVisionAccelerationMode.Cpu ? 1 : 0);
             cameraPanel.SetActive(draft.SourceKind == InputKind.WebCamera); videoPanel.SetActive(draft.SourceKind == InputKind.Video); rtspPanel.SetActive(draft.SourceKind == InputKind.Rtsp);
             sourceHint.text = "当前草稿输入：" + draft.SourceKind;
+            // 分辨率含义随输入源而变；RTSP 下拉框不会修改远端摄像头编码参数。
+            if (captureChoice != null) {
+                var parent = captureChoice.transform.parent;
+                int previous = captureChoice.transform.GetSiblingIndex() - 1;
+                var title = previous >= 0 ? parent.GetChild(previous).GetComponent<Text>() : null;
+                bool camera = draft.SourceKind == InputKind.WebCamera, rtsp = draft.SourceKind == InputKind.Rtsp;
+                if (title != null) title.text = camera ? "请求采集尺寸" : rtsp ? "输出图像尺寸（上限）" : "视频尺寸（由文件决定）";
+                var hintObject = parent.Find("Capture resolution hint");
+                var hint = hintObject != null ? hintObject.GetComponent<Text>() : null;
+                if (hint != null) hint.text = camera ? "相机尽量匹配请求尺寸；以设备实际返回为准。" : rtsp ?
+                    "等比缩放后用于预览和识别供帧；不修改摄像头码流。模型尺寸另由模型等级决定。" : "按视频实际尺寸播放；此处选项不改变视频或模型尺寸。";
+            }
             Put("MaxBodies", draft.Recognition.MaxBodies); Put("CameraDevice", mode.CameraDevice);
             Put("VideoPath", mode.VideoPath); Put("RtspUrl", mode.RtspUrl); Put("RtspHost", mode.RtspComputerHost);
             ShowSelectedVideo(mode.VideoPath);
@@ -205,8 +219,18 @@ namespace HumanVision.Demo
         }
         public void ToggleFullscreen()
         {
-            fullPreview = !fullPreview; transform.Find("Settings panel").gameObject.SetActive(!fullPreview);
-            var panel = (RectTransform)transform.Find("Preview panel"); panel.anchorMax = new Vector2(fullPreview ? 1 : .72f, .92f);
+            var panel=(RectTransform)transform.Find("Preview panel");
+            string[] sidePanels={"Settings panel","Device diagnostics bar","Device hardware bar"};
+            if(!fullPreview) {normalPreviewMin=panel.anchorMin;normalPreviewMax=panel.anchorMax;}
+            for(int i=0;i<sidePanels.Length;i++) {
+                var side=transform.Find(sidePanels[i]);if(side==null)continue;
+                if(!fullPreview) {normalSidePanelVisibility[i]=side.gameObject.activeSelf;side.gameObject.SetActive(false);}
+                else side.gameObject.SetActive(normalSidePanelVisibility[i]);
+            }
+            fullPreview=!fullPreview;
+            // Keep the configured layout on return; never force the old 72% split.
+            panel.anchorMin=fullPreview?new Vector2(0,.07f):normalPreviewMin;
+            panel.anchorMax=fullPreview?new Vector2(1,normalPreviewMax.y):normalPreviewMax;
         }
         public void SetBusy(bool busy)
         {

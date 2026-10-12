@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -36,6 +36,7 @@ namespace HumanVision.TestProject.Diagnostics
         private AndroidLogFolderMirror folderMirror;
         private long lastHardwareSample, lastStageSample, bodyResultEvents, previousBodyResultEvents;
         private double displayedBodyFps;
+        private InferenceInstanceSnapshot inferenceInstances = InferenceInstanceSnapshot.Read(null, false);
         private readonly FrameTiming[] frameTimings = new FrameTiming[1];
         private double unityCpuFrameMs = -1, unityGpuFrameMs = -1;
         private HumanVisionSdk sdk;
@@ -114,6 +115,8 @@ namespace HumanVision.TestProject.Diagnostics
             public string videoUrl, regions;
             public long freshBodyResultEvents;
             public double freshBodyResultsFps;
+            public InferenceInstanceSnapshot inferenceInstances;
+            public VideoPlayerFrameSource.PresentationStatistics presentation;
             public HardwareSample hardware;
             public NativeStageSample nativeStages;
             public VideoPlayerFrameSource.CpuReadbackStatistics cpuReadback;
@@ -274,7 +277,7 @@ namespace HumanVision.TestProject.Diagnostics
             if (resultEvents == 1) session.Record("result.first", "sequence=" + sequence + " sourceFrame=" + sdk.SourceFrameId + " users=" + sdk.GetUsersCount());
         }
         private void OnSdkError(string error) { session?.Record("sdk.error", error); CaptureNativeDiagnostics("sdk.error"); nextStats = 0; }
-        private void OnStopped() { FlushPersons();personCounter.Reset();session?.Record("sdk.stopped", "Runtime and input retired"); manager = null; source = null; adapter = null; bridge = null; decoder = null; nextStats = 0; }
+        private void OnStopped() { inferenceInstances = InferenceInstanceSnapshot.Read(null, false); FlushPersons();personCounter.Reset();session?.Record("sdk.stopped", "Runtime and input retired"); manager = null; source = null; adapter = null; bridge = null; decoder = null; nextStats = 0; }
         private void OnUserEntered(int index, long id) => session?.Record("user.entered", "slot=" + index + " stableTrackId=" + id);
         private void OnUserExited(int index, long id) => session?.Record("user.exited", "slot=" + index + " stableTrackId=" + id);
         private void OnRegionChanged(int index, HumanVisionRegionOccupancy state) => session?.Record("region.changed", "slot=" + index + " state=" + state);
@@ -312,6 +315,8 @@ namespace HumanVision.TestProject.Diagnostics
             FindInputComponents(); double now = Time.realtimeSinceStartupAsDouble;
             // 按已经建立的运行时标记；切换被拒绝时请求配置不能冒充当前实际后端。
             hardware?.SetNeuralActive(sdk.IsInitialized && sdk.RuntimeProfile == "android-rknn-npu-quality-low");
+            // One native snapshot per statistics window, never one per rendered frame.
+            inferenceInstances = InferenceInstanceSnapshot.Read(sdk.IsInitialized ? sdk.RuntimeDiagnostics : null, sdk.IsInitialized);
             var stats = sdk.Stats; var frame = default(HumanVisionTextureFrame);
             bool published = source != null && source.TryGetLatestFrame(-1, out frame);
             var image = sdk.GetColorImageTex(); var size = sdk.AnalysisInputSize;
@@ -334,6 +339,8 @@ namespace HumanVision.TestProject.Diagnostics
                 readbackErrors = bridge != null ? bridge.ReadbackErrors : 0, readbackDrops = bridge != null ? bridge.ReadbackDrops : 0,
                 sourceError = source?.LastError ?? "", adapterError = adapter != null ? adapter.LastError : "", bridgeError = bridge != null ? bridge.LastError : "",
                 managerError = manager != null ? manager.LastError : "", sdkError = sdk.LastError,
+                inferenceInstances = inferenceInstances,
+                presentation = bridge != null ? bridge.PresentationStats : default,
                 runtimeProfile = sdk.RuntimeProfile, modelPack = sdk.ActiveModelPack, regionsEnabled = sdk.RegionsEnabled,
                 canPresentNativeResult = bridge != null && bridge.CanPresentResult(sdk.SourceFrameId),
                 managedBytes = GC.GetTotalMemory(false), unityAllocatedBytes = Profiler.GetTotalAllocatedMemoryLong(), unityQueueDrops = session.DroppedUnityMessages, nativeQueueDrops = session.DroppedNativeMessages
@@ -476,7 +483,7 @@ namespace HumanVision.TestProject.Diagnostics
             // 避免把 Unity 渲染率或原生兼容统计中的 0 当成实际输入/骨骼帧率。
             string value = string.IsNullOrEmpty(LastWriteError) ? uiMessage + " | Unity " + displayedUnityFps.ToString("F1", Invariant) +
                 " | 输入 " + displayedPublicationFps.ToString("F1", Invariant) + " | 含人体新结果 " + displayedBodyFps.ToString("F1", Invariant) +
-                " FPS | " + displayedHealth + "\n日志：" + CurrentLogDirectory : "日志写入失败：" + LastWriteError;
+                " FPS | " + inferenceInstances.Display + " | " + displayedHealth + "\n日志：" + CurrentLogDirectory : "日志写入失败：" + LastWriteError;
             if (value != previousUiText && logPathLabel != null) { logPathLabel.text = value; previousUiText = value; }
             if (copyZipButton != null) copyZipButton.interactable = !string.IsNullOrEmpty(LastExportPath);
             if (skeletonButton != null) skeletonButton.GetComponentInChildren<Text>().text = "骨骼日志：" + (recordSkeletons ? "开启" : "关闭");

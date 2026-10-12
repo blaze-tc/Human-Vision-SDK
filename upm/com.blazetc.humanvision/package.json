@@ -3,7 +3,7 @@
     "name": "blaze-tc"
   },
   "dependencies": {
-    "com.blazetc.humanvision.input": "0.1.0-preview.4",
+    "com.blazetc.humanvision.input": "0.1.0-preview.5",
     "com.unity.modules.imageconversion": "1.0.0",
     "com.unity.modules.imgui": "1.0.0",
     "com.unity.modules.jsonserialize": "1.0.0",
@@ -22,16 +22,11 @@
   },
   "samples": [
     {
-      "description": "Camera, Video and RTSP skeleton demos with shared settings and independent preview.",
-      "displayName": "UnifiedInput",
-      "path": "Samples~/UnifiedInput"
-    },
-    {
       "displayName": "SDK Settings",
       "description": "Editable UGUI settings scene and one-component gameplay API example.",
       "path": "Samples~/Settings"
     }
   ],
   "unity": "2021.3",
-  "version": "0.4.0-preview.6"
+  "version": "0.4.0-preview.7"
 }

@@ -175,13 +175,18 @@ namespace HumanVision.Tests
             register.Invoke(view, new object[] { paths }); view.RefreshSources();
             var data = new HumanVisionSettingsData { SourceKind = HumanVision.Input.InputKind.Video }; controller.Edit(() => data);
             var choice = view.GetComponentsInChildren<Dropdown>(true).Single(d => d.name == "VideoChoice");
-            Assert.True(choice.interactable); Assert.That(choice.options.Count, Is.EqualTo(3));
+            // Desktop test projects may also contain real StreamingAssets MP4s.
+            // The two registered APK entries remain first; custom is always last.
+            Assert.True(choice.interactable); Assert.That(choice.options.Count, Is.GreaterThanOrEqualTo(3));
+            Assert.That(choice.options[0].text, Is.EqualTo("video-1.mp4"));
+            Assert.That(choice.options[1].text, Is.EqualTo("video-2.mp4"));
+            Assert.That(choice.options[choice.options.Count - 1].text, Is.EqualTo("使用自定义视频路径"));
             Assert.That(view.ReadDraft().Video.VideoPath, Is.EqualTo(paths[0]), "Empty custom path must use the visibly selected list item.");
             choice.value = 1; Assert.That(view.ReadDraft().Video.VideoPath, Is.EqualTo(paths[1]));
             Array.Find(view.GetComponentsInChildren<InputField>(true), f => f.name == "VideoPath").text = "/device/custom.mp4";
             Assert.That(view.ReadDraft().Video.VideoPath, Is.EqualTo("/device/custom.mp4"), "An explicitly entered path must remain authoritative.");
             data.Video.VideoPath = "/device/old-saved.mp4"; controller.Edit(() => data);
-            Assert.That(choice.value, Is.EqualTo(2), "Unknown saved path must show the custom entry so even one bundled video can be selected again.");
+            Assert.That(choice.value, Is.EqualTo(choice.options.Count - 1), "Unknown saved path must show the custom entry so even one bundled video can be selected again.");
             choice.value = 0; Assert.That(view.ReadDraft().Video.VideoPath, Is.EqualTo(paths[0]));
             Assert.False(sdk.IsInitialized); Assert.Null(controller.Active);
         }

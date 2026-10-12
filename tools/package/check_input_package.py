@@ -21,10 +21,9 @@ def check(root):
             for ref in json.loads(path.read_text(encoding='utf-8-sig')).get('references', []):
                 if ref in ('HumanVision.Runtime', 'HumanVision.Demo'):
                     errors.append('Inference assembly reference: ' + ref)
-    for name in ('Samples~/InputPreview/InputPreview.unity', 'Samples~/InputPreview/InputPreviewController.cs',
-                 'Editor/InputPreviewSceneBuilder.cs', 'Documentation~/INPUT_GUIDE.md'):
+    for name in ('Runtime/IHumanVisionFrameSource.cs', 'Runtime/HumanVisionTextureFrame.cs', 'Documentation~/INPUT_GUIDE.md'):
         if not (root / name).is_file():
-            errors.append('Missing independent preview deliverable: ' + name)
+            errors.append('Missing independent input deliverable: ' + name)
     guids = {}
     for meta in root.rglob('*.meta'):
         match = re.search(r'^guid: ([0-9a-f]{32})$', meta.read_text(), re.MULTILINE)

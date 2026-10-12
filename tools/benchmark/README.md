@@ -37,3 +37,16 @@ $env:PYTHONPATH = (Resolve-Path out/ort-checker-1.23.0).Path
 
 The reports record static partitions, node coverage, dynamic-shape caveats and
 the checker recommendation. They do not establish Android device throughput.
+
+
+## ARM64 recognition hot-path probe (2026-10-11)
+
+`recognition_hotpath_probe.cpp` compares pre-change RKNN input/output adapters and
+YOLO decoder against current code, alternating measurements within one process.
+It checks every half representation, FPCR modes, invalid lanes, tails, padding
+and real seven-person tensors. Supply the pre-change headers under `baseline/`
+and compile its decoder in `baseline_humanvision`; source receipts and the exact
+snapshot live in `out/recognition-hotpath-20261011/`. Link the current decoder and
+use Android ARM64 API26, C++17, -O3 without fast-math. The probe runs NO model;
+its timings do not qualify RKNN driver behavior or NPU FPS. See the matching
+recognition-hotpath report for the pinned device evidence.

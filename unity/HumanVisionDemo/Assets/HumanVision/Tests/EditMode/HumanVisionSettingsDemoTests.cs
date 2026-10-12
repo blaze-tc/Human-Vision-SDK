@@ -12,9 +12,33 @@ namespace HumanVision.Tests
 {
     public sealed class HumanVisionSettingsDemoTests
     {
+        [Test] public void ObservedFpsCountsDistinctFramesClearsOnStallAndResetsForNewSource()
+        {
+            var rate = new HumanVisionObservedRate(); rate.Reset(100);
+            for (int i = 0; i < 25; ++i) { rate.Observe(i); rate.Observe(i); }
+            rate.Tick(101); Assert.That(rate.Rate, Is.EqualTo(25));
+            rate.Observe(12); rate.Observe(24); rate.Tick(102);
+            Assert.That(rate.Rate, Is.Zero, "Duplicate/stale frames and render updates cannot increase FPS.");
+            rate.Reset(200); Assert.That(rate.Rate, Is.Zero);
+            rate.Observe(0); rate.Tick(201); Assert.That(rate.Rate, Is.EqualTo(1), "A new source may restart frame IDs.");
+            rate.Tick(210); Assert.That(rate.Rate, Is.Zero, "A stalled input must not retain its previous FPS.");
+        }
         private Type Find(string name) => typeof(HumanVisionSdk).Assembly.GetType("HumanVision.Demo." + name);
         private GameObject root;
         [TearDown] public void Cleanup() { if (root != null) UnityEngine.Object.DestroyImmediate(root); }
+        [Test] public void FullscreenRestoresCustomPreviewAndSidePanelVisibility()
+        {
+            root=new GameObject("wide settings test");
+            var view=HumanVisionSettingsView.Create(root.transform);
+            var preview=(RectTransform)view.transform.Find("Preview panel");
+            preview.anchorMin=new Vector2(0,.14f);preview.anchorMax=new Vector2(.66f,.94f);
+            var logs=new GameObject("Device diagnostics bar",typeof(RectTransform));logs.transform.SetParent(view.transform,false);
+            var hardware=new GameObject("Device hardware bar",typeof(RectTransform));hardware.transform.SetParent(view.transform,false);hardware.SetActive(false);
+            view.ToggleFullscreen();Assert.That(preview.anchorMax.x,Is.EqualTo(1));Assert.That(logs.activeSelf,Is.False);
+            view.ToggleFullscreen();Assert.That(preview.anchorMin,Is.EqualTo(new Vector2(0,.14f)));
+            Assert.That(preview.anchorMax,Is.EqualTo(new Vector2(.66f,.94f)));Assert.That(logs.activeSelf,Is.True);
+            Assert.That(hardware.activeSelf,Is.False);Assert.That(view.Preview.GetComponent<AspectRatioFitter>().aspectMode,Is.EqualTo(AspectRatioFitter.AspectMode.FitInParent));
+        }
         [Test] public void LayoutIsEditableUguiWithReferenceProportionsAndAllControls()
         {
             var type = Find("HumanVisionSettingsView"); Assert.NotNull(type, "Settings view is missing.");
@@ -82,6 +106,23 @@ namespace HumanVision.Tests
             view.SetBusy(true);
             foreach (var button in view.GetComponentsInChildren<Button>(true)) Assert.That(button.interactable, Is.EqualTo(button.name == "Stop"));
         }
+        [TestCase("", true, "192.168.8.40", "videodevice")]
+        [TestCase("10.3.4.5", true, "10.3.4.5", "videodevice")]
+        [TestCase("", false, "192.168.8.40", "video-1.mp4")]
+        public void SettingsRtspPresetUsesBakedComputerWhenHostIsEmpty(string manual, bool camera, string expectedHost, string path)
+        {
+            root = new GameObject("settings computer host");
+            root.AddComponent<HumanVisionRtspComputerHost>().Configure("192.168.8.40");
+            var sdk = root.AddComponent<HumanVisionSdk>(); sdk.InitializeOnStart = false;
+            var view = HumanVisionSettingsView.Create(root.transform);
+            var controller = root.AddComponent<HumanVisionSettingsController>(); controller.Configure(sdk, view);
+            var data = new HumanVisionSettingsData { SourceKind = HumanVision.Input.InputKind.Rtsp };
+            data.Rtsp.RtspComputerHost = manual; view.Bind(controller); view.ShowDraft(data);
+            controller.Execute(camera ? "BuildRtsp" : "BuildRtspVideo");
+            Assert.That(view.Draft.Rtsp.RtspComputerHost, Is.EqualTo(expectedHost));
+            Assert.That(view.Draft.Rtsp.RtspUrl, Is.EqualTo("rtsp://" + expectedHost + ":554/" + path));
+            Assert.False(sdk.IsInitialized); Assert.Null(controller.Active);
+        }
         [Test] public void InvalidUiFieldDoesNotReplaceDraftOrInitializeSdk()
         {
             root = new GameObject("invalid settings"); var sdk = root.AddComponent<HumanVisionSdk>(); sdk.InitializeOnStart = false;
@@ -134,13 +175,18 @@ namespace HumanVision.Tests
             register.Invoke(view, new object[] { paths }); view.RefreshSources();
             var data = new HumanVisionSettingsData { SourceKind = HumanVision.Input.InputKind.Video }; controller.Edit(() => data);
             var choice = view.GetComponentsInChildren<Dropdown>(true).Single(d => d.name == "VideoChoice");
-            Assert.True(choice.interactable); Assert.That(choice.options.Count, Is.EqualTo(3));
+            // Desktop test projects may also contain real StreamingAssets MP4s.
+            // The two registered APK entries remain first; custom is always last.
+            Assert.True(choice.interactable); Assert.That(choice.options.Count, Is.GreaterThanOrEqualTo(3));
+            Assert.That(choice.options[0].text, Is.EqualTo("video-1.mp4"));
+            Assert.That(choice.options[1].text, Is.EqualTo("video-2.mp4"));
+            Assert.That(choice.options[choice.options.Count - 1].text, Is.EqualTo("使用自定义视频路径"));
             Assert.That(view.ReadDraft().Video.VideoPath, Is.EqualTo(paths[0]), "Empty custom path must use the visibly selected list item.");
             choice.value = 1; Assert.That(view.ReadDraft().Video.VideoPath, Is.EqualTo(paths[1]));
             Array.Find(view.GetComponentsInChildren<InputField>(true), f => f.name == "VideoPath").text = "/device/custom.mp4";
             Assert.That(view.ReadDraft().Video.VideoPath, Is.EqualTo("/device/custom.mp4"), "An explicitly entered path must remain authoritative.");
             data.Video.VideoPath = "/device/old-saved.mp4"; controller.Edit(() => data);
-            Assert.That(choice.value, Is.EqualTo(2), "Unknown saved path must show the custom entry so even one bundled video can be selected again.");
+            Assert.That(choice.value, Is.EqualTo(choice.options.Count - 1), "Unknown saved path must show the custom entry so even one bundled video can be selected again.");
             choice.value = 0; Assert.That(view.ReadDraft().Video.VideoPath, Is.EqualTo(paths[0]));
             Assert.False(sdk.IsInitialized); Assert.Null(controller.Active);
         }

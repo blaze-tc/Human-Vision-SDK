@@ -180,14 +180,16 @@ namespace HumanVision.Tests
             var method = HostEditorType().GetMethod("IsEligibleInterface"); Assert.NotNull(method);
             Assert.That(method.Invoke(null, new object[] { System.Net.NetworkInformation.NetworkInterfaceType.Ethernet, name, description, up, gateway }), Is.EqualTo(expected));
         }
-        [Test] public void BakeAddsSerializedComputerHostOnlyToOfficialTransientScene()
+        [TestCase("HumanVisionRtspDemo")]
+        [TestCase("HumanVisionSettingsDemo")]
+        public void BakeAddsSerializedComputerHostOnlyToOfficialTransientScene(string officialScene)
         {
             var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene(); string originalName = scene.name;
             Component host = null;
             try {
                 var bake = HostEditorType().GetMethod("Bake"); Assert.NotNull(bake);
                 scene.name = "UnrelatedScene"; int roots = scene.rootCount; bake.Invoke(null, new object[] { scene, "192.168.8.40" }); Assert.That(scene.rootCount, Is.EqualTo(roots));
-                scene.name = "HumanVisionRtspDemo"; bake.Invoke(null, new object[] { scene, "192.168.8.40" });
+                scene.name = officialScene; bake.Invoke(null, new object[] { scene, "192.168.8.40" });
                 host = scene.GetRootGameObjects().SelectMany(go => go.GetComponents(HostType())).Single();
                 Assert.That(HostType().GetProperty("ComputerHost").GetValue(host), Is.EqualTo("192.168.8.40"));
                 bake.Invoke(null, new object[] { scene, "192.168.8.41" }); Assert.That(scene.rootCount, Is.EqualTo(roots + 1)); Assert.That(HostType().GetProperty("ComputerHost").GetValue(host), Is.EqualTo("192.168.8.41"));

@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / 'unity/HumanVisionDemo/Assets/HumanVision'
-VERSION = '0.4.0-preview.4'
+VERSION = '0.4.0-preview.7'
 OUTPUT = ROOT / 'out/releases' / VERSION
 NAMESPACE = uuid.UUID('9a1f16d6-9fe3-4b94-a3b2-77076251bfec')
 
@@ -73,7 +73,7 @@ def offline_path(relative):
     for source, target in (('Runtime/Plugins', 'Assets/Plugins'),
                            ('RuntimeData', 'Assets/StreamingAssets/HumanVision/Runtime'),
                            ('Runtime/Demo', 'Assets/HumanVision/Demo'),
-                           ('Samples~/UnifiedInput', 'Assets/HumanVision/Samples/UnifiedInput')):
+                           ('Samples~/Settings', 'Assets/HumanVision/Samples/Settings')):
         if relative == source or relative.startswith(source + '/'):
             return target + relative[len(source):]
     return 'Assets/HumanVision/' + relative
@@ -131,7 +131,7 @@ def sdk_assets(root):
     if audit.get('native_sha256') != native_hash or audit.get('abi') != 'arm64-v8a' or audit.get('api_level') != 26 or audit.get('ncnn_vulkan_symbols_verified') is not True or audit.get('gpu_gate') is not False:
         raise ValueError('Admitted production native SHA-256/bridge audit mismatch.')
     files = [sdk / relative for relative in SDK_ROOT_FILES]
-    for section in ('Runtime', 'Editor', 'RuntimeData', 'Documentation', 'Licenses', 'Samples~/UnifiedInput'):
+    for section in ('Runtime', 'Editor', 'RuntimeData', 'Documentation', 'Licenses', 'Samples~/Settings'):
         files.extend(source for source in sorted((sdk / section).rglob('*'))
                      if source.is_file() and not source.name.endswith('.meta'))
     assets = {}

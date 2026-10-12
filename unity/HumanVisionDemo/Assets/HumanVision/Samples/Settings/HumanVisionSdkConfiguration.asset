@@ -1,0 +1,62 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 72a61ccf1ef44ba7b14c315c3bfa7c37, type: 3}
+  m_Name: HumanVisionSdkConfiguration
+  m_EditorClassIdentifier: 
+  options:
+    Recognition:
+      MaxBodies: 4
+      UseRegions: 0
+      Regions:
+      - serializedVersion: 2
+        x: 0
+        y: 0
+        width: 0.25
+        height: 1
+      - serializedVersion: 2
+        x: 0.25
+        y: 0
+        width: 0.25
+        height: 1
+      - serializedVersion: 2
+        x: 0.5
+        y: 0
+        width: 0.25
+        height: 1
+      - serializedVersion: 2
+        x: 0.75
+        y: 0
+        width: 0.25
+        height: 1
+      MinimumJointConfidence: 0.35
+      MaximumResultAgeMilliseconds: 1000
+      MaximumHandAgeMilliseconds: 200
+    SourceKind: 1
+    Input:
+      Version: 1
+      CameraDevice: 
+      VideoPath: 
+      RtspUrl: 
+      RtspComputerHost: 
+      Mirror: 0
+      RequestedWidth: 1280
+      RequestedHeight: 720
+      RequestedFramesPerSecond: 30
+      LineWidth: 4.5
+      PointDiameter: 13.5
+    RtspTcp: 1
+    UseWindowsCpu: 1
+    InputQuality: 0
+    AccelerationMode: 0
+    RuntimeRoot: 
+    OpenInputOnInitialize: 1
+    InputOpenTimeoutSeconds: 15

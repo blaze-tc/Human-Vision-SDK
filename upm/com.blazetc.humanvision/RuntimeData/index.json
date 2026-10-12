@@ -1,10 +1,10 @@
 {
   "binding_correction": {
-    "composition_id": "oneplus-cpu4-nonblocking-input-completion-local",
+    "composition_id": "sdk-preset-input-cadence-20261012-development",
     "distribution_qualified": false,
     "hardware_fps_acceptance": false,
-    "input_native_sha256": "5ad008563b23ef5281c7387800cb47bd79f7542de85cc7b493e70714a8b6c2b3",
-    "sdk_native_sha256": "5fd4366a82e4ef038e4e72c311a3302912d6c0cd331e96904ffa123bcb794f5e",
+    "input_native_sha256": "0639a50ecbe765bda84a4dbc6616bd9f5fcedbf51839e2dfb7c1588650511457",
+    "sdk_native_sha256": "8689efb872d76a825595ec4701375cf0c3c0f44d27a12d9bf2a8c9240ece4681",
     "windows_default_profile": "windows-pc-directml",
     "windows_explicit_cpu_profile": "windows-pc-cpu",
     "windows_native_sha256": "8a7f5248bf45f24f7f282d4dfbe4b73ceb26752ebf811f74f6afe113b10868c9"

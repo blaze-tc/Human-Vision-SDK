@@ -95,6 +95,18 @@ namespace HumanVision.Demo
             if (accelerationChoice != null) accelerationChoice.SetValueWithoutNotify(AndroidExecution ? (int)draft.AccelerationMode : draft.UseWindowsCpu || draft.AccelerationMode == HumanVisionAccelerationMode.Cpu ? 1 : 0);
             cameraPanel.SetActive(draft.SourceKind == InputKind.WebCamera); videoPanel.SetActive(draft.SourceKind == InputKind.Video); rtspPanel.SetActive(draft.SourceKind == InputKind.Rtsp);
             sourceHint.text = "当前草稿输入：" + draft.SourceKind;
+            // 分辨率含义随输入源而变；RTSP 下拉框不会修改远端摄像头编码参数。
+            if (captureChoice != null) {
+                var parent = captureChoice.transform.parent;
+                int previous = captureChoice.transform.GetSiblingIndex() - 1;
+                var title = previous >= 0 ? parent.GetChild(previous).GetComponent<Text>() : null;
+                bool camera = draft.SourceKind == InputKind.WebCamera, rtsp = draft.SourceKind == InputKind.Rtsp;
+                if (title != null) title.text = camera ? "请求采集尺寸" : rtsp ? "输出图像尺寸（上限）" : "视频尺寸（由文件决定）";
+                var hintObject = parent.Find("Capture resolution hint");
+                var hint = hintObject != null ? hintObject.GetComponent<Text>() : null;
+                if (hint != null) hint.text = camera ? "相机尽量匹配请求尺寸；以设备实际返回为准。" : rtsp ?
+                    "等比缩放后用于预览和识别供帧；不修改摄像头码流。模型尺寸另由模型等级决定。" : "按视频实际尺寸播放；此处选项不改变视频或模型尺寸。";
+            }
             Put("MaxBodies", draft.Recognition.MaxBodies); Put("CameraDevice", mode.CameraDevice);
             Put("VideoPath", mode.VideoPath); Put("RtspUrl", mode.RtspUrl); Put("RtspHost", mode.RtspComputerHost);
             ShowSelectedVideo(mode.VideoPath);

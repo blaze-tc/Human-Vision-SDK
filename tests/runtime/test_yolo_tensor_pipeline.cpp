@@ -70,6 +70,13 @@ TEST(YoloTensorPipeline, InitializesExactBackendSynchronouslyAndReleasesOnce){
         {"input_transform",{{"mean",{0,0,0}},{"norm",{1./255.,1./255.,1./255.}}}}}));
     EXPECT_EQ(std::filesystem::u8path(p.recorded.model),std::filesystem::canonical(root/"non-quantized/candidate.rknn"));p.api.pipeline->destroy(p.instance);p.instance=nullptr;EXPECT_EQ(p.recorded.releases,1);
 }
+TEST(YoloTensorPipeline, FoldedCandidateRequiresPinnedArtifactsAndExplicitSelection){
+    Pipeline p;p.profile["private_graph_candidate"]="folded-output";
+    ASSERT_EQ(p.Create(),HV_OK)<<p.message;
+    EXPECT_EQ(std::filesystem::u8path(p.recorded.model).filename(),"folded-output.rknn");
+    Pipeline invalid;invalid.profile["private_graph_candidate"]="unverified-int8";
+    EXPECT_EQ(invalid.Create(),HV_ERR_MODEL_LOAD);EXPECT_EQ(invalid.recorded.creates,0);
+}
 TEST(YoloTensorPipeline, RejectsUnqualifiedManifestAndProfileBeforeBackendCreation){
     for(const char* key:{"experimental","local_evaluation_only"}){Pipeline p;p.manifest[key]=false;EXPECT_EQ(p.Create(),HV_ERR_MODEL_LOAD);EXPECT_EQ(p.recorded.creates,0);}
     for(const char* key:{"experimental","local_evaluation_only"}){Pipeline p;p.profile[key]=false;EXPECT_EQ(p.Create(),HV_ERR_MODEL_LOAD);EXPECT_EQ(p.recorded.creates,0);}

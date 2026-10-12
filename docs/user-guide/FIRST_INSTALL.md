@@ -1,3 +1,5 @@
+> 当前分支新增 ScriptableObject 默认配置、代码指定输入源及统一查询 API，请先阅读 [当前接入说明](SDK_CONFIGURATION.md)。下文含已发布版本和兼容 API 的历史说明。
+
 # 第一次安装使用引导
 
 preview.5 推荐先看 [HumanVisionSdk 单组件入口](UNITY_SDK.md)：挂载一个总控即可使用。以下直接组合 Runtime/Input 的旧代码入门方式继续兼容。

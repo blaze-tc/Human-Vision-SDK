@@ -1,3 +1,5 @@
+> 当前分支新增 ScriptableObject 默认配置、代码指定输入源及统一查询 API，请先阅读 [当前接入说明](SDK_CONFIGURATION.md)。下文含已发布版本和兼容 API 的历史说明。
+
 # 推荐入口：HumanVisionSdk（preview.5）
 
 先看 [单组件使用](UNITY_SDK.md)，无需直接组合 Manager/FrameSource。下面旧接口仍兼容。

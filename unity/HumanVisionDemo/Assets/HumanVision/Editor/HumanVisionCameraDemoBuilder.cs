@@ -10,19 +10,8 @@ namespace HumanVision.Editor
 {
     public static class HumanVisionCameraDemoBuilder
     {
-        [MenuItem("Tools/Human Vision/Legacy Examples/Create Live Camera Demo")]
         public static void CreateScene() { HumanVisionUnifiedDemoBuilder.CreateScenes(); }
-        [MenuItem("Tools/Human Vision/Legacy Examples/Create Camera Settings Scene")]
         public static void CreateSettingsScene() { CreatePair(true); }
-        internal static void CreateGateScene(string path)
-        {
-            Build(path, "Assets/Scenes/HumanVisionCameraSettings.unity", false);
-        }
-        internal static void CreateEvaluationPair(string live, string settings)
-        {
-            Build(live, settings, false);
-            Build(settings, live, true);
-        }
         private static void CreatePair(bool openSettings)
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;

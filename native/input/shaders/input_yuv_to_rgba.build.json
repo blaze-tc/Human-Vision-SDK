@@ -6,11 +6,11 @@
     "D:\\Developer\\2022.3.61t4\\Editor\\Data\\PlaybackEngines\\AndroidPlayer\\NDK\\shader-tools\\windows-x86_64\\glslc.exe",
     "--target-env=vulkan1.1",
     "-O",
-    "E:\\Project\\Human Vision SDK\\.worktrees\\android-ncnn-vulkan\\native\\input\\shaders\\input_yuv_to_rgba.comp",
+    "D:\\CodexData\\.codex\\worktrees\\unity-sdk-api-settings\\Human Vision SDK\\native\\input\\shaders\\input_yuv_to_rgba.comp",
     "-o",
-    "E:\\Project\\Human Vision SDK\\.worktrees\\android-ncnn-vulkan\\native\\input\\shaders\\input_yuv_to_rgba.comp.spv"
+    "D:\\CodexData\\.codex\\worktrees\\unity-sdk-api-settings\\Human Vision SDK\\native\\input\\shaders\\input_yuv_to_rgba.comp.spv"
   ],
-  "source_sha256": "e90fcf5d16ce3d2e8e9b61c72773cb5cac704fd702b2bd3323c5a8421982bb33",
+  "source_sha256": "2e9f5cea77f48f80c77082a7dce1da09694f885344be6ec054cc252f42322260",
   "spirv_sha256": "197eeb9a0c81cdff77644a40665028bf715649d26fd810e6a695ab879c0fabd4",
   "header_sha256": "8810bbe795d43558a517ae65391894abb8cdc1c32989edbd17b603ed58c1a10f"
 }

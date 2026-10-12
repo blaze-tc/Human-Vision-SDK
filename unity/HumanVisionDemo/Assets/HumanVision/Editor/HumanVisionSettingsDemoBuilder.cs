@@ -19,6 +19,7 @@ namespace HumanVision.Editor
         public static void CreateInCurrentScene(MenuCommand command)
         {
             var root = CreateRoot();
+            root.GetComponent<HumanVisionSdk>().ConfigurationAsset = HumanVisionSdkMenu.GetOrCreateDefaultPreset();
             GameObjectUtility.SetParentAndAlign(root, command.context as GameObject);
             Undo.RegisterCreatedObjectUndo(root, "Create Human Vision Settings"); Selection.activeGameObject = root;
         }
@@ -98,6 +99,13 @@ namespace HumanVision.Editor
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
             try {
                 SceneManager.SetActiveScene(scene); var root = CreateRoot();
+                string presetPath = folder + "/HumanVisionSdkConfiguration.asset";
+                var preset = AssetDatabase.LoadAssetAtPath<HumanVisionSdkPreset>(presetPath);
+                if (preset == null) {
+                    preset = ScriptableObject.CreateInstance<HumanVisionSdkPreset>();
+                    AssetDatabase.CreateAsset(preset, presetPath);
+                }
+                root.GetComponent<HumanVisionSdk>().ConfigurationAsset = preset;
                 PrefabUtility.SaveAsPrefabAsset(root, prefabPath);
                 if (!EditorSceneManager.SaveScene(scene, scenePath)) throw new System.IO.IOException("无法保存设置 Demo 场景。");
             } finally { EditorSceneManager.CloseScene(scene, true); if (previous.IsValid()) SceneManager.SetActiveScene(previous); }

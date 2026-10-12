@@ -1,3 +1,5 @@
+> 当前分支新增 ScriptableObject 默认配置、代码指定输入源及统一查询 API，请先阅读 [当前接入说明](SDK_CONFIGURATION.md)。下文含已发布版本和兼容 API 的历史说明。
+
 # Unity 总控使用（preview.6）
 
 先安装 Input **0.1.0-preview.4**，等待编译，再安装 SDK **0.4.0-preview.6**。两包使用同一个 Git 标签 `v0.4.0-preview.6`。旧 API 保留。

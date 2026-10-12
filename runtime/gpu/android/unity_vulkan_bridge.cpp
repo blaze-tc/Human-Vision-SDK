@@ -551,14 +551,14 @@ SlotResult RetireUnsubmittedConsumer(UnityVulkanBridge& bridge, ConsumerFrame& f
     return retired;
 }
 
-SlotResult UnityVulkanBridge::ClaimConsumer(ConsumerFrame& frame) noexcept {
+SlotResult UnityVulkanBridge::ClaimConsumer(ConsumerFrame& frame,uint32_t max_consumers) noexcept {
     if (frame.claimed || frame.producer_fd.HasPayload()) return SlotResult::Invalid;
     if (!Enter()) return SlotResult::Closed;
     struct Guard { const UnityVulkanBridge* b; ~Guard(){b->Leave();} } guard{this};
     Recover();
     SlotToken token;
     SlotMetadata metadata;
-    const auto claimed = ring_.ClaimNewest(token, metadata);
+    const auto claimed = ring_.ClaimNewest(token, metadata,max_consumers);
     if (claimed != SlotResult::Ok) return claimed;
     SyncFd fd;
     SlotResult taken;

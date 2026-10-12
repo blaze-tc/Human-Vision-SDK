@@ -22,7 +22,9 @@ namespace HumanVision.Editor
         }
         public static void Bake(Scene scene, string host)
         {
-            if (scene.name != "HumanVisionCameraDemo" && scene.name != "HumanVisionVideoDemo" && scene.name != "HumanVisionRtspDemo") return;
+            // 设置 Demo 同样包含电脑摄像头快捷入口；只在构建副本中写入地址。
+            if (scene.name != "HumanVisionCameraDemo" && scene.name != "HumanVisionVideoDemo" &&
+                scene.name != "HumanVisionRtspDemo" && scene.name != "HumanVisionSettingsDemo") return;
             var existing = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<HumanVisionRtspComputerHost>(true)).ToArray();
             if (existing.Length != 0) {
                 existing[0].Configure(host);

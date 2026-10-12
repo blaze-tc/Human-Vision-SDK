@@ -33,7 +33,7 @@ Input可以独立获取与显示图像。接上提交桥和Manager后，SDK异�
 | --- | --- | --- | --- |
 | Unity宿主 | Unity2021.3+、C#、MonoBehaviour、协程 | 场景生命周期、主线程组件与UI更新 | [初始化与调用代码](FIRST_INSTALL.md#3-void-start中写什么) |
 | 图像输入 | `HumanVision.Input`；WebCamTexture、VideoPlayer、原生RTSP输入 | 权限、采集/解码、定向纹理、源身份、帧元数据 | [Input Runtime](../../upm/com.blazetc.humanvision.input/Runtime) |
-| 图像展示 | UGUI Canvas、RawImage、AspectRatioFitter、FramePreview | 实际图像与宽高比；输入预览不需要模型 | [FramePreview](../../upm/com.blazetc.humanvision.input/Runtime/FramePreview.cs) |
+| 图像展示 | UGUI Canvas、RawImage、AspectRatioFitter、FramePreview | 实际图像与宽高比；输入预览不需要模型 | [FramePreview](../../upm/com.blazetc.humanvision.input/Runtime/FramePreview.cs.txt) |
 | SDK Unity接口 | `HumanVision.Runtime` | 运行资源准备、配置、Manager、身体/关节、P/Invoke | [SDK Runtime](../../upm/com.blazetc.humanvision/Runtime) |
 | 提交与示例层 | `HumanVision.Demo` | 输入适配、CPU读回/GPU提交、Overlay、统一示例设置 | [Demo Runtime](../../upm/com.blazetc.humanvision/Runtime/Demo) |
 | 原生核心 | C++17、C ABI、Runtime Host | 有界异步任务、插件装配、公共服务与数据复制 | [Runtime](../../runtime)、[公开头文件](../../native/include/humanvision) |

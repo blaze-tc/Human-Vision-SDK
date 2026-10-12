@@ -135,6 +135,13 @@ namespace HumanVision.Input
                 NativeInputBindings.HV_Input_ReleaseGpuSlot(handle, (uint)i, sequences[i]); sequences[i] = 0;
             }
         }
+        // Only schedule native render work. Publication and frame IDs still
+        // advance once from Tick after the actual conversion fence is complete.
+        internal void PumpGpu()
+        {
+            if (handle != IntPtr.Zero && !closing && !rebinding)
+                GL.IssuePluginEvent(renderEvent, 0x485649);
+        }
         internal void Close()
         {
             if (handle == IntPtr.Zero) return;

@@ -103,7 +103,7 @@ def main():
     package = json.loads((sdk/'package.json').read_text())
     package['version'] = SDK_VERSION
     package['dependencies']['com.blazetc.humanvision.input'] = INPUT_VERSION
-    package['samples'] = [s for s in package['samples'] if s['path'] != 'Samples~/Settings'] + [
+    package['samples'] = [
         {'displayName':'SDK Settings', 'description':'Editable UGUI settings scene and one-component gameplay API example.', 'path':'Samples~/Settings'}]
     (sdk/'package.json').write_text(json.dumps(package, indent=2)+'\n')
     inp = ROOT/'upm/com.blazetc.humanvision.input'

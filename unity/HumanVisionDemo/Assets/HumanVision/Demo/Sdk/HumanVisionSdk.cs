@@ -15,7 +15,29 @@ namespace HumanVision
     public sealed class HumanVisionSdk : MonoBehaviour
     {
         /// <summary>托管 SDK 版本，便于区分实机日志对应的发布包。</summary>
-        public const string Version = "0.4.0-preview.6";
+        public const string Version = "0.4.0-preview.7";
+        [SerializeField, Tooltip("默认配置资产；运行时读取副本。留空兼容旧场景内嵌配置。")]
+        private HumanVisionSdkPreset configurationAsset;
+        private bool configurationLoaded;
+        private HumanVisionSdkOptions ConfiguredOptions {
+            get {
+                if (!configurationLoaded) {
+                    if (configurationAsset != null) options = configurationAsset.CreateOptions();
+                    configurationLoaded = true;
+                }
+                return options;
+            }
+        }
+        /// <summary>默认配置资产。只能在未初始化且不忙时替换；成功初始化后的配置请用 TryApplyConfiguration 调整。</summary>
+        public HumanVisionSdkPreset ConfigurationAsset {
+            get => configurationAsset;
+            set {
+                if (Busy || IsInitialized) throw new InvalidOperationException("请先停止 SDK 再替换配置资产。");
+                configurationAsset = value; configurationLoaded = false; active = null;
+            }
+        }
+        /// <summary>当前 RGB 模型不输出可测量的三维人体深度；World 查询是二维关节到 Unity 平面的映射。</summary>
+        public bool SupportsMetric3D => false;
         [Header("启动与输入"), SerializeField] private HumanVisionSdkOptions options = new HumanVisionSdkOptions();
         [SerializeField, Tooltip("进入 Play Mode 后自动准备 Runtime 并打开配置输入。")] private bool initializeOnStart = true;
         [Header("屏幕与世界坐标"), SerializeField, Tooltip("可选实际视频 RawImage 的 RectTransform；留空为整个屏幕。")] private RectTransform screenTarget;
@@ -25,6 +47,8 @@ namespace HumanVision
         private HumanVisionManager manager;
         private VideoPlayerFrameSource bridge;
         private IHumanVisionFrameSource source;
+        private readonly HumanVisionObservedRate publicationRate = new HumanVisionObservedRate();
+        private readonly HumanVisionObservedRate resultRate = new HumanVisionObservedRate();
         private HumanVisionSdkLifetime host, retirement;
         private HumanVisionSdkOptions active;
         private HumanVisionSkeletonQueries raw, sampled;
@@ -34,6 +58,7 @@ namespace HumanVision
         private ulong sourceId, sourceGeneration;
         private readonly long[] previousIds = new long[8];
         private readonly HumanVisionRegionOccupancy[] previousOccupancy = new HumanVisionRegionOccupancy[8];
+        private readonly HumanVisionCanonicalJoint[] copyScratch = new HumanVisionCanonicalJoint[32];
         private readonly Vector3[] corners = new Vector3[4];
         private string preparedRoot;
         private AnalysisContract activeContract;
@@ -69,13 +94,17 @@ namespace HumanVision
         /// <summary>最近错误；成功应用后清除。</summary>
         public string LastError { get; private set; } = "";
         /// <summary>当前可编辑配置的副本。</summary>
-        public HumanVisionSdkOptions Configuration => (active ?? options).Clone();
+        public HumanVisionSdkOptions Configuration => (active ?? ConfiguredOptions).Clone();
         /// <summary>已经成功应用的配置副本；尚未应用时为 null。</summary>
         public HumanVisionSdkOptions ActiveConfiguration => active?.Clone();
         /// <summary>输入当前状态。</summary>
         public InputSourceState InputState => source?.State ?? InputSourceState.Stopped;
         /// <summary>最近统计信息；统计与输入/渲染 FPS 不等价。</summary>
         public HumanVisionStats Stats => manager != null ? manager.Stats : default;
+        /// <summary>最近约一秒主线程观测到的不同输入发布帧/秒；停止、换源时清零。</summary>
+        public double InputPublicationFps => publicationRate.Rate;
+        /// <summary>最近约一秒被 SDK 接受的新来源帧结果/秒，含明确无人结果；不是逐人骨骼或渲染帧率。</summary>
+        public double FreshResultFps => resultRate.Rate;
         /// <summary>当前实际 Runtime 配置和诊断字符串，用于实机日志；尚未初始化时为空。</summary>
         public string RuntimeProfile => manager != null && manager.IsInitialized ? manager.ActiveRuntimeProfile : "";
         public string RuntimeDiagnostics => manager != null && manager.IsInitialized ? manager.RuntimeDiagnostics : "";
@@ -115,7 +144,27 @@ namespace HumanVision
         private void OnDisable() { StopAllCoroutines(); BeginStop(); }
         private void OnDestroy() { BeginStop(); }
         /// <summary>等待默认 Inspector 配置完成启动：yield return sdk.Initialize();</summary>
-        public IEnumerator Initialize() => Initialize(options);
+        public IEnumerator Initialize() => Initialize(Configuration);
+        /// <summary>用配置资产和代码提供的输入源启动。地址含义见 CreateOptionsForInput；完成后检查 IsRunning/LastError。</summary>
+        public IEnumerator InitializeFromPreset(HumanVisionSdkPreset preset, InputKind kind, string address)
+        {
+            HumanVisionSdkOptions requested = null;
+            try {
+                if (preset == null) throw new ArgumentNullException(nameof(preset));
+                requested = preset.CreateOptionsForInput(kind, address);
+            } catch (Exception e) { Error(e.Message); }
+            if (requested != null) yield return Initialize(requested);
+        }
+        /// <summary>按当前配置打开输入；只准备过 Runtime 时也会打开输入。已运行时不重复启动，完成后检查 IsRunning/LastError。</summary>
+        public IEnumerator StartSdk()
+        {
+            if (IsRunning) yield break;
+            var requested = Configuration;
+            requested.OpenInputOnInitialize = true;
+            yield return Initialize(requested);
+        }
+        /// <summary>以当前配置重新创建输入和会话；先预检再安全释放旧资源。忙碌时拒绝，失败原因见 LastError。</summary>
+        public IEnumerator RestartSdk() => Initialize(Configuration);
         /// <summary>等待指定配置启动；预检失败保留当前运行输入。完成后检查 IsRunning/LastError。</summary>
         public IEnumerator Initialize(HumanVisionSdkOptions requested)
         {
@@ -191,7 +240,7 @@ namespace HumanVision
             manager.ResultUpdated += OnResult;
             Initialized?.Invoke();
             if (token != operation || !isActiveAndEnabled) yield break;
-            if (!candidate.OpenInputOnInitialize) { active = candidate.Clone(); options = candidate.Clone(); yield break; }
+            if (!candidate.OpenInputOnInitialize) { active = candidate.Clone(); options = candidate.Clone(); configurationLoaded = true; yield break; }
             try {
                 switch (candidate.SourceKind) {
                     case InputKind.WebCamera: source = go.AddComponent<WebCameraFrameSource>(); break;
@@ -205,10 +254,19 @@ namespace HumanVision
                 string error = LastError; yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); yield break;
             }
             double deadline = Time.realtimeSinceStartupAsDouble + candidate.InputOpenTimeoutSeconds;
+            double archiveDeadline=Time.realtimeSinceStartupAsDouble+90;
             while (token == operation && source != null && source.State != InputSourceState.Streaming &&
-                source.State != InputSourceState.Error && Time.realtimeSinceStartupAsDouble < deadline) yield return null;
+                source.State != InputSourceState.Error) {
+                double now=Time.realtimeSinceStartupAsDouble;
+                // A 100 MB APK video may take longer than the decoder-open timeout
+                // to extract on slow storage. Extraction has its own bounded deadline.
+                if(source is VideoFrameSource video && video.IsPreparingLocalAsset && now<archiveDeadline)
+                    deadline=now+candidate.InputOpenTimeoutSeconds;
+                if(now>=deadline)break;
+                yield return null;
+            }
             if (token != operation || !isActiveAndEnabled) yield break;
-            if (source != null && source.State == InputSourceState.Streaming) { active = candidate.Clone(); options = candidate.Clone(); State = HumanVisionSdkState.Running; LastError = ""; }
+            if (source != null && source.State == InputSourceState.Streaming) { active = candidate.Clone(); options = candidate.Clone(); configurationLoaded = true; State = HumanVisionSdkState.Running; LastError = ""; }
             else { string error = string.IsNullOrEmpty(source?.LastError) ? "输入未在规定时间内进入流送状态。" : source.LastError;
                 yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); }
         }
@@ -238,7 +296,7 @@ namespace HumanVision
                 }
                 if (IsInitialized && !ApplyRecognition(candidate)) return false;
                 if (capacityContract != null) activeContract = capacityContract;
-                options.Recognition = candidate;
+                ConfiguredOptions.Recognition = candidate;
                 if (active != null) active.Recognition = candidate.Clone();
                 LastError = ""; return true;
             } catch (Exception e) { Error(e.Message); return false; }
@@ -272,6 +330,7 @@ namespace HumanVision
             stopAfterRetirement = discardCandidate;
             if (discardCandidate) { initialization?.Abandon(); initialization = null; }
             ++operation; acceptResults = sourceFresh = false; sourceId = sourceGeneration = 0;
+            publicationRate.Reset(Time.realtimeSinceStartupAsDouble); resultRate.Reset(Time.realtimeSinceStartupAsDouble);
             raw?.Clear(); sampled?.Clear(); RefreshIdentityEvents();
             if (manager != null) manager.ResultUpdated -= OnResult;
             if (host != null) {
@@ -294,9 +353,12 @@ namespace HumanVision
                 freshInput = age >= 0 && age <= (active?.Recognition.MaximumResultAgeMilliseconds ?? 1000) * 1000d;
                 if (sourceId != 0 && (sourceId != frame.SourceId || sourceGeneration != frame.Generation)) {
                     raw?.Clear(); sampled?.Clear(); minimumSequence = ResultSequence;
+                    publicationRate.Reset(Time.realtimeSinceStartupAsDouble); resultRate.Reset(Time.realtimeSinceStartupAsDouble);
                 }
                 sourceId = frame.SourceId; sourceGeneration = frame.Generation;
+                if (freshInput) publicationRate.Observe(frame.FrameId);
             }
+            publicationRate.Tick(Time.realtimeSinceStartupAsDouble); resultRate.Tick(Time.realtimeSinceStartupAsDouble);
             sourceFresh = freshInput;
             if (HasFreshResult && manager != null) {
                 sampled.Clear();
@@ -319,6 +381,7 @@ namespace HumanVision
             // 无区域模式也需要版本隔离，防止重新配置前的晚到结果被当成当前观测。
             if (!manager.TryCopyRegionAssignments(regionIndices, out long currentRevision) || currentRevision != revision) return;
             if (!raw.Observe(manager.Bodies, manager.BodyCount, sequence, manager.SourceFrameId, manager.SourceTimestampUs, true)) return;
+            resultRate.Observe(manager.SourceFrameId);
             RefreshIdentityEvents(); ResultUpdated?.Invoke(sequence);
         }
         private int[] regionIndices = Array.Empty<int>();
@@ -339,7 +402,7 @@ namespace HumanVision
         private void Error(string message) { LastError = message ?? "未知 SDK 错误。"; ErrorOccurred?.Invoke(LastError); }
 
         /// <summary>获取人数上限，不是当前实际人数。</summary>
-        public int GetMaxBodies() => (active ?? options).Recognition.MaxBodies;
+        public int GetMaxBodies() => (active ?? ConfiguredOptions).Recognition.MaxBodies;
         /// <summary>设置人数上限；区域开启且长度不匹配时失败，请用组合配置一起提交。</summary>
         public bool TrySetMaxBodies(int count) { var value = Configuration.Recognition; value.MaxBodies = count; return TryApplyConfiguration(value); }
         /// <summary>获取实际有效人数；遍历槽位时仍应遍历 GetMaxBodies。</summary>
@@ -388,24 +451,57 @@ namespace HumanVision
         }
         /// <summary>将 32 个关节及来源信息复制至用户缓冲区；无效点写 default。</summary>
         public bool CopySkeletonByIndex(int index, HumanVisionCanonicalJoint[] buffer, out HumanVisionSkeletonMetadata metadata) { metadata = default; return HasFreshResult && raw.CopySkeleton(index, NowUs, buffer, out metadata); }
+        /// <summary>
+        /// 复制图像像素坐标（左上原点）和逐点有效标志。两个数组至少 32 项；返回值表示身体有效，
+        /// 不保证全部关节有效。失败清空可容纳的前 32 项，metadata 关联实际推理来源帧。
+        /// </summary>
+        public bool CopySkeleton2DByIndex(int index, Vector2[] positions, bool[] valid, out HumanVisionSkeletonMetadata metadata)
+        {
+            metadata = default;
+            if (positions != null) Array.Clear(positions, 0, Math.Min(32, positions.Length));
+            if (valid != null) Array.Clear(valid, 0, Math.Min(32, valid.Length));
+            if (positions == null || positions.Length < 32 || valid == null || valid.Length < 32 || !CopySkeletonByIndex(index, copyScratch, out metadata)) return false;
+            for (int i = 0; i < 32; i++) valid[i] = TryGetJointImagePosition(index, (HumanVisionCanonicalJointId)i, out positions[i]);
+            return true;
+        }
+        /// <summary>复制映射到 WorldPlane 的 Unity Vector3 和有效标志；不是实测三维深度。数组/返回值合同同 CopySkeleton2DByIndex。</summary>
+        public bool CopySkeletonWorldByIndex(int index, Vector3[] positions, bool[] valid, out HumanVisionSkeletonMetadata metadata)
+        {
+            metadata = default;
+            if (positions != null) Array.Clear(positions, 0, Math.Min(32, positions.Length));
+            if (valid != null) Array.Clear(valid, 0, Math.Min(32, valid.Length));
+            if (positions == null || positions.Length < 32 || valid == null || valid.Length < 32 || !CopySkeletonByIndex(index, copyScratch, out metadata)) return false;
+            for (int i = 0; i < 32; i++) valid[i] = TryGetJointWorldPosition(index, (HumanVisionCanonicalJointId)i, out positions[i]);
+            return true;
+        }
         /// <summary>是否开启区域绑定。</summary>
-        public bool RegionsEnabled => (active ?? options).Recognition.UseRegions;
+        public bool RegionsEnabled => (active ?? ConfiguredOptions).Recognition.UseRegions;
         /// <summary>设置区域开关；启用前必须配置与人数匹配的有效区域。</summary>
         public bool TrySetRegionsEnabled(bool enabled) { var value = Configuration.Recognition; value.UseRegions = enabled; return TryApplyConfiguration(value); }
         /// <summary>设置区域草稿/运行区域，不隐式启用区域；复制输入数组。</summary>
         public bool TrySetRegions(Rect[] regions) { var value = Configuration.Recognition; value.Regions = regions == null ? null : (Rect[])regions.Clone(); return TryApplyConfiguration(value); }
         /// <summary>配置的区域数量。</summary>
-        public int GetRegionCount() => (active ?? options).Recognition.Regions?.Length ?? 0;
+        public int GetRegionCount() => (active ?? ConfiguredOptions).Recognition.Regions?.Length ?? 0;
         /// <summary>获取一个配置区域，返回值为 Rect 值类型。</summary>
-        public bool TryGetRegion(int index, out Rect region) { region = default; var regions = (active ?? options).Recognition.Regions; if (regions == null || index < 0 || index >= regions.Length) return false; region = regions[index]; return true; }
+        public bool TryGetRegion(int index, out Rect region) { region = default; var regions = (active ?? ConfiguredOptions).Recognition.Regions; if (regions == null || index < 0 || index >= regions.Length) return false; region = regions[index]; return true; }
         /// <summary>复制区域到用户缓冲；不足返回 0，成功返回复制数量。</summary>
-        public int CopyRegions(Rect[] buffer) { var regions = (active ?? options).Recognition.Regions; if (regions == null || buffer == null || buffer.Length < regions.Length) return 0; Array.Copy(regions, buffer, regions.Length); return regions.Length; }
+        public int CopyRegions(Rect[] buffer) { var regions = (active ?? ConfiguredOptions).Recognition.Regions; if (regions == null || buffer == null || buffer.Length < regions.Length) return 0; Array.Copy(regions, buffer, regions.Length); return regions.Length; }
         /// <summary>占用状态是否已知；无当前结果返回 false，而不是确认无人。</summary>
         public bool TryGetRegionOccupancy(int index, out bool occupied) { occupied = false; return HasFreshResult && raw.TryGetOccupancy(index, NowUs, out occupied); }
         /// <summary>是否可确认区域有人；未知时返回 false，可用 TryGetRegionOccupancy 区分未知。</summary>
         public bool IsRegionOccupied(int index) => TryGetRegionOccupancy(index, out var occupied) && occupied;
         /// <summary>当前输入预览纹理，借用至输入切换/关闭；SDK 负责纹理生命周期。</summary>
         public Texture GetColorImageTex() => source?.CurrentTexture;
+        /// <summary>
+        /// 借用 camera/RTSP/video 当前新发布的预览帧；afterFrameId=-1 读取最新帧。
+        /// 帧携带来源身份、尺寸和时间。纹理会复用，不得释放或当成永久像素快照；跨帧保留图像须自行复制。
+        /// 预览帧可比异步骨骼结果更新，请用来源帧 ID 区分，不能将显示帧率视作识别帧率。
+        /// </summary>
+        public bool TryGetInputFrame(long afterFrameId, out HumanVisionTextureFrame frame)
+        {
+            frame = default;
+            return IsRunning && source.TryGetLatestFrame(afterFrameId, out frame);
+        }
         /// <summary>当前实际图像宽度，尚无纹理为 0。</summary>
         public int GetColorImageWidth() => GetColorImageTex() != null ? GetColorImageTex().width : 0;
         /// <summary>当前实际图像高度，尚无纹理为 0。</summary>
@@ -414,14 +510,14 @@ namespace HumanVision
         public IEnumerator PrepareInputQualities(string runtimeRoot = "")
         {
             string profile = null;
-            try { profile = QualityProfile(options); }
+            try { profile = QualityProfile(ConfiguredOptions); }
             catch (Exception e) { qualityCapabilities = HumanVisionSdkQualityCapabilities.Failed("", e.Message); }
             if (profile == null) yield break;
             if (profile != HumanVisionModelInputQualities.AdmittedRuntimeMode && profile != HumanVisionAndroidAccelerationSelection.NeuralProfile && profile != HumanVisionAndroidAccelerationSelection.CpuProfile) yield break;
             string root = string.IsNullOrWhiteSpace(runtimeRoot) ? preparedRoot : runtimeRoot;
             string failure = "";
             if (string.IsNullOrEmpty(root)) yield return HumanVisionRuntimeData.Prepare(value => root = value, value => failure = value);
-            qualityRoot = root; qualityCapacity = options.Recognition.MaxBodies; qualityCapabilities = HumanVisionSdkQualityCapabilities.Load(root, profile, qualityCapacity);
+            qualityRoot = root; qualityCapacity = ConfiguredOptions.Recognition.MaxBodies; qualityCapabilities = HumanVisionSdkQualityCapabilities.Load(root, profile, qualityCapacity);
             if (string.IsNullOrEmpty(root) && !string.IsNullOrEmpty(failure))
                 qualityCapabilities = HumanVisionSdkQualityCapabilities.Failed(profile, failure);
             // 只有当前安装资源校验成功，初始化才能复用该目录；错误不会覆盖正在运行的会话。

@@ -16,6 +16,9 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include <cstdlib>
+#include <cstring>
+#include "json/json.hpp"
 
 namespace humanvision::runtime {
 namespace detail {
@@ -57,7 +60,11 @@ bool RuntimeSession::Start(const std::filesystem::path& root,const std::string& 
   gpu_->SetObservationSink(this,[](void* context,const HV_GpuObservationFrameV3& frame,int64_t revision,int64_t capture){
    return static_cast<RuntimeSession*>(context)->AcceptGpuObservation(frame,revision,capture);
   });
+  // OnePlus A/B/A device evidence rejected concurrent Vulkan contexts: longer
+  // GPU ownership/submit waits and lower fresh-result throughput even when hot
+  // single/dual phases are compared. Keep one context and latest-frame input.
   if(!gpu_->Start(profile_->gpu_body,factory_->ServicesV3(),config,error))return false;
+
   return true;
  }
  for(auto query:{HV_QueryOrtCpuPlugin,HV_QueryRtmoPipeline,HV_QueryTopDownPipeline,HV_QueryHandPipeline,
@@ -70,7 +77,26 @@ bool RuntimeSession::Start(const std::filesystem::path& root,const std::string& 
  factory_=std::make_unique<BackendFactory>(profile_->backends,profile_->allow_backend_fallback);
  auto start=[&](RuntimeHost& host,const PipelineSelection& selection){
   const auto asset_root=selection.pack->root.u8string();
-  HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,capacity,0,selection.pack->manifest_json.c_str(),asset_root.c_str(),profile_->json.c_str()};
+  // Full-frame models already evaluate everyone. Keep their bounded candidates
+  // until common tracking selects public slots; do not rank-truncate at inference.
+  int candidates=capacity;
+  if(selection.pack->pipeline_id=="pipeline.yolo.tensor"||selection.pack->pipeline_id=="pipeline.rtmo")
+   candidates=std::min({int(HV_MAX_PEOPLE),selection.pack->max_people,int(selection.plugin->api.max_people)});
+  HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,candidates,0,selection.pack->manifest_json.c_str(),asset_root.c_str(),profile_->json.c_str()};
+#if defined(HV_RKNN_INPUT_MEMORY_EXPERIMENT)
+  std::string private_options;
+  auto private_profile=nlohmann::json::parse(profile_->json);
+  const char* graph=std::getenv("HV_RKNN_MODEL_CANDIDATE");
+  if(selection.pack->pipeline_id=="pipeline.yolo.tensor"&&graph&&*graph&&std::strcmp(graph,"baseline")!=0){
+   // The pipeline rejects any unrecognized candidate and validates all pinned
+   // artifact hashes before creating a backend. Failure is visible to the suite.
+   private_profile["private_graph_candidate"]=graph;private_options=private_profile.dump();
+   config.options_utf8=private_options.c_str();
+  }
+  // The device follow-up retired multi-instance routing for both GPU and NPU.
+  // Keep a single RKNN context with the established three-core mask; private
+  // input-memory and graph candidates remain independent of instance count.
+#endif
   return host.Start(selection.plugin,config,factory_->Services(),error);
  };
  if(!start(body_,profile_->body))return false;
@@ -145,7 +171,8 @@ void RuntimeSession::Poll(){
   if(revision==revision_){
    const auto elapsed=frame.source_timestamp_us-stats_.source_timestamp_us;
    if(stats_.source_timestamp_us&&elapsed>0){float fps=1e6F/float(elapsed);stats_.body_fps=stats_.body_fps?stats_.body_fps*.8F+fps*.2F:fps;}
-   services_.Observe(frame,revision,true);
+   auto assigned=AssignRegions(frame,RegionSet{regions_,region_count_},revision,services_.Anchors());
+   services_.Observe(assigned.frame,revision,true,assigned.region_indices.data());
    stats_.body_sequence=frame.sequence;
    stats_.source_frame_id=frame.source_frame_id;stats_.source_timestamp_us=frame.source_timestamp_us;
    stats_.preprocess_ms=frame.preprocess_ms;stats_.inference_ms=frame.inference_ms;stats_.postprocess_ms=frame.postprocess_ms;
@@ -154,7 +181,7 @@ void RuntimeSession::Poll(){
    const auto published=std::chrono::duration_cast<std::chrono::microseconds>(
        std::chrono::steady_clock::now().time_since_epoch()).count();
    const auto diagnostics=body_.Diagnostics();
-   stats_v2_.Publish(frame.source_frame_id,frame.body_count,frame.source_timestamp_us,
+   stats_v2_.Publish(frame.source_frame_id,services_.Raw().count,frame.source_timestamp_us,
        published,frame.source_frame_id,frame.inference_ms,diagnostics.detector_keyframe,
        diagnostics.pose_person_count);
   }
@@ -231,7 +258,9 @@ std::string RuntimeSession::Diagnostics()const{
      <<"\nMissed detector deadlines="<<pipeline.missed_detector_deadlines
      <<"\nDelayed detector discards="<<pipeline.delayed_detector_discards
      <<"\nPose validation failures="<<pipeline.pose_validation_failures
+     <<"\nInference instances="<<gpu_->WorkerCount()<<"\nActive inference instances="<<gpu_->ActiveWorkers()
      <<"\nGPU worker error="<<gpu_->LastError();
+  if(!pool_fallback_.empty())out<<"\nInstance pool fallback="<<pool_fallback_;
   return out.str();
  }
  const auto now=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -248,6 +277,8 @@ std::string RuntimeSession::Diagnostics()const{
   <<"\nRender hold ms="<<sample.render_hold_ms<<"\nSample age ms="<<sample.sample_age_ms
   <<"\nSample state="<<state<<"\nDropped input frames="<<input_.dropped_frames()
   <<"\nDropped body frames="<<body_.DroppedFrames()<<"\nHands enabled="<<(profile_->hands_enabled?"true":"false");
+ out<<"\nInference instances="<<body_.WorkerCount()<<"\nActive inference instances="<<body_.ActiveWorkers();
+ if(!pool_fallback_.empty())out<<"\nInstance pool fallback="<<pool_fallback_;
  const std::string pipeline_id=profile_->body.plugin->api.plugin_id;
  if(pipeline_id=="pipeline.rtmo")out<<"\nRaw detections="<<pipeline.raw_detection_count
   <<"\nAccepted detections="<<pipeline.accepted_detection_count<<"\nMax detection score="<<pipeline.max_detection_score;
@@ -269,8 +300,8 @@ void RuntimeSession::Run(){
    if(!MaskRegions(source,regions.data(),count,masked,error)){std::lock_guard<std::mutex> lock(mutex_);error_=error;continue;}
    source.data=masked.bytes.data();
    std::lock_guard<std::mutex> lock(mutex_);if(revision!=revision_)continue;Poll();
-   if(!last_body_submit_||source.timestamp_us-last_body_submit_>=1000000/profile_->body_fps){
-    if(body_.Submit(source,nullptr,0,revision,error))last_body_submit_=source.timestamp_us;else error_=error;
+   if(body_admission_.Admit(source.timestamp_us,profile_->body_fps)){
+    if(!body_.Submit(source,nullptr,0,revision,error))error_=error;
    }
    if(profile_->hands_enabled&&!hand_.Busy()){
     HV_RegionOfInterestV1 rois[2]{};auto size=services_.HandRequests(rois,2,source.timestamp_us,1000000/profile_->hand_fps);

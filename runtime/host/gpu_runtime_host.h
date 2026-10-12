@@ -11,6 +11,7 @@ namespace humanvision::runtime {
 class GpuConsumerSource {
 public:
     virtual ~GpuConsumerSource() = default;
+    virtual void SetConcurrency(uint32_t) noexcept {}
     virtual gpu::SlotResult Claim(gpu::ConsumerFrame&) noexcept = 0;
     virtual gpu::SlotResult ClaimDropped(gpu::ConsumerFrame&) noexcept { return gpu::SlotResult::NoReady; }
     virtual gpu::SlotResult Retire(gpu::ConsumerFrame&) noexcept = 0;
@@ -24,6 +25,7 @@ public:
 class BridgeGpuConsumerSource final : public GpuConsumerSource {
 public:
     explicit BridgeGpuConsumerSource(gpu::UnityVulkanBridge* bridge) : bridge_(bridge) {}
+    void SetConcurrency(uint32_t count) noexcept override { concurrency_=count; }
     void SetDimensions(uint32_t width, uint32_t height) noexcept { width_=width; height_=height; }
     void SetLeaseActive(bool active) noexcept { lease_active_.store(active,std::memory_order_release); }
     gpu::SlotResult Claim(gpu::ConsumerFrame&) noexcept override;
@@ -37,6 +39,7 @@ public:
 private:
     gpu::UnityVulkanBridge* bridge_ = nullptr; // borrowed for the source lease
     std::atomic<bool> lease_active_{false};
+    std::atomic<uint32_t> concurrency_{1};
     std::atomic<uint32_t> width_{0}, height_{0};
 };
 
@@ -47,6 +50,8 @@ public:
     ~GpuRuntimeHost() { Stop(); }
     bool Start(std::shared_ptr<const GpuPluginModuleV3>, const HV_HostServicesV3&,
                const HV_PipelineConfigV1&, std::string& error);
+    bool StartPool(std::shared_ptr<const GpuPluginModuleV3>, const HV_HostServicesV3&,
+                   const HV_PipelineConfigV1&, uint32_t count, std::string& error);
     bool CopyLatest(HV_ObservationFrameV1&, int64_t& revision) const;
     bool CopyLatest(HV_GpuObservationFrameV3&, int64_t& revision) const;
     bool CopyLatest(HV_GpuObservationFrameV3&, int64_t& revision, int64_t& capture_steady_us) const;
@@ -57,14 +62,20 @@ public:
     uint64_t ImportErrors() const noexcept { return import_errors_.load(); }
     void SetObservationSink(void* context,ObservationSink sink) noexcept { sink_context_=context;sink_=sink; }
     void SetRevision(int64_t revision) noexcept { revision_.store(revision); }
+    // Busy means executing the pipeline call (includes its waits), not hardware utilization.
+    uint32_t WorkerCount() const noexcept { return worker_count_.load(); }
+    uint32_t ActiveWorkers() const noexcept { return active_workers_.load(); }
     void Stop();
 private:
-    void Run();
+    void Run(uint32_t index);
     GpuConsumerSource& source_;
     std::shared_ptr<const GpuPluginModuleV3> module_;
-    void* instance_ = nullptr;
-    std::thread worker_;
+    std::array<void*,3> instances_{};
+    std::array<std::thread,3> workers_{};
     std::atomic<bool> running_{false};
+    std::atomic<uint32_t> worker_count_{0},active_workers_{0};
+    std::mutex publication_mutex_,source_claim_mutex_;
+    uint64_t latest_generation_=0;
     std::atomic<int64_t> revision_{0};
     std::atomic<uint64_t> superseded_ready_drops_{0}, pose_job_drops_{0};
     std::atomic<uint64_t> import_errors_{0};

@@ -1,3 +1,12 @@
+# Human Vision SDK 0.4.0-preview.7 (development)
+
+当前接入入口：[ScriptableObject 配置与 API](Documentation/user-guide/SDK_CONFIGURATION.md)。
+配置资产 + 初始化代码指定 Camera/RTSP/Video；只保留 Settings 样例。
+公共包未附带私有 RKNN 模型/runtime；RK3588 NPU 需按私有验证流程部署，缺资源时明确失败。
+当前分支构建与测试证据见仓库 docs/DEVELOPMENT_STATUS.md，不等同于稳定帧率硬件验收。
+
+## 历史版本说明
+
 # Human Vision SDK 0.4.0-preview.4
 
 

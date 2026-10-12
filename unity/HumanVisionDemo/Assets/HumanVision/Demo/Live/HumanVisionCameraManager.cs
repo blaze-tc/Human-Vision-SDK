@@ -27,7 +27,6 @@ namespace HumanVision
         public bool IsReady => _manager != null && _manager.IsInitialized;
         public string ActiveRuntimeProfile => string.IsNullOrEmpty(_activeRuntimeProfile) ? "not initialized" : _activeRuntimeProfile;
         public string InputStatus => _unifiedBinding ? (_bridge.IsPlaying ? "Streaming" : "Stopped") : _source != null ? _source.Status : "Stopped";
-        public string RuntimeDiagnostics => _manager != null ? _manager.RuntimeDiagnostics : "not initialized";
         public long ResultSequence => _manager != null ? _manager.ResultSequence : 0;
         public event Action<long> SkeletonUpdated;
         private HumanVisionManager _manager;
@@ -40,6 +39,11 @@ namespace HumanVision
         private bool _unifiedBinding;
         private string _runtimeRoot;
         private string _activeRuntimeProfile = "";
+#if HV_TOPDOWN_EVAL
+        // Evaluation-only exact held-frame source. The caller must prove that
+        // the displayed texture and result share one immutable source ID.
+        internal Func<long, bool> EvaluationSourceIsCurrent;
+#endif
 
         private void Awake()
         {
@@ -117,15 +121,7 @@ namespace HumanVision
             } catch (Exception e) { Status = e.Message; return false; }
         }
         private string ResolveRuntimeProfile()
-        {
-#if UNITY_ANDROID && !UNITY_EDITOR
-            if (forceCpu || !string.IsNullOrWhiteSpace(runtimeProfileOverride))
-                throw new InvalidOperationException("Android runtime mode is selected in Project Settings > Human Vision > Android Runtime. Remove the Demo provider override and rebuild.");
-            return "auto";
-#else
-            return ResolveRuntimeProfile(runtimeProfileOverride, forceCpu);
-#endif
-        }
+            => ResolveRuntimeProfile(runtimeProfileOverride, forceCpu);
         internal static string ResolveRuntimeProfile(string overrideValue, bool forceCpuValue)
         {
             string requested = (overrideValue ?? "").Trim();
@@ -136,8 +132,7 @@ namespace HumanVision
         }
         private bool TryInitializeRuntime(string profile)
         {
-            if (IsReady && (string.Equals(_activeRuntimeProfile, profile, StringComparison.Ordinal) ||
-                (Application.platform == RuntimePlatform.Android && profile == "auto"))) return true;
+            if (IsReady && string.Equals(_activeRuntimeProfile, profile, StringComparison.Ordinal)) return true;
             if (IsReady) {
                 _source.Close();
                 _bridge.StopFrames();
@@ -149,7 +144,7 @@ namespace HumanVision
                 Status = _manager.LastError;
                 return false;
             }
-            _activeRuntimeProfile = _manager.ActiveRuntimeProfile;
+            _activeRuntimeProfile = profile;
             return true;
         }
         public void StartCamera()
@@ -183,7 +178,16 @@ namespace HumanVision
             }
             SkeletonUpdated?.Invoke(sequence);
         }
-        private bool Fresh => IsReady && (_unifiedBinding ? _bridge.UnifiedHasRecentFrame : _source.HasRecentFrame) && _bridge.CanPresentResult(_manager.SourceFrameId);
+        private bool Fresh => IsReady && SourceIsCurrent && _bridge.CanPresentResult(_manager.SourceFrameId);
+        private bool SourceIsCurrent {
+            get {
+#if HV_TOPDOWN_EVAL
+                if (EvaluationSourceIsCurrent != null)
+                    return EvaluationSourceIsCurrent(_manager.SourceFrameId);
+#endif
+                return _unifiedBinding ? _bridge.UnifiedHasRecentFrame : _source.HasRecentFrame;
+            }
+        }
         public Texture GetColorImageTex() => _bridge != null ? _bridge.PresentationTexture : null;
         public int GetColorImageWidth() => GetColorImageTex() != null ? GetColorImageTex().width : 0;
         public int GetColorImageHeight() => GetColorImageTex() != null ? GetColorImageTex().height : 0;
@@ -199,7 +203,7 @@ namespace HumanVision
         public bool TryGetSampledBodyByRegionIndex(int index, out HumanVisionBody body)
         {
             body = null;
-            if (!Fresh) return false;
+            if (!IsReady || !SourceIsCurrent || !_bridge.CanPresentResult(_manager.SourceFrameId)) return false;
             for (int i = 0; i < _manager.SampledBodyCount; i++) {
                 var candidate = _manager.SampledBodies[i];
                 if (candidate.RegionIndex == index) { body = candidate; return true; }

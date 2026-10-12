@@ -24,7 +24,13 @@ public:
  BodySampleDiagnostics Diagnostics(int64_t now_us) const;
  uint32_t HandRequests(HV_RegionOfInterestV1*,uint32_t capacity,int64_t now_us,int64_t minimum_interval_us=0);
 private:
- struct Track {HV_CanonicalBodyV1 raw{},filtered{};std::array<float,32> vx{},vy{};HV_Rect box_velocity{};std::array<int64_t,2> hand_request_time{};int crop_track_id=0,hits=0;bool active=false;};
+ struct Track {HV_CanonicalBodyV1 raw{},filtered{};std::array<float,32> vx{},vy{};HV_Rect box_velocity{};std::array<int64_t,2> hand_request_time{};float selection_score=0;int crop_track_id=0,hits=0;bool active=false;};
+ // Track all bounded candidates, independently of the public display capacity.
+ std::array<int,8> selected_{{-1,-1,-1,-1,-1,-1,-1,-1}};
+ std::array<int,8> challengers_{{-1,-1,-1,-1,-1,-1,-1,-1}};
+ std::array<int64_t,8> challenge_since_{};
+ void SelectBodies();
+ bool Selected(int slot) const;
  std::array<Track,8> tracks_{};std::array<HV_Rect,8> regions_{};
  int width_=1,height_=1;int capacity_=8;uint32_t region_count_=0,hand_cursor_=0,hand_served_mask_=0;int64_t revision_=0,next_id_=1,last_time_=0;
  double observation_period_ewma_us_=0;

@@ -19,6 +19,7 @@ using namespace humanvision::gpu;
 namespace {
 struct FakeSource final : GpuConsumerSource {
     std::atomic<int> claims{0}, retires{0}, quarantines{0};
+    uint32_t concurrency=1;void SetConcurrency(uint32_t count) noexcept override {concurrency=count;}
     std::atomic<bool> ready{false};
     bool stale_token = false;
     int64_t frame_id = 88, timestamp_us = 1000;
@@ -42,7 +43,7 @@ struct FakeSource final : GpuConsumerSource {
             if(ring.PublishReady(prepared,fd)!=SlotResult::Ok)return SlotResult::Invalid;
         }
         SlotMetadata metadata{};SlotToken token{};
-        if(ring.ClaimNewest(token,metadata)!=SlotResult::Ok)return SlotResult::NoReady;
+        if(ring.ClaimNewest(token,metadata,concurrency)!=SlotResult::Ok)return SlotResult::NoReady;
         frame.claimed = true;
         frame.token = token;
         if(stale_token)--frame.token.generation;
@@ -72,6 +73,7 @@ struct FakePipeline {
     std::atomic<bool> pause_run{false}, entered{false};
     std::atomic<int64_t> frame{0};
     std::atomic<int64_t> observed_capture_steady{0},observed_region_revision{0};
+    int64_t pause_frame=0;
     bool snapshot_mode=false,sidecar_mode=false,region_mode=false,invalid_version=false,stale_joint=false,invalid_pose_time=false;
 };
 FakePipeline* active = nullptr;
@@ -91,7 +93,7 @@ HV_Result HV_CALL Process(void* p, const HV_GpuFrameRefV1* input, HV_Observation
         fake.observed_region_revision=extension->region_revision;
     }
     fake.entered=true;
-    while (fake.pause_run) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    while (fake.pause_run && (!fake.pause_frame || input->frame_id==fake.pause_frame)) std::this_thread::sleep_for(std::chrono::milliseconds(1));
     if (fake.fail_run) { std::snprintf(error->data, error->capacity, "fake V3 run failed"); return HV_ERR_INTERNAL; }
     if (fake.invalid_pose_time) output->inference_ms=std::numeric_limits<float>::quiet_NaN();
     auto& lease = *static_cast<ConsumerFrame*>(input->opaque_slot);
@@ -534,4 +536,19 @@ TEST(RuntimeGpuComposition, CopyRetirementPollingDoesNotWaitLegacyInferenceDrain
     auto poll=std::async(std::launch::async,[&]{coordinator.CompleteRetirement(token);});
     EXPECT_EQ(poll.wait_for(std::chrono::milliseconds(100)),std::future_status::ready);
     end_released=true;ending.join();poll.get();
+}
+
+TEST(RuntimeGpuComposition, TwoInstancesConsumeDifferentFramesAndLateFrameCannotRollback) {
+ FakeSource source;FakePipeline fake;active=&fake;fake.pause_run=true;fake.pause_frame=88;
+ GpuRuntimeHost host(source);HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,2};HV_HostServicesV3 services{};std::string error;
+ ASSERT_TRUE(host.StartPool(Module(),services,config,2,error))<<error;
+ struct Release{FakePipeline& f;~Release(){f.pause_run=false;}} release{fake};
+ EXPECT_EQ(host.WorkerCount(),2u);source.ready=true;ASSERT_TRUE(Await([&]{return fake.entered.load();}))<<host.LastError()<<" claims="<<source.claims<<" retired="<<source.retires<<" drops="<<host.PoseJobDrops()<<" created="<<fake.creates;
+ EXPECT_EQ(host.ActiveWorkers(),1u);source.frame_id=89;source.timestamp_us=2000;source.ready=true;
+ HV_ObservationFrameV1 out{};int64_t revision=0;
+ ASSERT_TRUE(Await([&]{return host.CopyLatest(out,revision)&&out.source_frame_id==89;}));
+ EXPECT_EQ(fake.processes,2);fake.pause_run=false;
+ ASSERT_TRUE(Await([&]{return host.ActiveWorkers()==0;}));
+ ASSERT_TRUE(host.CopyLatest(out,revision));EXPECT_EQ(out.source_frame_id,89);EXPECT_GE(host.PoseJobDrops(),1u);
+ host.Stop();EXPECT_EQ(fake.destroys,2);EXPECT_EQ(host.WorkerCount(),0u);
 }

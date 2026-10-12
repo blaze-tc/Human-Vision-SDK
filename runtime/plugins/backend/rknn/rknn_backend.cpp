@@ -2,6 +2,7 @@
 #include "plugins/backend/rknn/rknn_input_qualification.h"
 #include "plugins/backend/rknn/rknn_native_input.h"
 #include "common/backend_diagnostics.h"
+#include "common/finite_tensor.h"
 #include "json/json.hpp"
 #include <algorithm>
 #include <chrono>
@@ -38,7 +39,7 @@ bool ParseOptions(const char* text, Options& out, HV_ErrorBufferV1* error) {
                 out.library=value.get<std::string>();
                 if (out.library.empty() || out.library.find('\0')!=std::string::npos) throw std::invalid_argument("runtime_library must be nonempty");
             } else if (key=="core_mask") {
-                if (!value.is_number_integer() || (value!=1 && value!=7)) throw std::invalid_argument("core_mask must be 1 or 7");
+                if (!value.is_number_integer() || (value!=1 && value!=2 && value!=4 && value!=7)) throw std::invalid_argument("core_mask must be 1, 2, 4 or 7");
                 out.mask=value.get<uint32_t>();
             } else if (key=="input_layout") {
                 if (!value.is_string() || value!="nhwc") throw std::invalid_argument("input_layout must be nhwc");
@@ -145,7 +146,7 @@ bool CandidateRun(Session& s,const void* rgb,std::vector<OutputBuffer>& targets,
         auto& expected=publish_stages?s.buffers[i]:s.candidate_buffers[i];
         const auto& view=targets[i];
         if(view.index!=i||view.data!=expected.data()||view.bytes!=expected.size()*sizeof(float)) {valid=false;break;}
-        for(float value:expected)if(!std::isfinite(value)){valid=false;break;}
+        if(!AllFinite(expected.data(),expected.size()))valid=false;
         if(!valid)break;
     }
     start=Clock::now();status=s.vendor->CandidateOutputsRelease(uint32_t(targets.size()));
@@ -208,7 +209,7 @@ HV_Result HV_CALL Run(void* value, const HV_TensorViewV1* input, uint32_t inputs
         for (size_t i=0;i<s.buffers.size();++i) {
             if (s.output_buffers[i].index!=s.attributes[i].index) { invalid="RKNN changed the queried output tensor order";break; }
             if (s.output_buffers[i].data!=s.buffers[i].data() || s.output_buffers[i].bytes!=s.buffers[i].size()*sizeof(float)) { invalid="RKNN changed a preallocated output pointer or byte count";break; }
-            if (!std::all_of(s.buffers[i].begin(),s.buffers[i].end(),[](float v){return std::isfinite(v);})) { invalid="RKNN returned a nonfinite FP32 output";break; }
+            if (!AllFinite(s.buffers[i].data(),s.buffers[i].size())) { invalid="RKNN returned a nonfinite FP32 output";break; }
         }
         const int release_status=s.Release();
         if (release_status) { StageError(error,"outputs_release",release_status);return HV_ERR_INTERNAL; }

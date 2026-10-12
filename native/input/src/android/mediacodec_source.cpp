@@ -4,6 +4,7 @@
 #include "input_h264_color.h"
 #include "input_frame_ring.h"
 #include "input_diagnostic_sampling.h"
+#include "input_output_pump.h"
 #include <android/log.h>
 #include <media/NdkImageReader.h>
 #include <media/NdkMediaCodec.h>
@@ -15,6 +16,28 @@
 #include <utility>
 #include <dlfcn.h>
 #include <limits>
+
+// Capability evidence only. PRIVATE decoder images cannot be reinterpreted as
+// NV12 or imported through an arbitrary native_handle fd. Android's public NDK
+// librga currently lacks the documented platform AHardwareBuffer entry point;
+// an accessible BSP library and an actual pixel/fence gate are required first.
+static void LogRgaCapabilities(const AHardwareBuffer_Desc& desc) {
+    void* library=dlopen("librga.so",RTLD_NOW|RTLD_LOCAL);
+    if(!library){const char* reason=dlerror();
+        __android_log_print(ANDROID_LOG_INFO,"HVInputGate",
+            "rga_capability library_accessible=0 enabled=0 ahb_format=%u stride=%u usage=%llu reason=%.220s",
+            desc.format,desc.stride,(unsigned long long)desc.usage,reason?reason:"library unavailable");return;}
+    // Itanium C++ name of the published Android platform API. Merely finding
+    // symbols does not authorize calling them on an unknown gralloc allocation.
+    const bool ahb_import=dlsym(library,"_Z28importbuffer_AHardwareBufferP15AHardwareBuffer")!=nullptr;
+    const bool release=dlsym(library,"releasebuffer_handle")!=nullptr;
+    const bool process=dlsym(library,"improcess")!=nullptr;
+    __android_log_print(ANDROID_LOG_INFO,"HVInputGate",
+        "rga_capability library_accessible=1 ahb_import_symbol=%d release_symbol=%d process_symbol=%d enabled=0 ahb_format=%u stride=%u usage=%llu reason=%s",
+        ahb_import,release,process,desc.format,desc.stride,(unsigned long long)desc.usage,
+        ahb_import&&release&&process?"actual PRIVATE import, modifier, fences and pixel/pose validation still required":"documented Android platform AHB import path unavailable");
+    dlclose(library);
+}
 namespace hvinput {
 static std::atomic<int> live_images{0}, live_ahb_references{0}, live_owned_fds{0};
 // No pixel mapping or sampling occurs during Task5. Returning the original
@@ -111,13 +134,25 @@ void Session::Decode() {
   status=AMediaCodec_start(r.codec);
   if(status!=AMEDIA_OK) {fail("start hardware decoder",status);return;} r.started=true;
   __android_log_print(ANDROID_LOG_INFO,"HVInputGate","hardware_codec=%s requested_width=%u requested_height=%u csd_bytes=%d generation=%llu",name.c_str(),max_width,max_height,params->extradata_size,(unsigned long long)info.generation);
-  int decoded=0;
+  // Input and output have independent workers. An av_read_frame TCP wait must
+  // not delay releasing codec outputs or acquiring an already-ready AImage.
+  // Only the input worker touches AVFormat/AVPacket; only the output worker
+  // touches format/crop state and AImageReader. Codec stop/delete occurs after
+  // the scoped output pump has joined on every return (including reconnect).
+  std::atomic<int> decoded{0};
+  std::atomic<int64_t> last_received_us{0};
+  std::atomic<uint64_t> packets_received{0}, inputs_queued{0};
+  uint64_t outputs_released=0, acquire_empty=0;
+  const uint64_t generation=info.generation;
+  int64_t last_report_us=NowUs();
+  uint64_t last_packets=0,last_queued=0,last_outputs=0,last_images=0;
   uint32_t matrix=declared.matrix,range=declared.range,transfer=0,primaries=0;
   AImageCropRect codec_crop{};bool codec_crop_known=false;
   auto drain=[&] {
     AMediaCodecBufferInfo output{};
     for(int count=0;count<16 && !stop;++count) {
-      auto index=AMediaCodec_dequeueOutputBuffer(r.codec,&output,0);
+      // A bounded wait avoids a hot spin; subsequent outputs drain immediately.
+      auto index=AMediaCodec_dequeueOutputBuffer(r.codec,&output,count==0?2000:0);
       if(index==AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
         auto* actual=AMediaCodec_getOutputFormat(r.codec);
         codec_crop_known=false;codec_crop={}; // Never retain a stale declaration after a format change.
@@ -140,18 +175,21 @@ void Session::Decode() {
       if(index<0) break;
       auto release=AMediaCodec_releaseOutputBuffer(r.codec,index,true);
       if(release!=AMEDIA_OK) {fail("render hardware output Surface",release);return;}
+      ++outputs_released;
     }
     AndroidDecodedImage image;
     int acquired=AImageReader_acquireLatestImageAsync(r.reader,&image.image,&image.acquire_fd);
-    if(acquired==AMEDIA_IMGREADER_NO_BUFFER_AVAILABLE) return;
+    if(acquired==AMEDIA_IMGREADER_NO_BUFFER_AVAILABLE) {++acquire_empty;return;}
     if(acquired!=AMEDIA_OK) {fail("acquireLatestImageAsync",acquired);return;}
     image.reader=r.reader;image.image_counted=true; ++live_images;if(image.acquire_fd>=0)++live_owned_fds;
     AHardwareBuffer* borrowed=nullptr;
     if(AImage_getHardwareBuffer(image.image,&borrowed)!=AMEDIA_OK || !borrowed) {fail("decoded AHB missing",AVERROR_INVALIDDATA);return;}
     AHardwareBuffer_acquire(borrowed); image.buffer=borrowed;++live_ahb_references;
     int64_t ns=0; AImage_getTimestamp(image.image,&ns);
-    image.generation=info.generation; image.pts_us=ns/1000;
-    image.received_us=info.received_timestamp_us; image.decoded_us=NowUs();
+    image.generation=generation; image.pts_us=ns/1000;
+    // Last packet arrival is an activity timestamp, NOT this image's matched
+    // packet time. The diagnostics must not call their difference decode time.
+    image.received_us=last_received_us.load(); image.decoded_us=NowUs();
     // The color converter is enabled in production too; it is not a diagnostic
     // mode flag. Only the private non-production gate retains every frame.
     image.log_frame_details=ShouldLogInputFrame(uint64_t(decoded)+1,!production);
@@ -159,6 +197,7 @@ void Session::Decode() {
     AImage_getWidth(image.image,&image.width);AImage_getHeight(image.image,&image.height);AImageCropRect crop{};
     if(AImage_getCropRect(image.image,&crop)!=AMEDIA_OK){fail("query actual decoder crop",AVERROR_INVALIDDATA);return;}
     AHardwareBuffer_Desc allocation{};AHardwareBuffer_describe(image.buffer,&allocation);
+    if(decoded==0)LogRgaCapabilities(allocation);
     if((ColorProbeEnabled()||production)&&(!codec_crop_known||codec_crop.right>int64_t(allocation.width)||codec_crop.bottom>int64_t(allocation.height)||codec_crop.right-codec_crop.left!=image.width||codec_crop.bottom-codec_crop.top!=image.height)){fail("actual decoder crop unavailable or incompatible with AHB/display geometry",AVERROR_INVALIDDATA);return;}
     const auto actual_crop=(ColorProbeEnabled()||production)?codec_crop:crop;
     image.crop_left=actual_crop.left;image.crop_top=actual_crop.top;image.crop_right=actual_crop.right;image.crop_bottom=actual_crop.bottom;
@@ -168,22 +207,42 @@ void Session::Decode() {
     if(production)SetDecoderState(HV_INPUT_STREAMING);
     if(ColorProbeEnabled()||production)QueueColorImage(image);
   };
+  InputOutputPump output_pump([&] {
+    if(stop)return;
+    drain();
+    const int64_t now=NowUs();
+    if(now-last_report_us>=1000000) {
+      const auto packets=packets_received.load(),queued=inputs_queued.load();
+      const auto images=uint64_t(decoded.load());
+      const double seconds=double(now-last_report_us)/1000000.0;
+      __android_log_print(ANDROID_LOG_INFO,"HVInputGate",
+          "input_decode_cadence generation=%llu interval_ms=%.3f video_packets=%llu codec_inputs=%llu codec_outputs=%llu acquired_images=%llu packet_rate=%.3f queued_rate=%.3f codec_output_fps=%.3f acquired_image_fps=%.3f acquire_empty=%llu independent_output_pump=1 packet_rate_is_not_camera_fps=1",
+          (unsigned long long)generation,seconds*1000,(unsigned long long)packets,
+          (unsigned long long)queued,(unsigned long long)outputs_released,(unsigned long long)images,
+          (packets-last_packets)/seconds,(queued-last_queued)/seconds,
+          (outputs_released-last_outputs)/seconds,(images-last_images)/seconds,
+          (unsigned long long)acquire_empty);
+      last_report_us=now;last_packets=packets;last_queued=queued;
+      last_outputs=outputs_released;last_images=images;
+    }
+  },[&]{fail("independent hardware output worker",AVERROR_UNKNOWN);});
   InputEncodedBacklog backlog;backlog.Reset(NowUs()+int64_t(timeout_ms)*1000);uint32_t startup_dropped=0;
   // One compressed packet is retained. Pressure cannot accumulate an unbounded application queue.
   // On decoder pressure, recreate RTSP/decoder resources, then require a new keyframe.
   const auto reconnect=[&](const char* stage,int code){SetError(stage,code);if(SetDecoderState(HV_INPUT_RECONNECTING))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","encoded_backlog_controlled_reconnect=1 wait_for_keyframe=1 stage=%s",stage);};
   while(!stop && (production||ColorProbeEnabled()||decoded<3)) {
     deadline=NowUs()+int64_t(timeout_ms)*1000;
-    status=av_read_frame(r.format,r.packet); info.received_timestamp_us=NowUs();
+    status=av_read_frame(r.format,r.packet); last_received_us=NowUs();
     if(status<0) {if(production)reconnect("read compressed H264",status);else fail("read compressed H264",status);return;}
     if(r.packet->stream_index!=stream) {av_packet_unref(r.packet);continue;}
+    ++packets_received;
     // A newly joined RTSP stream may begin inside a GOP. Concealed decoder output
     // is not a valid source image: start the hardware decoder input at a keyframe.
     bool was_waiting=backlog.Waiting();
     if(!backlog.Admit((r.packet->flags&AV_PKT_FLAG_KEY)!=0)){++startup_dropped;av_packet_unref(r.packet);if(backlog.Expired(NowUs())){fail("RTSP startup keyframe not received within configured timeout",AVERROR(ETIMEDOUT));return;}continue;}
     if(was_waiting)__android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoder_first_keyframe=true compressed_startup_packets_dropped=%u packet_flags=%d packet_pts=%lld",startup_dropped,r.packet->flags,(long long)r.packet->pts);
     ssize_t index=-1;
-    while(!stop && NowUs()<deadline && (index=AMediaCodec_dequeueInputBuffer(r.codec,1000))<0) drain();
+    while(!stop && NowUs()<deadline && (index=AMediaCodec_dequeueInputBuffer(r.codec,1000))<0) {}
     if(stop) return;
     if(index<0) {if(production)reconnect("bounded compressed queue pressure",AVERROR(ETIMEDOUT));else fail("bounded compressed queue pressure",AVERROR(ETIMEDOUT));return;}
     size_t capacity=0; auto* data=AMediaCodec_getInputBuffer(r.codec,index,&capacity);
@@ -192,8 +251,9 @@ void Session::Decode() {
     int64_t pts=r.packet->pts==AV_NOPTS_VALUE?0:av_rescale_q(r.packet->pts,r.format->streams[stream]->time_base,AVRational{1,1000000});
     status=AMediaCodec_queueInputBuffer(r.codec,index,0,r.packet->size,pts,0); av_packet_unref(r.packet);
     if(status!=AMEDIA_OK) {fail("submit hardware compressed H264",status);return;}
-    drain();
+    ++inputs_queued;
   }
+  output_pump.StopAndJoin();
   if(decoded) SetDecoderState(HV_INPUT_STREAMING);
   if(!production)stop=true; // Only the diagnostic is bounded.
 }

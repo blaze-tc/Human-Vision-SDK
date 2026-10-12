@@ -7,6 +7,15 @@ namespace {
 constexpr int64_t kPredictionHorizonUs=25000;
 constexpr int64_t kHandExpiryUs=200000;
 constexpr double kObservationPeriodAlpha=.2;
+// RGB apparent height estimates foreground preference, not metric depth.
+// Only measured COCO joints count; derived spine/hand points cannot inflate quality.
+float SelectionScore(const HV_BodyObservationV1& body,int height) {
+ const int coco[]{27,28,30,29,31,5,12,6,13,7,14,18,22,19,23,20,24};
+ int visible=0;for(int k:coco){const auto& j=body.joints[k];
+  if(j.valid&&!j.derived&&std::isfinite(j.confidence)&&j.confidence>=.3F&&
+     std::isfinite(j.x_px)&&std::isfinite(j.y_px))++visible;}
+ return .65F*visible/17.F+.35F*std::clamp(body.bbox_px.height/height,0.F,1.F);
+}
 float Iou(HV_Rect a,HV_Rect b){float w=std::max(0.F,std::min(a.x+a.width,b.x+b.width)-std::max(a.x,b.x));float h=std::max(0.F,std::min(a.y+a.height,b.y+b.height)-std::max(a.y,b.y));return w*h/std::max(1.F,a.width*a.height+b.width*b.height-w*h);}
 void Midpoint(HV_CanonicalBodyV1& body,int target,int left,int right){
  auto& j=body.joints[target];const auto& a=body.joints[left];const auto& b=body.joints[right];if(j.valid||!a.valid||!b.valid)return;
@@ -35,7 +44,7 @@ std::array<int,8> Assign(const float costs[8][8],int n){
 }
 }
 void BodyServices::Configure(int capacity,const HV_Rect* regions,uint32_t count,int64_t revision){
- capacity_=std::clamp(capacity,1,8);region_count_=regions?std::min(count,uint32_t(capacity_)):0;regions_={};for(uint32_t i=0;i<region_count_;++i)regions_[i]=regions[i];tracks_={};revision_=revision;last_time_=0;observation_period_ewma_us_=0;hand_cursor_=0;hand_served_mask_=0;
+ capacity_=std::clamp(capacity,1,8);region_count_=regions?std::min(count,uint32_t(capacity_)):0;regions_={};for(uint32_t i=0;i<region_count_;++i)regions_[i]=regions[i];tracks_={};selected_.fill(-1);challengers_.fill(-1);challenge_since_={};revision_=revision;last_time_=0;observation_period_ewma_us_=0;hand_cursor_=0;hand_served_mask_=0;
 }
 int64_t BodyServices::RenderHoldUs() const{
  return observation_period_ewma_us_>0?int64_t(std::clamp(observation_period_ewma_us_*2.5,300000.,800000.)):500000;
@@ -58,8 +67,10 @@ void BodyServices::Observe(const HV_ObservationFrameV1& frame,int64_t revision,b
  if(revision!=revision_||frame.source_timestamp_us<=last_time_||frame.width<=0||frame.height<=0||frame.body_count>8)return;
  if(last_time_){const double period=double(frame.source_timestamp_us-last_time_);observation_period_ewma_us_=observation_period_ewma_us_>0?observation_period_ewma_us_+kObservationPeriodAlpha*(period-observation_period_ewma_us_):period;}
  last_time_=frame.source_timestamp_us;width_=frame.width;height_=frame.height;int obs[8]{},regions[8]{},num=0,slots[8]{},active=0;
- for(int i=0;i<capacity_;++i){auto& t=tracks_[i];if(t.active&&last_time_-t.raw.observation_timestamp_us>TrackLostUs())t.active=false;if(t.active){slots[active++]=i;t.raw.lifecycle=t.filtered.lifecycle=2;}}
- for(uint32_t i=0;i<frame.body_count&&num<capacity_;++i){const auto& b=frame.bodies[i].bbox_px;if(!std::isfinite(b.x)||!std::isfinite(b.y)||!std::isfinite(b.width)||!std::isfinite(b.height)||b.width<=0||b.height<=0)continue;int region=assigned_regions?assigned_regions[i]:Region(b,frame.width,frame.height);if(region==-2||region_count_&&(region<0||region>=int(region_count_)))continue;bool taken=false;for(int j=0;j<num;++j)taken|=region>=0&&regions[j]==region;if(taken)continue;obs[num]=int(i);regions[num++]=region;}
+ const int tracking_capacity=region_count_?capacity_:8;
+ for(int i=0;i<tracking_capacity;++i){auto& t=tracks_[i];if(t.active&&last_time_-t.raw.observation_timestamp_us>TrackLostUs()){
+  t.active=false;for(auto& chosen:selected_)if(chosen==i)chosen=-1;}if(t.active){slots[active++]=i;t.raw.lifecycle=t.filtered.lifecycle=2;}}
+ for(uint32_t i=0;i<frame.body_count&&num<tracking_capacity;++i){const auto& b=frame.bodies[i].bbox_px;if(!std::isfinite(b.x)||!std::isfinite(b.y)||!std::isfinite(b.width)||!std::isfinite(b.height)||b.width<=0||b.height<=0)continue;int region=assigned_regions?assigned_regions[i]:Region(b,frame.width,frame.height);if(region==-2||region_count_&&(region<0||region>=int(region_count_)))continue;bool taken=false;for(int j=0;j<num;++j)taken|=region>=0&&regions[j]==region;if(taken)continue;obs[num]=int(i);regions[num++]=region;}
  float costs[8][8];for(auto& row:costs)std::fill_n(row,8,2.F);int n=std::max(active,num);
  for(int i=0;i<active;++i)for(int j=0;j<num;++j){const auto& track=tracks_[slots[i]];const auto& t=track.raw;const auto& b=frame.bodies[obs[j]];
   float age=std::clamp(float(last_time_-t.observation_timestamp_us)/1e6F,0.F,.2F);auto box=t.bbox_px;
@@ -77,11 +88,11 @@ void BodyServices::Observe(const HV_ObservationFrameV1& frame,int64_t revision,b
  auto assignment=Assign(costs,n);int target[8];std::fill_n(target,8,-1);
  for(int i=0;i<active;++i){int j=assignment[i];if(j>=0&&j<num&&costs[i][j]<1.2F)target[j]=slots[i];}
  for(int j=0;j<num;++j){int slot=target[j];if(slot<0){
-   for(int k=0;k<capacity_;++k)if(!tracks_[k].active){slot=k;break;}
+   for(int k=0;k<tracking_capacity;++k)if(!tracks_[k].active){slot=k;break;}
    if(slot<0&&crop_track_ids&&crop_track_ids[obs[j]]>0){
     // This is a complete GPU observation. A current crop may replace an old
     // unsupported identity immediately when every public track slot is full.
-    for(int k=0;k<capacity_;++k){
+    for(int k=0;k<tracking_capacity;++k){
      bool assigned=false,present=false;
      for(int m=0;m<num;++m){assigned|=target[m]==k;
       present|=crop_track_ids[obs[m]]>0&&
@@ -89,7 +100,10 @@ void BodyServices::Observe(const HV_ObservationFrameV1& frame,int64_t revision,b
      if(!assigned&&!present){slot=k;break;}
     }
    }
-   if(slot<0)continue;tracks_[slot]={};hand_served_mask_&=~(3u<<(slot*2));tracks_[slot].active=true;tracks_[slot].raw.track_id=next_id_++;}
+   if(slot<0)continue;
+   for(auto& chosen:selected_)if(chosen==slot)chosen=-1;
+   for(auto& challenger:challengers_)if(challenger==slot)challenger=-1;
+   target[j]=slot;tracks_[slot]={};hand_served_mask_&=~(3u<<(slot*2));tracks_[slot].active=true;tracks_[slot].raw.track_id=next_id_++;}
   auto& t=tracks_[slot];if(crop_track_ids)t.crop_track_id=crop_track_ids[obs[j]];const auto previous=t.raw;HV_CanonicalBodyV1 body{};body.struct_size=sizeof(body);body.api_version=HV_API_VERSION_040;body.track_id=previous.track_id;body.region_index=regions[j]>=0?regions[j]:slot;body.region_revision=revision_;body.source_frame_id=frame.source_frame_id;body.observation_timestamp_us=last_time_;body.lifecycle=++t.hits>=2?1:0;body.bbox_px=frame.bodies[obs[j]].bbox_px;body.confidence=frame.bodies[obs[j]].confidence;std::copy_n(frame.bodies[obs[j]].joints,32,body.joints);Derive(body);
   const float dt=float(last_time_-previous.observation_timestamp_us)/1e6F;
   if(previous.observation_timestamp_us&&dt>0&&dt<.5F){const auto a=previous.bbox_px,b=body.bbox_px;t.box_velocity={(b.x-a.x)/dt,(b.y-a.y)/dt,(b.width-a.width)/dt,(b.height-a.height)/dt};}
@@ -97,14 +111,56 @@ void BodyServices::Observe(const HV_ObservationFrameV1& frame,int64_t revision,b
   for(int k=0;k<32;++k){auto& current=body.joints[k];auto& f=filtered.joints[k];if(!current.valid){t.vx[k]=t.vy[k]=0;continue;}if(previous.joints[k].valid&&dt>0&&dt<.5F){float vx=(current.x_px-previous.joints[k].x_px)/dt,vy=(current.y_px-previous.joints[k].y_px)/dt;t.vx[k]=.5F*t.vx[k]+.5F*vx;t.vy[k]=.5F*t.vy[k]+.5F*vy;float cutoff=2.F+.04F*std::sqrt(t.vx[k]*t.vx[k]+t.vy[k]*t.vy[k]);float alpha=1.F/(1.F+1.F/(6.2831853F*cutoff*dt));f.x_px=t.filtered.joints[k].x_px+alpha*(current.x_px-t.filtered.joints[k].x_px);f.y_px=t.filtered.joints[k].y_px+alpha*(current.y_px-t.filtered.joints[k].y_px);f.x_norm=f.x_px/frame.width;f.y_norm=f.y_px/frame.height;}}
   // Preserve independently observed hands; their own age controls validity.
   if(preserve_previous_hands)for(int k:{8,9,10,15,16,17})if(!body.joints[k].valid&&previous.joints[k].valid&&last_time_-previous.joints[k].observation_timestamp_us<=200000){body.joints[k]=previous.joints[k];filtered.joints[k]=previous.joints[k];}
+  // Smooth ranking only, never the reported raw joint validity/confidence.
+  const float score=SelectionScore(frame.bodies[obs[j]],frame.height);
+  const float alpha=previous.observation_timestamp_us?std::clamp(dt/(dt+.25F),0.F,1.F):1.F;
+  t.selection_score+=alpha*(score-t.selection_score);
   t.raw=body;t.filtered=filtered;
  }
+ SelectBodies();
 }
-BodySnapshot BodyServices::Raw() const{BodySnapshot out;for(const auto& t:tracks_)if(t.active&&t.raw.observation_timestamp_us==last_time_)out.bodies[out.count++]=t.raw;return out;}
+bool BodyServices::Selected(int slot) const {
+ return std::find(selected_.begin(),selected_.begin()+capacity_,slot)!=selected_.begin()+capacity_;
+}
+void BodyServices::SelectBodies() {
+ // Explicit regions keep their established assignment; foreground ranking must
+ // never steal a person from another configured game region.
+ if(region_count_){selected_.fill(-1);for(int i=0;i<capacity_;++i)if(tracks_[i].active)selected_[i]=i;return;}
+ auto fresh=[&](int i){return tracks_[i].active&&tracks_[i].raw.observation_timestamp_us==last_time_;};
+ auto best=[&](){int result=-1;for(int i=0;i<8;++i)if(fresh(i)&&!Selected(i)&&
+   (result<0||tracks_[i].selection_score>tracks_[result].selection_score))result=i;return result;};
+ // Fill genuinely empty slots first. An upgrade may only displace the weakest
+ // incumbent, avoiding a chain of unnecessary swaps through stronger incumbents.
+ for(int display=0;display<capacity_;++display)if(selected_[display]<0){selected_[display]=best();challengers_[display]=-1;}
+ int candidate=best(),weakest=-1,current_count=0;
+ for(int i=0;i<8;++i)if(fresh(i))++current_count;
+ auto missing=[&](int slot){return last_time_-tracks_[slot].raw.observation_timestamp_us>350000||
+   (!fresh(slot)&&current_count<=capacity_&&candidate>=0&&
+    tracks_[slot].crop_track_id>0&&tracks_[candidate].crop_track_id>0);};
+ for(int display=0;display<capacity_;++display){int slot=selected_[display];if(slot<0)continue;
+  if(weakest<0||(missing(slot)&&!missing(selected_[weakest]))||
+     (missing(slot)==missing(selected_[weakest])&&tracks_[slot].selection_score<tracks_[selected_[weakest]].selection_score))weakest=display;}
+ for(int display=0;display<capacity_;++display)if(display!=weakest)challengers_[display]=-1;
+ if(weakest<0)return;
+ int& incumbent=selected_[weakest];
+ if(candidate<0||(!missing(incumbent)&&tracks_[candidate].selection_score<=tracks_[incumbent].selection_score+.08F)){
+  challengers_[weakest]=-1;return;}
+ if(challengers_[weakest]!=candidate){challengers_[weakest]=candidate;challenge_since_[weakest]=last_time_;}
+ // Brief occlusion reserves the slot. Raw() still reports only fresh observations.
+ if(missing(incumbent)||last_time_-challenge_since_[weakest]>=500000){incumbent=candidate;challengers_[weakest]=-1;}
+
+}
+BodySnapshot BodyServices::Raw() const {
+ BodySnapshot out;for(int display=0;display<capacity_;++display){int slot=selected_[display];if(slot<0)continue;
+  const auto& t=tracks_[slot];if(t.active&&t.raw.observation_timestamp_us==last_time_){auto body=t.raw;
+   if(!region_count_)body.region_index=display;out.bodies[out.count++]=body;}}
+ return out;
+}
 BodySnapshot BodyServices::Sample(int64_t now) const{
  BodySnapshot out;const int64_t hold=RenderHoldUs();
- for(const auto& t:tracks_)if(t.active&&now>=t.raw.observation_timestamp_us&&now-t.raw.observation_timestamp_us<=hold){
-  auto body=t.filtered;
+ for(int display=0;display<capacity_;++display){int slot=selected_[display];if(slot<0)continue;
+  const auto& t=tracks_[slot];if(!t.active||now<t.raw.observation_timestamp_us||now-t.raw.observation_timestamp_us>hold)continue;
+  auto body=t.filtered;if(!region_count_)body.region_index=display;
   for(int k=0;k<32;++k){
    auto& j=body.joints[k];if(!j.valid)continue;
    const bool hand=(k>=8&&k<=10)||(k>=15&&k<=17);
@@ -128,7 +184,7 @@ BodySampleDiagnostics BodyServices::Diagnostics(int64_t now) const{
  int64_t youngest=std::numeric_limits<int64_t>::max();
  for(const auto& t:tracks_)if(t.active&&now>=t.raw.observation_timestamp_us){
   const int64_t age=now-t.raw.observation_timestamp_us;youngest=std::min(youngest,age);
-  if(age<=lost)++out.tracked_body_count;if(age<=hold)++out.sampled_body_count;
+  if(age<=lost)++out.tracked_body_count;if(age<=hold&&Selected(int(&t-tracks_.data())))++out.sampled_body_count;
  }
  if(youngest!=std::numeric_limits<int64_t>::max())out.sample_age_ms=double(youngest)/1000.;
  if(out.sampled_body_count)out.state=youngest<=kPredictionHorizonUs?BodySampleState::Predicted:BodySampleState::Held;
@@ -155,7 +211,7 @@ uint32_t BodyServices::HandRequests(HV_RegionOfInterestV1* out,uint32_t capacity
   const auto& t=tracks_[item/2];int side=item%2;
   if(t.hand_request_time[side]&&now-t.hand_request_time[side]<minimum_interval)continue;
   const auto& wrist=t.raw.joints[side?14:7];const auto& elbow=t.raw.joints[side?13:6];
-  if(!t.active||!wrist.valid||!elbow.valid||now<t.raw.observation_timestamp_us||now-t.raw.observation_timestamp_us>200000)continue;
+  if(!Selected(int(item/2))||!t.active||!wrist.valid||!elbow.valid||now<t.raw.observation_timestamp_us||now-t.raw.observation_timestamp_us>200000)continue;
   float dx=wrist.x_px-elbow.x_px,dy=wrist.y_px-elbow.y_px,length=std::sqrt(dx*dx+dy*dy);
   if(!std::isfinite(length)||length<8||wrist.x_px<0||wrist.y_px<0||wrist.x_px>=width_||wrist.y_px>=height_)continue;
   float size=std::min(float(std::max(width_,height_)),std::max(24.F,length*1.6F));

@@ -1,4 +1,5 @@
 #pragma once
+#include "common/frame_rate_credit.h"
 #include "host/runtime_host.h"
 #include "host/profile_manager.h"
 #include "host/backend_factory.h"
@@ -48,7 +49,8 @@ private:
  BodyServices services_;
  std::array<HV_Rect,8> regions_{};
  uint32_t region_count_=0;
- int64_t revision_=0,body_sequence_=0,hand_sequence_=0,last_body_submit_=0;
+ int64_t revision_=0,body_sequence_=0,hand_sequence_=0;
+ FrameRateCredit body_admission_;
  HV_RuntimeStatsV1 stats_{};
  humanvision::StatsCollectorV2 stats_v2_;
  std::atomic<uint64_t> source_frames_seen_{0}, source_rate_limited_drops_{0};
@@ -56,6 +58,6 @@ private:
  std::atomic<uint64_t> gpu_capture_requested_{0};
  std::atomic<uint64_t> gpu_no_slot_drops_{0};
  int64_t last_hand_result_time_=0;
- std::string error_;
+ std::string error_,pool_fallback_;
 };
 }

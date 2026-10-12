@@ -123,7 +123,8 @@ namespace HumanVision.Demo
                 var stats = sdk.Stats;
                 text.Append(state).Append(" users=").Append(sdk.GetUsersCount()).Append('/').Append(sdk.GetMaxBodies())
                     .Append(" sequence=").Append(sdk.ResultSequence).Append(" frame=").Append(sdk.SourceFrameId).Append(" ageMs=").Append(Number(sdk.ResultAgeMilliseconds))
-                    .Append(" inputFPS=").Append(Number(stats.InputFps)).Append(" inferenceFPS=").Append(Number(stats.InferenceFps))
+                    .Append(" inputFPS=").Append(Number(sdk.InputPublicationFps)).Append(" freshResultFPS=").Append(Number(sdk.FreshResultFps))
+                    .Append(" nativeInputFPS=").Append(Number(stats.InputFps)).Append(" nativeInferenceFPS=").Append(Number(stats.InferenceFps))
                     .Append(" detectMs=").Append(Number(stats.DetectionMs)).Append(" poseMs=").Append(Number(stats.PoseMs))
                     .Append(" trackingMs=").Append(Number(stats.TrackingMs)).Append(" totalMs=").Append(Number(stats.TotalMs))
                     .Append(" submitted=").Append(stats.SubmittedFrames).Append(" processed=").Append(stats.ProcessedFrames).Append(" dropped=").Append(stats.DroppedFrames)

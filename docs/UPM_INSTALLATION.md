@@ -1,3 +1,5 @@
+> 当前分支新增 ScriptableObject 默认配置、代码指定输入源及统一查询 API，请先阅读 [当前接入说明](user-guide/SDK_CONFIGURATION.md)。下文含已发布版本和兼容 API 的历史说明。
+
 # Human Vision SDK 0.4.0-preview.6 安装与接入
 
 中文逐步操作：[第一次安装使用引导](user-guide/FIRST_INSTALL.md)。新建Unity项目的Start初始化、骨骼读取代码片段、技术栈、平台证据和API说明见[中文文档首页](user-guide/README.md)。

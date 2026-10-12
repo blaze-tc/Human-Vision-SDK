@@ -188,7 +188,7 @@ public:
   BridgeResult PollCopy(const HV_AndroidGpuFrameCopyTicketV2&, uint32_t& outcome) noexcept;
   BridgeResult Render(void *event_identity) noexcept;
   // Native worker only. The borrowed AHB and fd stay valid until RetireConsumer.
-  SlotResult ClaimConsumer(ConsumerFrame&) noexcept;
+  SlotResult ClaimConsumer(ConsumerFrame&, uint32_t max_consumers=1) noexcept;
   SlotResult ClaimDropped(ConsumerFrame&) noexcept;
   SlotResult RetireConsumer(ConsumerFrame&, CompletionProof) noexcept;
   // Terminal device fault: retain this generation's AHB/Vulkan owners for

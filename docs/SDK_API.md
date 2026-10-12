@@ -1,3 +1,5 @@
+> Unity 总控最新接入：[ScriptableObject 默认配置、代码指定输入及骨骼/区域 API](user-guide/SDK_CONFIGURATION.md)。本文件继续保留原生/V1 兼容合同。
+
 # SDK_API.md
 
 # HumanVision D0 Public C ABI

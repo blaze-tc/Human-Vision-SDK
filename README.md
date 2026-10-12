@@ -1,5 +1,23 @@
 # Human Vision SDK
 
+当前开发分支：SDK **0.4.0-preview.7** / Input **0.1.0-preview.5**。
+[ScriptableObject 配置与统一 API](docs/user-guide/SDK_CONFIGURATION.md) ·
+[完整接入脚本](docs/user-guide/examples/HumanVisionGameplayExample.cs) ·
+[Settings 设置样例](docs/user-guide/SETTINGS_DEMO.md)。
+
+配置资产保存人数、区域、图像尺寸、模型等级、CPU/GPU/NPU；初始化代码提供相机名、RTSP 地址或视频路径。
+公开样例只保留 Settings；旧公开 API 和共享组件保持兼容。世界坐标是图像平面映射，没有实测深度。
+本分支不是已经通过全部设备验收的 Release；性能实测与限制见 [开发状态](docs/DEVELOPMENT_STATUS.md)。
+
+Git UPM 先安装 Input，再安装 SDK；两个地址必须使用同一提交。当前分支地址：
+
+```text
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#codex/unity-sdk-api-settings
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#codex/unity-sdk-api-settings
+```
+
+## 历史发布说明
+
 Current integration preview: **0.4.0-preview.4** (2026-10-05).
 中文使用文档（新建Unity项目首次接入，2026-10-07更新）：
 [第一次安装使用引导](docs/user-guide/FIRST_INSTALL.md) ·

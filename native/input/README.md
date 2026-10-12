@@ -97,3 +97,35 @@ destruction occurs in this completion-only helper; render-event Poll still drain
 removed imports and retires resources. The session mutex serializes both paths.
 The three-slot observation/copy-lease contract and C exports are unchanged.
 This is a pacing/latency candidate; see the OnePlus report for actual acceptance.
+
+## Independent codec output (2026-10-12 candidate)
+
+The compressed RTSP reader no longer owns the output-drain schedule. A scoped
+output worker drains MediaCodec and acquires latest AImages while TCP input may
+be waiting for another packet. Its first output dequeue waits at most 2 ms,
+remaining dequeues are nonblocking, and each pass has a 1 ms cancellable idle
+wait. Codec/reader destruction and reconnect always join this worker first.
+No additional frame queue, CPU pixel mapping, or inference instance is added.
+
+`input_decode_cadence` records received video packets, codec inputs/outputs, and
+acquired images once per second. Packet rate is explicitly not camera FPS.
+`input_gpu_cadence` records render callbacks, busy/empty callbacks, conversion
+completions, ring drops and pending-image replacements. Ring drops include both
+slot pressure and superseded unobserved publications. Decode-to-submit and
+submit-to-observed-fence intervals include host scheduling/queue time; they are
+not GPU execution timestamps. Compare these with managed unique publication
+counts to locate loss instead of inferring camera speed from inference FPS.
+These logs are captured by the existing Settings Demo native log collector.
+
+Host regression `input.OutputPump.IndependentDrainAndRetirement` covers output
+arrival without a second input packet, bounded idle polling, repeated teardown,
+and exception forwarding. OnePlus testing does not certify RK3588 throughput.
+
+The managed RTSP owner also issues one render event after `WaitForEndOfFrame`.
+This provides a second opportunity to observe completion/start the latest image
+when the Update event was too early. It does not publish frames, block on a
+fence, or create another converter/inference instance. Pause/close/disable stop
+this opportunity; the existing Tick path alone publishes completed frames.
+The targeted lifecycle test verifies no duplicate publication and cancellation.
+When returning a replaced pending decoder image, never cancel the output slot
+owned by a distinct active image awaiting Unity's queue callback.

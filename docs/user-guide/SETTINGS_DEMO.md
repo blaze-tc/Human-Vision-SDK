@@ -1,3 +1,5 @@
+> 当前分支新增 ScriptableObject 默认配置、代码指定输入源及统一查询 API，请先阅读 [当前接入说明](SDK_CONFIGURATION.md)。下文含已发布版本和兼容 API 的历史说明。
+
 # UGUI 设置场景
 
 执行 **HumanVision → Create SDK settings demo assets**，在 `Assets/HumanVisionSettingsDemo/` 创建普通 `.unity` 场景和可编辑 Prefab；重复执行保留已有布局。也可通过 Hierarchy **Human Vision → Create SDK Settings UI** 放入当前场景，支持 Undo。Package Manager 的 **SDK Settings** Sample 提供预生成资产。
@@ -38,6 +40,8 @@ IP；按钮只修改草稿，点击应用才开始连接。它不会使用手机
 
 桌面示例尝试加载系统中文字体；Android/发行构建建议在 `uiFont` 中指定有授权且包含中文字符的 Font 资产。所有控件都是 UGUI，可直接改样式、大小和引用；不要删除必需引用。
 
+界面的尺寸标签随输入模式变化：Camera 为“请求采集尺寸”，设备可能返回不同的实际尺寸；RTSP 为“输出图像尺寸（上限）”，控制解码后供预览与识别共同使用的图像，不会修改远端摄像头码流；Video 为“视频尺寸（由文件决定）”，下拉尺寸不改变文件本身。模型等级是另一个独立设置。例：4K RTSP 选择 1280×720，仍先解码 4K，再输出不超过 720p 的图像。需要减少网络或解码开销，应在摄像头端配置更低分辨率的码流，并确认其实际帧率。
+
 质量选择只显示本构建已声明的实际档位。Windows 固定合同不显示可切换档位；不把采集分辨率称作模型分辨率。RTSP 快捷按钮使用 Happytime 的 `rtsp://局域网IP:554/videodevice` 或 `video-1.mp4`，实际服务器仍需自行启动。
 
 ## 模型等级为什么可能不可选
@@ -55,7 +59,7 @@ Windows CPU/DirectML 当前安装配置使用固定模型，不提供高/中/低
 
 高级设置中的“详细骨骼日志”增加按间隔输出的 32 语义关节有效性、API 有效性、派生标记、置信度、像素/归一化坐标和独立观测时间。默认统计 2 秒一次，避免逐帧写盘；最多四个文件轮转，按设置保留会话。RTSP 认证和常见密码/token 参数会统一遮盖。打开目录、复制路径或导出 ZIP 后可携带日志定位实机问题；写盘失败会在界面提示。
 
-主菜单 HumanVision 只保留创建 SDK、设置 Demo、安装模型及 Examples。旧示例位于 Tools → Human Vision → Legacy Examples；验收和探针位于 Tools → Human Vision → Development。
+当前分支主菜单 HumanVision 只保留创建 SDK、设置 Demo 和安装模型。其他 Demo 菜单和分发样例已移除；开发验收探针仍位于 Tools → Human Vision → Development。
 
 Human-Vision-SDK-Test 的 HumanVisionSettingsDemo 已增加 **复制日志文件夹**、硬件使用信息和稀疏原生阶段计时。Android 10+ 自动同步到 Downloads/HumanVisionLogs 的普通会话文件夹，直接获取整个文件夹即可；原有 ZIP 入口继续可用。字段范围、不可用指标、耗时判读和视频复测见 [实机性能日志](DEVICE_PERFORMANCE_LOGS.md)。
 

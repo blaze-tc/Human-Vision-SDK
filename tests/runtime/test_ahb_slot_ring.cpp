@@ -39,6 +39,21 @@ void Complete(AhbSlotRing& r,SlotToken t){
  ASSERT_EQ(r.Transition(t,AhbSlotState::ConsumerReleasePending,AhbSlotState::Free,CompletionProof::GpuQuiescent),SlotResult::Ok);
 }
 }
+TEST(AhbSlotRing, ExplicitDualConsumersKeepOneCopySlotAndRequireCompletion){
+ Owners o;AhbSlotRing r(o.Hooks());ASSERT_TRUE(r.Reconfigure(Contract()));
+ SlotToken first,second,third,selected;SlotMetadata data;
+ ASSERT_EQ(r.Reserve(1,1,first),SlotResult::Ok);Ready(r,o,first);
+ ASSERT_EQ(r.ClaimNewest(selected,data,2),SlotResult::Ok);
+ ASSERT_EQ(r.Reserve(2,2,second),SlotResult::Ok);Ready(r,o,second);
+ EXPECT_EQ(r.ClaimNewest(selected,data),SlotResult::NoReady); // default stays single
+ ASSERT_EQ(r.ClaimNewest(selected,data,2),SlotResult::Ok);EXPECT_EQ(selected.frame_id,2u);
+ ASSERT_EQ(r.Reserve(3,3,third),SlotResult::Ok);Ready(r,o,third);
+ EXPECT_EQ(r.ClaimNewest(selected,data,2),SlotResult::NoReady);
+ EXPECT_EQ(r.ClaimNewest(selected,data,3),SlotResult::Invalid);
+ EXPECT_EQ(r.ClaimNewest(selected,data,0),SlotResult::Invalid);
+ Complete(r,first);ASSERT_EQ(r.ClaimNewest(selected,data,2),SlotResult::Ok);EXPECT_EQ(selected.frame_id,3u);
+ Complete(r,second);Complete(r,third);
+}
 TEST(AhbSlotRing, ExhaustiveTransitionMatrixRejectsEveryIllegalEdge){
  using S=AhbSlotState;
  for(int a=0;a<int(S::Count);++a)for(int b=0;b<int(S::Count);++b)for(bool proof:{false,true}){

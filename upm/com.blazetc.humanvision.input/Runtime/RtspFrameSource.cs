@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Runtime.InteropServices;
 using System.Text;
 using UnityEngine;
@@ -23,6 +24,7 @@ namespace HumanVision.Input
             bool TryAcquireSourceCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease);
             void Open(HumanVisionSourceSettings settings, int timeout, int delay);
             void Tick();
+            void PumpGpu();
             void Close();
             void Fail(string message);
         }
@@ -38,11 +40,42 @@ namespace HumanVision.Input
             public bool TryAcquireSourceCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease) => source.TryAcquireSourceCopyLease(in frame, out lease);
             public void Open(HumanVisionSourceSettings settings, int timeout, int delay) => source.Open(settings, timeout, delay);
             public void Tick() => source.Tick();
+            public void PumpGpu() => source.PumpGpu();
             public void Close() => source.Close();
             public void Fail(string message) => source.Fail(message);
         }
         internal Func<IAndroidSource> CreateAndroidSource;
         private IAndroidSource android;
+        private Coroutine renderPump;
+        private void OnEnable()
+        {
+            if (Application.isPlaying && UsesAndroidSource)
+                renderPump = StartCoroutine(PumpRenderFrames());
+        }
+        protected override void OnDisable()
+        {
+            if (renderPump != null) { StopCoroutine(renderPump); renderPump = null; }
+            base.OnDisable();
+        }
+        private IEnumerator PumpRenderFrames()
+        {
+            var endOfFrame = new WaitForEndOfFrame();
+            while (true) {
+                yield return endOfFrame;
+                PumpAndroidRenderEndOfFrame();
+            }
+        }
+        // The early Update event can observe a still-pending GPU fence. A second
+        // opportunity after rendering can start the next latest image without
+        // waiting a whole Unity frame. No busy loop, extra image queue or second
+        // inference instance; native still serializes on its one converter fence.
+        private void PumpAndroidRenderEndOfFrame()
+        {
+            if (android == null || androidSuspended || android.Handle == IntPtr.Zero ||
+                (android.State != InputSourceState.Opening && android.State != InputSourceState.Streaming && android.State != InputSourceState.Reconnecting)) return;
+            try { android.PumpGpu(); }
+            catch (Exception) { androidOpenRequested = false; androidSettings = null; android.Fail("RTSP end-of-frame GPU scheduling failed."); State = android.State; LastError = android.LastError; }
+        }
         private bool UsesAndroidSource
         {
             get {

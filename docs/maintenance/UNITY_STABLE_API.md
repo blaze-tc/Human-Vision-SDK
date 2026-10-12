@@ -47,3 +47,15 @@ thread; promotion commits the already-installed region revision once, and
 internal replacement retirement stays Busy instead of exposing Stopped. Keep
 the candidate owned by its initializer invocation so event reentrancy cannot
 promote a different request. See ../reports/2026-10-09-dual-acceleration-integration.md.
+
+## 2026-10-12 configuration assets
+
+HumanVisionSdkPreset owns project defaults and clones all mutable data. InitializeFromPreset
+accepts camera name/RTSP URL/video path in gameplay code. The public facade adds StartSdk,
+RestartSdk, TryGetInputFrame and copied 2D/world-plane skeletons; no V1 member is removed.
+Settings seeds all three independent input tabs from asset defaults when no saved file exists.
+World vectors remain a plane projection (SupportsMetric3D=false).
+The current tested UPM C# changes have been reconciled into canonical Runtime/Demo/Editor/Tests;
+never regenerate current packages from an older checkout. Published samples are Settings only.
+Legacy callable builder classes remain for Editor API compatibility, without menu entries.
+See ../user-guide/SDK_CONFIGURATION.md and ../reports/2026-10-12-sdk-preset-api.md.

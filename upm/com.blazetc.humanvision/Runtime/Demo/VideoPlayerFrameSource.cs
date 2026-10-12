@@ -224,7 +224,54 @@ namespace HumanVision.Demo
             _inputAdapter.manager=manager;_unifiedPreviewLastId = -1; _unifiedPreviewCount = 0; _unifiedPreviewFps = 0; _unifiedPreviewStart = Time.unscaledTime;
             _inputAdapter.Bind(source);_livePreview=true;
         }
-        public void DetachUnifiedSource(){if(_inputAdapter!=null)_inputAdapter.Detach();_unifiedSource=null;}
+        public void DetachUnifiedSource(){if(_inputAdapter!=null)_inputAdapter.Detach();_unifiedSource=null;ResetPresentation();}
+        private PresentationTextureHistory _displayHistory;
+        private readonly PresentationPoseHistory _displayPoses=new PresentationPoseHistory();
+        private ulong _displaySource, _displayGeneration;
+        private long _displaySequence=-1;
+        private int _displayWidth,_displayHeight,_poseWidth,_poseHeight;
+        private double _displayDelayMs=120;
+        internal bool UsesPresentationTimeline=>_unifiedSource!=null&&_displayHistory!=null;
+        internal HumanVisionBody[] DisplayBodies=>UsesPresentationTimeline?_displayPoses.Bodies:manager.Bodies;
+        internal int DisplayBodyCount=>UsesPresentationTimeline?_displayPoses.Count:manager.BodyCount;
+        [Serializable] public struct PresentationStatistics {
+            public long inputFrame, submittedFrame, resultFrame, displayFrame, poseBeforeFrame, poseAfterFrame;
+            public double delayMs;
+            public string mode;
+        }
+        public PresentationStatistics PresentationStats=>new PresentationStatistics {
+            inputFrame=_unifiedPreviewLastId,submittedFrame=LatestSubmittedFrameId,resultFrame=manager!=null?manager.SourceFrameId:-1,
+            displayFrame=PresentationFrameId,poseBeforeFrame=_displayPoses.BeforeFrame,poseAfterFrame=_displayPoses.AfterFrame,
+            delayMs=_displayHistory?.TimestampUs>0?Time.realtimeSinceStartupAsDouble*1000-_displayHistory.TimestampUs/1000d:0,
+            mode=UsesPresentationTimeline?_displayPoses.Mode:"live-latest"
+        };
+        private void ResetPresentation(){_displayHistory?.Dispose();_displayHistory=null;_displayPoses.Reset();_displaySource=_displayGeneration=0;_displaySequence=-1;_displayDelayMs=120;}
+        private void PresentUnifiedTimeline(Texture texture) {
+            if(!SystemInfo.supportsGraphicsFence||string.Equals(Environment.GetEnvironmentVariable("HV_PRESENTATION_MODE"),"live",StringComparison.Ordinal)) {PresentLiveTexture(texture);return;}
+            if(!_unifiedSource.TryGetLatestFrame(-1,out var frame))return;
+            if(_displaySource!=frame.SourceId||_displayGeneration!=frame.Generation||_displayWidth!=frame.Width||_displayHeight!=frame.Height){
+                ResetPresentation();_displaySource=frame.SourceId;_displayGeneration=frame.Generation;_displayWidth=frame.Width;_displayHeight=frame.Height;
+                _displayHistory=new PresentationTextureHistory();
+            }
+            long now=(long)(Time.realtimeSinceStartupAsDouble*1000000),inputNow=InputMonotonicClock.NowUs;
+            long observed=manager!=null&&manager.UsesRuntimeProfile&&!manager.UsesAndroidGpuFrames
+                ?InputTimestampMapping.ToUnity(in frame,inputNow,now):InputTimestampMapping.Map(frame.PublishedTimestampUs,inputNow,now);
+            _displayHistory.Capture(_unifiedSource,in frame,observed);
+            if(manager!=null&&manager.IsInitialized&&_inputAdapter.CanPresentResult(manager.SourceFrameId)&&manager.ResultSequence!=_displaySequence){
+                if(_poseWidth!=ResultPixelWidth||_poseHeight!=ResultPixelHeight){_displayPoses.Reset();_poseWidth=ResultPixelWidth;_poseHeight=ResultPixelHeight;}
+                _displaySequence=manager.ResultSequence;
+                long resultTime=manager.SourceTimestampUs;
+                if(manager.UsesRuntimeProfile&&!manager.UsesAndroidGpuFrames)resultTime=InputTimestampMapping.Map(resultTime,HumanVision.Interop.RuntimeBindings.HV_RuntimeClockUs(),now);
+                // A short bounded presentation delay supplies the result bracketing the shown image.
+                // Raw observations, callbacks and fresh inference counters remain unchanged.
+                _displayDelayMs=Math.Max(80,Math.Min(200,_displayDelayMs*.9+((now-resultTime)/1000d+40)*.1));
+                _displayPoses.Add(manager.SourceFrameId,resultTime,manager.Bodies,manager.BodyCount);
+            }
+            _displayHistory.Present(now-(long)(_displayDelayMs*1000));
+            _displayPoses.Sample(_displayHistory.TimestampUs);
+            if(_displayHistory.Texture!=null)PresentLiveTexture(_displayHistory.Texture);
+            PresentationFrameChanged?.Invoke();
+        }
         private void LateUpdate(){
             if (_unifiedSource != null && _unifiedSource.TryGetLatestFrame(_unifiedPreviewLastId, out var published)) {
                 _unifiedPreviewLastId = published.FrameId; ++_unifiedPreviewCount;
@@ -234,7 +281,7 @@ namespace HumanVision.Demo
 
             if(_unifiedSource==null)return;
             var texture=_unifiedSource.CurrentTexture;
-            if(texture!=null){if(SourceWidth!=texture.width||SourceHeight!=texture.height){SourceWidth=texture.width;SourceHeight=texture.height;VideoLayoutChanged?.Invoke();}PresentLiveTexture(texture);}
+            if(texture!=null){if(SourceWidth!=texture.width||SourceHeight!=texture.height){SourceWidth=texture.width;SourceHeight=texture.height;VideoLayoutChanged?.Invoke();}PresentUnifiedTimeline(texture);}
             LastError=!string.IsNullOrEmpty(_unifiedSource.LastError)?_unifiedSource.LastError:_inputAdapter.LastError;
         }
 
@@ -359,8 +406,8 @@ namespace HumanVision.Demo
         public double VideoFrameRate => _unifiedSource != null ? _unifiedPreviewFps : !IsStillImage && _videoPlayer != null ? _videoPlayer.frameRate : 0d;
         public int PresentationDelayFrames => presentationDelayFrames;
         public long LatestSubmittedFrameId => _unifiedSource!=null&&_inputAdapter!=null?_inputAdapter.LatestSubmittedFrameId:_latestSubmittedFrameId;
-        public long PresentationFrameId => _unifiedSource != null && _inputAdapter != null ? _inputAdapter.LatestPreviewFrameId : _presentationFrameId;
-        public Texture PresentationTexture => _unifiedSource!=null?_unifiedSource.CurrentTexture:_livePreview ? _liveTexture : (targetDisplay != null ? targetDisplay.texture : _renderTexture);
+        public long PresentationFrameId => UsesPresentationTimeline ? _displayHistory.FrameId : _unifiedSource != null && _inputAdapter != null ? _inputAdapter.LatestPreviewFrameId : _presentationFrameId;
+        public Texture PresentationTexture => UsesPresentationTimeline ? _displayHistory.Texture : _unifiedSource!=null?_unifiedSource.CurrentTexture:_livePreview ? _liveTexture : (targetDisplay != null ? targetDisplay.texture : _renderTexture);
 
         public void StopFrames() { DetachUnifiedSource();if(_ownedUnifiedVideo!=null)_ownedUnifiedVideo.Close();StopCurrentVideo(); _liveTexture = null; _livePendingFrameId = -1; _nextLiveSubmitTime = 0; }
 

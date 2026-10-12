@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using HumanVision.Demo;
@@ -21,7 +21,7 @@ namespace HumanVision.TestProject.Diagnostics
         [SerializeField,Min(30)] private float sampleSeconds=60;
         [SerializeField,Min(60)] private float sustainedSeconds=300;
         private bool running,cancelled,failed,pixelsPassed;
-        private string failure,oldInput,oldResize,oldCopy;
+        private string failure,oldInput,oldResize,oldCopy,oldInstances,oldModel,oldVulkanInstances,oldCpuInstances;
         private HumanVisionSettingsData savedDraft;
         private HumanVisionSdkOptions previousRuntime;
         private CanvasGroup controls;
@@ -53,6 +53,9 @@ namespace HumanVision.TestProject.Diagnostics
             oldInput=Environment.GetEnvironmentVariable("HV_RKNN_INPUT_MEMORY_MODE");
             oldResize=Environment.GetEnvironmentVariable("HV_MODEL_READBACK_MODE");
             oldCopy=Environment.GetEnvironmentVariable("HV_SOURCE_COPY_MODE");
+            oldInstances=Environment.GetEnvironmentVariable("HV_RKNN_INSTANCE_COUNT");
+            oldModel=Environment.GetEnvironmentVariable("HV_RKNN_MODEL_CANDIDATE");
+            oldVulkanInstances=Environment.GetEnvironmentVariable("HV_VULKAN_INSTANCE_COUNT");oldCpuInstances=Environment.GetEnvironmentVariable("HV_CPU_INSTANCE_COUNT");
             controls=controller.View.GetComponent<CanvasGroup>()??controller.View.gameObject.AddComponent<CanvasGroup>();
             oldInteractable=controls.interactable;controlsLocked=true;controls.interactable=false;
             controller.OperationNotice="自动对照运行中，设置暂时锁定；点击右下「停止对照 / 解锁设置」恢复手动操作";
@@ -109,6 +112,7 @@ namespace HumanVision.TestProject.Diagnostics
                 if(neural) {
                     yield return Measure(kind,video,HumanVisionAccelerationMode.Neural,true,sampleSeconds);
                     yield return Measure(kind,video,HumanVisionAccelerationMode.Neural,false,sampleSeconds);
+                    yield return Measure(kind,video,HumanVisionAccelerationMode.Neural,false,sampleSeconds,1,true);
                     // A repeated baseline exposes temperature/order drift in the same installation.
                     yield return Measure(kind,video,HumanVisionAccelerationMode.Neural,true,sampleSeconds);
                 } else {
@@ -118,14 +122,17 @@ namespace HumanVision.TestProject.Diagnostics
             }
             yield return Measure(InputKind.Video,video,neural?HumanVisionAccelerationMode.Neural:HumanVisionAccelerationMode.Graphics,false,sustainedSeconds);
         }
-        private IEnumerator Measure(InputKind kind,string video,HumanVisionAccelerationMode mode,bool baseline,float seconds)
+        private IEnumerator Measure(InputKind kind,string video,HumanVisionAccelerationMode mode,bool baseline,float seconds,int instances=1,bool foldedModel=false)
         {
             yield return controller.Sdk.StopSdk();
-            SetEnvironment(baseline);
+            SetEnvironment(baseline,instances);
+            Environment.SetEnvironmentVariable("HV_RKNN_MODEL_CANDIDATE",foldedModel?"folded-output":"baseline");
             var settings=savedDraft.Clone();settings.SourceKind=kind;settings.SelectAcceleration(mode);
             settings.InputQuality=ModelInputQuality.Low;settings.Video.VideoPath=video;
             var options=settings.ToOptions();
             string phase=kind+"/"+mode+"/"+(baseline?"baseline":"candidate")+"/"+seconds+"s";
+            if(instances>1)phase+="/instances-"+instances;
+            if(foldedModel)phase+="/folded-output";
             Status=phase;RefreshButton();controller.Edit(()=>settings);
             diagnostics.RecordBenchmark(phase,"opening; saved preferences remain unchanged");
             yield return controller.Sdk.Initialize(options);
@@ -134,7 +141,17 @@ namespace HumanVision.TestProject.Diagnostics
             // apply the same display style as the regular settings Apply action.
             controller.View.Overlay.ConfigureStyle(settings.Mode.LineWidth,settings.Mode.PointDiameter);
             yield return Wait(warmupSeconds);
+            if(!controller.Sdk.RuntimeDiagnostics.Contains("Inference instances="+instances+"\n")) {
+                diagnostics.RecordBenchmark(phase,"UNAVAILABLE: actual instance count differs; "+controller.Sdk.RuntimeDiagnostics);yield break;
+            }
             if(mode==HumanVisionAccelerationMode.Neural) {
+                if(foldedModel&&!controller.Sdk.RuntimeDiagnostics.Contains("folded-output.rknn:")) {
+                    failed=true;diagnostics.RecordBenchmark(phase,"INVALID: pinned folded model was not selected; "+controller.Sdk.RuntimeDiagnostics);yield break;
+                }
+                if(!controller.Sdk.RuntimeDiagnostics.Contains("Inference instances="+instances+"\n")) {
+                    diagnostics.RecordBenchmark(phase,"UNAVAILABLE: requested instance count was not created; "+controller.Sdk.RuntimeDiagnostics);
+                    yield break; // Never label a fallback single instance as pool evidence.
+                }
                 bool actualLegacy=controller.Sdk.RuntimeDiagnostics.Contains("input_path=legacy-requested");
                 if(actualLegacy!=baseline) {
                     failed=true;failure="Native input mode did not match this comparison phase";
@@ -176,16 +193,21 @@ namespace HumanVision.TestProject.Diagnostics
 #endif
             return Application.platform==RuntimePlatform.Android && hardware.IndexOf("rk3588",StringComparison.OrdinalIgnoreCase)>=0;
         }
-        private void SetEnvironment(bool baseline) {
+        private void SetEnvironment(bool baseline,int instances) {
             Environment.SetEnvironmentVariable("HV_RKNN_INPUT_MEMORY_MODE",baseline?"legacy":"auto");
             Environment.SetEnvironmentVariable("HV_MODEL_READBACK_MODE",baseline||!pixelsPassed?"legacy":"auto");
             Environment.SetEnvironmentVariable("HV_SOURCE_COPY_MODE",baseline?"legacy":"auto");
+            Environment.SetEnvironmentVariable("HV_RKNN_INSTANCE_COUNT",instances.ToString());
+            Environment.SetEnvironmentVariable("HV_VULKAN_INSTANCE_COUNT",Math.Min(instances,2).ToString());Environment.SetEnvironmentVariable("HV_CPU_INSTANCE_COUNT",instances.ToString());
         }
         private void RestoreEnvironment() {
             if(!running)return;
             Environment.SetEnvironmentVariable("HV_RKNN_INPUT_MEMORY_MODE",oldInput);
             Environment.SetEnvironmentVariable("HV_MODEL_READBACK_MODE",oldResize);
             Environment.SetEnvironmentVariable("HV_SOURCE_COPY_MODE",oldCopy);
+            Environment.SetEnvironmentVariable("HV_RKNN_INSTANCE_COUNT",oldInstances);
+            Environment.SetEnvironmentVariable("HV_RKNN_MODEL_CANDIDATE",oldModel);
+            Environment.SetEnvironmentVariable("HV_VULKAN_INSTANCE_COUNT",oldVulkanInstances);Environment.SetEnvironmentVariable("HV_CPU_INSTANCE_COUNT",oldCpuInstances);
         }
         private void ClosePreview() {
             if(preview!=null){preview.Bind(null);preview.enabled=false;preview=null;}

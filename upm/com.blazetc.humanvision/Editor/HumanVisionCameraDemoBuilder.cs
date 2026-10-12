@@ -10,9 +10,7 @@ namespace HumanVision.Editor
 {
     public static class HumanVisionCameraDemoBuilder
     {
-        [MenuItem("Tools/Human Vision/Legacy Examples/Create Live Camera Demo")]
         public static void CreateScene() { HumanVisionUnifiedDemoBuilder.CreateScenes(); }
-        [MenuItem("Tools/Human Vision/Legacy Examples/Create Camera Settings Scene")]
         public static void CreateSettingsScene() { CreatePair(true); }
         private static void CreatePair(bool openSettings)
         {

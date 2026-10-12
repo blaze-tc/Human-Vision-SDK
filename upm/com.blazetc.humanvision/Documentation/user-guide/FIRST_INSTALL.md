@@ -1,3 +1,5 @@
+> 当前分支新增 ScriptableObject 默认配置、代码指定输入源及统一查询 API，请先阅读 [当前接入说明](SDK_CONFIGURATION.md)。下文含已发布版本和兼容 API 的历史说明。
+
 # 第一次安装使用引导
 
 preview.5 推荐先看 [HumanVisionSdk 单组件入口](UNITY_SDK.md)：挂载一个总控即可使用。以下直接组合 Runtime/Input 的旧代码入门方式继续兼容。
@@ -6,7 +8,7 @@ preview.5 推荐先看 [HumanVisionSdk 单组件入口](UNITY_SDK.md)：挂载�
 
 本页教你在自己的脚本里完成三件事：**初始化SDK、输入图像、读取骨骼**。先以Windows摄像头为例，创建一个空物体并挂一份脚本即可。
 
-最省事的做法：安装资源后，将完整的[SdkBasicUsage.cs](examples/SdkBasicUsage.cs)复制到`Assets/Scripts/SdkBasicUsage.cs`，在Hierarchy创建空物体并挂上它，然后Play。下面按这个脚本的执行顺序解释各段代码；片段都属于同一个类，不用创建多份脚本。
+最省事的做法：安装资源后，将完整的[SdkBasicUsage.cs](examples/SdkBasicUsage.cs.txt)复制到`Assets/Scripts/SdkBasicUsage.cs`，在Hierarchy创建空物体并挂上它，然后Play。下面按这个脚本的执行顺序解释各段代码；片段都属于同一个类，不用创建多份脚本。
 
 ## 1. 安装包和模型
 
@@ -204,7 +206,7 @@ manager.Shutdown();
 如果想避免每次创建空物体再拖脚本：
 
 1. 先把完整`SdkBasicUsage.cs`放到`Assets/Scripts`。
-2. 再把[SdkBasicUsageMenu.cs](examples/Editor/SdkBasicUsageMenu.cs)放到`Assets/Editor`。目录必须叫Editor，让Unity只在编辑器编译它。
+2. 再把[SdkBasicUsageMenu.cs](examples/Editor/SdkBasicUsageMenu.cs.txt)放到`Assets/Editor`。目录必须叫Editor，让Unity只在编辑器编译它。
 3. 编译结束，在Hierarchy右键选择**Human Vision → SDK Starter**，或顶部**GameObject → Human Vision → SDK Starter**。
 4. 自动生成的物体已挂上SdkBasicUsage与所需组件，Play就会执行本页的初始化/相机/结果流程。
 

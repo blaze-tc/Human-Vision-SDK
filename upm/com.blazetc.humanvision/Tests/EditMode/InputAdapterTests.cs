@@ -138,6 +138,21 @@ public sealed class InputAdapterTests {
         }
         UnityEngine.Object.DestroyImmediate(go);
     }
+    [Test] public void TemporarilyUnreadyConsumerRetriesLatestFrameWithoutInferringItTwice() {
+        var source=new Source();var go=new GameObject("CPU retry latest source");
+        try {
+            var manager=go.AddComponent<HumanVisionManager>();var session=new RecordingSession();Set(manager,"_session",session);
+            var bridge=CpuBridge(go);bridge.BindUnifiedSource(source);Set(bridge,"_rowOrderReady",false);
+            var adapter=go.GetComponent<HumanVisionInputAdapter>();adapter.Tick();
+            Assert.That(session.Count,Is.Zero);Assert.That(adapter.LatestPreviewFrameId,Is.EqualTo(source.FrameId));
+            Set(bridge,"_rowOrderReady",true);adapter.Tick();
+            UnityEngine.Rendering.AsyncGPUReadback.WaitAllRequests();source.Retirement.Poll();adapter.Tick();
+            Assert.That(session.Count,Is.EqualTo(1),"The only pending source frame must survive temporary admission failure.");
+            Set(bridge,"_cpuAdmission",default(GpuFrameAdmissionPolicy));adapter.Tick();
+            UnityEngine.Rendering.AsyncGPUReadback.WaitAllRequests();
+            Assert.That(session.Count,Is.EqualTo(1),"Retry must stop after this source frame was accepted.");
+        } finally {DestroyCpuTestObject(go,source);UnityEngine.Object.DestroyImmediate(source.Texture);}
+    }
     [Test] public void CpuAdapterPreservesConfiguredPreviewBindings() {
         var source=new Source();var go=new GameObject("CPU adapter bindings");var displayGo=new GameObject("preview",typeof(RectTransform),typeof(UnityEngine.UI.RawImage),typeof(UnityEngine.UI.AspectRatioFitter));
         try {

@@ -26,7 +26,7 @@ std::string Message(const char* text, const char* fallback) {
 
 gpu::SlotResult BridgeGpuConsumerSource::Claim(gpu::ConsumerFrame& frame) noexcept {
     return bridge_ && lease_active_.load(std::memory_order_acquire)
-        ? bridge_->ClaimConsumer(frame) : gpu::SlotResult::NoReady;
+        ? bridge_->ClaimConsumer(frame,concurrency_.load()) : gpu::SlotResult::NoReady;
 }
 gpu::SlotResult BridgeGpuConsumerSource::ClaimDropped(gpu::ConsumerFrame& frame) noexcept {
     return bridge_ && lease_active_.load(std::memory_order_acquire)
@@ -46,7 +46,12 @@ uint64_t BridgeGpuConsumerSource::Generation() const noexcept { return bridge_ ?
 bool GpuRuntimeHost::Start(std::shared_ptr<const GpuPluginModuleV3> module,
                            const HV_HostServicesV3& services, const HV_PipelineConfigV1& config,
                            std::string& error) {
-    if (!module || module->api.v1.type != HV_PLUGIN_PIPELINE || !module->api.gpu_pipeline ||
+    return StartPool(std::move(module),services,config,1,error);
+}
+bool GpuRuntimeHost::StartPool(std::shared_ptr<const GpuPluginModuleV3> module,
+                           const HV_HostServicesV3& services, const HV_PipelineConfigV1& config,
+                           uint32_t count, std::string& error) {
+    if (!count || count>2 || !module || module->api.v1.type != HV_PLUGIN_PIPELINE || !module->api.gpu_pipeline ||
         module->api.gpu_pipeline->struct_size < sizeof(HV_GpuPipelineApiV2) ||
         module->api.gpu_pipeline->api_version != HV_GPU_PIPELINE_API_V2 ||
         !module->api.gpu_pipeline->create || !module->api.gpu_pipeline->destroy ||
@@ -55,33 +60,28 @@ bool GpuRuntimeHost::Start(std::shared_ptr<const GpuPluginModuleV3> module,
         config.max_bodies > static_cast<int>(module->api.v1.max_people)) {
         error = "Invalid V3 GPU pipeline configuration"; return false;
     }
-    Stop();
-    char text[1024]{};
-    HV_ErrorBufferV1 buffer{sizeof(buffer), HV_PLUGIN_API_V1, text, sizeof(text)};
-    void* created = nullptr;
-    HV_Result status = HV_ERR_INTERNAL;
-    try { status = module->api.gpu_pipeline->create(&config, &services, &created, &buffer); }
-    catch (...) {
-        if (created) { try { module->api.gpu_pipeline->destroy(created); } catch (...) {} }
-        error = "V3 GPU pipeline creation threw across C ABI"; return false;
+    const auto destroy=[module](void* p){if(p){try{module->api.gpu_pipeline->destroy(p);}catch(...){}}};
+    std::vector<std::unique_ptr<void,decltype(destroy)>> candidates;
+    candidates.reserve(count);
+    for(uint32_t i=0;i<count;++i){
+        char text[1024]{};HV_ErrorBufferV1 buffer{sizeof(buffer),HV_PLUGIN_API_V1,text,sizeof(text)};
+        void* created=nullptr;HV_Result status=HV_ERR_INTERNAL;
+        try {status=module->api.gpu_pipeline->create(&config,&services,&created,&buffer);}
+        catch(...){destroy(created);error="V3 GPU pipeline creation threw across C ABI";return false;}
+        text[sizeof(text)-1]=0;
+        if(status!=HV_OK||!created){destroy(created);error=Message(text,"V3 GPU pipeline creation failed");return false;}
+        candidates.emplace_back(created,destroy);
     }
-    text[sizeof(text)-1] = 0;
-    if (status != HV_OK || !created) {
-        if (created) { try { module->api.gpu_pipeline->destroy(created); } catch (...) {} }
-        error = Message(text, "V3 GPU pipeline creation failed"); return false;
-    }
-    module_ = std::move(module); instance_ = created; capacity_ = config.max_bodies;
-    superseded_ready_drops_=0;pose_job_drops_=0;import_errors_=0;
-    {
-        std::lock_guard<std::mutex> lock(result_mutex_);
-        latest_ = {}; result_revision_ = 0; sequence_ = 0; has_result_ = false; error_.clear();
-    }
-    running_ = true;
-    try { worker_ = std::thread(&GpuRuntimeHost::Run, this); }
-    catch (...) {
-        running_ = false; module_->api.gpu_pipeline->destroy(instance_); instance_ = nullptr;
-        module_.reset(); error = "Cannot start V3 GPU worker"; return false;
-    }
+    // Build every independent context before replacing a running pool. Partial
+    // creation failure destroys candidates and preserves the previous host.
+    Stop();module_=std::move(module);capacity_=config.max_bodies;
+    for(uint32_t i=0;i<count;++i)instances_[i]=candidates[i].release();
+    superseded_ready_drops_=0;pose_job_drops_=0;import_errors_=0;active_workers_=0;
+    {std::lock_guard<std::mutex> lock(result_mutex_);
+     latest_={};result_revision_=0;sequence_=0;latest_generation_=0;has_result_=false;error_.clear();}
+    source_.SetConcurrency(count);worker_count_=count;running_=true;
+    try{for(uint32_t i=0;i<count;++i)workers_[i]=std::thread(&GpuRuntimeHost::Run,this,i);}
+    catch(...){Stop();error="Cannot start V3 GPU worker pool";return false;}
     error.clear(); return true;
 }
 
@@ -107,20 +107,32 @@ std::string GpuRuntimeHost::LastError() const {
 }
 PipelineDiagnostics GpuRuntimeHost::Diagnostics() const {
     PipelineDiagnostics result{};
-    if(instance_)CopyPipelineDiagnostics(instance_,result);
+    // Counters accumulate across contexts; stage times refer to one most recently
+    // captured diagnostics record and must not be summed into fictitious latency.
+    uint64_t executions=0,attempted=0,failures=0;
+    for(uint32_t i=0;i<worker_count_;++i){PipelineDiagnostics item{};if(!instances_[i])continue;
+      CopyPipelineDiagnostics(instances_[i],item);executions+=item.detector_execution_count;
+      attempted+=item.detector_attempted;failures+=item.pose_validation_failures;result=item;}
+    result.detector_execution_count=executions;result.detector_attempted=attempted;result.pose_validation_failures=failures;
     return result;
 }
 void GpuRuntimeHost::Stop() {
     running_ = false;
-    if (worker_.joinable()) worker_.join();
-    if (instance_) { try { module_->api.gpu_pipeline->destroy(instance_); } catch (...) {} instance_ = nullptr; }
+    for(auto& worker:workers_)if(worker.joinable())worker.join();
+    for(auto& instance:instances_)if(instance){try{module_->api.gpu_pipeline->destroy(instance);}catch(...){}instance=nullptr;}
+    worker_count_=0;active_workers_=0;source_.SetConcurrency(1);
     module_.reset();
     std::lock_guard<std::mutex> lock(result_mutex_); has_result_ = false;
 }
 
-void GpuRuntimeHost::Run() {
+void GpuRuntimeHost::Run(uint32_t index) {
+    auto* instance=instances_[index];
     while (running_) {
         gpu::ConsumerFrame frame;
+        // Source admission is short and serialized; the expensive per-instance
+        // pipeline calls remain independent. A source need not have multi-consumer
+        // publication bookkeeping of its own.
+        std::unique_lock<std::mutex> admission(source_claim_mutex_);
         const auto dropped = source_.ClaimDropped(frame);
         if (dropped == gpu::SlotResult::Ok) {
             ++superseded_ready_drops_;
@@ -128,6 +140,7 @@ void GpuRuntimeHost::Run() {
             continue;
         }
         const auto claimed = source_.Claim(frame);
+        admission.unlock();
         if (claimed != gpu::SlotResult::Ok) {
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
             continue;
@@ -151,7 +164,9 @@ void GpuRuntimeHost::Run() {
             generation, HV_GPU_IMAGE_RGBA8_UNORM, 0},revision,frame.metadata.capture_steady_us};
         char text[1024]{}; HV_ErrorBufferV1 buffer{sizeof(buffer), HV_PLUGIN_API_V1, text, sizeof(text)};
         HV_Result status = HV_ERR_INTERNAL;
-        try { status = module_->api.gpu_pipeline->process_gpu(instance_, &input.v1, &next.v1, &buffer); }
+        ++active_workers_;
+        struct ActiveReset{std::atomic<uint32_t>& n;~ActiveReset(){--n;}} active_reset{active_workers_};
+        try { status = module_->api.gpu_pipeline->process_gpu(instance, &input.v1, &next.v1, &buffer); }
         catch (...) { std::strncpy(text, "V3 GPU process threw across C ABI", sizeof(text)-1); }
         text[sizeof(text)-1] = 0;
         bool retired = !frame.claimed;
@@ -174,6 +189,11 @@ void GpuRuntimeHost::Run() {
                 "V3 GPU output count or source generation invalid";
             continue;
         }
+        // Serialize publication only. Model calls run concurrently on independent
+        // instances; a late older completion cannot roll tracking/preview backward.
+        std::lock_guard<std::mutex> publish(publication_mutex_);
+        if(worker_count_>1 && (revision!=revision_.load()||generation<latest_generation_||
+           (generation==latest_generation_&&has_result_&&input.v1.frame_id<=latest_.v1.source_frame_id))){++pose_job_drops_;continue;}
         next.v1.sequence = ++sequence_;
         next.v1.source_frame_id = input.v1.frame_id; next.v1.source_timestamp_us = input.v1.timestamp_us;
         next.v1.width = input.v1.width; next.v1.height = input.v1.height;
@@ -184,7 +204,7 @@ void GpuRuntimeHost::Run() {
             continue;
         }
         std::lock_guard<std::mutex> lock(result_mutex_);
-        latest_ = next; result_revision_ = revision;
+        latest_ = next; latest_generation_=generation; result_revision_ = revision;
         capture_steady_us_ = input.capture_steady_us;
         has_result_ = true; error_.clear();
     }

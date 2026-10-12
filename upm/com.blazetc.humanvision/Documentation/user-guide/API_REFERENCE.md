@@ -1,3 +1,5 @@
+> 当前分支新增 ScriptableObject 默认配置、代码指定输入源及统一查询 API，请先阅读 [当前接入说明](SDK_CONFIGURATION.md)。下文含已发布版本和兼容 API 的历史说明。
+
 # 推荐入口：HumanVisionSdk（preview.5）
 
 先看 [单组件使用](UNITY_SDK.md)，无需直接组合 Manager/FrameSource。下面旧接口仍兼容。
@@ -46,7 +48,7 @@
 
 ## 2. Start初始化与骨骼读取示例
 
-先看[代码入门引导](FIRST_INSTALL.md)：在一个空物体上挂[SdkBasicUsage.cs](examples/SdkBasicUsage.cs)，无需配置Canvas/预览/Overlay。它使用当前包API，自动关联所需组件。
+先看[代码入门引导](FIRST_INSTALL.md)：在一个空物体上挂[SdkBasicUsage.cs](examples/SdkBasicUsage.cs.txt)，无需配置Canvas/预览/Overlay。它使用当前包API，自动关联所需组件。
 
 | 代码所在位置 | 调用与含义 | 引导片段 |
 | --- | --- | --- |
@@ -60,7 +62,7 @@
 
 ## 3. 运行数据与初始化配置
 
-来源：[HumanVisionRuntimeData](../../upm/com.blazetc.humanvision/Runtime/HumanVisionRuntimeData.cs)、[HumanVisionConfig](../../upm/com.blazetc.humanvision/Runtime/HumanVisionConfig.cs)。
+来源：[HumanVisionRuntimeData](../../upm/com.blazetc.humanvision/Runtime/HumanVisionRuntimeData.cs.txt)、[HumanVisionConfig](../../upm/com.blazetc.humanvision/Runtime/HumanVisionConfig.cs.txt)。
 
 ### 3.1 `HumanVisionRuntimeData.Prepare(Action<string> ready, Action<string> failed)`
 
@@ -89,7 +91,7 @@
 
 ## 4. `HumanVisionManager`逐项说明
 
-来源：[HumanVisionManager.cs](../../upm/com.blazetc.humanvision/Runtime/HumanVisionManager.cs)。新接入由自己的启动脚本持有Manager并管理生命周期，示例见第2节。
+来源：[HumanVisionManager.cs](../../upm/com.blazetc.humanvision/Runtime/HumanVisionManager.cs.txt)。新接入由自己的启动脚本持有Manager并管理生命周期，示例见第2节。
 
 ### 4.1 初始化、提交、容量与关闭
 
@@ -169,7 +171,7 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 
 ## 5. 身体、关节点与统计数据
 
-来源：[HumanVisionBody](../../upm/com.blazetc.humanvision/Runtime/HumanVisionBody.cs)、[CanonicalJoint](../../upm/com.blazetc.humanvision/Runtime/HumanVisionCanonicalJoint.cs)、[Stats](../../upm/com.blazetc.humanvision/Runtime/HumanVisionStats.cs)。这些是只读结果，不能由游戏写入伪造观察。
+来源：[HumanVisionBody](../../upm/com.blazetc.humanvision/Runtime/HumanVisionBody.cs.txt)、[CanonicalJoint](../../upm/com.blazetc.humanvision/Runtime/HumanVisionCanonicalJoint.cs.txt)、[Stats](../../upm/com.blazetc.humanvision/Runtime/HumanVisionStats.cs.txt)。这些是只读结果，不能由游戏写入伪造观察。
 
 ### 5.1 `HumanVisionBody`每项字段
 
@@ -240,7 +242,7 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 
 ## 6. 统一输入包API
 
-来源：[IHumanVisionFrameSource](../../upm/com.blazetc.humanvision.input/Runtime/IHumanVisionFrameSource.cs)、[SourceSettings](../../upm/com.blazetc.humanvision.input/Runtime/HumanVisionSourceSettings.cs)、[TextureFrame](../../upm/com.blazetc.humanvision.input/Runtime/HumanVisionTextureFrame.cs)。
+来源：[IHumanVisionFrameSource](../../upm/com.blazetc.humanvision.input/Runtime/IHumanVisionFrameSource.cs.txt)、[SourceSettings](../../upm/com.blazetc.humanvision.input/Runtime/HumanVisionSourceSettings.cs.txt)、[TextureFrame](../../upm/com.blazetc.humanvision.input/Runtime/HumanVisionTextureFrame.cs.txt)。
 
 ### 6.1 输入实现和状态
 
@@ -308,7 +310,7 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 
 ### 6.5 自定义源的资源工具
 
-来源：[SourceRetirement.cs](../../upm/com.blazetc.humanvision.input/Runtime/SourceRetirement.cs)。标准组件/SDK桥已经使用，普通游戏无需自己建一套。
+来源：[SourceRetirement.cs](../../upm/com.blazetc.humanvision.input/Runtime/SourceRetirement.cs.txt)。标准组件/SDK桥已经使用，普通游戏无需自己建一套。
 
 | API | 参数/返回和含义 |
 | --- | --- |
@@ -332,11 +334,11 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 
 `InputMonotonicClock.OriginStopwatchTicks`是本运行域初始化原点，`StopwatchFrequency`是计时器频率，`Domain`固定InputMonotonic。进程/Domain Reload会重建原点，不能比较跨运行保存的时间戳。
 
-输入预览组件`FramePreview.Bind(IHumanVisionFrameSource value)`关联RawImage与借用源，`Refresh()`更新当前纹理；LateUpdate自动刷新，OnDisable清空显示纹理。它不提交骨骼推理，输入预览独立成功不表示识别成功。[源码](../../upm/com.blazetc.humanvision.input/Runtime/FramePreview.cs)
+输入预览组件`FramePreview.Bind(IHumanVisionFrameSource value)`关联RawImage与借用源，`Refresh()`更新当前纹理；LateUpdate自动刷新，OnDisable清空显示纹理。它不提交骨骼推理，输入预览独立成功不表示识别成功。[源码](../../upm/com.blazetc.humanvision.input/Runtime/FramePreview.cs.txt)
 
 ## 7. 提交与显示桥 `VideoPlayerFrameSource`
 
-来源：[VideoPlayerFrameSource.cs](../../upm/com.blazetc.humanvision/Runtime/Demo/VideoPlayerFrameSource.cs)。名称保留历史用法，它当前也桥接统一Camera/Video/RTSP。
+来源：[VideoPlayerFrameSource.cs](../../upm/com.blazetc.humanvision/Runtime/Demo/VideoPlayerFrameSource.cs.txt)。名称保留历史用法，它当前也桥接统一Camera/Video/RTSP。
 
 | API | 参数/返回与含义 |
 | --- | --- |
@@ -373,7 +375,7 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 
 ### 7.1 `HumanVisionInputAdapter`高级接口
 
-来源：[HumanVisionInputAdapter.cs](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/HumanVisionInputAdapter.cs)。`BindUnifiedSource`会自动创建并关联它；通常使用桥即可，不要重复创建第二套提交器。
+来源：[HumanVisionInputAdapter.cs](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/HumanVisionInputAdapter.cs.txt)。`BindUnifiedSource`会自动创建并关联它；通常使用桥即可，不要重复创建第二套提交器。
 
 | API | 参数/返回与含义 |
 | --- | --- |
@@ -394,7 +396,7 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 
 ## 8. SDK设置、质量和实际合同API
 
-来源：[SharedRecognitionSettings](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/SharedRecognitionSettings.cs)、[DemoModeSettings](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/DemoModeSettings.cs)、[AnalysisContract](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/AnalysisContract.cs)、[质量目录](../../upm/com.blazetc.humanvision/Runtime/HumanVisionModelInputQualities.cs)。
+来源：[SharedRecognitionSettings](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/SharedRecognitionSettings.cs.txt)、[DemoModeSettings](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/DemoModeSettings.cs.txt)、[AnalysisContract](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/AnalysisContract.cs.txt)、[质量目录](../../upm/com.blazetc.humanvision/Runtime/HumanVisionModelInputQualities.cs.txt)。
 
 | 类型/字段或方法 | 内容 |
 | --- | --- |
@@ -426,11 +428,11 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 | `CatalogFilename/AdmittedRuntimeMode` | 常量model-input-qualities.json / android-ncnn-vulkan |
 | `ModelInputQualityChoice.Quality/ProfileId/Width/Height` | 选项等级、实际Profile和真实模型输入尺寸 |
 
-RTSP预设工具：[HumanVisionRtspComputerHost](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/HumanVisionRtspComputerHost.cs)。`Configure(host)`登记电脑IP；`ComputerHost`读取；`Resolve(Scene scene,string manualHost)`优先手填，其次场景记录，无合法值抛异常；`IsPrivateIpv4(host)`检查标准私有LAN IPv4；`BuildUrl(host,bool camera)`返回端口554、camera=true为`/videodevice`，false为`/video-1.mp4`。主机字段不能含端口/路径；其他主机用完整RTSP URL。工具不会启动服务。
+RTSP预设工具：[HumanVisionRtspComputerHost](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/HumanVisionRtspComputerHost.cs.txt)。`Configure(host)`登记电脑IP；`ComputerHost`读取；`Resolve(Scene scene,string manualHost)`优先手填，其次场景记录，无合法值抛异常；`IsPrivateIpv4(host)`检查标准私有LAN IPv4；`BuildUrl(host,bool camera)`返回端口554、camera=true为`/videodevice`，false为`/video-1.mp4`。主机字段不能含端口/路径；其他主机用完整RTSP URL。工具不会启动服务。
 
-统一Demo配置存储：[HumanVisionSettingsStore](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/HumanVisionSettingsStore.cs)。构造器`HumanVisionSettingsStore(string directory=null)`默认persistentDataPath/HumanVisionUnifiedInput；`LoadShared()`返回SharedRecognitionSettings，缺文件默认，非法配置抛异常；`SaveShared(value)`验证并保存shared.json；`LoadMode(InputKind kind)`读取该模式DemoModeSettings，缺文件默认；`SaveMode(kind,value)`验证并保存Video/WebCamera/Rtsp.json，使用临时文件及.bak。这是SDK统一示例的配置存储，应用可自行定义其他配置格式。
+统一Demo配置存储：[HumanVisionSettingsStore](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/HumanVisionSettingsStore.cs.txt)。构造器`HumanVisionSettingsStore(string directory=null)`默认persistentDataPath/HumanVisionUnifiedInput；`LoadShared()`返回SharedRecognitionSettings，缺文件默认，非法配置抛异常；`SaveShared(value)`验证并保存shared.json；`LoadMode(InputKind kind)`读取该模式DemoModeSettings，缺文件默认；`SaveMode(kind,value)`验证并保存Video/WebCamera/Rtsp.json，使用临时文件及.bak。这是SDK统一示例的配置存储，应用可自行定义其他配置格式。
 
-Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc.humanvision/Runtime/Android/HumanVisionAndroidRuntimeSelection.cs)。
+Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc.humanvision/Runtime/Android/HumanVisionAndroidRuntimeSelection.cs.txt)。
 
 | API | 内容 |
 | --- | --- |
@@ -445,7 +447,7 @@ Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc
 
 ### 9.1 `HumanVisionOverlay`
 
-来源：[HumanVisionOverlay.cs](../../upm/com.blazetc.humanvision/Runtime/Demo/HumanVisionOverlay.cs)。
+来源：[HumanVisionOverlay.cs](../../upm/com.blazetc.humanvision/Runtime/Demo/HumanVisionOverlay.cs.txt)。
 
 - `Configure(HumanVisionManager visionManager,VideoPlayerFrameSource videoFrameSource)`：关联结果和呈现桥。
 - `ConfigureStyle(float lineWidth,float pointDiameter)`：改变显示线宽和点直径；不改识别阈值/模型。
@@ -454,7 +456,7 @@ Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc
 
 ### 9.2 `HumanVisionCameraManager`
 
-命名空间`HumanVision`；来源：[CameraManager](../../upm/com.blazetc.humanvision/Runtime/Demo/Live/HumanVisionCameraManager.cs)。旧接入/官方Demo可使用。使用第2节底层Manager例子时，不要同时再创建自动启动的相机门面，以免重复打开输入/会话。
+命名空间`HumanVision`；来源：[CameraManager](../../upm/com.blazetc.humanvision/Runtime/Demo/Live/HumanVisionCameraManager.cs.txt)。旧接入/官方Demo可使用。使用第2节底层Manager例子时，不要同时再创建自动启动的相机门面，以免重复打开输入/会话。
 
 | API | 参数/返回和含义 |
 | --- | --- |
@@ -490,11 +492,11 @@ Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc
 
 ### 9.3 对象骨骼渲染组件
 
-[`HumanVisionSkeletonOverlayer`](../../upm/com.blazetc.humanvision/Runtime/Demo/Live/HumanVisionSkeletonOverlayer.cs)用于官方对象点/LineRenderer显示：`manager/preview/foregroundCamera`绑定门面、预览和前景相机；`renderLayer`是对象层（其他游戏相机也要排除该层）；`jointPrefab/linePrefab`为可选对象模板；`drawSkeleton/drawJoints/drawBones`控制显示；`lineWidthPixels/jointDiameterPixels`调大小；`planeDistance`定义显示平面位置。类默认9/27，统一设置的4.5/13.5会覆盖实际样式。它把图像点映射到显示平面，不增加3D深度。第2节使用UGUI Overlay；官方统一示例协调对象骨骼与Overlay，避免重复绘制。叠加绘制组件不会增强识别。
+[`HumanVisionSkeletonOverlayer`](../../upm/com.blazetc.humanvision/Runtime/Demo/Live/HumanVisionSkeletonOverlayer.cs.txt)用于官方对象点/LineRenderer显示：`manager/preview/foregroundCamera`绑定门面、预览和前景相机；`renderLayer`是对象层（其他游戏相机也要排除该层）；`jointPrefab/linePrefab`为可选对象模板；`drawSkeleton/drawJoints/drawBones`控制显示；`lineWidthPixels/jointDiameterPixels`调大小；`planeDistance`定义显示平面位置。类默认9/27，统一设置的4.5/13.5会覆盖实际样式。它把图像点映射到显示平面，不增加3D深度。第2节使用UGUI Overlay；官方统一示例协调对象骨骼与Overlay，避免重复绘制。叠加绘制组件不会增强识别。
 
 ### 9.4 举手示例组件
 
-[`HumanVisionRaisedHandDetector`](../../upm/com.blazetc.humanvision/Runtime/Demo/Live/HumanVisionRaisedHandDetector.cs)通过**腕与肩的高度**判断举手，不需要真实Handtip/Thumb，也不能证明手指识别已启用。
+[`HumanVisionRaisedHandDetector`](../../upm/com.blazetc.humanvision/Runtime/Demo/Live/HumanVisionRaisedHandDetector.cs.txt)通过**腕与肩的高度**判断举手，不需要真实Handtip/Thumb，也不能证明手指识别已启用。
 
 | 字段/属性 | 内容 |
 | --- | --- |
