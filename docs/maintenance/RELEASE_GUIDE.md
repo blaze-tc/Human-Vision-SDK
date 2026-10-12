@@ -1,3 +1,17 @@
+# v0.4.0-preview.7 发布
+
+用户在知晓回归数据缺失和设备限制后明确要求合并 main 并发布。本次按预发布评估版交付；
+不把既有硬件验收标记提升为 true，也不打包私有厂商库、RKNN 模型、用户视频或 APK。
+当前两包版本为 SDK 0.4.0-preview.7 / Input 0.1.0-preview.5。
+使用 release-preview7-authority.json，干净 Git 文件快照和新的不可覆盖输出目录运行
+package_release_snapshot.py --authority；保留旧版本 authority，不重新标记旧证据。
+
+必须检查两包文件/meta/GUID、原生依赖闭包、RuntimeData 哈希、真实 Input-first 离线导入、
+Settings/preset/示例编译与 Windows CPU 初始化；对最终 Git 提交验证 UPM 安装。
+main 只做祖先检查后的快进合并，禁止强推。创建 annotated tag 和 draft prerelease，
+上传八个标准附件，下载到独立目录逐文件核对 SHA256 后再发布。
+全量原生测试与 Unity 测试的实际通过/失败/缺失情况写入发布说明，不隐藏或改成通过。
+
 # Unity managed API/settings preview.5 update
 
 This additive update uses `tools/package/release-preview5-authority.json` and

@@ -1,3 +1,9 @@
+## 2026-10-12 发布：v0.4.0-preview.7
+
+按用户明确要求合并 main 并以 prerelease 交付 SDK 0.4.0-preview.7 / Input 0.1.0-preview.5。
+验证范围、全量测试未通过项和硬件限制见 [发布验证报告](reports/2026-10-12-preview7-release.md)。
+以下“本轮不发布”是之前仅上传开发分支时的历史状态，本次指令已更新交付范围。
+
 ## 2026-10-12 当前：SDK 配置资产、统一 API 与 Settings 封装
 
 本轮按用户要求整理初始化、图像/骨骼/区域/生命周期 API，增加 ScriptableObject 默认配置，

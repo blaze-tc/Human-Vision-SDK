@@ -48,8 +48,12 @@ namespace HumanVision.Demo {
                     else for(int i=0;i<a.Length;i++)if(a[i]!=b[i])differences++;
                     report("presentation pixels "+width+"x"+height+" mirror="+mirror+" differences="+differences,differences==0);
                     source.retirement.Poll();
-                }finally{history.Dispose();baseline.Release();UnityEngine.Object.Destroy(baseline);UnityEngine.Object.Destroy(input);}
+                }finally{history.Dispose();baseline.Release();Destroy(baseline);Destroy(input);}
             }
+        }
+        private static void Destroy(UnityEngine.Object value) {
+            // The same pixel probe can run from EditMode tests or an actual player.
+            if(Application.isPlaying)UnityEngine.Object.Destroy(value);else UnityEngine.Object.DestroyImmediate(value);
         }
     }
 }

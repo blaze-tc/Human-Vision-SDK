@@ -55,7 +55,7 @@ namespace HumanVision.Demo {
         public void Dispose(){
             foreach(var s in slots)if(s.texture!=null){
                 if(s.pending)DeferredGpuTextureRelease.Retire(s.texture,s.fence);
-                else {s.texture.Release();UnityEngine.Object.Destroy(s.texture);}
+                else {s.texture.Release();if(Application.isPlaying)UnityEngine.Object.Destroy(s.texture);else UnityEngine.Object.DestroyImmediate(s.texture);}
                 s.texture=null;
             }
             commands.Dispose();displayed=null;

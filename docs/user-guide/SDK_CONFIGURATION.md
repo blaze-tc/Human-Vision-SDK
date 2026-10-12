@@ -1,7 +1,7 @@
 # ScriptableObject 配置与统一 API
 
-适用当前开发版本：SDK **0.4.0-preview.7** / Input **0.1.0-preview.5**。
-这是当前分支的接入说明；历史 Release 的验证结果不自动适用于本次变更。
+适用当前预发布版本：SDK **0.4.0-preview.7** / Input **0.1.0-preview.5**。
+这是当前版本的接入说明；历史 Release 的验证结果不自动适用于本次变更。
 
 ## 最小接入
 

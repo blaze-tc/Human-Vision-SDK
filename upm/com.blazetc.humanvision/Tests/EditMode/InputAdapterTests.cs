@@ -153,7 +153,7 @@ public sealed class InputAdapterTests {
             Assert.That(session.Count,Is.EqualTo(1),"Retry must stop after this source frame was accepted.");
         } finally {DestroyCpuTestObject(go,source);UnityEngine.Object.DestroyImmediate(source.Texture);}
     }
-    [Test] public void CpuAdapterPreservesConfiguredPreviewBindings() {
+    [UnityEngine.TestTools.UnityTest] public System.Collections.IEnumerator CpuAdapterPreservesConfiguredPreviewBindings() {
         var source=new Source();var go=new GameObject("CPU adapter bindings");var displayGo=new GameObject("preview",typeof(RectTransform),typeof(UnityEngine.UI.RawImage),typeof(UnityEngine.UI.AspectRatioFitter));
         try {
             var manager=go.AddComponent<HumanVisionManager>();var session=new RecordingSession();Set(manager,"_session",session);
@@ -161,8 +161,18 @@ public sealed class InputAdapterTests {
             bridge.Configure(manager,display,fitter);Set(bridge,"_rowOrderReady",true);bridge.BindUnifiedSource(source);
             go.GetComponent<HumanVisionInputAdapter>().Tick();UnityEngine.Rendering.AsyncGPUReadback.WaitAllRequests();source.Retirement.Poll();Late(bridge);
             Assert.That(session.Count,Is.EqualTo(1),"Actual CPU readback callback must reach manager submission.");
-            Assert.That(display.texture,Is.SameAs(source.Texture));Assert.That(fitter.aspectRatio,Is.EqualTo(16f/9).Within(.001));
-            source.FrameId++;Late(bridge);Assert.That(display.texture,Is.SameAs(source.CurrentTexture));
+            // Wait for the real GPU copy fence; an owned snapshot is not ready in the submitting call.
+            double deadline=Time.realtimeSinceStartupAsDouble+5;
+            while(bridge.PresentationTexture==null && Time.realtimeSinceStartupAsDouble<deadline){yield return null;source.Retirement.Poll();Late(bridge);}
+            Assert.That(bridge.PresentationTexture,Is.Not.Null);
+            Assert.That(display.texture,Is.SameAs(bridge.PresentationTexture));
+            if(SystemInfo.supportsGraphicsFence)Assert.That(display.texture,Is.Not.SameAs(source.Texture));
+            Assert.That(display.texture.width,Is.EqualTo(source.Texture.width));Assert.That(display.texture.height,Is.EqualTo(source.Texture.height));
+            Assert.That(bridge.PresentationFrameId,Is.EqualTo(source.FrameId));Assert.That(fitter.aspectRatio,Is.EqualTo(16f/9).Within(.001));
+            source.FrameId++;Late(bridge);deadline=Time.realtimeSinceStartupAsDouble+5;
+            while(bridge.PresentationFrameId!=source.FrameId && Time.realtimeSinceStartupAsDouble<deadline){yield return null;source.Retirement.Poll();Late(bridge);}
+            Assert.That(bridge.PresentationFrameId,Is.EqualTo(source.FrameId));
+            Assert.That(display.texture,Is.SameAs(bridge.PresentationTexture));
             Assert.That(Get(bridge,"targetDisplay"),Is.SameAs(display));Assert.That(Get(bridge,"aspectRatioFitter"),Is.SameAs(fitter));
         } finally {DestroyCpuTestObject(go,source);UnityEngine.Object.DestroyImmediate(displayGo);UnityEngine.Object.DestroyImmediate(source.Texture);}
     }

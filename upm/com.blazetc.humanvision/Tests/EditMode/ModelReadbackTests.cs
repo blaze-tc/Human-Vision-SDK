@@ -11,7 +11,8 @@ public sealed class ModelReadbackTests {
         yield return ModelReadbackDeviceProbe.Run((detail,passed)=>{
             Assert.That(passed,Is.True,detail);completed++;
         });
-        Assert.That(completed,Is.EqualTo(6));
+        // Six model-resize comparisons plus eight presentation comparisons (four sizes, both mirrors).
+        Assert.That(completed,Is.EqualTo(14));
     }
     [Test] public void ResizeQualificationRequiresThreeExactFramesAndRejectsAnyMismatch() {
         var type=typeof(VideoPlayerFrameSource).Assembly.GetType("HumanVision.Demo.ModelReadbackQualification");

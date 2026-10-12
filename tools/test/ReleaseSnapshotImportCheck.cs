@@ -27,8 +27,15 @@ public static class ReleaseSnapshotImportCheck
                     if (BitConverter.ToString(sha.ComputeHash(input)).Replace("-", "").ToLowerInvariant() != entry.sha256)
                         throw new Exception("Installed runtime hash mismatch: " + entry.path);
             }
-            HumanVisionUnifiedDemoBuilder.BuildScenes("Assets/ReleaseVerifiedDemos");
-            if (EditorBuildSettings.scenes.Length < 3) throw new Exception("Three demos were not registered.");
+            HumanVisionSettingsDemoBuilder.GenerateAssetsAt("Assets/ReleaseVerifiedSettings");
+            UnityEditor.SceneManagement.EditorSceneManager.OpenScene("Assets/ReleaseVerifiedSettings/HumanVisionSettingsDemo.unity");
+            var settingsController = UnityEngine.Object.FindObjectOfType<HumanVision.Demo.HumanVisionSettingsController>();
+            if (settingsController == null || settingsController.Sdk == null || settingsController.View == null ||
+                settingsController.Sdk.ConfigurationAsset == null)
+                throw new Exception("Settings SDK/view/preset reference missing.");
+            if (settingsController.Sdk.SupportsMetric3D) throw new Exception("Unexpected depth capability claim.");
+            foreach (var label in settingsController.View.GetComponentsInChildren<UnityEngine.UI.Text>(true))
+                if (label.font == null) throw new Exception("Missing Settings font.");
             var settings = new HumanVision.Demo.DemoModeSettings();
             if (settings.LineWidth != 4.5f || settings.PointDiameter != 13.5f)
                 throw new Exception("Skeleton defaults do not match accepted half thickness.");
@@ -43,7 +50,7 @@ public static class ReleaseSnapshotImportCheck
             }
             finally { UnityEngine.Object.DestroyImmediate(obj); }
             File.WriteAllText(Path.Combine(Path.GetDirectoryName(Application.dataPath), "release-import-pass.txt"),
-                "PASS: 20 runtime files verified; three demos generated; half-size defaults; Windows CPU native/model initialization.\n");
+                "PASS: 20 runtime files verified; Settings scene/prefab/preset generated; half-size defaults; Windows CPU native/model initialization.\n");
             EditorApplication.Exit(0);
         }
         catch (Exception error) { Debug.LogException(error); EditorApplication.Exit(1); }
