@@ -1,3 +1,13 @@
+## 2026-10-13 当前：NPU 部署补充与闭源商用边界
+
+为 preview.7 缺失的 Android/NPU 本地资源提供哈希验证导出工具、完整本地补充包与显式启用菜单。
+47 项资源/三库核验在 Unity 2021.3.45f1 离线安装和 2022.3.61t4 Git UPM 安装中实际通过。
+工具测试 5/5、架构边界通过；未改变模型/推理代码，未把本地资源上传公共 Release。
+用户明确闭源商业用途、没有 Enterprise 授权，优先评估替换 YOLO 模型。首轮检查已确定
+RTMDet-nano + RTMPose-t / RTMO-t 候选及实际 ONNX 结构风险；尚未确认替代权重商用分发或 NPU 性能。
+见 [替代模型评估](reports/2026-10-13-commercial-model-replacement.md)。Rockchip 库分发边界仍需单独确认。
+见 [部署说明](user-guide/LOCAL_ANDROID_RESOURCES.md) 和 [验证报告](reports/2026-10-13-local-android-resources.md)。
+
 ## 2026-10-12 发布：v0.4.0-preview.7
 
 按用户明确要求合并 main 并以 prerelease 交付 SDK 0.4.0-preview.7 / Input 0.1.0-preview.5。

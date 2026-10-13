@@ -1,0 +1,65 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using HumanVision.Editor;
+using UnityEditor;
+using UnityEngine;
+
+/// <summary>导入本地补充包后的显式部署检查；不执行推理、不表示设备性能验收。</summary>
+public static class HumanVisionLocalAndroidSetup
+{
+    [Serializable] private sealed class Entry { public string path; public string sha256; }
+    [Serializable] private sealed class Index { public Entry[] files; }
+    [Serializable] private sealed class Receipt { public string index_sha256; }
+    private const string Root = "Assets/StreamingAssets/HumanVision/Runtime";
+
+    /// <summary>逐文件检查完整资源，并选择允许 CPU/Vulkan/RK3588 NPU 的构建模式。</summary>
+    [MenuItem("HumanVision/Enable Local Android Resources")]
+    public static void VerifyAndEnable()
+    {
+        var receipt = JsonUtility.FromJson<Receipt>(File.ReadAllText(Root + "/staged-runtime.json"));
+        RequireHash(Root + "/index.json", receipt.index_sha256);
+        var index = JsonUtility.FromJson<Index>(File.ReadAllText(Root + "/index.json"));
+        if (index.files == null || index.files.Length != 47)
+            throw new InvalidDataException("Expected the preview.7 47-file Android runtime. Reimport the complete local add-on.");
+        var names = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in index.files)
+        {
+            if (entry == null || string.IsNullOrEmpty(entry.path) || entry.path.Contains("..") ||
+                entry.path.Contains(":") || entry.path.Contains("\\") || Path.IsPathRooted(entry.path) || !names.Add(entry.path))
+                throw new InvalidDataException("Unsafe or duplicate runtime entry.");
+            RequireHash(Root + "/" + entry.path, entry.sha256);
+        }
+        VerifyPlugin("libhumanvision.so", "8689efb872d76a825595ec4701375cf0c3c0f44d27a12d9bf2a8c9240ece4681");
+        VerifyPlugin("libhumanvision_input.so", "0639a50ecbe765bda84a4dbc6616bd9f5fcedbf51839e2dfb7c1588650511457");
+        VerifyPlugin("librknnrt.so", "07a8398be5caed21a1998ffa313e0425bb9e76b154a8dbbc667d71722c009351");
+        // Prepare must preserve the indexed explicit stage instead of replacing it with packaged defaults.
+        HumanVisionModelInstaller.Prepare();
+        RequireHash(Root + "/index.json", receipt.index_sha256);
+        HumanVisionAndroidRuntimeSettings.instance.RuntimeModeId = "android-dual-vulkan-npu";
+        Debug.Log("HumanVision: 47 runtime files and three ARM64 libraries verified; CPU/Vulkan/RK3588 NPU build mode enabled. This is deployment verification, not hardware or licensing acceptance.");
+    }
+
+    private static void VerifyPlugin(string name, string hash)
+    {
+        var paths = AssetDatabase.GetAllAssetPaths().Where(p => p.EndsWith("/" + name, StringComparison.Ordinal)).ToArray();
+        if (paths.Length != 1)
+            throw new InvalidDataException("Expected exactly one " + name + "; found " + paths.Length + ". Avoid mixing offline and UPM SDK installations.");
+        string asset = paths[0], file = asset;
+        var package = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(asset);
+        if (package != null) file = Path.Combine(package.resolvedPath, asset.Substring(("Packages/" + package.name + "/").Length));
+        RequireHash(file, hash);
+        var importer = AssetImporter.GetAtPath(asset) as PluginImporter;
+        if (importer == null || !importer.GetCompatibleWithPlatform(BuildTarget.Android) ||
+            importer.GetPlatformData(BuildTarget.Android, "CPU") != "ARM64" || importer.GetCompatibleWithEditor())
+            throw new InvalidDataException("Incorrect Android ARM64 plugin import settings: " + asset);
+    }
+
+    private static void RequireHash(string path, string expected)
+    {
+        using (var sha = SHA256.Create()) using (var input = File.OpenRead(path))
+            if (BitConverter.ToString(sha.ComputeHash(input)).Replace("-", "").ToLowerInvariant() != expected)
+                throw new InvalidDataException("Resource hash mismatch: " + path + ". Reimport the matching complete add-on.");
+    }
+}
