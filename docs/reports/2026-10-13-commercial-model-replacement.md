@@ -1,7 +1,8 @@
 # 闭源商业项目：替换 YOLO 模型的首轮评估
 
 用户决定：没有 Ultralytics Enterprise 授权，优先评估替换模型。评估日期 2026-10-13。
-本轮是实际代码/模型结构与上游资料检查，尚未实现或验收替代 NPU 模型。
+首轮是代码/模型结构与上游资料检查；后续已完成 RTMPose-t 实际 RKNN 转换实验，
+尚未验收或接入替代 NPU 模型。见 [离线转换结果](2026-10-13-rtmpose-rknn-offline.md)。
 
 ## 结论
 
@@ -45,6 +46,14 @@ MMPose/MMDetection 源代码采用 Apache-2.0，适合作为候选起点；**代
 
 ## 官方依据
 
+进一步核实：MMPose 协作者在 [#2393](https://github.com/open-mmlab/mmpose/issues/2393)
+明确说明 RTMPose 实现为 Apache-2.0，项目允许商业使用。
+成员在 [#2106](https://github.com/open-mmlab/mmpose/issues/2106) 对 COCO 预训练权重商用给出
+正面但带限定的说明。这是许可依据，不能忽略；也不能自动扩展为所有 Body7/Objects365 权重
+以及 SDK 再分发方式已获逐项确认。
+[#3273](https://github.com/open-mmlab/mmpose/issues/3273) 恰好询问本候选 RTMDet-nano
+同 SHA 权重及训练来源，截至本轮查询未见维护者答复；提问本身不构成禁止使用的证据。
+
 - [Ultralytics 模型许可路线](https://www.ultralytics.com/license)
 - [MMPose Apache-2.0](https://github.com/open-mmlab/mmpose/blob/main/LICENSE)
 - [MMDetection Apache-2.0](https://github.com/open-mmlab/mmdetection/blob/main/LICENSE)
@@ -53,5 +62,5 @@ MMPose/MMDetection 源代码采用 Apache-2.0，适合作为候选起点；**代
 - [RTMO 官方模型与部署说明](https://github.com/open-mmlab/mmpose/blob/main/projects/rtmo/README.md)
 
 官方 RTMPose pipeline benchmark 默认 detector 间隔 5 帧；RTMO 表格延迟是在 V100/ORT 上测得。
-这些数字不能作为本项目 4/8 人、RK3588 NPU 的预计 FPS。下一阶段应先完成具体权重许可筛选
-和固定形状离线转换实验，再决定最终替换包，而不是重新发布当前 YOLO 资源并称其解决商用问题。
+这些数字不能作为本项目 4/8 人、RK3588 NPU 的预计 FPS。固定形状 RTMPose 离线实验已开展，
+下一阶段需解决剩余精度失败、完成检测器/RTMO 对照与具体权重许可核实，再决定最终替换包。

@@ -13,6 +13,17 @@ INT8三样本失败并拒绝采用。OnePlus现有Vulkan画面/骨骼测试通�
 
 ## 固定环境
 
+### 非 YOLO 替代模型实验（2026-10-13）
+
+`rtmpose_candidate.py` 独立验证固定 SHA 的 Body26 ONNX：`prepare` 从哈希绑定的真实人物
+样本生成人框仿射裁剪并验证固定形状输出；`convert` 比较实际 RKNN 模拟器输出。
+支持完整 FP16、卷积 NPU/姿态头 FP32 分段，以及经过逐位等价检查的 SPP 5×5 串联改写。
+不得套用本文件下方 YOLO 的 /255 预处理与张量合同。
+目前最好结果 **23/24，仍未通过**，没有安装或启用新模型。命令、失败样本、精度门槛和
+具体权重来源见 [本轮报告](../../../docs/reports/2026-10-13-rtmpose-rknn-offline.md)。
+
+### 既有工具链
+
 `Dockerfile` 固定Python3.10基础镜像digest及官方2.3.2 wheel SHA。
 `requirements.lock.txt` 固定主要依赖，完整实际transitive版本另存pip-freeze receipt。
 wheel来自Rockchip revision `42aa1d426c0a9e0869b6374edba009f7208a1926` 的
