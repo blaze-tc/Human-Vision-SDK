@@ -25,7 +25,7 @@ namespace HumanVision
                     HumanVisionAndroidCpuModelContract.Validate(root);
                     var contract=HumanVision.Demo.AnalysisContract.Load(root,profile,maxBodies);
                     return new HumanVisionSdkQualityCapabilities(profile,"Android CPU 使用固定模型："+contract.ModelPackId+"，骨骼输入 "+contract.PoseWidth+"×"+contract.PoseHeight+
-                        "（1–2 人 192×256；3–8 人 416×416）。不提供独立手部模型；实际设备速度以运行统计为准。",Array.Empty<ModelInputQualityChoice>());
+                        "。模型与尺寸读取当前配置；不提供独立手部模型。实际设备速度以运行统计为准。",Array.Empty<ModelInputQualityChoice>());
                 } catch(Exception e) { return Failed(profile,e.Message); }
             }
             if (profile == HumanVisionAndroidAccelerationSelection.NeuralProfile) {

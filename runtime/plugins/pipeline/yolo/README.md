@@ -83,3 +83,51 @@ retain the cached general interpolator. It never changes normalized output,
 canonical mapping, model bytes or backend precision. Validate all formats and
 padded rows with `YoloRgbPreprocess.*` plus the actual ARM64 pixel/timing probe.
 No host/OnePlus preprocess measurement constitutes RK3588 model throughput.
+
+## CPU ONNX entry (ABI1)
+
+`HV_QueryYoloCpuPipelineV1` exports `pipeline.yolo.cpu` with body_pose/multi_person
+and capacity1..8. It accepts only `android-cpu-nohands` or the focused-test
+`comparison-yolo-cpu` profile, with exactly `backend.ort.cpu`, disabled hands and
+no fallback. Windows CPU/DirectML aliases are rejected by this entry. The existing
+Windows default RTMO selection, GPU entry and private RKNN admission are unchanged.
+
+The schema-1 pack is `yolov8n-pose-512x288-ort`, with one body ONNX pinned to
+`6c3431e00a8dace37c6a6b9546995e8d2a83c15d5fb894cc467e8c5ab5be88b3`.
+Its input contract requires `in0[1,3,288,512]`, FP32 NCHW RGB, zero mean and
+1/255 norm, `crop_mode=letterbox` and `pad_rgb=[114,114,114]`. Output metadata
+requires `yolov8_pose_dfl17_v1`, FP32 out0[1,3024,65]/out1[1,3024,51], columns
+[65,51] and byte limits786240/616896. Backend overrides are rejected. Runtime
+output names, shapes, bytes and every finite value are checked before publication.
+
+Stride-aware RGB24/BGR24/RGBA32/BGRA32 inputs retain their source dimensions;
+alpha and row padding are ignored. The fixed model canvas is independent of
+camera/display resolution. Qualified16:9 sources use the original pixel fast
+paths and rounding exactly. Other aspects, including640x480 and portrait, resize
+the limiting extent to512 or288, truncate the shorter extent, and center pad114.
+Source boxes/joints undo that padding and nominal scale. The CPU decoder opts
+into a separate internal letterbox validator; the default rectangular NPU/GPU
+validator still rejects unqualified source aspects.
+
+RGB pixels, planar FP32 input, interpolation coefficients and decoder buffers
+are allocated at creation and reused, including when source resolution changes.
+Allocation probes cover the pipeline using borrowed real saved outputs. The
+generic ORT backend has its own allocations and is not covered by that claim.
+Hands remain invalid and common services own identity/tracking.
+
+Generate ignored independent4:3/portrait pixel and inference oracles using the
+reference Python environment with OpenCV, NumPy and ONNX Runtime:
+
+```powershell
+python tests/runtime/generate_yolo_cpu_letterbox_fixtures.py
+humanvision_native_tests --gtest_filter=YoloCpuPipeline.*:YoloTensorPipeline.*:YoloRgbPreprocess.*
+```
+
+The generator reads the exact ignored `out/rknn-validation-20261009` ONNX and
+seven/one RGB controls, verifies their hashes, and writes a separate ignored
+`out/yolo-cpu-letterbox-fixtures` root. Tests compare all four padded-stride
+formats byte-for-byte against OpenCV oracles, run the actual ORT CPU backend on
+seven/one/empty and4:3/portrait controls, compare raw tensors and canonical source
+coordinates, and exercise every capacity1..8. This is host correctness evidence;
+physical Android throughput remains a separate device gate. Local weights must
+not be redistributed by these tools.

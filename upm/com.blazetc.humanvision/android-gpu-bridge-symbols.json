@@ -3,7 +3,7 @@
   "api_level": 26,
   "audit": "tools/test/verify_android_native.py",
   "gpu_gate": false,
-  "native_sha256": "8689efb872d76a825595ec4701375cf0c3c0f44d27a12d9bf2a8c9240ece4681",
+  "native_sha256": "32ce9715ad8a6daae5b47dd5d628e6340f354715eca24c11b84f651407694804",
   "ncnn_vulkan_symbols_verified": true,
   "rk3588_stride_fix": {
     "label": "RK3588-Fix1-20261008",
@@ -20,12 +20,12 @@
     "sample": "first3/every64",
     "base_revision": "bea077c",
     "api26_strong_imports": 506,
-    "public_c_unity_exports": 48
+    "public_c_unity_exports": 51
   },
   "private_dual_experiment": true,
   "private_dispatch_experiment": true,
   "distribution_qualified": false,
   "device_performance_verified": false,
   "input_memory_candidate": "same-frame complete-output and timing qualification",
-  "followup_audit": "out/recognition-hotpath-20261011/android-audit.log"
+  "followup_audit": "out/main-cpu-android-candidates-audit.log"
 }

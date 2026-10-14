@@ -1,4 +1,4 @@
-# Unity 安装 — 0.4.0-preview.7
+# Unity 安装 — 0.4.0-preview.8 本地开发包
 
 需要 Unity 2021.3 或更新版本。先安装 Input，再安装 SDK。
 选择 Git UPM、两个本地 tgz 或两个 unitypackage 中的一种；不要混装。
@@ -6,6 +6,7 @@
 
 ## Git UPM
 
+公共 preview.7 Release 安装仍使用以下地址；本次 preview.8 请使用下方本地包。
 在 Package Manager 使用 Add package from git URL，依次添加：
 
 ```text
@@ -13,17 +14,19 @@ https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvisi
 https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.7
 ```
 
-SDK 版本为 0.4.0-preview.7；Input 版本为 0.1.0-preview.5。
+上述公共 Release 的 SDK 版本为 0.4.0-preview.7；Input 版本为 0.1.0-preview.5。
 必须显式安装两个 Git 子目录，SDK 的版本依赖不能自动找到另一个 Git 子目录。
 Input 负责 camera/video/RTSP 采集与预览，SDK 负责推理、跟踪、骨骼和区域查询。
 
 ## 离线安装
 
 1. 导入 HumanVisionInput-0.1.0-preview.5.unitypackage，等待编译完成。
-2. 导入 HumanVisionSDK-0.4.0-preview.7.unitypackage，等待模型和脚本导入完成。
+2. 导入 HumanVisionSDK-0.4.0-preview.8.unitypackage，等待模型和脚本导入完成。
 
 本地 UPM 安装则依次使用 com.blazetc.humanvision.input-0.1.0-preview.5.tgz 和
-com.blazetc.humanvision-0.4.0-preview.7.tgz。SHA256SUMS.txt 可验证附件完整性。
+com.blazetc.humanvision-0.4.0-preview.8.tgz。SHA256SUMS.txt 可验证附件完整性。
+Android CPU/GPU/NPU 完整测试资源随后导入匹配的本地 CPU 补充包，
+见 Documentation/user-guide/LOCAL_ANDROID_CPU_YOLO.md；该本地包不属于公共 Release。
 
 ## 配置与使用
 

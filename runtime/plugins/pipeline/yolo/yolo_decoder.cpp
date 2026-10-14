@@ -54,6 +54,16 @@ bool BuildGeometry(int sw,int sh,int target,Geometry& out) noexcept {
     if(rw<1||rh<1)return false;
     out={target,target,(target-rw)/2,(target-rh)/2,sw,sh,float(scale)};return true;
 }
+bool BuildLetterboxGeometry(int sw,int sh,int width,int height,Geometry& out) noexcept {
+    out={};if(sw<=0||sh<=0||width!=512||height!=288)return false;
+    // Retain the exact existing aspect proof and scale for qualified 16:9.
+    if(int64_t(sw)*9==int64_t(sh)*16)return BuildGeometry(sw,sh,width,height,out);
+    const bool width_limited=int64_t(sw)*height>=int64_t(sh)*width;
+    const double scale=width_limited?double(width)/sw:double(height)/sh;
+    const int rw=width_limited?width:int(sw*scale),rh=width_limited?int(sh*scale):height;
+    if(rw<1||rh<1)return false;
+    out={width,height,(width-rw)/2,(height-rh)/2,sw,sh,float(scale)};return true;
+}
 int CanonicalIndex(int i) noexcept {
     constexpr int mapping[]={HV_CANONICAL_NOSE,HV_CANONICAL_EYE_LEFT,HV_CANONICAL_EYE_RIGHT,
       HV_CANONICAL_EAR_LEFT,HV_CANONICAL_EAR_RIGHT,HV_CANONICAL_SHOULDER_LEFT,HV_CANONICAL_SHOULDER_RIGHT,
@@ -62,14 +72,15 @@ int CanonicalIndex(int i) noexcept {
       HV_CANONICAL_ANKLE_LEFT,HV_CANONICAL_ANKLE_RIGHT};
     return i>=0&&i<17?mapping[i]:-1;
 }
-Decoder::Decoder(int target,int height):target_(target),height_(height?height:target) {
+Decoder::Decoder(int target,int height,bool cpu_letterbox):target_(target),height_(height?height:target),cpu_letterbox_(cpu_letterbox) {
     proposals_.reserve(AnchorCount(target_,height_));selected_.reserve(AnchorCount(target_,height_));
 }
 bool Decoder::Decode(const HV_TensorViewV1* views,uint32_t view_count,const Geometry& g,
     int64_t timestamp,HV_BodyObservationV1* bodies,float* scores,uint32_t capacity,uint32_t& count) {
     count=0;proposals_.clear();selected_.clear();Geometry expected{};
     if(!views||view_count!=2||!bodies||!scores||capacity<1||capacity>8||
-       !BuildGeometry(g.source_width,g.source_height,target_,height_,expected)||
+       !(cpu_letterbox_?BuildLetterboxGeometry(g.source_width,g.source_height,target_,height_,expected):
+           BuildGeometry(g.source_width,g.source_height,target_,height_,expected))||
        g.width!=expected.width||g.height!=expected.height||g.left!=expected.left||g.top!=expected.top||
        g.scale!=expected.scale)return false;
     const int rows=AnchorCount(target_,height_);const float *det=nullptr,*kp=nullptr;

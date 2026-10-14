@@ -1,10 +1,7 @@
 {
   "schema_version": 1,
   "profile": "android-cpu-nohands",
-  "body_by_capacity": [
-    {"max_people": 2, "pipeline": "pipeline.topdown", "modelPack": "precision-t-26"},
-    {"max_people": 8, "pipeline": "pipeline.rtmo", "modelPack": "rtmo-t-416"}
-  ],
+  "body": {"pipeline": "pipeline.yolo.cpu", "modelPack": "yolov8n-pose-512x288-ort"},
   "hands": {"enabled": false, "fps": 15},
   "body_fps": 30,
   "output": {"hz": 60},

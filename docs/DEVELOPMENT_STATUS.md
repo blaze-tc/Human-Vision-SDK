@@ -1,3 +1,20 @@
+## 2026-10-14 当前：恢复 main 的 YOLO CPU 与 API 封装完成
+
+在恢复的 main `ba1815a` 上整理本地 SDK 0.4.0-preview.8 / Input 0.1.0-preview.5。
+Android CPU 使用固定 512×288 YOLOv8n-pose FP32，1–8人；补足八候选进入公共追踪的条件。
+`Initialized` 在本次配置成功提交之后触发，公共 API 签名不变。原 Vulkan 三档、RK3588 NPU
+模型/驱动、Windows库与 Input 保留。公共 preview.7 Release 没有替换。
+
+最终相关 native 91/91、真实候选 RED→GREEN 2/2、CPU部署22/22、Unity生命周期20/20，
+package工具45/45及实际52项Runtime/单一native归档核验通过。Unity EditMode首跑402/1/40，
+唯一持久化模式断言修正后1/1；40跳过与缺失的28项历史GPU夹具不计通过。
+最终 APK 0 errors/3 warnings，已在 OnePlus 安装和截图验证四阶段。
+新CPU原始新结果14.23FPS（旧CPU7.16），主要四人完整17点11.97–12.60FPS；
+Vulkan原模型新结果24.60FPS，逐人完整17点21.16–21.90FPS。只是每阶段30秒短测，
+CPU未到20–25；RK3588 NPU和长时目标未验收。CPU仍有少量身份替换，不宣称零切换。
+见 [本轮实测与打包报告](reports/2026-10-14-main-cpu-yolo-api.md) 和
+[本地 CPU/GPU/NPU 部署](user-guide/LOCAL_ANDROID_CPU_YOLO.md)。
+
 ## 2026-10-13 当前：NPU 部署补充与闭源商用边界
 
 为 preview.7 缺失的 Android/NPU 本地资源提供哈希验证导出工具、完整本地补充包与显式启用菜单。

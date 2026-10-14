@@ -15,7 +15,7 @@ namespace HumanVision
     public sealed class HumanVisionSdk : MonoBehaviour
     {
         /// <summary>托管 SDK 版本，便于区分实机日志对应的发布包。</summary>
-        public const string Version = "0.4.0-preview.7";
+        public const string Version = "0.4.0-preview.8";
         [SerializeField, Tooltip("默认配置资产；运行时读取副本。留空兼容旧场景内嵌配置。")]
         private HumanVisionSdkPreset configurationAsset;
         private bool configurationLoaded;
@@ -67,7 +67,11 @@ namespace HumanVision
         private int qualityCapacity;
         private HumanVisionStagedInitialization<HumanVisionRuntimeSession> initialization;
 
-        /// <summary>Runtime 已初始化后通知；输入是否流送请读取 IsRunning。</summary>
+        /// <summary>
+        /// 本次初始化成功且配置已经提交后通知，回调内可读取 Configuration / ActiveConfiguration。
+        /// 只准备 Runtime 时状态为 Ready；要求自动开启输入时等待实际 Streaming 后通知。
+        /// 初始化或输入启动失败不触发此成功事件，错误见 LastError / ErrorOccurred。
+        /// </summary>
         public event Action Initialized;
         /// <summary>新原始识别结果通知，包括明确无人结果；不因插值/轮询重复触发。</summary>
         public event Action<long> ResultUpdated;
@@ -238,9 +242,13 @@ namespace HumanVision
             }
             LastError = ""; State = HumanVisionSdkState.Ready;
             manager.ResultUpdated += OnResult;
-            Initialized?.Invoke();
             if (token != operation || !isActiveAndEnabled) yield break;
-            if (!candidate.OpenInputOnInitialize) { active = candidate.Clone(); options = candidate.Clone(); configurationLoaded = true; yield break; }
+            if (!candidate.OpenInputOnInitialize) {
+                // 先提交成功配置，再通知调用方；回调可能立即查询配置或启动/停止 SDK。
+                active = candidate.Clone(); options = candidate.Clone(); configurationLoaded = true;
+                Initialized?.Invoke();
+                yield break;
+            }
             try {
                 switch (candidate.SourceKind) {
                     case InputKind.WebCamera: source = go.AddComponent<WebCameraFrameSource>(); break;
@@ -266,7 +274,12 @@ namespace HumanVision
                 yield return null;
             }
             if (token != operation || !isActiveAndEnabled) yield break;
-            if (source != null && source.State == InputSourceState.Streaming) { active = candidate.Clone(); options = candidate.Clone(); configurationLoaded = true; State = HumanVisionSdkState.Running; LastError = ""; }
+            if (source != null && source.State == InputSourceState.Streaming) {
+                // 自动开启输入属于本次初始化事务；只有完整成功后才提交并通知。
+                active = candidate.Clone(); options = candidate.Clone(); configurationLoaded = true;
+                State = HumanVisionSdkState.Running; LastError = "";
+                Initialized?.Invoke();
+            }
             else { string error = string.IsNullOrEmpty(source?.LastError) ? "输入未在规定时间内进入流送状态。" : source.LastError;
                 yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); }
         }

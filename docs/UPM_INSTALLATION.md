@@ -1,3 +1,5 @@
+> 本次本地开发包为 SDK 0.4.0-preview.8 / Input 0.1.0-preview.5。公共 preview.7 Release 保持原样。Android CPU YOLO 完整资源安装见 [本地说明](user-guide/LOCAL_ANDROID_CPU_YOLO.md)；下文保留原发布版安装和历史验证说明。
+
 > 当前分支新增 ScriptableObject 默认配置、代码指定输入源及统一查询 API，请先阅读 [当前接入说明](user-guide/SDK_CONFIGURATION.md)。下文含已发布版本和兼容 API 的历史说明。
 
 # Human Vision SDK 0.4.0-preview.6 安装与接入

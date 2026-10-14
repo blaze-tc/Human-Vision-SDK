@@ -48,6 +48,60 @@ namespace HumanVision.Tests
             Assert.False(sdk.TryApplyConfiguration(invalid)); Assert.True(sdk.IsInitialized);
             Assert.That(sdk.ActiveConfiguration.Recognition.MaxBodies, Is.EqualTo(1));
         }
+        [UnityTest] public IEnumerator InitializedCallbackReadsTheCommittedPrepareOnlyConfiguration()
+        {
+            int callbacks = 0;
+            sdk.Initialized += () => {
+                callbacks++;
+                Assert.True(sdk.IsInitialized);
+                Assert.That(sdk.State, Is.EqualTo(HumanVisionSdkState.Ready));
+                Assert.NotNull(sdk.ActiveConfiguration, "初始化完成事件必须能读取本次成功应用的配置。");
+                Assert.That(sdk.GetMaxBodies(), Is.EqualTo(1));
+                Assert.That(sdk.Configuration.Recognition.MaxBodies, Is.EqualTo(1));
+                Assert.That(sdk.ActiveConfiguration.Recognition.MaxBodies, Is.EqualTo(1));
+            };
+            yield return sdk.Initialize(Options());
+            Assert.That(callbacks, Is.EqualTo(1));
+        }
+        [UnityTest] public IEnumerator InitializedCallbackReadsCommittedVideoConfigurationAndStreamingState()
+        {
+            var requested = Options();
+            requested.SourceKind = InputKind.Video;
+            requested.OpenInputOnInitialize = true;
+            requested.Input.VideoPath = Path.Combine(Application.streamingAssetsPath, "video-1.mp4");
+            Assert.True(File.Exists(requested.Input.VideoPath), "该回归必须使用测试项目中的真实视频。");
+            int callbacks = 0;
+            sdk.Initialized += () => {
+                callbacks++;
+                Assert.True(sdk.IsRunning, "自动启动输入时，成功初始化事件不能先于输入流送。");
+                Assert.NotNull(sdk.ActiveConfiguration);
+                Assert.That(sdk.GetMaxBodies(), Is.EqualTo(1));
+                Assert.That(sdk.ActiveConfiguration.Input.VideoPath, Is.EqualTo(requested.Input.VideoPath));
+            };
+            yield return sdk.Initialize(requested);
+            Assert.That(callbacks, Is.EqualTo(1));
+            Assert.True(sdk.IsRunning, sdk.LastError);
+        }
+        [UnityTest] public IEnumerator FailedVideoInitializationDoesNotRaiseSuccessfulInitializedEvent()
+        {
+            yield return sdk.Initialize(Options());
+            Assert.True(sdk.IsInitialized, sdk.LastError);
+            var before = sdk.ActiveConfiguration;
+            int callbacks = 0;
+            sdk.Initialized += () => callbacks++;
+            var requested = Options();
+            requested.SourceKind = InputKind.Video;
+            requested.OpenInputOnInitialize = true;
+            requested.Input.VideoPath = Path.Combine(Application.temporaryCachePath, "missing-" + System.Guid.NewGuid() + ".mp4");
+            requested.Recognition.MaxBodies = 2;
+            requested.Recognition.Regions = HumanVisionSdkConfiguration.CreateEqualRegions(2);
+            LogAssert.ignoreFailingMessages = true;
+            try { yield return sdk.Initialize(requested); }
+            finally { LogAssert.ignoreFailingMessages = false; }
+            Assert.That(callbacks, Is.Zero, "输入未启动成功，不能向调用方报告完整配置初始化成功。");
+            Assert.False(sdk.IsRunning);
+            Assert.That(sdk.ActiveConfiguration.Recognition.MaxBodies, Is.EqualTo(before.Recognition.MaxBodies));
+        }
         [UnityTest] public IEnumerator RejectedNeuralRequestPreservesLiveNativeSessionAndCommittedSettings()
         {
             yield return sdk.Initialize(Options()); Assert.True(sdk.IsInitialized, sdk.LastError);

@@ -1,6 +1,6 @@
 # ScriptableObject 配置与统一 API
 
-适用当前预发布版本：SDK **0.4.0-preview.7** / Input **0.1.0-preview.5**。
+适用本地开发包：SDK **0.4.0-preview.8** / Input **0.1.0-preview.5**；公共 Release 仍为 preview.7。
 这是当前版本的接入说明；历史 Release 的验证结果不自动适用于本次变更。
 
 ## 最小接入
@@ -74,6 +74,9 @@ yield return sdk.Initialize(request);
 这些设置与模型分析尺寸不同。Android GPU 的低/中/高通常为 512×288、640×384、960×576；
 CPU 和 NPU 必须以当前模型包的能力说明为准。NPU 仅支持已接入的 RK3588 路线，
 不能在 OnePlus 上验证 RK3588 NPU；不支持的模式会报错，不静默切换。
+preview.8 的完整本地 Android 资源补充包使用 YOLOv8n-pose CPU 模型，固定输入 512×288，支持 1–8 人；
+CPU 的人数上限不切换模型。Vulkan 保留低/中/高三个原模型，NPU 保留已恢复的低档 RKNN 模型。
+Windows CPU/DirectML 模型保持原版本。安装和哈希校验见 [本地 CPU 资源说明](LOCAL_ANDROID_CPU_YOLO.md)。
 旧代码直接创建 `HumanVisionSdkOptions` 时仍须注意 `UseWindowsCpu` 兼容开关；推荐从资产创建副本。
 
 ## 主要 API
@@ -87,6 +90,7 @@ CPU 和 NPU 必须以当前模型包的能力说明为准。NPU 仅支持已接�
 | `StartSdk()` / `RestartSdk()` | 显式启动输入（含仅准备过 Runtime 的情况）/ 按当前配置重新预检并重建；忙时拒绝重复操作 |
 | `StopSdk()` / `Shutdown()` | 关闭、等待在途资源安全退役；不删除用户物体。`Destroy(sdk.gameObject)` 或禁用总控也自动清理 |
 | `Configuration` / `ActiveConfiguration` | 草稿/最近成功应用配置的副本；后者未初始化为 null，停止后可用于重启 |
+| `Initialized` | 成功提交配置后回调；回调内可读取 `ActiveConfiguration`。只准备为 Ready，打开输入为 Running；打开失败不触发成功事件 |
 | `TryApplyConfiguration(options)` | 异步接受请求；true 不等于启动成功，观察状态和错误 |
 | `GetMaxBodies()` / `TrySetMaxBodies(n)` | 容量；开启区域时建议一次提交完整人数+区域配置 |
 | `GetUsersCount()` / `IsUserDetected(index)` | 当前有效人数 / 槽位是否有人；槽位可有空缺 |

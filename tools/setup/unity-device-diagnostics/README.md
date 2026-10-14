@@ -5,6 +5,18 @@ These are the actual helper sources used and tested in
 components, outside the stable SDK public API/UPM package. They observe runtime
 results and add log/hardware UI; they do not replace game input lifecycle.
 
+The optional `HumanVisionMainCpuVerificationProbe` runs only on Android when
+`Application.persistentDataPath/MainCpuVerification/request.json` exists. For the
+preview.8 CPU comparison, copy the exact `MainCpuBaselineProfile.json` bytes to
+`Assets/Resources/HumanVisionMainCpuBaselineProfile.txt`. Submit a bounded request
+such as `{"id":"cpu-yolo-check","seconds":30,"warmup":8}`. The same APK then tests
+legacy CPU, YOLO CPU, Vulkan Low and mirrored YOLO CPU against video-1.mp4 with
+4 people; actual model/backend identity must match each phase. Progress and
+per-person fresh/complete observation receipts go to that same folder. Existing
+stage/hardware diagnostics record the phase. Capture screenshots externally;
+this tool does not record the screen or save preferences. It rejects background
+measurements and does not treat OnePlus as RK3588 NPU acceptance.
+
 To reproduce in an SDK/Input project with the generated Settings Demo:
 
 1. Copy `Runtime` and `Tests` into `Assets/HumanVisionSettingsDemo/Diagnostics/`;

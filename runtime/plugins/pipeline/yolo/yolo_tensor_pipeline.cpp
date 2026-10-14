@@ -161,19 +161,36 @@ template<size_t count> void BuildAxis(int source,std::array<Axis,count>& axes,bo
             int(std::nearbyint(fraction*2048.f))};
     }
 }
+template<size_t count> void BuildLetterboxAxis(int source,std::array<Axis,count>& axes,int extent,bool horizontal) noexcept {
+    const double scale=double(source)/extent;
+    for(int i=0;i<extent;++i){
+        float fraction=float((i+.5)*scale-.5);
+        int first=int(std::floor(fraction));fraction-=first;
+        if(horizontal&&first<0){first=0;fraction=0;}
+        if(horizontal&&first>=source-1){first=source-1;fraction=0;}
+        axes[i]={std::clamp(first,0,source-1),std::clamp(first+1,0,source-1),int(std::nearbyint((1.f-fraction)*2048.f)),
+            int(std::nearbyint(fraction*2048.f))};
+    }
+}
 struct Instance {
     HV_HostServicesV1 host{};
     const HV_BackendApiV1* backend=nullptr;
     void* session=nullptr;
     yolo::Decoder decoder{width,height};
     std::array<uint8_t,width*height*3> pixels{};
+    // CPU storage is allocated at creation and reused across all source sizes.
+    std::vector<float> planar;
+    bool cpu=false;
     std::array<Axis,width> horizontal{};
     std::array<Axis,height> vertical{};
     std::array<HV_BodyObservationV1,8> observations{};
     uint64_t executions=0,attempts=0,validation_failures=0;
     int capacity=0,source_width=0,source_height=0;
     bool registered=false;
-    Instance(const HV_HostServicesV1& h,int limit):host(h),capacity(limit){}
+    Instance(const HV_HostServicesV1& h,int limit,bool cpu_route=false)
+        :host(h),decoder(width,height,cpu_route),cpu(cpu_route),capacity(limit){
+        if(cpu)planar.resize(width*height*3);
+    }
     ~Instance() {
         if(registered)UnregisterPipelineDiagnostics(this);
         // Even invalid tables and failing creates may hand us a partial session.
@@ -207,6 +224,35 @@ struct Instance {
             }
         }
     }
+    void PreprocessLetterbox(const HV_VideoFrame& frame,int channels,bool rgb,const yolo::Geometry& geometry) noexcept {
+        if(int64_t(frame.width)*9==int64_t(frame.height)*16){Preprocess(frame,channels,rgb);return;}
+        const bool width_limited=int64_t(frame.width)*height>=int64_t(frame.height)*width;
+        const double scale=width_limited?double(width)/frame.width:double(height)/frame.height;
+        const int rw=width_limited?width:int(frame.width*scale),rh=width_limited?int(frame.height*scale):height;
+        if(source_width!=frame.width||source_height!=frame.height){
+            BuildLetterboxAxis(frame.width,horizontal,rw,true);BuildLetterboxAxis(frame.height,vertical,rh,false);
+            source_width=frame.width;source_height=frame.height;
+        }
+        pixels.fill(114);
+        const auto* source=static_cast<const uint8_t*>(frame.data);
+        for(int y=0;y<rh;++y){
+            const auto& ay=vertical[y];
+            const auto* top=source+size_t(ay.first)*frame.stride_bytes;
+            const auto* bottom=source+size_t(ay.second)*frame.stride_bytes;
+            for(int x=0;x<rw;++x){
+                const auto& ax=horizontal[x];
+                for(int channel=0;channel<3;++channel){
+                    const int offset=rgb?channel:2-channel;
+                    const int a=top[size_t(ax.first)*channels+offset]*ax.weight0+
+                        top[size_t(ax.second)*channels+offset]*ax.weight1;
+                    const int b=bottom[size_t(ax.first)*channels+offset]*ax.weight0+
+                        bottom[size_t(ax.second)*channels+offset]*ax.weight1;
+                    const int value=(((ay.weight0*(a>>4))>>16)+((ay.weight1*(b>>4))>>16)+2)>>2;
+                    pixels[(size_t(y+geometry.top)*width+x+geometry.left)*3+channel]=uint8_t(std::clamp(value,0,255));
+                }
+            }
+        }
+    }
     void Publish(uint32_t count,float inference_ms,int64_t timestamp) noexcept {
         PipelineDiagnostics value{};
         value.detector_execution_count=executions;value.detector_attempted=attempts;
@@ -220,7 +266,38 @@ struct Instance {
     }
 };
 
-HV_Result HV_CALL Create(const HV_PipelineConfigV1* config,const HV_HostServicesV1* host,void** out,HV_ErrorBufferV1* error) {
+std::filesystem::path ValidateCpu(const Json& manifest,const Json& profile,const std::filesystem::path& root) {
+    Require(manifest.at("schema_version")==1&&manifest.at("pack_id")=="yolov8n-pose-512x288-ort"&&
+        manifest.at("pipeline_id")=="pipeline.yolo.cpu"&&manifest.at("max_people")==8&&
+        manifest.at("capabilities")==Json::array({"body_pose","multi_person"})&&
+        manifest.at("models").is_array()&&manifest.at("models").size()==1,
+        "YOLO CPU requires the pinned schema-1 512x288 ONNX ModelPack");
+    const auto name=profile.at("profile").get<std::string>();
+    Require(profile.at("schema_version")==1&&(name=="android-cpu-nohands"||name=="comparison-yolo-cpu")&&
+        profile.at("body")==Json({{"pipeline","pipeline.yolo.cpu"},{"modelPack","yolov8n-pose-512x288-ort"}})&&
+        profile.at("hands").at("enabled")==false&&
+        profile.at("backend")==Json({{"preference",Json::array({"backend.ort.cpu"})},{"allow_fallback",false}}),
+        "YOLO CPU requires an explicit Android/comparison CPU-only profile, disabled hands and no fallback");
+    const auto& model=manifest.at("models").at(0);
+    Require(model.at("role")=="body"&&model.at("format")=="onnx"&&model.at("sha256")==onnx_sha&&
+        model.at("decoder_id")=="yolov8_pose_dfl17_v1",
+        "YOLO CPU weights or decoder differ from the qualified source ONNX");
+    const auto& input=model.at("input_contract");
+    Require(input.at("width")==width&&input.at("height")==height&&input.at("tensor_layout")=="NCHW"&&
+        input.at("tensor_dtype")=="fp32"&&input.at("color_order")=="RGB"&&input.at("input_blob")=="in0"&&
+        input.at("crop_mode")=="letterbox"&&input.at("pad_rgb")==Json::array({114,114,114})&&
+        input.at("normalization")==Json({{"mean",{0,0,0}},{"norm",{1./255.,1./255.,1./255.}}}),
+        "YOLO CPU requires RGB FP32 NCHW in0[1,3,288,512], centered pad114 and exactly one /255 normalization");
+    const auto& output=model.at("output_contract");
+    Require(output.at("decoder")=="yolov8_pose_dfl17_v1"&&output.at("output_blobs")==Json::array({"out0","out1"})&&
+        output.at("tensor_dtype")=="fp32"&&output.at("rows")==rows&&output.at("columns")==Json::array({65,51})&&
+        output.at("max_output_bytes")==Json({{"out0",rows*65*4},{"out1",rows*51*4}}),
+        "YOLO CPU requires exact bounded FP32 out0[1,3024,65] and out1[1,3024,51]");
+    Require(!model.contains("backend_options")||model.at("backend_options")==Json::object(),
+        "YOLO CPU does not accept backend overrides or backend-side normalization");
+    const auto path=Asset(root,model.at("asset_path"));CheckHash(path,onnx_sha);return path;
+}
+HV_Result CreateImpl(const HV_PipelineConfigV1* config,const HV_HostServicesV1* host,void** out,HV_ErrorBufferV1* error,bool cpu) {
     if(out)*out=nullptr;
     if(!out||!config||!host||config->struct_size<sizeof(*config)||config->api_version!=HV_PLUGIN_API_V1||
         host->struct_size<sizeof(*host)||host->api_version!=HV_PLUGIN_API_V1||!host->create_backend||!host->release_backend||
@@ -228,34 +305,37 @@ HV_Result HV_CALL Create(const HV_PipelineConfigV1* config,const HV_HostServices
         config->reserved){Error(error,"Invalid YOLO tensor pipeline configuration or host services");return HV_ERR_INVALID_ARGUMENT;}
     try {
         const auto manifest=Json::parse(config->model_manifest_utf8),profile=Json::parse(config->options_utf8);
-        const auto path=Validate(manifest,profile,std::filesystem::u8path(config->asset_root_utf8)).u8string();
-        auto backend_options=manifest.at("models").at(0).at("backend_options");
+        const auto path=(cpu?ValidateCpu:Validate)(manifest,profile,std::filesystem::u8path(config->asset_root_utf8)).u8string();
+        auto backend_options=cpu?Json::object():manifest.at("models").at(0).at("backend_options");
         // Validate() already pins the model and its compiled normalization. Pass
         // that contract explicitly; the generic backend must never guess /255.
-        backend_options["input_transform"]=manifest.at("models").at(0).at("input_contract").at("normalization");
+        if(!cpu)backend_options["input_transform"]=manifest.at("models").at(0).at("input_contract").at("normalization");
 #if defined(HV_RKNN_INPUT_MEMORY_EXPERIMENT)
         // Only the private comparison coordinator supplies per-instance cores.
         // Canonical profile/model bytes and the default three-core path stay pinned.
-        if(profile.contains("private_instance_core_mask")) {
+        if(!cpu&&profile.contains("private_instance_core_mask")) {
             const auto& mask=profile.at("private_instance_core_mask");
             Require(mask.is_number_integer()&&(mask==1||mask==2||mask==4),"Invalid private instance core mask");
             backend_options["core_mask"]=mask;
         }
 #endif
         const auto options=backend_options.dump();
-        auto self=std::make_unique<Instance>(*host,config->max_bodies);
-        const HV_BackendConfigV1 backend_config{sizeof(backend_config),HV_PLUGIN_API_V1,path.c_str(),options.c_str(),"backend.rknn"};
+        auto self=std::make_unique<Instance>(*host,config->max_bodies,cpu);
+        const HV_BackendConfigV1 backend_config{sizeof(backend_config),HV_PLUGIN_API_V1,path.c_str(),options.c_str(),cpu?"backend.ort.cpu":"backend.rknn"};
         const auto status=host->create_backend(host->context,&backend_config,&self->backend,&self->session,error);
         if(status!=HV_OK)return status;
         if(!self->backend||!self->session||self->backend->struct_size<sizeof(HV_BackendApiV1)||
             self->backend->api_version!=HV_PLUGIN_API_V1||!self->backend->run){
-            Error(error,"RKNN host factory returned an invalid tensor backend table or session");return HV_ERR_MODEL_LOAD;
+            Error(error,cpu?"CPU host factory returned an invalid tensor backend table or session":
+                "RKNN host factory returned an invalid tensor backend table or session");return HV_ERR_MODEL_LOAD;
         }
         if(!RegisterPipelineDiagnostics(self.get())){Error(error,"Pipeline diagnostics capacity exhausted");return HV_ERR_INTERNAL;}
         self->registered=true;Error(error,"");*out=self.release();return HV_OK;
     }catch(const std::exception& ex){Error(error,ex.what());return HV_ERR_MODEL_LOAD;}
     catch(...){Error(error,"YOLO tensor creation failed");return HV_ERR_INTERNAL;}
 }
+HV_Result HV_CALL Create(const HV_PipelineConfigV1* c,const HV_HostServicesV1* h,void** out,HV_ErrorBufferV1* e){return CreateImpl(c,h,out,e,false);}
+HV_Result HV_CALL CreateCpu(const HV_PipelineConfigV1* c,const HV_HostServicesV1* h,void** out,HV_ErrorBufferV1* e){return CreateImpl(c,h,out,e,true);}
 void HV_CALL Destroy(void* instance) {delete static_cast<Instance*>(instance);}
 bool OutputTensor(const HV_TensorViewV1& view,const char* name,int columns) noexcept {
     if(view.struct_size<sizeof(view)||view.api_version!=HV_PLUGIN_API_V1||!view.name||std::strcmp(view.name,name)||
@@ -285,15 +365,24 @@ HV_Result HV_CALL Process(void* instance,const HV_PipelineInputV1* input,HV_Pipe
         default:Error(error,"YOLO tensor supports RGB24/BGR24/RGBA32/BGRA32 only");return HV_ERR_UNSUPPORTED_FORMAT;
     }
     yolo::Geometry geometry{};
-    if(!yolo::BuildGeometry(frame.width,frame.height,width,height,geometry)||
+    const bool geometry_valid=self.cpu?yolo::BuildLetterboxGeometry(frame.width,frame.height,width,height,geometry):
+        yolo::BuildGeometry(frame.width,frame.height,width,height,geometry);
+    if(!geometry_valid||
         int64_t(frame.width)*channels>frame.stride_bytes||
         int64_t(frame.stride_bytes)*(frame.height-1)+int64_t(frame.width)*channels>frame.data_bytes){
-        Error(error,"YOLO tensor requires a complete stride-aware 16:9 landscape frame");return HV_ERR_INVALID_ARGUMENT;
+        Error(error,self.cpu?"YOLO CPU requires a complete stride-aware frame with nonzero letterbox dimensions":
+            "YOLO tensor requires a complete stride-aware 16:9 landscape frame");return HV_ERR_INVALID_ARGUMENT;
     }
     try {
-        const auto begin=Clock::now();self.Preprocess(frame,channels,rgb);const auto prepared=Clock::now();
+        const auto begin=Clock::now();
+        if(self.cpu)self.PreprocessLetterbox(frame,channels,rgb,geometry);else self.Preprocess(frame,channels,rgb);
+        if(self.cpu)for(size_t pixel=0;pixel<size_t(width)*height;++pixel)
+            for(int channel=0;channel<3;++channel)
+                self.planar[size_t(channel)*width*height+pixel]=self.pixels[pixel*3+channel]/255.f;
+        const auto prepared=Clock::now();
         out->preprocess_ms=Milliseconds(begin,prepared);
         HV_TensorViewV1 tensor{sizeof(tensor),HV_PLUGIN_API_V1,"in0",3,4,{1,height,width,3},self.pixels.data(),self.pixels.size()};
+        if(self.cpu)tensor={sizeof(tensor),HV_PLUGIN_API_V1,"in0",1,4,{1,3,height,width},self.planar.data(),self.planar.size()*sizeof(float)};
         HV_TensorViewV1 outputs[2]{};uint32_t tensor_count=0;++self.attempts;
         const auto status=self.backend->run(self.session,&tensor,1,outputs,2,&tensor_count,error);
         const auto inferred=Clock::now();out->inference_ms=Milliseconds(prepared,inferred);
@@ -312,6 +401,11 @@ HV_Result HV_CALL Process(void* instance,const HV_PipelineInputV1* input,HV_Pipe
     catch(...){out->body_count=0;self.Publish(0,out->inference_ms,frame.timestamp_us);Error(error,"YOLO tensor processing failed");return HV_ERR_INTERNAL;}
 }
 const HV_PipelineApiV1 api{sizeof(api),HV_PLUGIN_API_V1,Create,Destroy,Process};
+const HV_PipelineApiV1 cpu_api{sizeof(cpu_api),HV_PLUGIN_API_V1,CreateCpu,Destroy,Process};
+}
+extern "C" HV_Result HV_CALL HV_QueryYoloCpuPipelineV1(uint32_t version,HV_PluginApiV1* out) {
+ if(!out||version!=HV_PLUGIN_API_V1||out->struct_size<sizeof(*out)||out->api_version!=HV_PLUGIN_API_V1)return HV_ERR_INVALID_ARGUMENT;
+ *out={sizeof(*out),HV_PLUGIN_API_V1,"pipeline.yolo.cpu","0.4.0-preview.7",HV_PLUGIN_PIPELINE,HV_CAP_BODY_POSE|HV_CAP_MULTI_PERSON,8,&cpu_api,nullptr,0};return HV_OK;
 }
 extern "C" HV_Result HV_CALL HV_QueryYoloTensorPipelineV1(uint32_t version,HV_PluginApiV1* out) {
  if(!out||version!=HV_PLUGIN_API_V1||out->struct_size<sizeof(*out)||out->api_version!=HV_PLUGIN_API_V1)return HV_ERR_INVALID_ARGUMENT;

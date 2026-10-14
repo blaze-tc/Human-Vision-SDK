@@ -1,0 +1,9 @@
+{
+  "id": "modelpack.yolov8n-pose-512x288-ort",
+  "type": "modelpack",
+  "version": "1.0.0",
+  "api_version": 1,
+  "capabilities": ["body_pose", "multi_person"],
+  "dependencies": ["pipeline.yolo.cpu"],
+  "test_targets": ["humanvision_native_tests", "tools/package/test_main_cpu_yolo_stage.py"]
+}

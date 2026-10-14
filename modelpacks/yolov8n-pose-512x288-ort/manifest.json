@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "pack_id": "yolov8n-pose-512x288-ort",
+  "pack_version": "1.0.0",
+  "pipeline_id": "pipeline.yolo.cpu",
+  "max_people": 8,
+  "capabilities": ["body_pose", "multi_person"],
+  "local_evaluation_only": true,
+  "distribution_qualified": false,
+  "hardware_fps_acceptance": false,
+  "models": [{
+    "role": "body",
+    "format": "onnx",
+    "asset_path": "body.onnx",
+    "sha256": "6c3431e00a8dace37c6a6b9546995e8d2a83c15d5fb894cc467e8c5ab5be88b3",
+    "decoder_id": "yolov8_pose_dfl17_v1",
+    "source": "Pinned existing NCNN-derived ONNX recovery; see SOURCES.md",
+    "license": "Upstream model license applies; local evaluation only, no redistribution qualification",
+    "conversion_recipe": "tools/models/rknn/recover_pinned_onnx.py; existing recovered-low.onnx, no re-export",
+    "input_contract": {
+      "width": 512,
+      "height": 288,
+      "tensor_layout": "NCHW",
+      "tensor_dtype": "fp32",
+      "color_order": "RGB",
+      "normalization": {
+        "mean": [0, 0, 0],
+        "norm": [0.00392156862745098, 0.00392156862745098, 0.00392156862745098]
+      },
+      "input_blob": "in0",
+      "crop_mode": "letterbox",
+      "pad_rgb": [114, 114, 114]
+    },
+    "output_contract": {
+      "decoder": "yolov8_pose_dfl17_v1",
+      "output_blobs": ["out0", "out1"],
+      "tensor_dtype": "fp32",
+      "rows": 3024,
+      "columns": [65, 51],
+      "max_output_bytes": {"out0": 786240, "out1": 616896}
+    }
+  }]
+}

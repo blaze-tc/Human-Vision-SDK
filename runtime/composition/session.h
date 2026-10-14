@@ -11,6 +11,8 @@ namespace humanvision::runtime {
 namespace detail {
 // Shared internal configuration boundary for the composition root.
 HV_PipelineConfigV1 BuildGpuPipelineConfig(const RuntimeProfile&,const char* asset_root);
+HV_PipelineConfigV1 BuildPipelineConfig(const PipelineSelection&,int public_capacity,
+                                      const char* asset_root,const char* options);
 }
 // The composition root registers built-ins; the generic Host never names them.
 class RuntimeSession {

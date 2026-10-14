@@ -9,18 +9,21 @@ struct Geometry {
 };
 bool BuildGeometry(int source_width,int source_height,int target,Geometry& out) noexcept;
 bool BuildGeometry(int source_width,int source_height,int width,int height,Geometry& out) noexcept;
+// CPU-only 512x288 canvas; existing rectangular GPU/NPU admission stays strict.
+bool BuildLetterboxGeometry(int source_width,int source_height,int width,int height,Geometry& out) noexcept;
 int AnchorCount(int target) noexcept;
 int AnchorCount(int width,int height) noexcept;
 int CanonicalIndex(int coco_index) noexcept;
 class Decoder {
 public:
-    explicit Decoder(int target,int height=0);
+    explicit Decoder(int target,int height=0,bool cpu_letterbox=false);
     bool Decode(const HV_TensorViewV1* tensors,uint32_t tensor_count,const Geometry& geometry,
                 int64_t timestamp,HV_BodyObservationV1* bodies,float* scores,uint32_t capacity,
                 uint32_t& count);
 private:
     struct Proposal { double box[4]{};float score=0;int anchor=0,x=0,y=0,stride=0; };
     int target_,height_;
+    bool cpu_letterbox_;
     std::vector<Proposal> proposals_,selected_;
 };
 }

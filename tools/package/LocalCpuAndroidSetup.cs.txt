@@ -1,0 +1,113 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using HumanVision.Editor;
+using UnityEditor;
+using UnityEngine;
+
+/// <summary>Verifies this complete local composition before enabling its Android build mode.</summary>
+public static class HumanVisionLocalCpuAndroidSetup
+{
+    [Serializable] private sealed class Entry { public string path; public string sha256; }
+    [Serializable] private sealed class Binding
+    {
+        public string composition_id;
+        public string sdk_native_sha256;
+        public string input_native_sha256;
+        public string windows_native_sha256;
+        public bool distribution_qualified;
+        public bool hardware_fps_acceptance;
+    }
+    [Serializable] private sealed class Index { public Entry[] files; public Binding binding_correction; }
+    [Serializable] private sealed class Receipt
+    {
+        public int schema_version;
+        public string stage_id;
+        public bool local_evaluation_only;
+        public string index_sha256;
+    }
+    private const string Root = "Assets/StreamingAssets/HumanVision/Runtime";
+    private const string ExpectedIndex = "@INDEX_SHA256@";
+    private const int ExpectedFiles = @RUNTIME_FILE_COUNT@;
+    private const string ExpectedSdk = "@SDK_NATIVE_SHA256@";
+    private const string ExpectedInput = "@INPUT_NATIVE_SHA256@";
+    private const string ExpectedOrt = "@ORT_NATIVE_SHA256@";
+    private const string ExpectedWindows = "@WINDOWS_NATIVE_SHA256@";
+    private const string ExpectedRknn = "@RKNN_RUNTIME_SHA256@";
+    private const string ExpectedComposition = "@COMPOSITION_ID@";
+
+    [MenuItem("HumanVision/Enable Local Android CPU Resources")]
+    public static void VerifyAndEnable()
+    {
+        VerifyRuntime();
+        VerifyPlugin("libhumanvision.so", ExpectedSdk, true);
+        VerifyPlugin("libhumanvision_input.so", ExpectedInput, true);
+        VerifyPlugin("libonnxruntime.so", ExpectedOrt, true);
+        VerifyPlugin("librknnrt.so", ExpectedRknn, true);
+        VerifyPlugin("humanvision.dll", ExpectedWindows, false);
+        HumanVisionModelInstaller.Prepare();
+        VerifyRuntime();
+        HumanVisionAndroidRuntimeSettings.instance.RuntimeModeId = "android-dual-vulkan-npu";
+        Debug.Log("HumanVision: " + ExpectedFiles + " indexed resources, four ARM64 libraries and the preserved Windows SDK verified. CPU/Vulkan/RK3588 NPU build mode enabled; hardware FPS and redistribution qualification remain pending.");
+    }
+
+    private static void VerifyRuntime()
+    {
+        var receipt = JsonUtility.FromJson<Receipt>(File.ReadAllText(Root + "/staged-runtime.json"));
+        if (receipt == null || receipt.schema_version != 1 || receipt.stage_id != "local-qualified-runtime" ||
+            !receipt.local_evaluation_only || receipt.index_sha256 != ExpectedIndex)
+            throw new InvalidDataException("The complete CPU addon stage receipt differs. Reimport the matching local addon.");
+        RequireHash(Root + "/index.json", ExpectedIndex);
+        var index = JsonUtility.FromJson<Index>(File.ReadAllText(Root + "/index.json"));
+        if (index == null || index.files == null || index.files.Length != ExpectedFiles ||
+            index.binding_correction == null)
+            throw new InvalidDataException("Incomplete indexed CPU runtime. Reimport all resources from the matching local addon.");
+        var binding = index.binding_correction;
+        if (binding.composition_id != ExpectedComposition || binding.sdk_native_sha256 != ExpectedSdk ||
+            binding.input_native_sha256 != ExpectedInput || binding.windows_native_sha256 != ExpectedWindows ||
+            binding.distribution_qualified || binding.hardware_fps_acceptance)
+            throw new InvalidDataException("The local CPU composition/native binding differs from this addon.");
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string root = Path.GetFullPath(Root) + Path.DirectorySeparatorChar;
+        foreach (var entry in index.files)
+        {
+            if (entry == null || string.IsNullOrEmpty(entry.path) || entry.path.Contains(":") ||
+                entry.path.Contains("\\") || Path.IsPathRooted(entry.path) ||
+                entry.path.Split('/').Any(p => p.Length == 0 || p == "." || p == "..") || !names.Add(entry.path))
+                throw new InvalidDataException("Unsafe or duplicate runtime entry.");
+            string file = Path.GetFullPath(Path.Combine(Root, entry.path));
+            if (!file.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Runtime entry escapes its resource root.");
+            RequireHash(file, entry.sha256);
+        }
+    }
+
+    private static void VerifyPlugin(string name, string hash, bool android)
+    {
+        var paths = AssetDatabase.GetAllAssetPaths().Where(p => p.EndsWith("/" + name, StringComparison.Ordinal)).ToArray();
+        if (paths.Length != 1)
+            throw new InvalidDataException("Expected exactly one " + name + "; found " + paths.Length + ". Keep SDK and Input separate and avoid mixing offline and UPM installations.");
+        string asset = paths[0], file = asset;
+        var package = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(asset);
+        if (package != null)
+            file = Path.Combine(package.resolvedPath, asset.Substring(("Packages/" + package.name + "/").Length));
+        RequireHash(file, hash);
+        var importer = AssetImporter.GetAtPath(asset) as PluginImporter;
+        var target = android ? BuildTarget.Android : BuildTarget.StandaloneWindows64;
+        var cpu = android ? "ARM64" : "x86_64";
+        if (importer == null || !importer.GetCompatibleWithPlatform(target) ||
+            importer.GetPlatformData(target, "CPU") != cpu || importer.GetCompatibleWithEditor() == android)
+            throw new InvalidDataException("Incorrect native plugin import settings: " + asset);
+    }
+
+    private static void RequireHash(string path, string expected)
+    {
+        if (expected == null || expected.Length != 64 || expected.Any(c => !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))))
+            throw new InvalidDataException("Invalid expected resource hash: " + path);
+        using (var sha = SHA256.Create()) using (var input = File.OpenRead(path))
+            if (BitConverter.ToString(sha.ComputeHash(input)).Replace("-", "").ToLowerInvariant() != expected)
+                throw new InvalidDataException("Resource hash mismatch: " + path + ". Reimport the matching SDK/Input/local addon.");
+    }
+}

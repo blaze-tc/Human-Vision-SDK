@@ -1,4 +1,11 @@
-# Human Vision SDK 0.4.0-preview.7 (development)
+# Human Vision SDK 0.4.0-preview.8 (development)
+
+This local development update adds the fixed 512×288 Android YOLO CPU profile
+through the matching local resource addon. Vulkan quality models, RKNN models,
+Input and the Windows native library are preserved. Public APIs are unchanged;
+`Initialized` now fires after the successful configuration is committed.
+See `Documentation/user-guide/LOCAL_ANDROID_CPU_YOLO.md` for the complete addon.
+The published preview.7 Release remains unchanged.
 
 当前接入入口：[ScriptableObject 配置与 API](Documentation/user-guide/SDK_CONFIGURATION.md)。
 配置资产 + 初始化代码指定 Camera/RTSP/Video；只保留 Settings 样例。

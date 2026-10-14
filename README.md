@@ -1,6 +1,9 @@
 # Human Vision SDK
 
 当前预发布版本：SDK **0.4.0-preview.7** / Input **0.1.0-preview.5**。
+当前开发分支提供本地 SDK **0.4.0-preview.8**：Android CPU 使用 YOLOv8n-pose，
+API 保持兼容，Vulkan/RK3588 NPU 原模型保留。导入完整本地资源包的方式见
+[本地 CPU/GPU/NPU 部署](docs/user-guide/LOCAL_ANDROID_CPU_YOLO.md)。公共 Release 未替换。
 [ScriptableObject 配置与统一 API](docs/user-guide/SDK_CONFIGURATION.md) ·
 [完整接入脚本](docs/user-guide/examples/HumanVisionGameplayExample.cs) ·
 [Settings 设置样例](docs/user-guide/SETTINGS_DEMO.md)。

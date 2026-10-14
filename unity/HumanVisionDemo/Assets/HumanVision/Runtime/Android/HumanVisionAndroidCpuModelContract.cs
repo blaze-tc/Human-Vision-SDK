@@ -6,7 +6,7 @@ using J = HumanVision.HumanVisionConfigurationJson;
 
 namespace HumanVision
 {
-    // Exact existing CPU deployment, including both capacity branches. Read only during configuration.
+    // Exact CPU deployments, selected by pinned profile bytes. Read only during configuration.
     internal static class HumanVisionAndroidCpuModelContract
     {
         private static readonly Dictionary<string,string> Pinned = new Dictionary<string,string>(StringComparer.Ordinal) {
@@ -16,6 +16,11 @@ namespace HumanVision
             { "modelpacks/precision-t-26/body.onnx", "7d0075fbc44b2e696af21ac4555333fbb43405bf8dcc8d44c17c98d23818c710" },
             { "modelpacks/rtmo-t-416/manifest.json", "6ed2a7166bec589bb7aa5322b26c01cec2a5db3a0b691e92f503ecf6a3de0f90" },
             { "modelpacks/rtmo-t-416/body.onnx", "20aad6e2e42359cac1c5b4a0b2da00e29bfe91a72a782fdcf287d273a04c1b24" }
+        };
+        private static readonly Dictionary<string,string> YoloPinned = new Dictionary<string,string>(StringComparer.Ordinal) {
+            { "profiles/android-cpu-nohands.json", "75351d8c1b627be12b8cfc09e2928e440849c9fe4c0386123166b2374e29b387" },
+            { "modelpacks/yolov8n-pose-512x288-ort/manifest.json", "de9f7b09b51ce2eee7b48853f1345180c411fa4176a825b0e9642130c15a8765" },
+            { "modelpacks/yolov8n-pose-512x288-ort/body.onnx", "6c3431e00a8dace37c6a6b9546995e8d2a83c15d5fb894cc467e8c5ab5be88b3" }
         };
         internal static void Validate(string root)
         {
@@ -27,7 +32,9 @@ namespace HumanVision
                 files.Add(name,J.Text(row,"sha256"));
             }
             string fullRoot=Path.GetFullPath(root);
-            foreach(var expected in Pinned) {
+            bool yolo=files.TryGetValue("profiles/android-cpu-nohands.json",out string profileHash) &&
+                profileHash==YoloPinned["profiles/android-cpu-nohands.json"];
+            foreach(var expected in yolo ? YoloPinned : Pinned) {
                 if(!files.TryGetValue(expected.Key,out string indexed) || indexed != expected.Value)
                     throw new InvalidDataException("CPU profile/model differs from the admitted deployment: "+expected.Key);
                 string path=Path.Combine(fullRoot,expected.Key);
@@ -39,7 +46,7 @@ namespace HumanVision
                     if(BitConverter.ToString(sha.ComputeHash(file)).Replace("-","").ToLowerInvariant()!=expected.Value)
                         throw new InvalidDataException("CPU runtime SHA-256 mismatch: "+expected.Key);
             }
-            foreach(string pack in new[] { "precision-t-26","rtmo-t-416" })
+            foreach(string pack in yolo ? new[] { "yolov8n-pose-512x288-ort" } : new[] { "precision-t-26","rtmo-t-416" })
                 if(File.Exists(Path.Combine(fullRoot,"modelpacks",pack,"modelpack.json"))) throw new InvalidDataException("Ambiguous CPU ModelPack manifest.");
         }
     }

@@ -208,7 +208,9 @@ namespace HumanVision.Tests
             } finally {
                 // 只删除本测试 UUID 目录；保留之前的场景对象。
                 UnityEditor.AssetDatabase.DeleteAsset(folder);
-                if (string.IsNullOrEmpty(originalPath)) { UnityEngine.Object.DestroyImmediate(root); root = null; UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single); }
+                // Test Runner owns the untitled test scene. Closing it here also closes
+                // its original scene setup and can prevent RunFinished from completing.
+                if (string.IsNullOrEmpty(originalPath)) { UnityEngine.Object.DestroyImmediate(root); root = null; }
             }
         }
         [Test] public void MissingSaveUsesSdkInspectorDefaults()

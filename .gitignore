@@ -1,4 +1,5 @@
 build/
+/modelpacks/yolov8n-pose-512x288-ort/body.onnx
 out/
 .vs/
 CMakeUserPresets.json
@@ -18,6 +19,8 @@ unity/HumanVisionDemo/Logs/
 unity/HumanVisionDemo/UserSettings/
 unity/HumanVisionDemo/Builds/
 unity/HumanVisionDemo/Assets/Plugins/x86_64/*.dll
+unity/HumanVisionDemo/Assets/Plugins/Android/arm64-v8a/*.so
+unity/HumanVisionDemo/Assets/Plugins/Android/arm64-v8a/*.so.meta
 unity/HumanVisionDemo/Assets/StreamingAssets/HumanVision/Models/*.onnx
 .worktrees/
 

@@ -27,9 +27,10 @@ namespace HumanVision.Tests
                     new[] { "body_pose", "multi_person", "tensor_inference" },
                     HumanVisionAndroidRuntimeModeRegistry.Resolve(id).RequiredCapabilities,
                     id);
-            Assert.AreEqual(
-                "android-ncnn-vulkan",
-                HumanVisionAndroidRuntimeSettings.instance.RuntimeModeId);
+            // A registry test must preserve the project's approved persisted mode.
+            // The complete CPU/GPU/NPU test project intentionally selects Dual.
+            Assert.That(HumanVisionAndroidRuntimeModeRegistry.All.Select(x => x.Id),
+                Does.Contain(HumanVisionAndroidRuntimeSettings.instance.RuntimeModeId));
             Assert.Throws<InvalidOperationException>(
                 () => HumanVisionAndroidRuntimeModeRegistry.Resolve("automatic"));
         }

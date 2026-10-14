@@ -1,13 +1,26 @@
 {
   "binding_correction": {
-    "composition_id": "sdk-preset-input-cadence-20261012-development",
+    "composition_id": "main-preview7-restored-android-cpu-yolo-v1",
     "distribution_qualified": false,
     "hardware_fps_acceptance": false,
     "input_native_sha256": "0639a50ecbe765bda84a4dbc6616bd9f5fcedbf51839e2dfb7c1588650511457",
-    "sdk_native_sha256": "8689efb872d76a825595ec4701375cf0c3c0f44d27a12d9bf2a8c9240ece4681",
+    "sdk_native_sha256": "32ce9715ad8a6daae5b47dd5d628e6340f354715eca24c11b84f651407694804",
     "windows_default_profile": "windows-pc-directml",
     "windows_explicit_cpu_profile": "windows-pc-cpu",
     "windows_native_sha256": "8a7f5248bf45f24f7f282d4dfbe4b73ceb26752ebf811f74f6afe113b10868c9"
+  },
+  "cpu_yolo_extension": {
+    "baseline_sdk_native_sha256": "8689efb872d76a825595ec4701375cf0c3c0f44d27a12d9bf2a8c9240ece4681",
+    "baseline_source_commit": "ba1815abe8fa07a134fda8c308a8d1312b5a05fd",
+    "deployment": "local-addon",
+    "distribution_qualified": false,
+    "hardware_fps_acceptance": false,
+    "model_pack": "yolov8n-pose-512x288-ort",
+    "profile": "android-cpu-nohands",
+    "rknn_models_changed": false,
+    "schema_version": 1,
+    "vulkan_models_changed": false,
+    "windows_cpu_profile_changed": false
   },
   "eligibility_evidence_sha256": "839fa054f0048f5ed79cd4436c380fa536161043447f7b51d55426e025ed0ce4",
   "files": [
