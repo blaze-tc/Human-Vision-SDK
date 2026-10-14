@@ -4,7 +4,7 @@ Application integration documentation: [Chinese user guide](../user-guide/README
 contains a code-first walkthrough for a new Unity project, Start initialization,
 skeleton result examples, API semantics and SDK platform evidence. Start with
 [configuration and API](../user-guide/SDK_CONFIGURATION.md). The public Release
-remains preview.7; the local preview.8 CPU extension has its own
+is preview.8; the matching local Android CPU/NPU resources have their own
 [deployment guide](../user-guide/LOCAL_ANDROID_CPU_YOLO.md) and verification report.
 Historical measurements do not establish acceptance of a later build.
 

@@ -1,3 +1,31 @@
+# v0.4.0-preview.8 发布
+
+用户于 2026-10-14 明确要求核验后合并 main、发布 GitHub Release 并完善文档。
+SDK 0.4.0-preview.8 / Input 0.1.0-preview.5；发布为预发布评估版。
+`release-preview8-authority.json` 只批准八个标准公共附件，不批准完整本地资源补充包、
+CPU YOLO ONNX、RKNN 模型、librknnrt.so、用户视频或测试 APK 的公共上传。
+保留原评估/分发/硬件资格标记、旧 authority、旧 Release 和本地测试证据。
+
+重新运行原生回归、Unity 编译/相关测试、打包工具、架构/公共 API/目录索引/换行检查。
+缺少原始 golden 的结果单独记录；不得生成替代数据或将缺失/跳过计为通过。
+同步仓库和随包安装/API/模型/测试说明，重新生成完整文件哈希 authority 后提交。
+
+```powershell
+py -3.13 tools/package/package_release_snapshot.py --authority tools/package/release-preview8-authority.json --verify-only
+py -3.13 tools/package/test_package_release_snapshot.py
+py -3.13 tools/maintenance/check_architecture_boundaries.py
+py -3.13 tools/maintenance/generate_component_catalog.py --check
+py -3.13 tools/test/verify_upm_git_newlines.py
+py -3.13 tools/package/package_release_snapshot.py --authority tools/package/release-preview8-authority.json --output out/releases/v0.4.0-preview.8-final
+```
+
+输出必须是新的不可覆盖目录，八个附件必须绑定最终干净提交。
+origin/main 祖先检查后快进，不强推；annotated tag 固定该提交，创建 draft prerelease。
+上传八附件后下载至独立目录，逐项验证 SHA256、文件/GUID/native/resource 闭包，再发布。
+Windows 实际导入/初始化与 OnePlus 原 APK 的证据和 SDK 字节一致性分别记录；
+仅修改文档/测试不代表重新获得设备性能数据。见[本次发布核验](../reports/2026-10-14-preview8-release.md)。
+
+
 # v0.4.0-preview.7 发布
 
 用户在知晓回归数据缺失和设备限制后明确要求合并 main 并发布。本次按预发布评估版交付；

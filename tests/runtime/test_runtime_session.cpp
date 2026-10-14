@@ -15,7 +15,11 @@ class YoloCpuCandidateSelection : public ::testing::Test {
 protected:
  const std::filesystem::path project=HV_TEST_PROJECT_ROOT;
  const std::filesystem::path fixture=project/"out/rknn-validation-20261009";
- const std::filesystem::path runtime=project/"out/yolo-cpu-candidate-tests";
+ // CTest may run the two cases in separate processes at the same time. Each
+ // case must own its staged model so copying it cannot invalidate another hash.
+ const std::filesystem::path runtime=project/"out"/
+     (std::string("yolo-cpu-candidate-tests-")+
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
  std::vector<uint8_t> pixels;
  PluginRegistry registry;
  std::shared_ptr<const RuntimeProfile> profile;

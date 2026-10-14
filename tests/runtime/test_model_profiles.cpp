@@ -272,12 +272,20 @@ TEST(AndroidBenchmarkProfiles, SelectOneProviderDisableHandsAndKeepBodyPolicy) {
   nlohmann::json profile;stream>>profile;
   EXPECT_EQ(profile.at("schema_version"),1);
   EXPECT_EQ(profile.at("profile"),expected.first);
-  ASSERT_TRUE(profile.contains("body_by_capacity"));
-  const auto& choices=profile.at("body_by_capacity");ASSERT_EQ(choices.size(),2u);
-  EXPECT_EQ(choices[0].at("max_people"),2);EXPECT_EQ(choices[0].at("pipeline"),"pipeline.topdown");
-  EXPECT_EQ(choices[0].at("modelPack"),"precision-t-26");
-  EXPECT_EQ(choices[1].at("max_people"),8);EXPECT_EQ(choices[1].at("pipeline"),"pipeline.rtmo");
-  EXPECT_EQ(choices[1].at("modelPack"),"rtmo-t-416");
+  if(std::string(expected.first)=="android-cpu-nohands"){
+   // The public CPU route now uses the same whole-frame model at every capacity.
+   EXPECT_FALSE(profile.contains("body_by_capacity"));
+   ASSERT_TRUE(profile.contains("body"));
+   EXPECT_EQ(profile.at("body").at("pipeline"),"pipeline.yolo.cpu");
+   EXPECT_EQ(profile.at("body").at("modelPack"),"yolov8n-pose-512x288-ort");
+  }else{
+   ASSERT_TRUE(profile.contains("body_by_capacity"));
+   const auto& choices=profile.at("body_by_capacity");ASSERT_EQ(choices.size(),2u);
+   EXPECT_EQ(choices[0].at("max_people"),2);EXPECT_EQ(choices[0].at("pipeline"),"pipeline.topdown");
+   EXPECT_EQ(choices[0].at("modelPack"),"precision-t-26");
+   EXPECT_EQ(choices[1].at("max_people"),8);EXPECT_EQ(choices[1].at("pipeline"),"pipeline.rtmo");
+   EXPECT_EQ(choices[1].at("modelPack"),"rtmo-t-416");
+  }
   EXPECT_FALSE(profile.at("hands").at("enabled").get<bool>());
   EXPECT_EQ(profile.at("body_fps"),30);EXPECT_EQ(profile.at("output").at("hz"),60);
   const auto& preference=profile.at("backend").at("preference");

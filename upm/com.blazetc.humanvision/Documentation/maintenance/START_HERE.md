@@ -4,13 +4,13 @@ Application integration documentation: [Chinese user guide](../user-guide/README
 contains a code-first walkthrough for a new Unity project, Start initialization,
 skeleton result examples, API semantics and SDK platform evidence. Start with
 [configuration and API](../user-guide/SDK_CONFIGURATION.md). The public Release
-remains preview.7; the local preview.8 CPU extension has its own
+is preview.8; the matching local Android CPU/NPU resources have their own
 [deployment guide](../user-guide/LOCAL_ANDROID_CPU_YOLO.md) and verification report.
 Historical measurements do not establish acceptance of a later build.
 
 0.4 keeps the V1 API and adds a semantic runtime API. Device performance remains
 manual acceptance. The current implementation evidence is in
-[DEVELOPMENT_STATUS](../DEVELOPMENT_STATUS.md).
+[DEVELOPMENT_STATUS](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.0-preview.8/docs/DEVELOPMENT_STATUS.md).
 
 1. Read this file.
 2. Use [CHANGE_MAP](CHANGE_MAP.md) to identify the component.
@@ -23,7 +23,7 @@ manual acceptance. The current implementation evidence is in
 For weights, begin at [ModelPack guide](MODEL_PACK_GUIDE.md); do not modify Unity,
 Host or tracking. For a new algorithm, begin at [plugin guide](PLUGIN_DEVELOPMENT.md);
 do not expose tensors to gameplay. For drawing, begin at the
-[Unity renderer README](../../unity/HumanVisionDemo/Assets/HumanVision/Demo/README.md);
+[Unity renderer README](../../Runtime/Demo/README.md);
 do not alter native inference. Each row in CHANGE_MAP links directly to the
 component README and its test filter, so the destination is at most two hops away.
 

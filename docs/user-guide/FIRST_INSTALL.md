@@ -2,9 +2,9 @@
 
 # 第一次安装使用引导
 
-preview.5 推荐先看 [HumanVisionSdk 单组件入口](UNITY_SDK.md)：挂载一个总控即可使用。以下直接组合 Runtime/Input 的旧代码入门方式继续兼容。
+当前版本推荐先看 [HumanVisionSdk 单组件入口](UNITY_SDK.md)：挂载一个总控即可使用。以下直接组合 Runtime/Input 的旧代码入门方式继续兼容。
 
-适用当前发布：SDK **0.4.0-preview.6** / Input **0.1.0-preview.4**，Unity **2021.3+**，Windows x64 / Android ARM64。[文档首页](README.md)
+适用当前发布：SDK **0.4.0-preview.8** / Input **0.1.0-preview.5**，Unity **2021.3+**，Windows x64 / Android ARM64。[文档首页](README.md)
 
 本页教你在自己的脚本里完成三件事：**初始化SDK、输入图像、读取骨骼**。先以Windows摄像头为例，创建一个空物体并挂一份脚本即可。
 
@@ -15,20 +15,22 @@ preview.5 推荐先看 [HumanVisionSdk 单组件入口](UNITY_SDK.md)：挂载�
 1. 打开**Window → Package Manager → + → Add package from git URL…**，先安装Input：
 
    ```text
-   https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.6
+   https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.8
    ```
 
 2. 等安装和编译完成，再以同样方式安装SDK：
 
    ```text
-   https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.6
+   https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.8
    ```
 
-3. 确认Package Manager显示Input `0.1.0-preview.4`与SDK `0.4.0-preview.6`，Console无编译错误。Git安装需要系统已安装Git；两包都用完整地址。
+3. 确认Package Manager显示Input `0.1.0-preview.5`与SDK `0.4.0-preview.8`，Console无编译错误。Git安装需要系统已安装Git；两包都用完整地址。
 4. 点击**HumanVision → Install Packaged Models**。确认`Assets/StreamingAssets/HumanVision/Runtime/index.json`及运行资源已经生成。
 5. 创建`Assets/Scripts/SdkBasicUsage.cs`并复制完整示例。Hierarchy右键**Create Empty**，命名`Human Vision Starter`，把脚本拖到物体上。没有需要手动拖入的UI引用。自动添加的Manager保持**Initialize On Start**关闭，由示例代码初始化。
 
-离线安装可在[发布页](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.6)下载Input、SDK对应的tgz或unitypackage，按Input→SDK顺序导入，选一种方式即可。详细安装选项见[安装说明](../UPM_INSTALLATION.md)。
+离线安装可在[发布页](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.8)下载Input、SDK对应的tgz或unitypackage，按Input→SDK顺序导入，选一种方式即可。详细安装选项见[安装说明](../UPM_INSTALLATION.md)。
+
+**Android CPU/NPU 完整资源另需匹配的本地补充包**，见[本地资源部署](LOCAL_ANDROID_CPU_YOLO.md)。
 
 ## 2. 脚本需要哪些引用和成员
 
@@ -210,7 +212,7 @@ manager.Shutdown();
 3. 编译结束，在Hierarchy右键选择**Human Vision → SDK Starter**，或顶部**GameObject → Human Vision → SDK Starter**。
 4. 自动生成的物体已挂上SdkBasicUsage与所需组件，Play就会执行本页的初始化/相机/结果流程。
 
-这个菜单由你复制的示例编辑器脚本提供；只安装preview.4包还不会出现它。它不创建Canvas或预览界面。
+这个菜单由你复制的示例编辑器脚本提供；只安装SDK而未复制示例编辑器脚本时不会出现它。它不创建Canvas或预览界面。
 
 ## 10. 换输入和平台时查哪里
 

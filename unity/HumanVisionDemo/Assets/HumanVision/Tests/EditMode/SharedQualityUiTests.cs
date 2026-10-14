@@ -184,7 +184,11 @@ namespace HumanVision.Tests
         [TestCase("HumanVisionSettingsDemo")]
         public void BakeAddsSerializedComputerHostOnlyToOfficialTransientScene(string officialScene)
         {
-            var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene(); string originalName = scene.name;
+            // Rename only an owned transient scene. The active user scene can be
+            // saved, and Unity correctly forbids assigning a new name to it.
+            // Preview scenes also work when the Test Runner owns an unsaved
+            // untitled scene; ordinary additive scenes are forbidden then.
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.NewPreviewScene();
             Component host = null;
             try {
                 var bake = HostEditorType().GetMethod("Bake"); Assert.NotNull(bake);
@@ -193,7 +197,11 @@ namespace HumanVision.Tests
                 host = scene.GetRootGameObjects().SelectMany(go => go.GetComponents(HostType())).Single();
                 Assert.That(HostType().GetProperty("ComputerHost").GetValue(host), Is.EqualTo("192.168.8.40"));
                 bake.Invoke(null, new object[] { scene, "192.168.8.41" }); Assert.That(scene.rootCount, Is.EqualTo(roots + 1)); Assert.That(HostType().GetProperty("ComputerHost").GetValue(host), Is.EqualTo("192.168.8.41"));
-            } finally { if (host != null) UnityEngine.Object.DestroyImmediate(host.gameObject); scene.name = originalName; }
+            } finally {
+                if (host != null) UnityEngine.Object.DestroyImmediate(host.gameObject);
+                if (scene.IsValid() && scene.isLoaded)
+                    UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(scene);
+            }
         }
         [Test] public void BusyApplyRetryAndSceneSwitchKeepExistingSessionAndSourceSettings()
         {

@@ -1,79 +1,66 @@
 # Human Vision SDK
 
-当前预发布版本：SDK **0.4.0-preview.7** / Input **0.1.0-preview.5**。
-当前开发分支提供本地 SDK **0.4.0-preview.8**：Android CPU 使用 YOLOv8n-pose，
-API 保持兼容，Vulkan/RK3588 NPU 原模型保留。导入完整本地资源包的方式见
-[本地 CPU/GPU/NPU 部署](docs/user-guide/LOCAL_ANDROID_CPU_YOLO.md)。公共 Release 未替换。
-[ScriptableObject 配置与统一 API](docs/user-guide/SDK_CONFIGURATION.md) ·
-[完整接入脚本](docs/user-guide/examples/HumanVisionGameplayExample.cs) ·
-[Settings 设置样例](docs/user-guide/SETTINGS_DEMO.md)。
+当前版本：SDK **0.4.0-preview.8** / Input **0.1.0-preview.5**，Unity **2021.3+**。
+这是预发布评估版。Unity 游戏通过稳定 API 使用 Camera、RTSP、Video 图像，读取人体、
+骨骼、人数和区域结果；默认配置使用 ScriptableObject，输入地址可在初始化代码中传入。
 
-配置资产保存人数、区域、图像尺寸、模型等级、CPU/GPU/NPU；初始化代码提供相机名、RTSP 地址或视频路径。
-公开样例只保留 Settings；旧公开 API 和共享组件保持兼容。世界坐标是图像平面映射，没有实测深度。
-本预发布版仍未通过全部设备性能验收；性能实测与限制见 [开发状态](docs/DEVELOPMENT_STATUS.md)。
+[下载 preview.8](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.8) ·
+[安装](docs/UPM_INSTALLATION.md) · [配置与 API](docs/user-guide/SDK_CONFIGURATION.md) ·
+[中文文档](docs/user-guide/README.md) · [本次验证与限制](docs/reports/2026-10-14-preview8-release.md)
 
-Git UPM 先安装 Input，再安装 SDK；两个地址必须使用同一提交。固定版本地址：
+## 安装
+
+先安装 Input，再安装 SDK。Git UPM、tgz 和 unitypackage 选择一种安装方式，避免重复组件和原生库。
 
 ```text
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.7
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.7
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.8
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.8
 ```
 
-## 历史发布说明
+离线顺序：`HumanVisionInput-0.1.0-preview.5.unitypackage` →
+`HumanVisionSDK-0.4.0-preview.8.unitypackage`。两个 tgz 为等价的 UPM 安装方式。
+附件提供 `SHA256SUMS.txt`、资产索引和源提交记录。
 
-Current integration preview: **0.4.0-preview.4** (2026-10-05).
-中文使用文档（新建Unity项目首次接入，2026-10-07更新）：
-[第一次安装使用引导](docs/user-guide/FIRST_INSTALL.md) ·
-[技术栈](docs/user-guide/TECH_STACK.md) ·
-[平台测试效果](docs/user-guide/PLATFORM_TEST_RESULTS.md) ·
-[API调用与说明](docs/user-guide/API_REFERENCE.md)。
+**Android YOLO CPU 与 RK3588 NPU 的完整资源仍使用匹配的本地补充包**，安装方法见
+[本地 Android 资源部署](docs/user-guide/LOCAL_ANDROID_CPU_YOLO.md)。公共附件不含该补充包、
+CPU YOLO ONNX、RKNN 模型、`librknnrt.so`、用户视频或设备测试 APK。
+Windows CPU/DirectML 与随包 Android Vulkan 路线保留原有资源。
 
-User-tested Windows PC and Android NCNN Vulkan body skeleton demos, unified
-Camera/Video/RTSP input, shared numbered regions, Low/Medium/High model inputs,
-UGUI settings and configurable object/line skeleton drawing.
+## 最小接入
 
-Install **both packages**, Input first, in Unity Package Manager:
+创建 `HumanVisionSdkPreset`：Project 右键 **Create → Human Vision → SDK Configuration**。
+菜单 **HumanVision → Create SDK** 创建总控并绑定配置；或给空物体挂载 `HumanVisionSdk`。
+在 `Start()` 中使用 `InitializeFromPreset(configuration, kind, address)` 初始化。
+[完整初始化代码](docs/user-guide/SDK_CONFIGURATION.md) 包括输入源、结果回调、2D/世界平面坐标、
+按 index/稳定身份取骨骼、区域占用、启动/停止/重启和配置更新。
 
-```text
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.4
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.4
-```
+官方样例保留 **HumanVisionSettingsDemo**。执行 **HumanVision → Create SDK settings demo assets**，
+在同一界面切换输入源、计算模式、人数、区域和模型档位，复制日志文件夹路径。
 
-[Installation and game integration](docs/UPM_INSTALLATION.md) ·
-[Download Release](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.4).
-The two local unitypackages are an alternative to UPM. Import Input first, then
-SDK; choose one installation method per project.
-Android requires ARM64/API26/Vulkan. The current bundled profiles do not enable
-real hand endpoint inference; **30 fresh complete Android observation FPS remains
-unmet**. User acceptance of the visible demo is recorded separately from that goal.
-Model evaluation/provenance markers and third-party terms remain in the package.
+## 模型和计算模式
 
-The following sections describe the older preview.3 baseline.
+| 模式 | 模型输入与支持范围 |
+| --- | --- |
+| Android CPU | YOLOv8n-pose FP32，512×288，1–8 人；需要本地补充包 |
+| Android GPU / Vulkan | YOLOv8n-pose：低 512×288、中 640×384、高 960×576 |
+| RK3588 NPU | 保留原低档 512×288 模型与驱动；需要完整本地补充包和设备支持 |
+| Windows CPU / GPU | 保留原 CPU / DirectML 模型与 Windows x64 库 |
 
-Independent Unity camera skeleton SDK for Windows x64 and Android ARM64.
+CPU 界面“固定模型”表示目前只提供一个模型输入档位，人数仍可调整。
+图像输出分辨率与模型输入尺寸互相独立。缺模型、驱动或设备能力时会报出原因，不静默切换后端。
 
-Current preview: **0.4.0-preview.3**. Semantic Runtime Host and C plugin ABI,
-data-only ModelPacks/profiles, common tracking/regions, independent hand jobs and
-batched canonical rendering. Hand endpoints are palm, index fingertip and thumb tip.
-Existing V1 API and script GUIDs remain compatible. No AzureKinectExamples dependency.
+## 本次验证
 
-## Install with Unity Package Manager
+修复初始化成功事件的配置提交顺序，并让 Android CPU 在公开人数/区域筛选前保留八个检测候选。
+Unity/V1 API 保持兼容。原 Vulkan 三档、NPU 模型/驱动、Windows 库和 Input 未替换。
 
-```
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.3
-```
+OnePlus（骁龙 888）同包截图短测：旧 CPU 新结果 **7.16 FPS**，新 CPU **14.23 FPS**，
+Vulkan 低档 **24.60 FPS**；主要四人完整 COCO-17 骨骼分别为新 CPU **11.97–12.60**、
+Vulkan **21.16–21.90 FPS**。每阶段仅 30 秒；RK3588 NPU 与长期稳定帧率尚未验收。
+详细测试口径、失败/跳过项见[发布核验](docs/reports/2026-10-14-preview8-release.md)和
+[实机报告](docs/reports/2026-10-14-main-cpu-yolo-api.md)。
 
-The repository is private; Git credentials need repository access.
-Alternative local `.unitypackage` and UPM `.tgz` assets: [Releases](https://github.com/blaze-tc/Human-Vision-SDK/releases).
-Choose one installation method, avoiding duplicate SDK/plugin copies.
+世界坐标为图像到世界平面的映射；当前随包姿态模型未启用真实手掌/指尖/拇指推理。
+保留模型来源、上游许可证和评估/分发资格标记；本次发布没有授予新的模型商用许可。
 
-[Installation](docs/UPM_INSTALLATION.md) | [0.4 guide](docs/SDK_040_USER_GUIDE.md) | [Maintenance](docs/maintenance/START_HERE.md) | [Development status](docs/DEVELOPMENT_STATUS.md)
-
-Use **HumanVision > Create Live Camera Demo** to create the camera and independent
-settings scenes. UPM installs model files to StreamingAssets automatically in Editor.
-
-Android preview is decoupled from inference, readback has backpressure, and CPU
-thread pools are bounded. Preview.3 adds isolated CPU/XNNPACK/NNAPI no-hands
-profiles, adaptive skeleton presentation and bottleneck diagnostics. Phone
-performance and hand quality still require user validation. This preview does not
-certify eight-person 30 FPS or metric 3D depth.
+[维护入口](docs/maintenance/START_HERE.md) · [开发状态](docs/DEVELOPMENT_STATUS.md)

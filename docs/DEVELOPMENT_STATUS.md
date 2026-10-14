@@ -1,3 +1,12 @@
+## 2026-10-14 发布准备：v0.4.0-preview.8
+
+用户明确要求核验后合并 main、发布 GitHub Release 并完善文档。SDK 0.4.0-preview.8 / Input 0.1.0-preview.5。
+README、安装、API/配置、CPU 档位与 Settings 入口统一，保留完整本地 Android 补充包的分发边界。
+本轮原生完整回归465项：432通过、31历史数据缺失失败、2跳过；新CPU合同3/3。
+Unity完整EditMode462/3/40；两项场景测试改为自有preview scene后2/2，无插件专用项目1/1。
+打包工具45/45，公共API/架构/组件目录/Git包字节检查通过，不宣称全量或硬件验收完成。
+精确命令、结果、公开附件与OnePlus短测边界见[preview.8发布核验](reports/2026-10-14-preview8-release.md)。
+
 ## 2026-10-14 当前：恢复 main 的 YOLO CPU 与 API 封装完成
 
 在恢复的 main `ba1815a` 上整理本地 SDK 0.4.0-preview.8 / Input 0.1.0-preview.5。

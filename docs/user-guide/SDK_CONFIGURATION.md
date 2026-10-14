@@ -1,6 +1,6 @@
 # ScriptableObject 配置与统一 API
 
-适用本地开发包：SDK **0.4.0-preview.8** / Input **0.1.0-preview.5**；公共 Release 仍为 preview.7。
+适用版本：SDK **0.4.0-preview.8** / Input **0.1.0-preview.5**。Android CPU/NPU 完整资源安装见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)；公共附件范围见[安装说明](../UPM_INSTALLATION.md)。
 这是当前版本的接入说明；历史 Release 的验证结果不自动适用于本次变更。
 
 ## 最小接入

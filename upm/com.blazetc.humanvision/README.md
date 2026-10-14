@@ -1,74 +1,21 @@
-# Human Vision SDK 0.4.0-preview.8 (development)
+# Human Vision SDK 0.4.0-preview.8
 
-This local development update adds the fixed 512×288 Android YOLO CPU profile
-through the matching local resource addon. Vulkan quality models, RKNN models,
-Input and the Windows native library are preserved. Public APIs are unchanged;
-`Initialized` now fires after the successful configuration is committed.
-See `Documentation/user-guide/LOCAL_ANDROID_CPU_YOLO.md` for the complete addon.
-The published preview.7 Release remains unchanged.
+预发布评估版，依赖 Input 0.1.0-preview.5。Unity/V1 API 保持兼容。
+先安装 Input，再安装 SDK；UPM、tgz、unitypackage 选择一种方式。
+[安装](UPM_INSTALLATION.md) · [配置与 API](Documentation/user-guide/SDK_CONFIGURATION.md) ·
+[Settings](Documentation/user-guide/SETTINGS_DEMO.md) · [发布核验](Documentation/reports/2026-10-14-preview8-release.md)
 
-当前接入入口：[ScriptableObject 配置与 API](Documentation/user-guide/SDK_CONFIGURATION.md)。
-配置资产 + 初始化代码指定 Camera/RTSP/Video；只保留 Settings 样例。
-公共包未附带私有 RKNN 模型/runtime；RK3588 NPU 需按私有验证流程部署，缺资源时明确失败。
-当前分支构建与测试证据见仓库 docs/DEVELOPMENT_STATUS.md，不等同于稳定帧率硬件验收。
+Android CPU 使用固定 512×288 YOLOv8n-pose，人数 1–8；完整 CPU 资源需要匹配本地补充包。
+Vulkan 保留低/中/高，RK3588 NPU 保留原低档模型和驱动，Windows 与 Input 保留原路线。
+公共附件不含 CPU YOLO ONNX、私有 RKNN 模型、librknnrt.so、用户视频或设备测试 APK。
+[本地 Android 资源部署](Documentation/user-guide/LOCAL_ANDROID_CPU_YOLO.md)说明如何启用完整测试资源。
 
-## 历史版本说明
+创建 ScriptableObject 默认配置，挂载 HumanVisionSdk 或执行 HumanVision → Create SDK，
+使用 InitializeFromPreset 在代码中设置 Camera/RTSP/Video 来源。Initialized 在配置提交后触发。
+HumanVision → Create SDK settings demo assets 创建唯一官方 Settings 样例。
 
-# Human Vision SDK 0.4.0-preview.4
-
-
-Requires Unity 2021.3 or later. Install into a clean project, or remove a previous
-Assets/HumanVision, Assets/HumanVisionInput and HumanVision native plugin installation
-before changing installation methods. Back up project settings and saved presets first.
-Choose Git UPM **or** the two offline unitypackages; installing both creates duplicate
-scripts, GUIDs and native libraries. No Library cleanup is required.
-
-For Git UPM, add Input first, then SDK, using these two tag-pinned dependencies
-in Packages/manifest.json:
-
-```json
-"com.blazetc.humanvision.input": "https://github.com/blaze-tc/Human-Vision-SDK.git?path=upm/com.blazetc.humanvision.input#v0.4.0-preview.4",
-"com.blazetc.humanvision": "https://github.com/blaze-tc/Human-Vision-SDK.git?path=upm/com.blazetc.humanvision#v0.4.0-preview.4"
-```
-
-The SDK's exact Input version is 0.1.0-preview.2. Unity cannot discover a second
-Git subdirectory from the SDK's version dependency; explicitly add both URLs.
-Input alone provides camera/video/RTSP preview without models or inference.
-For offline import into a clean project, import
-**HumanVisionInput-0.1.0-preview.2.unitypackage first**, then
-**HumanVisionSDK-0.4.0-preview.4.unitypackage**. Wait for Input compilation before
-importing SDK. Input alone supports standalone preview; both packages provide
-the complete SDK installation. The two release tgz files are the alternative
-local UPM archives, also installed Input first, then SDK.
-
-Create the official Camera, Video and RTSP demos with
-**HumanVision > Create unified demos in dedicated folder**. The other official
-menu **HumanVision > Create unified Camera, Video and RTSP demos** creates the same
-three modes. For Git UPM, import the InputPreview sample in Package Manager first.
-Input-only preview uses **HumanVision > Input > Create standalone preview**.
-Select a camera, your own local video, or an H.264/TCP RTSP URL. No video or user
-camera address is bundled. Computer camera/video RTSP presets use a transient
-build-computer address; that computer must run the corresponding publisher.
-
-Windows PC uses the bundled Windows x64 runtime. Android requires ARM64, API 26+
-and a compatible Vulkan GPU. Choose the NCNN Vulkan runtime mode for the bundled
-YOLO pose qualities: Low 512×288, Medium 640×384 and High 960×576. The selected
-Profile/ModelPack controls inference dimensions; camera capture dimensions are
-separate. The Android route fails with an actionable error when its requirements
-are unavailable and does not silently fall back to CPU. The Editor validates
-native/importer/model hashes and stages RuntimeData into StreamingAssets.
-
-Shared settings save people capacity, regions and quality; each input mode saves
-its own source, mirror and skeleton style. Apply performs validation before source
-retirement. Saved styles are retained; new defaults use line width 4.5 and point
-diameter 13.5. TryGetBodyByRegionIndex/TryGetJointByRegionIndex and
-body.CanonicalJoints expose SDK semantics via HumanVisionCanonicalJointId; tracking
-ID differs from region/display index. These points are image-plane observations,
-not depth-sensor metric 3D coordinates. A semantic hand API does not imply observed
-Handtip/Thumb: the bundled pose profiles disable genuine hand inference.
-
-This is an evaluation preview. Included YOLO assets retain local_evaluation_only
-and distribution_qualified=false; upstream license texts and factual provenance
-are in THIRD_PARTY_NOTICES.md and Licenses. Including these texts does not grant
-commercial or model redistribution approval. 30 fresh complete skeleton FPS,
-continuous motion quality and genuine hand endpoints are not certified here.
+OnePlus 同包 30 秒短测：新 CPU 14.23、Vulkan 低档 24.60 个新结果/秒；
+主要四人完整17点 CPU 11.97–12.60、Vulkan 21.16–21.90 FPS。
+RK3588 NPU 和长时稳定性能未验收；不以显示/插值帧代替真实识别帧率。
+世界坐标为图像到世界平面的映射，当前随包模型未启用真实手端点。
+模型来源、许可证及 local_evaluation_only/distribution_qualified=false 标记保留。

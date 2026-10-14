@@ -1,7 +1,8 @@
 # preview.8 本地 Android CPU / GPU / NPU 部署
 
-这次本地开发包在恢复的 preview.7 上接入 YOLOv8n-pose CPU，并修复初始化回调的配置提交顺序。
-公共 API 不变，Input 仍为 0.1.0-preview.5。原 preview.7 公共 Release 和本地资源导出器保持原样。
+preview.8 在恢复的 preview.7 上接入 YOLOv8n-pose CPU，并修复初始化回调的配置提交顺序。
+公共 API 不变，Input 仍为 0.1.0-preview.5。完整资源补充包保存在本地，与公共 SDK 主包配套使用。
+CPU 界面“固定模型”表示只提供 512×288 模型输入档位，人数仍可设置 1–8；多档 CPU 需要另外匹配并验证模型资源。
 
 | 平台/模式 | 当前模型和输入 | 部署 |
 | --- | --- | --- |
