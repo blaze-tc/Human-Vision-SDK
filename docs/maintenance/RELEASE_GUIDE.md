@@ -1,3 +1,16 @@
+# v0.4.0-preview.9 发布
+
+SDK 0.4.0-preview.9 / Input 0.1.0-preview.5。Unity Package Manager 提供 SDK Settings 和 Runtime Prefab，
+离线样例归入 Assets/HumanVision/Samples。以 `tools/package/release-preview9-authority.json` 验证并生成
+最终提交对应的八个附件。原生库、输入包和模型按 preview.8 哈希校验。
+
+运行架构、公共 API、打包工具、Git 包换行、Windows SDK 测试和样例实际导入检查。
+核验 Runtime Prefab 的 RTSP 配对以及保存区域按 index 读取。OnePlus 短测是本地验收 APK 的设备记录，
+见[发布验证](../reports/2026-11-06-runtime-prefab-preview9.md)。
+
+核对远端 main 后快进并推送 annotated tag。在 draft prerelease 上传标准附件并复下载核对 SHA-256，
+验证 tag 的 Git UPM 安装和两份 unitypackage 的 Input-first 导入，再发布为 prerelease。
+
 # v0.4.0-preview.8 发布
 
 用户于 2026-10-14 明确要求核验后合并 main、发布 GitHub Release 并完善文档。

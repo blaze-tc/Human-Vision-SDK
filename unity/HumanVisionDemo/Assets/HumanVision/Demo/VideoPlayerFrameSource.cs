@@ -222,9 +222,34 @@ namespace HumanVision.Demo
             if(manager==null)manager=GetComponent<HumanVisionManager>();
             if(_inputAdapter==null){_inputAdapter=GetComponent<HumanVisionInputAdapter>();if(_inputAdapter==null)_inputAdapter=gameObject.AddComponent<HumanVisionInputAdapter>();}
             _inputAdapter.manager=manager;_unifiedPreviewLastId = -1; _unifiedPreviewCount = 0; _unifiedPreviewFps = 0; _unifiedPreviewStart = Time.unscaledTime;
+            _inputAdapter.presentationBridge=CaptureRuntimeViewFrames?this:null;
             _inputAdapter.Bind(source);_livePreview=true;
         }
-        public void DetachUnifiedSource(){if(_inputAdapter!=null)_inputAdapter.Detach();_unifiedSource=null;ResetPresentation();}
+        public void DetachUnifiedSource(){if(_inputAdapter!=null)_inputAdapter.Detach();_unifiedSource=null;ResetPresentation();ResetRuntimeViewHistory();}
+        internal bool CaptureRuntimeViewFrames { get; set; }
+        private PresentationTextureHistory _runtimeViewHistory;
+        private ulong _runtimeViewSource, _runtimeViewGeneration;
+        private int _runtimeViewWidth, _runtimeViewHeight;
+        internal void CaptureRuntimeViewFrame(in HumanVisionTextureFrame frame,long resultFrameId) {
+            if(_unifiedSource==null||!SystemInfo.supportsGraphicsFence)return;
+            if(_runtimeViewHistory==null||_runtimeViewSource!=frame.SourceId||_runtimeViewGeneration!=frame.Generation||
+                _runtimeViewWidth!=frame.Width||_runtimeViewHeight!=frame.Height) {
+                ResetRuntimeViewHistory();
+                _runtimeViewSource=frame.SourceId;_runtimeViewGeneration=frame.Generation;
+                _runtimeViewWidth=frame.Width;_runtimeViewHeight=frame.Height;
+                _runtimeViewHistory=new PresentationTextureHistory();
+            }
+            _runtimeViewHistory.Capture(_unifiedSource,in frame,resultFrameId,frame.PublishedTimestampUs);
+        }
+        internal bool TryPresentRuntimeViewFrame(in HumanVisionTextureFrame latest,long resultFrameId,out Texture texture,out long inputFrameId) {
+            texture=null;inputFrameId=-1;
+            return _runtimeViewHistory!=null&&latest.SourceId==_runtimeViewSource&&latest.Generation==_runtimeViewGeneration&&
+                latest.Width==_runtimeViewWidth&&latest.Height==_runtimeViewHeight&&
+                _runtimeViewHistory.TryPresentExact(resultFrameId,out texture,out inputFrameId);
+        }
+        private void ResetRuntimeViewHistory() {
+            _runtimeViewHistory?.Dispose();_runtimeViewHistory=null;
+        }
         private PresentationTextureHistory _displayHistory;
         private readonly PresentationPoseHistory _displayPoses=new PresentationPoseHistory();
         private ulong _displaySource, _displayGeneration;
@@ -247,6 +272,9 @@ namespace HumanVision.Demo
         };
         private void ResetPresentation(){_displayHistory?.Dispose();_displayHistory=null;_displayPoses.Reset();_displaySource=_displayGeneration=0;_displaySequence=-1;_displayDelayMs=120;}
         private void PresentUnifiedTimeline(Texture texture) {
+            // The persistent view presents strict source pairs; no second
+            // adaptive/interpolated presentation history is needed on its host.
+            if(CaptureRuntimeViewFrames) { PresentLiveTexture(texture); return; }
             if(!SystemInfo.supportsGraphicsFence||string.Equals(Environment.GetEnvironmentVariable("HV_PRESENTATION_MODE"),"live",StringComparison.Ordinal)) {PresentLiveTexture(texture);return;}
             if(!_unifiedSource.TryGetLatestFrame(-1,out var frame))return;
             if(_displaySource!=frame.SourceId||_displayGeneration!=frame.Generation||_displayWidth!=frame.Width||_displayHeight!=frame.Height){

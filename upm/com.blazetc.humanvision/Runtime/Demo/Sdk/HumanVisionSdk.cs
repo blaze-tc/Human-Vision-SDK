@@ -15,7 +15,7 @@ namespace HumanVision
     public sealed class HumanVisionSdk : MonoBehaviour
     {
         /// <summary>托管 SDK 版本，便于区分实机日志对应的发布包。</summary>
-        public const string Version = "0.4.0-preview.8";
+        public const string Version = "0.4.0-preview.9";
         [SerializeField, Tooltip("默认配置资产；运行时读取副本。留空兼容旧场景内嵌配置。")]
         private HumanVisionSdkPreset configurationAsset;
         private bool configurationLoaded;
@@ -52,7 +52,7 @@ namespace HumanVision
         private HumanVisionSdkLifetime host, retirement;
         private HumanVisionSdkOptions active;
         private HumanVisionSkeletonQueries raw, sampled;
-        private long revision, minimumSequence;
+        private long revision, minimumSequence, acceptedSequence;
         private int operation;
         private bool acceptResults, sourceFresh, stopAfterRetirement;
         private ulong sourceId, sourceGeneration;
@@ -139,6 +139,16 @@ namespace HumanVision
         public bool InitializeOnStart { get => initializeOnStart; set => initializeOnStart = value; }
         internal HumanVisionManager RuntimeManager => manager;
         internal VideoPlayerFrameSource FrameBridge => bridge;
+        internal bool CaptureRuntimeViewFrames { get; set; }
+        internal long RecognitionRevision => revision;
+        internal bool TryGetRuntimeViewResult(out HumanVisionTextureFrame input, out Texture color, out long inputFrameId)
+        {
+            color = null; inputFrameId = -1;
+            return TryGetInputFrame(-1, out input) && HasFreshResult &&
+                input.SourceId == sourceId && input.Generation == sourceGeneration &&
+                acceptedSequence == manager.ResultSequence &&
+                bridge.TryPresentRuntimeViewFrame(in input, manager.SourceFrameId, out color, out inputFrameId);
+        }
         // 必须与当前会话返回的身体/关节观测时间使用同一时钟域。
         private long NowUs => manager != null && manager.UsesRuntimeProfile && !manager.UsesAndroidGpuFrames
             ? HumanVision.Interop.RuntimeBindings.HV_RuntimeClockUs()
@@ -228,6 +238,7 @@ namespace HumanVision
             DontDestroyOnLoad(go); host = go.AddComponent<HumanVisionSdkLifetime>();
             manager = go.AddComponent<HumanVisionManager>();
             bridge = go.AddComponent<VideoPlayerFrameSource>(); bridge.Configure(manager, null, null);
+            bridge.CaptureRuntimeViewFrames = CaptureRuntimeViewFrames;
             bool initialized;
             if (pending != null) {
                 var prepared = pending.Take(); if (ReferenceEquals(initialization, pending)) initialization = null;
@@ -394,6 +405,7 @@ namespace HumanVision
             // 无区域模式也需要版本隔离，防止重新配置前的晚到结果被当成当前观测。
             if (!manager.TryCopyRegionAssignments(regionIndices, out long currentRevision) || currentRevision != revision) return;
             if (!raw.Observe(manager.Bodies, manager.BodyCount, sequence, manager.SourceFrameId, manager.SourceTimestampUs, true)) return;
+            acceptedSequence = sequence;
             resultRate.Observe(manager.SourceFrameId);
             RefreshIdentityEvents(); ResultUpdated?.Invoke(sequence);
         }

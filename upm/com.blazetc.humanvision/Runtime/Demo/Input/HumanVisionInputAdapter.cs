@@ -120,7 +120,14 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
                     if(accepted){free.Cpu.Request=request;free.Cpu.HasRequest=true;free.Cpu.CopyFence=copyFence;free.Cpu.HasCopyFence=hasCopyFence;lease.RetireAfter(free.Cpu);free.Active=true;}
                 }
                 if(!free.Active)lease.Dispose();
-                if(accepted){submitted=manager.UsesAndroidGpuFrames?frame.FrameId:cpuBridge.LatestQueuedFrameId;if(firstSubmitted<0)firstSubmitted=submitted;}
+                if(accepted){
+                    submitted=manager.UsesAndroidGpuFrames?frame.FrameId:cpuBridge.LatestQueuedFrameId;
+                    if(firstSubmitted<0)firstSubmitted=submitted;
+                    latest=frame.FrameId;
+                    // CPU allocates its own submission IDs. Retain the original
+                    // publication under the actual ID native results will return.
+                    presentationBridge?.CaptureRuntimeViewFrame(in frame,submitted);
+                }
                 LastError=string.Empty;
             } catch {
                 // The bridge binds its native token before Execute. Unknown queued
@@ -136,9 +143,9 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
             // A temporary rejection must not retire this source frame. On the
             // next Unity tick TryGetLatestFrame supplies it or a newer one;
             // acceptance retires it exactly once without creating a frame queue.
-            if(accepted)latest=frame.FrameId;
         } catch(Exception error){LastError=error.Message;latest=frame.FrameId;}
     }
+    internal VideoPlayerFrameSource presentationBridge;
     internal static void ForwardPublicationProvenance(in HumanVisionTextureFrame frame,Action<uint> forward) {
         if(frame.PublishedTimestampUs<0 || frame.PublishedClockDomain!=FrameClockDomain.InputMonotonic)
             throw new ArgumentException("Source publication must use the declared InputMonotonic clock.");

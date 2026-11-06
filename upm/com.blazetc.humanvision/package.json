@@ -25,8 +25,13 @@
       "displayName": "SDK Settings",
       "description": "Editable UGUI settings scene and one-component gameplay API example.",
       "path": "Samples~/Settings"
+    },
+    {
+      "displayName": "Runtime Prefab",
+      "description": "RTSP preview, frame-matched skeleton rendering, and gameplay reads in Update.",
+      "path": "Samples~/RuntimePrefab"
     }
   ],
   "unity": "2021.3",
-  "version": "0.4.0-preview.8"
+  "version": "0.4.0-preview.9"
 }

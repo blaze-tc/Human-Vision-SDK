@@ -6,6 +6,7 @@ After focused checks, run the architecture guard.
 | Need | Modify first / component README | Usually do not modify | Focused filter/check |
 |---|---|---|---|
 | Unity configuration asset / lifecycle / copied skeleton API | Demo/Sdk/HumanVisionSdkPreset.cs, HumanVisionSdk.cs; Demo/Settings/HumanVisionSettingsData.cs; [guide](../user-guide/SDK_CONFIGURATION.md) | native ABI, model weights, source identity | HumanVisionPresetTests; HumanVisionSdkQueryTests; HumanVisionSdkLifecycleTests; HumanVisionSettingsDemoTests |
+| Persistent image/pose Prefab | Demo/Sdk/HumanVisionRuntimeView.cs and HumanVisionRuntimeDrawing.cs, Input/PresentationTextureHistory.cs; [guide](../user-guide/UNITY_RUNTIME_PREFAB.md) | native ABI, Settings and raw SDK behavior | HumanVisionRuntimeViewTests on graphics-enabled Unity; verify actual color/pose pairing |
 | RTSP decoder output cadence / Unity render opportunity | [input](../../native/input/README.md), mediacodec_source.cpp, unity_input_vulkan.cpp, RtspFrameSource.cs | model weights, inference instance count, frame identity | input.OutputPump; RtspDeferredOpenTests; actual device decode/GPU/publication counts and pixel gates |
 | Swap RTMO weights or compatible model | [pack](../../modelpacks/rtmo-t-416/README.md), then profile | Unity, Host, tracker | RtmoPlugin, ModelPack |
 | Add pose algorithm | [pipeline](../../runtime/plugins/pipeline/rtmo/README.md) | Unity, common tracker | new plugin fixture + RuntimeSession |

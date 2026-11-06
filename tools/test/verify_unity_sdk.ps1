@@ -35,8 +35,13 @@ foreach ($platform in @('Editor','Android')) {
             $arguments += Get-ChildItem "$unityData/Managed" -Filter 'UnityEditor*.dll' | Where-Object Name -ne 'UnityEditor.dll' | ForEach-Object { '/reference:"' + $_.FullName + '"' }
         }
         if ($part -eq 'Editor') { $arguments += '/reference:"' + $platformOut + '/HumanVision.Demo.dll"' }
-        $source = if ($part -eq 'Input') { "$repo/upm/com.blazetc.humanvision.input/Runtime" } else { "$repo/unity/HumanVisionDemo/Assets/HumanVision/$part" }
-        $arguments += Get-ChildItem $source -Recurse -Filter '*.cs' | ForEach-Object { '"' + $_.FullName + '"' }
+        $source = if ($part -eq 'Input') { "$repo/upm/com.blazetc.humanvision.input/Runtime" }
+            elseif (!$Package) { "$repo/unity/HumanVisionDemo/Assets/HumanVision/$part" }
+            elseif ($part -eq 'Demo') { "$repo/upm/com.blazetc.humanvision/Runtime/Demo" }
+            else { "$repo/upm/com.blazetc.humanvision/$part" }
+        $arguments += Get-ChildItem $source -Recurse -Filter '*.cs' |
+            Where-Object { !$Package -or $part -ne 'Runtime' -or $_.FullName -notlike '*\Runtime\Demo\*' } |
+            ForEach-Object { '"' + $_.FullName + '"' }
         $response = Join-Path $platformOut "$part.rsp"
         $arguments | Set-Content -LiteralPath $response
         & "$unityData/MonoBleedingEdge/bin/mono.exe" "$unityData/MonoBleedingEdge/lib/mono/msbuild/Current/bin/Roslyn/csc.exe" "@$response"

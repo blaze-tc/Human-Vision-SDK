@@ -1,4 +1,5 @@
 using System;
+using HumanVision.Input;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -10,19 +11,24 @@ namespace HumanVision.Demo
     {
         private RenderTexture texture;
         private GraphicsFence fence;
+        private ISourceCopyFence copy;
         internal static void Retire(RenderTexture texture, GraphicsFence fence)
+            => Retire(texture, fence, null);
+        internal static void Retire(RenderTexture texture, ISourceCopyFence copy)
+            => Retire(texture, default, copy);
+        private static void Retire(RenderTexture texture, GraphicsFence fence, ISourceCopyFence copy)
         {
-            try { if (fence.passed) { Release(texture); return; } }
+            try { if (copy?.IsComplete ?? fence.passed) { Release(texture); return; } }
             catch (InvalidOperationException) { }
             catch (NotSupportedException) { }
             var owner=new GameObject("HumanVision failed copy retirement") { hideFlags=HideFlags.HideAndDontSave };
             if(Application.isPlaying)DontDestroyOnLoad(owner);
             var pending=owner.AddComponent<DeferredGpuTextureRelease>();
-            pending.texture=texture;pending.fence=fence;
+            pending.texture=texture;pending.fence=fence;pending.copy=copy;
         }
         private void Update()
         {
-            try { if(!fence.passed)return; }
+            try { if(!(copy?.IsComplete ?? fence.passed))return; }
             catch(InvalidOperationException) { return; }
             catch(NotSupportedException) { return; }
             Release(texture);texture=null;

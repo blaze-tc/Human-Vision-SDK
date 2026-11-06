@@ -22,8 +22,7 @@ namespace HumanVision.Editor
             return preset;
         }
         /// <summary>支持 Hierarchy 上下文父对象和 Undo；配置通过总控 Inspector 修改。</summary>
-        [MenuItem("HumanVision/Create SDK", false, 0)]
-        [MenuItem("GameObject/Human Vision/Create SDK", false, 10)]
+        [MenuItem("GameObject/Human Vision/Create Scene SDK (Legacy)", false, 12)]
         public static void CreateSdk(MenuCommand command)
         {
             Undo.IncrementCurrentGroup();
@@ -34,6 +33,27 @@ namespace HumanVision.Editor
             // 先设置父对象，再记录完整对象快照，避免 Undo 恢复悬空的父指针。
             owner.AddComponent<HumanVisionSdk>().ConfigurationAsset = GetOrCreateDefaultPreset();
             Undo.RegisterCreatedObjectUndo(owner, "Create Human Vision SDK");
+            Selection.activeGameObject = owner;
+            Undo.CollapseUndoOperations(group);
+        }
+
+        /// <summary>创建跨场景 SDK 根 Prefab。保持根级对象以便运行时接管生命周期。</summary>
+        [MenuItem("HumanVision/Create SDK", false, 0)]
+        [MenuItem("GameObject/Human Vision/Create SDK", false, 10)]
+        public static void CreateRuntimeSdk()
+        {
+            var prefab = Resources.Load<GameObject>("HumanVisionRuntime");
+            if (prefab == null) { Debug.LogError("HumanVisionRuntime prefab is missing from the SDK package."); return; }
+            Undo.IncrementCurrentGroup();
+            int group = Undo.GetCurrentGroup();
+            Undo.SetCurrentGroupName("Create Human Vision Runtime");
+            var preset = GetOrCreateDefaultPreset();
+            var owner = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            var sdk = owner.GetComponent<HumanVisionSdk>();
+            sdk.ConfigurationAsset = preset;
+            sdk.InitializeOnStart = true;
+            PrefabUtility.RecordPrefabInstancePropertyModifications(sdk);
+            Undo.RegisterCreatedObjectUndo(owner, "Create Human Vision Runtime");
             Selection.activeGameObject = owner;
             Undo.CollapseUndoOperations(group);
         }

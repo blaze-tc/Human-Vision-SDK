@@ -56,6 +56,18 @@ RestartSdk, TryGetInputFrame and copied 2D/world-plane skeletons; no V1 member i
 Settings seeds all three independent input tabs from asset defaults when no saved file exists.
 World vectors remain a plane projection (SupportsMetric3D=false).
 The current tested UPM C# changes have been reconciled into canonical Runtime/Demo/Editor/Tests;
-never regenerate current packages from an older checkout. Published samples are Settings only.
+never regenerate current packages from an older checkout. Published samples are SDK Settings and Runtime Prefab.
 Legacy callable builder classes remain for Editor API compatibility, without menu entries.
 See ../user-guide/SDK_CONFIGURATION.md and ../reports/2026-10-12-sdk-preset-api.md.
+
+## Persistent Runtime view
+
+The opt-in `HumanVisionRuntimeView` prefab owns one persistent `HumanVisionSdk`.
+It presents a bounded, exact input snapshot keyed by the accepted Runtime submission ID,
+source and generation. The SDK's existing fresh raw queries supply valid joints.
+`TryGetFrame`, `TryGetBodyId` and the drawn joint accessors expose the same
+publication as the private offscreen target. The independent `GetLiveTexture`
+can be newer. Published references are borrowed; copy them for history.
+Do not substitute a different frame on a snapshot miss or reuse sampled pose
+as a fresh result. The Runtime Prefab sample shows consumption from Update and stable IDs.
+See [Runtime Prefab](../user-guide/UNITY_RUNTIME_PREFAB.md).

@@ -73,7 +73,7 @@ def offline_path(relative):
     for source, target in (('Runtime/Plugins', 'Assets/Plugins'),
                            ('RuntimeData', 'Assets/StreamingAssets/HumanVision/Runtime'),
                            ('Runtime/Demo', 'Assets/HumanVision/Demo'),
-                           ('Samples~/Settings', 'Assets/HumanVision/Samples/Settings')):
+                           ('Samples~', 'Assets/HumanVision/Samples')):
         if relative == source or relative.startswith(source + '/'):
             return target + relative[len(source):]
     return 'Assets/HumanVision/' + relative
