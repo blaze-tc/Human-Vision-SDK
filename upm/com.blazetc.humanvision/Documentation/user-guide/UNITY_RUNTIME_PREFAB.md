@@ -1,7 +1,7 @@
 # 常驻 SDK Prefab 同帧图像与骨骼
 
 在 Unity Package Manager 中打开 **Human Vision SDK → Samples**，导入 **Runtime Prefab** 并打开
-`RuntimePrefabAcceptance.unity`。进入 Play Mode，输入可访问的 RTSP 地址并连接。左侧是实时输入，右侧可以
+`RuntimePrefabAcceptance.unity`。进入 Play Mode，输入可访问的 RTSP 地址并连接。左侧是实时输入和识别区域预览，连接前也能核对编号及布局。右侧可以
 切换游戏端重绘与 SDK 合成。离线包的样例位于 `Assets/HumanVision/Samples/RuntimePrefab`。
 运行时展开 Hierarchy 的 `API Redraw - Scene Rig → Skeleton Objects` 可选中 Mesh 关节点与 LineRenderer。
 Android 使用 Vulkan、ARM64、IL2CPP，Player Settings 的 Internet Access 设为 Require。
@@ -76,7 +76,7 @@ public sealed class VisionGameInput : MonoBehaviour
 
 开启 `Sdk.RegionsEnabled` 后，`view.TryGetBodyId(regionIndex, ...)` 和
 `view.TryGetJointPosition(regionIndex, joint, ...)` 的槽位就是零起始区域 index。
-区域坐标归一化到原图，以左上角为原点。右侧叠加编号，颜色对应游戏重绘的骨骼。
+区域坐标归一化到原图，以左上角为原点。左侧输入画面叠加编号，颜色对应右侧游戏重绘的骨骼。连接前以 16:9 预览布局，连接后按实际输入宽高比绘制。
 空区域的查询返回 false，后续区域的 index 保持固定。稳定玩家 ID 可用于区分同一区域先后进入的人。
 
 ```csharp

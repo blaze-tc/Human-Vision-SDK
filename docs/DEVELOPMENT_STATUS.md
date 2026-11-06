@@ -1,10 +1,10 @@
-## 2026-11-06 当前：常驻 Runtime Prefab / preview.9
+## 2026-11-06 当前：常驻 Runtime Prefab / preview.10
 
 新增常驻 `HumanVisionRuntime` Prefab：将源画面、绘制关节及离屏纹理按来源代次与实际提交帧 ID 发布。
 SDK 原有初始化、重启、人数、生命周期接口及 native ABI 保留。
 最终 tgz 重新安装后的 Windows Unity PlayMode 2/2，使用本地 `Exercise2.mp4` RTSP，25/25 个已接受结果匹配；
 相关 EditMode 94/94，包内 Editor/Android 托管编译、架构与打包字节核验通过。
-Runtime Prefab 与 SDK Settings 并列发布。OnePlus 9 Pro Vulkan 低档完成 Exercise2 RTSP 短测。[命令与验证记录](reports/2026-11-06-runtime-prefab-preview9.md)。
+Runtime Prefab 与 SDK Settings 并列发布。区域编号绘制在输入侧，并按相同 index 读取骨骼。OnePlus 9 Pro Vulkan 低档完成 Exercise2 RTSP 短测。[命令与验证记录](reports/2026-11-06-runtime-prefab-preview9.md)。
 
 ## 2026-10-14 发布准备：v0.4.0-preview.8
 

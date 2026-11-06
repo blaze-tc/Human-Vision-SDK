@@ -237,9 +237,9 @@ namespace HumanVisionAcceptance
                 if (GUI.Button(new Rect(1224, 104, 188, 34), "连接 / 应用地址", selected)) Run(Connect());
                 GUI.enabled = true;
 
-                DrawCard(LiveCard, "实时原图", live, inputLine);
+                DrawCard(LiveCard, "实时输入 · 识别区域", live, inputLine, showRegions: true);
                 DrawCard(PoseCard, showSdkTexture ? "Prefab 合成画面" : "公共接口重绘 · Update()",
-                    paired ? (showSdkTexture ? pair.OverlayTexture : redrawRig?.Output) : null, poseLine, showRegions: true);
+                    paired ? (showSdkTexture ? pair.OverlayTexture : redrawRig?.Output) : null, poseLine);
 
                 Box(new Rect(28, 624, 1384, 205), Panel);
                 GUI.Label(new Rect(45, 633, 870, 32), sdkLine, body);
@@ -274,13 +274,17 @@ namespace HumanVisionAcceptance
             GUI.Label(new Rect(card.x + 17, card.y + 4, card.width - 34, 44), label, title);
             Rect window = new Rect(card.x + 16, card.y + 49, card.width - 32, 365);
             Box(window, Inset);
-            if (texture != null && texture.width > 0 && texture.height > 0) {
-                float scale = Mathf.Min(window.width / texture.width, window.height / texture.height);
-                Rect image = new Rect(window.center.x - texture.width * scale / 2, window.center.y - texture.height * scale / 2,
-                    texture.width * scale, texture.height * scale);
-                GUI.DrawTexture(image, texture, ScaleMode.StretchToFill, false);
-                if (showRegions) DrawRegions(image);
-            } else GUI.Label(window, "等待输入 / 结果", badge);
+            bool hasTexture = texture != null && texture.width > 0 && texture.height > 0;
+            if (hasTexture || showRegions) {
+                int width = hasTexture ? texture.width : 1280;
+                int height = hasTexture ? texture.height : 720;
+                float scale = Mathf.Min(window.width / width, window.height / height);
+                var image = new Rect(window.center.x - width * scale / 2, window.center.y - height * scale / 2,
+                    width * scale, height * scale);
+                if (hasTexture) GUI.DrawTexture(image, texture, ScaleMode.StretchToFill, false);
+                if (showRegions && recognition != null) DrawRegions(image);
+            }
+            if (!hasTexture) GUI.Label(window, "等待输入 / 结果", badge);
             GUI.Label(new Rect(card.x + 16, card.y + 418, card.width - 32, 34), detail, small);
         }
 
@@ -290,7 +294,7 @@ namespace HumanVisionAcceptance
                 Rect region = recognition.Regions[i];
                 var bounds = new Rect(image.x + region.x * image.width, image.y + region.y * image.height,
                     region.width * image.width, region.height * image.height);
-                var border = ids[i] > 0 ? RuntimePrefabRedrawRig.GetSlotColor(i) : Dim;
+                var border = RuntimePrefabRedrawRig.GetSlotColor(i);
                 Box(new Rect(bounds.x, bounds.y, bounds.width, 1), border);
                 Box(new Rect(bounds.x, bounds.yMax - 1, bounds.width, 1), border);
                 Box(new Rect(bounds.x, bounds.y, 1, bounds.height), border);

@@ -15,7 +15,7 @@ namespace HumanVision
     public sealed class HumanVisionSdk : MonoBehaviour
     {
         /// <summary>托管 SDK 版本，便于区分实机日志对应的发布包。</summary>
-        public const string Version = "0.4.0-preview.9";
+        public const string Version = "0.4.0-preview.10";
         [SerializeField, Tooltip("默认配置资产；运行时读取副本。留空兼容旧场景内嵌配置。")]
         private HumanVisionSdkPreset configurationAsset;
         private bool configurationLoaded;

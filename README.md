@@ -1,10 +1,10 @@
 # Human Vision SDK
 
-当前版本：SDK **0.4.0-preview.9** / Input **0.1.0-preview.5**，Unity **2021.3+**。
+当前版本：SDK **0.4.0-preview.10** / Input **0.1.0-preview.5**，Unity **2021.3+**。
 这是预发布评估版。Unity 游戏通过稳定 API 使用 Camera、RTSP、Video 图像，读取人体、
 骨骼、人数和区域结果；默认配置使用 ScriptableObject，输入地址可在初始化代码中传入。
 
-[下载 preview.9](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.9) ·
+[下载 preview.10](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.10) ·
 [安装](docs/UPM_INSTALLATION.md) · [配置与 API](docs/user-guide/SDK_CONFIGURATION.md) ·
 [中文文档](docs/user-guide/README.md) · [本次验证与限制](docs/reports/2026-11-06-runtime-prefab-preview9.md)
 
@@ -13,12 +13,12 @@
 先安装 Input，再安装 SDK。Git UPM、tgz 和 unitypackage 选择一种安装方式，避免重复组件和原生库。
 
 ```text
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.9
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.9
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.10
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.10
 ```
 
 离线顺序：`HumanVisionInput-0.1.0-preview.5.unitypackage` →
-`HumanVisionSDK-0.4.0-preview.9.unitypackage`。两个 tgz 为等价的 UPM 安装方式。
+`HumanVisionSDK-0.4.0-preview.10.unitypackage`。两个 tgz 为等价的 UPM 安装方式。
 附件提供 `SHA256SUMS.txt`、资产索引和源提交记录。
 
 **Android YOLO CPU 与 RK3588 NPU 的完整资源仍使用匹配的本地补充包**，安装方法见

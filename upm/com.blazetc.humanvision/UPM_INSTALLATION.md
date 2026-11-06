@@ -1,6 +1,6 @@
 # Human Vision SDK 安装与接入
 
-SDK **0.4.0-preview.9** / Input **0.1.0-preview.5**，Unity **2021.3+**，Windows x64 / Android ARM64。
+SDK **0.4.0-preview.10** / Input **0.1.0-preview.5**，Unity **2021.3+**，Windows x64 / Android ARM64。
 官方 Samples 包含 **SDK Settings** 和 **Runtime Prefab**。源码和两个 Git UPM 子目录位于同一个 GitHub 仓库。
 
 ## 安装顺序
@@ -12,17 +12,17 @@ SDK 负责推理、骨骼、跟踪、人数与区域。选择 Git UPM、tgz 或 
 Git：Window → Package Manager → + → Add package from git URL，依次添加：
 
 ```text
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.9
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.9
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.10
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.10
 ```
 
 必须显式添加两个 Git 子目录；SDK 的版本依赖不能自动发现另一个 Git 包。
 两包使用同一个发布标签；Input 的实际包版本仍为 0.1.0-preview.5。
 
 离线：先导入 `HumanVisionInput-0.1.0-preview.5.unitypackage`，再导入
-`HumanVisionSDK-0.4.0-preview.9.unitypackage`。每步等待导入与编译完成。
+`HumanVisionSDK-0.4.0-preview.10.unitypackage`。每步等待导入与编译完成。
 UPM tarball：依次安装 `com.blazetc.humanvision.input-0.1.0-preview.5.tgz` 和
-`com.blazetc.humanvision-0.4.0-preview.9.tgz`。用附件 `SHA256SUMS.txt` 校验下载内容。
+`com.blazetc.humanvision-0.4.0-preview.10.tgz`。用附件 `SHA256SUMS.txt` 校验下载内容。
 
 ## Android 完整 CPU / NPU 资源
 

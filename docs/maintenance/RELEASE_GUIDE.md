@@ -1,3 +1,9 @@
+# v0.4.0-preview.10 发布
+
+SDK 0.4.0-preview.10 / Input 0.1.0-preview.5。Runtime Prefab 在左侧输入预览绘制识别区域，
+并按对应 index 在右侧重绘骨骼。使用 `tools/package/release-preview10-authority.json` 校验并从最终提交生成八个附件。
+确认 Package Manager 两个 Samples 和离线包的 Input-first 导入，播放 Exercise2 RTSP 验证自定义区域和空区域。
+校验远端 Git 标签提交及 GitHub 草稿的八个附件大小、SHA-256 后发布 prerelease。
 # v0.4.0-preview.9 发布
 
 SDK 0.4.0-preview.9 / Input 0.1.0-preview.5。Unity Package Manager 提供 SDK Settings 和 Runtime Prefab，

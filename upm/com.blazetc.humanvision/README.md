@@ -1,4 +1,4 @@
-# Human Vision SDK 0.4.0-preview.9
+# Human Vision SDK 0.4.0-preview.10
 
 预发布评估版，依赖 Input 0.1.0-preview.5。Unity/V1 API 保持兼容。
 先安装 Input，再安装 SDK；UPM、tgz、unitypackage 选择一种方式。

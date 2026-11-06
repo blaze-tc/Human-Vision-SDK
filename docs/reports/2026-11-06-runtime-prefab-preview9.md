@@ -1,6 +1,6 @@
 # 2026-11-06 常驻 Unity Runtime Prefab 与示例
 
-SDK 0.4.0-preview.9 / Input 0.1.0-preview.5。本次新增常驻 SDK Prefab、Runtime Prefab 样例和配套文档。输入包、模型、原生库及 ABI 沿用 preview.8。
+SDK 0.4.0-preview.9–preview.10 / Input 0.1.0-preview.5。本次新增常驻 SDK Prefab、Runtime Prefab 样例和配套文档。输入包、模型、原生库及 ABI 沿用 preview.8。
 
 ## 实际验证
 
@@ -29,5 +29,5 @@ SDK 上报平均 46.82 ms，Demo 读取和提交绘制的平均 CPU 耗时为 0.
 
 公开 Runtime Prefab 样例默认等待输入地址。通过 Package Manager Samples 导入后，在 Play Mode 填入 RTSP URL，
 可看输入发布、新识别、两者差值、最长配对间隔和 Update 取数统计。
-Demo 载入 Settings 中保存并启用的区域，右侧按零起始区域 index 绘制。OnePlus 的数字来自加入区域示范前的本地验收 APK。公开包保持已有模型评估与分发标记。
+Demo 载入 Settings 中保存并启用的区域，左侧按零起始 index 标记输入区域，右侧以同一 index 取骨骼。preview.10 将区域布局显示在输入侧。OnePlus 的数字来自加入区域示范前的本地验收 APK。公开包保持已有模型评估与分发标记。
 接入见[常驻 SDK Prefab](../user-guide/UNITY_RUNTIME_PREFAB.md)。
