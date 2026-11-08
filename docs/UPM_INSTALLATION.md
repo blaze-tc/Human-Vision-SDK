@@ -38,6 +38,7 @@ UPM tarball：依次安装 `com.blazetc.humanvision.input-0.1.0-preview.6.tgz` �
 缺少资源时初始化明确失败；选择 CPU/GPU/NPU 不代表对应资源自动下载或设备已经支持。
 
 Android：ARM64、IL2CPP、API 26+；Vulkan 模式需要兼容的 GPU。RK3588 NPU 需要匹配设备和驱动。
+Android 的 GPU、CPU 和 RK3588 NPU 路径均使用 YOLOv8n-pose，并共用本版 Input 的 RTSP 解码和纹理发布优化。要在同一应用切换 GPU 与 NPU，请使用 `android-dual-vulkan-npu` 构建并导入配套的本地资源。
 Windows CPU 与 DirectML 均使用 YOLOv8n-pose，支持低、中、高三档。模型上游许可证及评估/分发标记保持原样。
 
 ## 配置、API 与 Settings

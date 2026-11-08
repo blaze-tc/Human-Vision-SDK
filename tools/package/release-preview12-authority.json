@@ -103,7 +103,7 @@
       "Documentation/reports/2026-11-06-runtime-prefab-preview9.md.meta": "e582cf35c1874b8b7f703dae539ed5fa354a69b433ca27c8d43410d8629e6b10",
       "Documentation/reports/2026-11-08-preview11-runtime-input.md": "63aeb2dc0e940ce2de2257c28c5fc54fdc34e4984b29a1a46353f7b136c48cc7",
       "Documentation/reports/2026-11-08-preview11-runtime-input.md.meta": "af2c056a5fbc1777d8c63732da7203efd66e16cd0a83884d4624ae6e54b6ea9e",
-      "Documentation/reports/2026-11-08-preview12-windows-yolo.md": "3086e02a4936802b5ba44f7408037518e8387e3bb87f4707ade39cfa6fcc8912",
+      "Documentation/reports/2026-11-08-preview12-windows-yolo.md": "6e3cdd57a220b2f35423fb9b7e17ff93de254b6a898f2fe40b38c09e90fb6976",
       "Documentation/reports/2026-11-08-preview12-windows-yolo.md.meta": "e952a5cec4e71069c82d409c3974327737d76ff7d7f81bd5d78b575d928e26d2",
       "Documentation/user-guide.meta": "8f76ee90bbf088b3257cd7155f59e37bf8b364b7d7414a775a6d03c0d6441dbb",
       "Documentation/user-guide/API_REFERENCE.md": "5549182eea2e5f8a3fa22787c3506faeced59afcab608dd629ccd59ec308513f",
@@ -575,7 +575,7 @@
       "Tests/PlayMode/HumanVisionSdkRuntimeTests.cs.meta": "b428929fcaddfd3a95c96e553fa05b5b2d144feb58e6d95eb1308db298904549",
       "Tests/PlayMode/UnifiedDemoUiTests.cs": "983fc5f80d48b271099a2cf578a86749fe6c6170f4dd2131ee5b70d0df5be98a",
       "Tests/PlayMode/UnifiedDemoUiTests.cs.meta": "7c5c2e62a2da150202d9eea47b0de2d594aa63d0777fe50b351c5f2b27290908",
-      "UPM_INSTALLATION.md": "f5541592c50fa37f91847f872815ebb8c5a636a57aa4b210b8cb7f29e8a4b1ab",
+      "UPM_INSTALLATION.md": "229d327a8dc7b0bac60a254fb77ba2372217f5fb7b06254ea344910d02e806f0",
       "UPM_INSTALLATION.md.meta": "7b41213ad0bded0acefa6c3b3a9ba5e4cbf1e7c8ef565504acdb4f10d6fee0d6",
       "android-cpu-runtime-symbols.json": "36aa7323de2f2ada4139a7c4a47d9f9f62dee8898d2a07185babf86b9b0ba7cd",
       "android-cpu-runtime-symbols.json.meta": "12029840c8a2510aaf1a7ab1b11adfb3c5cf342f5692f37382f07ae03331d912",
@@ -583,7 +583,7 @@
       "android-gpu-bridge-symbols.json.meta": "1cd7db0af670ca073fae57b492d039b5b9faf9f179fc3799779372acc2fb8753",
       "android-neural-runtime-symbols.json": "51a2a03f623dade36effd8a974aec5a82816f90c68b460afc9febafe71320e17",
       "android-neural-runtime-symbols.json.meta": "6300f65f662261e1b24c2b25cad8cbce731af4a5a7b49e418d442c8901fb901f",
-      "asset-sha256.json": "48d077650995cb991ebd27c1882db43f005ab6b6b1532722bfb588fd17b11968",
+      "asset-sha256.json": "d77c30365ed08daaa810193ed6eb6da63e859c98ddecfaea6aa47651466064c6",
       "asset-sha256.json.meta": "63639b175f12b4daa6042061e15d27e309a21e991015467d9cb1eed329f04bb9",
       "package.json": "58530a7b834d6573ab8d726455bdeca8ceca27ce5b63d3047e6ee59b321e5c84",
       "package.json.meta": "b0ef7fb3f8bca292ed1c7b716fde75272cc1d7a51dad965b4121f8801082e1d2"
@@ -722,7 +722,7 @@
     }
   },
   "release_report": "upm/com.blazetc.humanvision/Documentation/reports/2026-11-08-preview12-windows-yolo.md",
-  "release_report_sha256": "3086e02a4936802b5ba44f7408037518e8387e3bb87f4707ade39cfa6fcc8912",
+  "release_report_sha256": "6e3cdd57a220b2f35423fb9b7e17ff93de254b6a898f2fe40b38c09e90fb6976",
   "schema_version": 1,
   "sdk_version": "0.4.0-preview.12",
   "validation_scope": "Windows YOLOv8n-pose CPU and strict DirectML low/medium/high, and preserved Android resources on upgrade. Public acceptance uses DancingTest. Existing model distribution and RK3588 qualification boundaries retained."

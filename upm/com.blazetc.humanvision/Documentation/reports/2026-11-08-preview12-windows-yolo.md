@@ -30,6 +30,12 @@ OnePlus 9 Pro，Android 14，Vulkan，DancingTest RTSP TCP，1280×720 预览，
 
 Android CPU 和 RK3588 NPU 的私有部署资源继续通过对应补充包提供。现有有效私有资源可保留。重新执行本地资源启用菜单时使用与本版 Windows DLL 对应的补充包。RK3588 NPU 性能仍待真机验收。
 
+## Android 模型与输入链路
+
+Android GPU 使用 NCNN Vulkan 的 YOLOv8n-pose 低、中、高档。双模式构建可在 GPU 与 RK3588 NPU 间切换，NPU 明确使用 `backend.rknn`、`pipeline.yolo.tensor` 和 512×288 的 YOLOv8n-pose RKNN 模型。启用 Android CPU 时使用 512×288 的 YOLOv8n-pose ONNX。
+
+三条路径共用 Input 的 RTSP 解码和纹理发布。MediaCodec 保留出队顺序并使用 24 ms 最小释放间隔。Vulkan 图像转换等待 Unity 读取上一张纹理和可用槽位，等待期间只保留最新待转换图像。NPU 通过独立纹理快照异步读回，模型尺寸读回通过像素校验后启用，之后提交给 RKNN。构建缺少配套资源、设备不支持或 RKNN 初始化失败时，SDK 会报告原因。
+
 ## DancingTest 录屏
 
 ![Unity Editor DirectML，YOLOv8n-pose 低档 512×288](https://raw.githubusercontent.com/blaze-tc/Human-Vision-SDK/v0.4.0-preview.12/docs/reports/media/preview12-editor-dancingtest.gif)
