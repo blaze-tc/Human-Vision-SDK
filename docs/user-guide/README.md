@@ -2,7 +2,7 @@
 
 # Human Vision SDK 中文使用文档
 
-适用版本：SDK **0.4.0-preview.8** / Input **0.1.0-preview.5**。更新日期：2026-10-14。[版本下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.8)
+适用版本：SDK **0.4.0-preview.11** / Input **0.1.0-preview.6**。更新日期 2026-11-08。[版本下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.11)
 
 这套文档面向在**新创建的 Unity 项目**中第一次使用 SDK 的开发者。无需先了解模型或原生推理；先学会Start初始化、输入图像和骨骼结果读取，再按需要查接口。
 

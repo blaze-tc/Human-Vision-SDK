@@ -1,14 +1,14 @@
 > 当前版本使用 ScriptableObject 默认配置、代码指定输入源及统一查询 API，请先阅读 [当前接入说明](SDK_CONFIGURATION.md)。下文含已发布版本和兼容 API 的历史说明。
 
-# Unity 总控使用（preview.8）
+# Unity 总控使用（preview.11）
 
-先安装 Input **0.1.0-preview.5**，等待编译，再安装 SDK **0.4.0-preview.8**。两包使用同一个 Git 标签 `v0.4.0-preview.8`。旧 API 保留。
+先安装 Input **0.1.0-preview.6**，等待编译，再安装 SDK **0.4.0-preview.11**。两包使用同一个 Git 标签 `v0.4.0-preview.11`。旧 API 保留。
 
 2026-10-09 私有双模式测试版本另见 [双模式实测说明](../reports/2026-10-09-dual-acceleration-integration.md)。该版本增加 Android NPU 实验路径；正式 preview.6 安装内容没有被标为已经通过 RK3588 硬件验收。
 
 ## 一份组件即可启动
 
-Hierarchy 右键 **Human Vision → Create SDK**，或者给空物体添加 **Human Vision SDK**。在 Inspector 选择摄像头、视频或 RTSP，设置人数（1–8）和区域，然后 Play。默认自动初始化。视频需填写路径，RTSP 需填写地址；停止、查询和调整均调用该组件。
+Hierarchy 右键 **Human Vision → Create SDK**，或者给空物体添加 **Human Vision SDK**。通过 **Create Default SDK Configuration** 设置项目级摄像头、视频或 RTSP 输入，配置人数（1–8）和区域，然后 Play。默认自动初始化。视频需填写路径，RTSP 需填写地址；停止、查询和调整均调用该组件。
 
 自行管理启动时关闭 `InitializeOnStart`，等待初始化后检查状态：
 

@@ -1,6 +1,13 @@
 #include "input_frame_ring.h"
 namespace hvinput {
 void InputFrameRing::Begin(uint64_t g){Close();generation_=g;}
+bool InputFrameRing::CanStartConversion() const {
+ if (published_ >= 0 && !slots_[published_].observed) return false;
+ for (const auto& slot : slots_) {
+  if (slot.state == InputSlotState::Free) return true;
+ }
+ return false;
+}
 int InputFrameRing::Acquire(uint64_t g,uint64_t s){if(!g||g!=generation_)return -1;for(int i=0;i<3;++i)if(slots_[i].state==InputSlotState::Free){slots_[i]={InputSlotState::Acquired,g,s,0};return i;}++drops_;return -1;}
 bool InputFrameRing::Queue(int s,uint64_t f){if(s<0||s>=3||!f||slots_[s].state!=InputSlotState::Acquired)return false;slots_[s].fence=f;slots_[s].state=InputSlotState::CopyQueued;return true;}
 bool InputFrameRing::Complete(int s,uint64_t f){if(s<0||s>=3)return false;auto& slot=slots_[s];if(slot.state!=InputSlotState::CopyQueued||slot.fence>f||slot.generation!=generation_)return false;if(published_>=0&&published_!=s){auto& previous=slots_[published_];if(previous.state==InputSlotState::Published&&!previous.observed){previous.state=InputSlotState::Retiring;++drops_;}}

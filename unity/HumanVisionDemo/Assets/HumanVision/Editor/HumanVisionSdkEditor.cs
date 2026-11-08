@@ -10,11 +10,13 @@ namespace HumanVision.Editor
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
-            bool hasAsset = serializedObject.FindProperty("configurationAsset").objectReferenceValue != null;
+            bool hasSceneAsset = serializedObject.FindProperty("configurationAsset").objectReferenceValue != null;
+            bool hasAsset = hasSceneAsset || HumanVisionSdkPreset.LoadProjectDefault() != null;
             if (hasAsset) DrawPropertiesExcluding(serializedObject, "options");
             else DrawPropertiesExcluding(serializedObject);
             serializedObject.ApplyModifiedProperties();
-            if (hasAsset) EditorGUILayout.HelpBox("启动默认值来自配置资产。输入源地址可在初始化代码中覆盖；运行时修改请调用 SDK API。", MessageType.Info);
+            if (hasSceneAsset) EditorGUILayout.HelpBox("启动参数来自场景配置资产。初始化代码可传入自己的启动参数。", MessageType.Info);
+            else if (hasAsset) EditorGUILayout.HelpBox("未绑定场景资产。启动参数来自项目默认配置，可通过 HumanVision → Create Default SDK Configuration 选择。", MessageType.Info);
         }
     }
 }

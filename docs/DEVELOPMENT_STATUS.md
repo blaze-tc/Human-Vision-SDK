@@ -1,3 +1,32 @@
+## 2026-11-08 preview.11 发布验证
+
+将解码器输出顺序、释放节奏和纹理读取保护并入 Android Input 共用源码。
+提供项目级 ScriptableObject 默认启动参数，更新可选 Runtime Prefab Acceptance。
+Unity Editor 与 OnePlus 使用本地 Exercise2 RTSP 验证，另测 DancingTest 五人输入。
+RK3588 双模式构建已使用新 Input，NPU 真机由用户后续验收。详见[本轮验证](reports/2026-11-08-preview11-runtime-input.md)。
+
+## 2026-11-08 RuntimePrefabAcceptance Android 本地验证
+
+测试工程本地 Android Input 包默认按 MediaCodec 出队顺序释放画面，保留 24 ms 最小释放间隔。
+Vulkan 转换等 Unity 读取上一张已完成纹理后再开始下一张，等待时保留最新一张待转换图像。
+默认 1280×720 输出，YOLOv8n-pose 低档 512×288 和四等分区域。
+
+OnePlus 9 Pro 经 USB RTSP TCP 播放原 `Exercise2.mp4`。720p 基线和改动版的热状态 3
+阶段分别测得配对 23.98 和 27.09 FPS，ImageReader 均为约 30 FPS。已完成纹理的未读覆盖从
+317 次降为 0 次，两个热段分别为 109.77 和 98.89 秒。起跑电池读数相差 0.4°C，
+CPU、GPU 起跑温度不同。改动版最慢 10 秒为 18.6 FPS，最后 30 秒为 25.0 FPS。
+540p 高温试跑平均配对 23.61 FPS，最低 10 秒 19.0 FPS。持续 26 FPS 仍未达标。
+720p 改动版累计 4,598 次区域配对，帧号及纹理身份 0 次不一致，2 帧有区域人物 ID 而无有效关节可画。
+最终 APK 在没有调试属性和启动参数时启动，日志确认默认释放和转换策略，20.03 秒录屏对应
+481 个双人配对帧，区域仍为四等分，帧号及纹理身份 0 次不一致。
+
+本地验证使用 `cmake --build out/pts/build --parallel 6` 构建 ARM64 输入插件，
+对上一轮 Unity APK 仅替换该插件后重新签名。`check-gate.cmd` 和
+`check-input-regressions.cmd` 验证帧槽测试 7/7，40 个 Android Input C 导出相同。
+`py -3.13 tools/maintenance/check_architecture_boundaries.py` 通过。
+APK、设备日志和 `analyze-image-reader.py` 统计保存在测试工程的
+`Builds/RuntimePrefabAcceptance-Android-ImageReader-20261108`。
+
 ## 2026-11-06 当前：常驻 Runtime Prefab / preview.10
 
 新增常驻 `HumanVisionRuntime` Prefab：将源画面、绘制关节及离屏纹理按来源代次与实际提交帧 ID 发布。

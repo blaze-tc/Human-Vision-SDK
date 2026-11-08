@@ -1,7 +1,7 @@
 # 常驻 SDK Prefab 同帧图像与骨骼
 
-在 Unity Package Manager 中打开 **Human Vision SDK → Samples**，导入 **Runtime Prefab** 并打开
-`RuntimePrefabAcceptance.unity`。进入 Play Mode，输入可访问的 RTSP 地址并连接。左侧是实时输入和识别区域预览，连接前也能核对编号及布局。右侧可以
+在 Unity Package Manager 中打开 **Human Vision SDK → Samples**，导入 **Runtime Prefab Acceptance** 并打开
+`RuntimePrefabAcceptance.unity`。进入 Play Mode，输入可访问的 RTSP 地址并连接。也可在 Inspector 绑定 Startup Preset，或通过项目默认资产配置摄像头、RTSP 或视频。左侧是实时输入和识别区域预览，连接前也能核对编号及布局。右侧可以
 切换游戏端重绘与 SDK 合成。离线包的样例位于 `Assets/HumanVision/Samples/RuntimePrefab`。
 运行时展开 Hierarchy 的 `API Redraw - Scene Rig → Skeleton Objects` 可选中 Mesh 关节点与 LineRenderer。
 Android 使用 Vulkan、ARM64、IL2CPP，Player Settings 的 Internet Access 设为 Require。
@@ -71,8 +71,8 @@ public sealed class VisionGameInput : MonoBehaviour
 ## 按识别区域读取
 
 在同一个项目或应用的 Settings 样例中启用区域，编辑区域后点击 **Save**。Runtime Prefab 场景启动时会加载
-保存且已启用的区域布局，RTSP 地址在 Demo 里单独填写。没有已启用的保存布局时，Demo 使用四个等宽区域。
-在 Demo 点击区域数量会为本次会话生成等宽布局，并把人数上限与区域数组一起应用。Settings 的保存内容保留原样。
+保存且已启用的区域布局。样例绑定的 Startup Preset 和项目默认资产优先。没有启用的区域配置时，样例使用四个等宽区域。
+在 Demo 点击区域数量会为本次会话生成等宽布局，并把人数上限与区域数组一起应用。HUD 分别显示输入、新识别、配对帧率和阶段耗时。CPU、GPU、NPU 选择以平台和已安装资源为准。
 
 开启 `Sdk.RegionsEnabled` 后，`view.TryGetBodyId(regionIndex, ...)` 和
 `view.TryGetJointPosition(regionIndex, joint, ...)` 的槽位就是零起始区域 index。

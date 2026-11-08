@@ -318,6 +318,9 @@ void InputRenderEvent(int id){
  if(production){
   frame_ring.Collect(completed_token);
   if(!output_textures[0])return;
+  // Keep the newest decoded image pending until Unity observes the completed
+  // texture and a slot is free. Decoder arrivals may still replace pending.
+  if (!frame_ring.CanStartConversion()) return;
   output_slot=frame_ring.Acquire(pending->generation,token+1);
   if(output_slot<0){++decoded_drops;ReturnImage(pending);return;}
   unity_texture=output_textures[output_slot];target_view=output_views[output_slot];last_target=output_images[output_slot];target_dirty=!target_view;

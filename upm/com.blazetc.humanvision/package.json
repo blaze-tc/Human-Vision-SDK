@@ -3,7 +3,7 @@
     "name": "blaze-tc"
   },
   "dependencies": {
-    "com.blazetc.humanvision.input": "0.1.0-preview.5",
+    "com.blazetc.humanvision.input": "0.1.0-preview.6",
     "com.unity.modules.imageconversion": "1.0.0",
     "com.unity.modules.imgui": "1.0.0",
     "com.unity.modules.jsonserialize": "1.0.0",
@@ -27,11 +27,11 @@
       "path": "Samples~/Settings"
     },
     {
-      "displayName": "Runtime Prefab",
-      "description": "RTSP preview, frame-matched skeleton rendering, and gameplay reads in Update.",
+      "displayName": "Runtime Prefab Acceptance",
+      "description": "Optional live preview, matched skeletons by region index, and gameplay performance in Update.",
       "path": "Samples~/RuntimePrefab"
     }
   ],
   "unity": "2021.3",
-  "version": "0.4.0-preview.10"
+  "version": "0.4.0-preview.11"
 }

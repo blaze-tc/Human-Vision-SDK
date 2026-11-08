@@ -15,20 +15,21 @@ namespace HumanVision
     public sealed class HumanVisionSdk : MonoBehaviour
     {
         /// <summary>托管 SDK 版本，便于区分实机日志对应的发布包。</summary>
-        public const string Version = "0.4.0-preview.10";
-        [SerializeField, Tooltip("默认配置资产；运行时读取副本。留空兼容旧场景内嵌配置。")]
+        public const string Version = "0.4.0-preview.11";
+        [SerializeField, Tooltip("场景配置资产。留空使用项目默认资产，没有项目默认资产时使用内嵌参数。")]
         private HumanVisionSdkPreset configurationAsset;
         private bool configurationLoaded;
         private HumanVisionSdkOptions ConfiguredOptions {
             get {
                 if (!configurationLoaded) {
-                    if (configurationAsset != null) options = configurationAsset.CreateOptions();
+                    var preset = configurationAsset != null ? configurationAsset : HumanVisionSdkPreset.LoadProjectDefault();
+                    if (preset != null) options = preset.CreateOptions();
                     configurationLoaded = true;
                 }
                 return options;
             }
         }
-        /// <summary>默认配置资产。只能在未初始化且不忙时替换；成功初始化后的配置请用 TryApplyConfiguration 调整。</summary>
+        /// <summary>显式绑定的场景配置资产。空值使用项目默认资产。只能在未初始化且不忙时替换。</summary>
         public HumanVisionSdkPreset ConfigurationAsset {
             get => configurationAsset;
             set {
@@ -157,7 +158,7 @@ namespace HumanVision
         private void Start() { if (initializeOnStart) StartCoroutine(Initialize()); }
         private void OnDisable() { StopAllCoroutines(); BeginStop(); }
         private void OnDestroy() { BeginStop(); }
-        /// <summary>等待默认 Inspector 配置完成启动：yield return sdk.Initialize();</summary>
+        /// <summary>以当前配置启动。首次启动优先读取场景资产，其次项目默认资产，最后使用内嵌参数。</summary>
         public IEnumerator Initialize() => Initialize(Configuration);
         /// <summary>用配置资产和代码提供的输入源启动。地址含义见 CreateOptionsForInput；完成后检查 IsRunning/LastError。</summary>
         public IEnumerator InitializeFromPreset(HumanVisionSdkPreset preset, InputKind kind, string address)

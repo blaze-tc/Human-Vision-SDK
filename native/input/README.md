@@ -42,7 +42,7 @@ domain. Cache/Vulkan errors preserve their first stage and result through decode
 interruption and reconnect; Vulkan result values are not formatted as FFmpeg errno.
 
 Pending decoded frames are
-latest-only; no-free-slot drops are counted. The compressed application backlog
+latest-only. Conversion waits while Unity has an unobserved publication or all output slots are occupied. The compressed application backlog
 retains one packet; decoder pressure or transport failure recreates the reader,
 decoder and RTSP session and waits for a real keyframe. Healthy admitted P/B
 packets are preserved. Missing reliable crop/color/capabilities fail explicitly.
@@ -51,8 +51,7 @@ Task3 V1 layouts/exports remain unchanged. Android `HV_Input_PollFrame` only rea
 completed metadata and does not retain an output. The additive Android
 `HV_Input_PollGpuFrame` returns and atomically acknowledges the exact latest
 sequence/generation/slot; `HV_Input_ReleaseGpuSlot` returns that observed slot only
-after consumer source-copy fences finish. Superseded never-observed publications
-are retired as drops, while observed slots cannot be overwritten until released.
+after consumer source-copy fences finish. Conversion preserves an unread publication and waits for the next render event. MediaCodec releases buffers in decoder output order at least 24 ms apart while ImageReader continues polling.
 `BindGpuTargets` binds exactly three borrowed Unity textures; `GetGpuGeometry`
 reports actual pending crop geometry, not request dimensions. All GPU publication
 requires actual converter fence completion. Positive acquire fd import consumes a

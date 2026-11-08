@@ -1,8 +1,8 @@
 > 当前分支新增 ScriptableObject 默认配置、代码指定输入源及统一查询 API，请先阅读 [当前接入说明](SDK_CONFIGURATION.md)。下文含已发布版本和兼容 API 的历史说明。
 
-# 推荐入口：HumanVisionSdk（preview.5）
+# 推荐入口 HumanVisionSdk
 
-先看 [单组件使用](UNITY_SDK.md)，无需直接组合 Manager/FrameSource。下面旧接口仍兼容。
+先看[单组件使用](UNITY_SDK.md)。默认启动资产可通过 HumanVisionSdkPreset.LoadProjectDefault() 读取。游戏若需要图像与关节同帧，请使用[常驻 Prefab](UNITY_RUNTIME_PREFAB.md) 的发布接口。
 
 | 能力 | 新 API | 语义/返回值 |
 |---|---|---|

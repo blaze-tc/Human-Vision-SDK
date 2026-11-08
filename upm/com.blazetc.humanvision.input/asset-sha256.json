@@ -5,7 +5,7 @@
   "Editor/InputPreviewSceneBuilder.cs": "aca08e31878b22edc376fa19e155aa5ddd94937433d399345fe13f53eecc4dbf",
   "Licenses/FFmpeg-LGPL-2.1.txt": "b634ab5640e258563c536e658cad87080553df6f34f62269a21d554844e58bfe",
   "Licenses/Unity-Plugin-API-LICENSE.md": "dc34d09c3c3a5057244ba4e6cbb871105ec42cd1130617aceeddb9219da922d1",
-  "README.md": "ff1a0581d23b003539f7165686ff9f138ccca40c49752f7bbe6b20dfb3f22b61",
+  "README.md": "0053c3ce01d509d815bb294331f0a7c524ba15080adb25e578ac38d5d740da1c",
   "Runtime/AndroidRtspGpuSource.cs": "5e1d0ba25208440166bb9d2df4426fd841fa9dbe9e8e7f25ddca00da12fb3bad",
   "Runtime/ArchiveVideoCache.cs": "1e07f4b999319ed6f893fe1f60f7a7c242b72ebe89bfa0f91ad359c7bd3c1ca6",
   "Runtime/FramePreview.cs": "124aa1c8cefedfaeba9da7446eec15b7ba1bb29558ab163741685d3b125c2ce8",
@@ -25,7 +25,7 @@
   "Runtime/Plugins/Android/arm64-v8a/libavcodec.so": "6808f8e77223680a1e2ac195178032300e55d950dede4aa2fa91009987d96296",
   "Runtime/Plugins/Android/arm64-v8a/libavformat.so": "cb9b15ab4c136d40d67b32fbf31f4c155c150e7d43c37174307503595905abd7",
   "Runtime/Plugins/Android/arm64-v8a/libavutil.so": "92136c3c0535b9817f6f72d45d272476ac83d5211785c7e1f06f7ec65954d9ef",
-  "Runtime/Plugins/Android/arm64-v8a/libhumanvision_input.so": "0639a50ecbe765bda84a4dbc6616bd9f5fcedbf51839e2dfb7c1588650511457",
+  "Runtime/Plugins/Android/arm64-v8a/libhumanvision_input.so": "e3599d46d8f09775dc132513cd5e388f4b7fed11a5c54355f69f21dca0032dde",
   "Runtime/Plugins/Android/arm64-v8a/libswresample.so": "8cadca3419da79d3919a9498bee8619696b15faba03cf43bbcfda0a1aec7b5a3",
   "Runtime/Plugins/Android/arm64-v8a/libswscale.so": "aaae7e3a11b68c0306056fa3d463d94069d250f9a1f83dd1f67a5e9074d17aff",
   "Runtime/Plugins/x86_64/avcodec-61.dll": "f0c5373f00734d0090471c75a49caf282912e6b085c4c29976ec36df3c9c586e",
@@ -54,6 +54,6 @@
   "Tests/PlayMode/HumanVision.Input.PlayMode.Tests.asmdef": "50f98dd2d2d443abc6f8503409f273ca4157d10c7b717d749a6523d01e4591ac",
   "Tests/PlayMode/RtspPreviewTests.cs": "3b2ad2dd7335bb6b0b6c33980d74e249d1ce7e2b3c0f921d1c65202ec06a3b20",
   "Tests/PlayMode/UnitySourceLifecycleTests.cs": "5873a81d89726f4828e63c76608068dd64249860056ec7dda0267147683b5ca7",
-  "native-payload.json": "1f09dc246522021b04a7ba16af704535e9628868f67f29a512e86ed30c436280",
-  "package.json": "53609adff8fe5fa345c1ee19b259fe2e6e7a345e38fe0e3c150e7525fb0ae646"
+  "native-payload.json": "0447989943157601ee17b6d933e577415de151141c7cc8293b12c8bc9c38949d",
+  "package.json": "29b0a6d3db4521fa78f0164f5a9e730b38aae4e4307b7b36839a1aaee709e322"
 }

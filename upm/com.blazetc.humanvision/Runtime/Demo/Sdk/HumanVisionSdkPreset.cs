@@ -13,6 +13,10 @@ namespace HumanVision
     {
         [SerializeField] private HumanVisionSdkOptions options = new HumanVisionSdkOptions();
 
+        /// <summary>读取项目 Resources 中的默认配置资产。未创建项目默认值时返回 null。</summary>
+        public static HumanVisionSdkPreset LoadProjectDefault() =>
+            Resources.Load<HumanVisionSdkPreset>("HumanVisionSdkConfiguration");
+
         /// <summary>读取独立启动草稿；CPU/GPU/NPU 选择同时映射旧版 Windows CPU 开关。</summary>
         public HumanVisionSdkOptions CreateOptions()
         {

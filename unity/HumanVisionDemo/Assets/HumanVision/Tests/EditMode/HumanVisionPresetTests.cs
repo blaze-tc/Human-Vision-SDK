@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using HumanVision.Demo;
 
@@ -52,6 +53,56 @@ namespace HumanVision.Tests
             Assert.That(Read().Recognition.MaxBodies, Is.EqualTo(2));
             Assert.That(HumanVisionSettingsData.FromOptions(sdk.Configuration).Recognition.MaxBodies, Is.EqualTo(3));
             Assert.False(sdk.IsInitialized);
+        }
+        [Test] public void UnassignedSdkUsesProjectPresetAndAssignedPresetTakesPrecedence()
+        {
+            const string resource = "HumanVisionSdkConfiguration";
+            string temporaryFolder = null;
+            try {
+                var projectPreset = Resources.Load<HumanVisionSdkPreset>(resource);
+                if (projectPreset == null) {
+                    string folderName = "HumanVisionPresetTest_" + Guid.NewGuid().ToString("N");
+                    temporaryFolder = "Assets/" + folderName;
+                    AssetDatabase.CreateFolder("Assets", folderName);
+                    AssetDatabase.CreateFolder(temporaryFolder, "Resources");
+                    projectPreset = ScriptableObject.CreateInstance<HumanVisionSdkPreset>();
+                    var value = projectPreset.CreateOptions();
+                    value.Recognition.MaxBodies = 2;
+                    value.AccelerationMode = HumanVisionAccelerationMode.Cpu;
+                    value.InputQuality = ModelInputQuality.Low;
+                    value.SourceKind = HumanVision.Input.InputKind.Rtsp;
+                    value.Input.RtspUrl = "rtsp://127.0.0.1/live";
+                    value.Input.RequestedWidth = 1920;
+                    value.Input.RequestedHeight = 1080;
+                    projectPreset.SetOptions(value);
+                    AssetDatabase.CreateAsset(projectPreset, temporaryFolder + "/Resources/" + resource + ".asset");
+                }
+                var expected = projectPreset.CreateOptions();
+                owner = new GameObject("project default SDK");
+                var sdk = owner.AddComponent<HumanVisionSdk>();
+                sdk.InitializeOnStart = false;
+                var resolved = sdk.Configuration;
+                Assert.That(resolved.Recognition.MaxBodies, Is.EqualTo(expected.Recognition.MaxBodies));
+                Assert.That(resolved.AccelerationMode, Is.EqualTo(expected.AccelerationMode));
+                Assert.That(resolved.InputQuality, Is.EqualTo(expected.InputQuality));
+                Assert.That(resolved.SourceKind, Is.EqualTo(expected.SourceKind));
+                Assert.That(resolved.Input.RtspUrl, Is.EqualTo(expected.Input.RtspUrl));
+                Assert.That(resolved.Input.RequestedWidth, Is.EqualTo(expected.Input.RequestedWidth));
+                Assert.That(resolved.Input.RequestedHeight, Is.EqualTo(expected.Input.RequestedHeight));
+                var loader = PresetType.GetMethod("LoadProjectDefault", BindingFlags.Public | BindingFlags.Static);
+                Assert.NotNull(loader);
+                Assert.That(loader.Invoke(null, null), Is.SameAs(projectPreset));
+
+                var scene = Read();
+                scene.Recognition.MaxBodies = expected.Recognition.MaxBodies == 1 ? 2 : 1;
+                Write(scene);
+                sdk.ConfigurationAsset = (HumanVisionSdkPreset)preset;
+                Assert.That(sdk.GetMaxBodies(), Is.EqualTo(scene.Recognition.MaxBodies));
+                sdk.ConfigurationAsset = null;
+                Assert.That(sdk.GetMaxBodies(), Is.EqualTo(expected.Recognition.MaxBodies));
+            } finally {
+                if (temporaryFolder != null) AssetDatabase.DeleteAsset(temporaryFolder);
+            }
         }
         [TestCase(HumanVision.Input.InputKind.WebCamera, "camera-2")]
         [TestCase(HumanVision.Input.InputKind.Rtsp, "rtsp://127.0.0.1/live")]

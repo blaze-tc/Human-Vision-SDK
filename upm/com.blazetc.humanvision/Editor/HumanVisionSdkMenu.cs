@@ -6,16 +6,37 @@ namespace HumanVision.Editor
     /// <summary>在当前场景创建仅需一个用户总控的 SDK；不强制创建显示 UI。</summary>
     public static class HumanVisionSdkMenu
     {
-        /// <summary>优先使用 Project 当前选择的配置资产，否则复用或创建项目默认资产；从不覆盖已有参数。</summary>
+        /// <summary>优先使用 Project 当前选择的资产，其次使用项目默认资产或旧版场景默认资产。</summary>
         internal static HumanVisionSdkPreset GetOrCreateDefaultPreset()
         {
             if (Selection.activeObject is HumanVisionSdkPreset selected) return selected;
-            const string folder = "Assets/HumanVisionSdk";
-            const string path = folder + "/HumanVisionSdkConfiguration.asset";
-            var preset = AssetDatabase.LoadAssetAtPath<HumanVisionSdkPreset>(path);
+            var preset = HumanVisionSdkPreset.LoadProjectDefault();
             if (preset != null) return preset;
-            if (!AssetDatabase.IsValidFolder(folder)) AssetDatabase.CreateFolder("Assets", "HumanVisionSdk");
-            preset = ScriptableObject.CreateInstance<HumanVisionSdkPreset>();
+            const string legacyPath = "Assets/HumanVisionSdk/HumanVisionSdkConfiguration.asset";
+            var legacy = AssetDatabase.LoadAssetAtPath<HumanVisionSdkPreset>(legacyPath);
+            return legacy != null ? legacy : CreateProjectDefaultPreset();
+        }
+
+        [MenuItem("HumanVision/Create Default SDK Configuration", false, 1)]
+        private static void SelectProjectDefaultPreset()
+        {
+            var preset = HumanVisionSdkPreset.LoadProjectDefault();
+            if (preset == null) preset = CreateProjectDefaultPreset();
+            if (preset == null) return;
+            Selection.activeObject = preset;
+            EditorGUIUtility.PingObject(preset);
+        }
+
+        private static HumanVisionSdkPreset CreateProjectDefaultPreset()
+        {
+            const string folder = "Assets/Resources";
+            const string path = folder + "/HumanVisionSdkConfiguration.asset";
+            if (AssetDatabase.LoadMainAssetAtPath(path) != null) {
+                Debug.LogError("已有同名资源占用配置路径，请先检查 " + path);
+                return null;
+            }
+            if (!AssetDatabase.IsValidFolder(folder)) AssetDatabase.CreateFolder("Assets", "Resources");
+            var preset = ScriptableObject.CreateInstance<HumanVisionSdkPreset>();
             AssetDatabase.CreateAsset(preset, path);
             Undo.RegisterCreatedObjectUndo(preset, "Create Human Vision SDK Configuration");
             AssetDatabase.SaveAssets();

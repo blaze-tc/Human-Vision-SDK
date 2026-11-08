@@ -2,7 +2,7 @@
 
 # Human Vision SDK 中文使用文档
 
-适用版本：SDK **0.4.0-preview.8** / Input **0.1.0-preview.5**。更新日期：2026-10-14。[版本下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.8)
+适用版本：SDK **0.4.0-preview.11** / Input **0.1.0-preview.6**。更新日期 2026-11-08。[版本下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.11)
 
 这套文档面向在**新创建的 Unity 项目**中第一次使用 SDK 的开发者。无需先了解模型或原生推理；先学会Start初始化、输入图像和骨骼结果读取，再按需要查接口。
 
@@ -18,13 +18,13 @@
 
 第一次使用按[代码入门引导](FIRST_INSTALL.md)完成安装，然后只需一个空物体和一份脚本。主要示例：
 
-- [SdkBasicUsage.cs](examples/SdkBasicUsage.cs.txt)：无需UI引用；Start中启动初始化，打开相机，在ResultUpdated中读取人物ID与左腕，提供StopSdk关闭协程。
-- [SdkBasicUsageMenu.cs](examples/Editor/SdkBasicUsageMenu.cs.txt)：可选编辑器脚本，复制到Assets/Editor后提供Hierarchy右键创建启动物体菜单。
+- [SdkBasicUsage.cs](examples/SdkBasicUsage.cs)：无需UI引用；Start中启动初始化，打开相机，在ResultUpdated中读取人物ID与左腕，提供StopSdk关闭协程。
+- [SdkBasicUsageMenu.cs](examples/Editor/SdkBasicUsageMenu.cs)：可选编辑器脚本，复制到Assets/Editor后提供Hierarchy右键创建启动物体菜单。
 
-需要显示或打包时再看[可选示例界面与平台构建](DISPLAY_AND_BUILD.md)，其中的[SdkCameraQuickStart.cs](examples/SdkCameraQuickStart.cs.txt)和[SdkSkeletonReader.cs](examples/SdkSkeletonReader.cs.txt)用于预览/Overlay与独立结果消费；它们不是初始化和取数据的必做步骤。
+需要显示或打包时再看[可选示例界面与平台构建](DISPLAY_AND_BUILD.md)，其中的[SdkCameraQuickStart.cs](examples/SdkCameraQuickStart.cs)和[SdkSkeletonReader.cs](examples/SdkSkeletonReader.cs)用于预览/Overlay与独立结果消费；它们不是初始化和取数据的必做步骤。
 
 两包Git标签均为`v0.4.0-preview.8`，对应发布标签请以本次 Release 的提交为准。本目录只描述SDK和可独立复制的入门示例；API表中的类以包源码为准。
 
-当前随包Profile关闭真实Hand/Handtip/Thumb推理，32个语义槽位不代表全部为有效观察。模型保留评估/分发资格标记，具体见[第三方说明](../../THIRD_PARTY_NOTICES.md)。历史测量与本次文档检查分开记录，不把安装成功或显示FPS当作持续识别性能。
+当前随包Profile关闭真实Hand/Handtip/Thumb推理，32个语义槽位不代表全部为有效观察。模型保留评估/分发资格标记，具体见[第三方说明](../../upm/com.blazetc.humanvision/THIRD_PARTY_NOTICES.md)。历史测量与本次文档检查分开记录，不把安装成功或显示FPS当作持续识别性能。
 
-本次发布见[preview.8核验](../reports/2026-10-14-preview8-release.md)，Android CPU/NPU 资源见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)。历史版本依据见[preview.4发布验证](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.0-preview.8/docs/reports/2026-10-05-preview4-release-verification.md)；文档与代码检查见[本次验证记录](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.0-preview.8/docs/reports/2026-10-07-sdk-user-docs-verification.md)。旧SDK_API/preview.3章节作为历史兼容资料，首次接入以本目录为入口。
+本次发布见[preview.8核验](../reports/2026-10-14-preview8-release.md)，Android CPU/NPU 资源见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)。历史版本依据见[preview.4发布验证](../reports/2026-10-05-preview4-release-verification.md)；文档与代码检查见[本次验证记录](../reports/2026-10-07-sdk-user-docs-verification.md)。旧SDK_API/preview.3章节作为历史兼容资料，首次接入以本目录为入口。

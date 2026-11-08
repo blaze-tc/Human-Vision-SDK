@@ -1,4 +1,4 @@
-# Human Vision Input 0.1.0-preview.2
+# Human Vision Input 0.1.0-preview.6
 
 Independent Camera, Video and H.264/TCP RTSP frame sources and preview. This package
 contains no models and has no SDK inference dependency. Unity 2021.3+, Windows x64
@@ -7,9 +7,7 @@ MediaCodec/AHardwareBuffer/Vulkan and waits for complete native/copy retirement
 before deferred reopening. Errors remain actionable; no silent CPU fallback.
 
 RTSP requested width/height bound the local published image while preserving the
-stream aspect ratio; smaller streams are never upscaled. The Android output-bound
-fix is staged in the local RK3588-Fix2 retest build (published preview.6/Fix1 still
-use the decoded dimensions). The existing GPU color converter produces the scaled
+stream aspect ratio; smaller streams are never upscaled. The GPU color converter produces the scaled
 output directly, without CPU image readback. This does not reconfigure the camera
 or reduce its encoded-stream/decode workload. Choose a camera substream separately
 when those costs also need to be reduced. New-generation diagnostics distinguish
@@ -18,26 +16,25 @@ decoded geometry, requested maximum and published output.
 The Settings Demo now labels RTSP resolution as an output image size limit:
 this image feeds both preview and recognition; model input dimensions remain a
 separate quality setting. Camera mode requests a capture size, while local video
-plays at its source size. The Android input candidate drains codec output on a
-separate bounded worker so a network read cannot stall ready decoded frames.
+plays at its source size. The Android worker releases buffers in codec output order with at least 24 ms between releases and continues to poll ImageReader. The converter waits for Unity to observe the last completed texture and retains the latest pending image.
 Per-second native decode/GPU cadence logs accompany Unity publication counters;
 changing this scheduling does not guarantee a camera or device frame rate.
 
 Install Input first using:
 
 ```
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=upm/com.blazetc.humanvision.input#v0.4.0-preview.4
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=upm/com.blazetc.humanvision.input#v0.4.0-preview.11
 ```
 
 For body skeletons explicitly add the SDK URL:
 
 ```
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=upm/com.blazetc.humanvision#v0.4.0-preview.4
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=upm/com.blazetc.humanvision#v0.4.0-preview.11
 ```
 
-For offline preview, import HumanVisionInput-0.1.0-preview.2.unitypackage into a
+For offline preview, import HumanVisionInput-0.1.0-preview.6.unitypackage into a
 clean project. Wait for compilation, then import
-HumanVisionSDK-0.4.0-preview.4.unitypackage if you need body skeletons.
+HumanVisionSDK-0.4.0-preview.11.unitypackage if you need body skeletons.
 Choose Git UPM or the offline unitypackages; do not install both.
 For Git UPM, import the InputPreview sample in Package Manager first,
 then build preview with HumanVision > Input > Create standalone preview. Choose your own

@@ -1,14 +1,14 @@
 # ScriptableObject 配置与统一 API
 
-适用版本：SDK **0.4.0-preview.8** / Input **0.1.0-preview.5**。Android CPU/NPU 完整资源安装见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)；公共附件范围见[安装说明](../../UPM_INSTALLATION.md)。
+适用版本：SDK **0.4.0-preview.11** / Input **0.1.0-preview.6**。Android CPU/NPU 完整资源安装见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)；公共附件范围见[安装说明](../UPM_INSTALLATION.md)。
 这是当前版本的接入说明；历史 Release 的验证结果不自动适用于本次变更。
 
 ## 最小接入
 
-Project 右键 **Create → Human Vision → SDK Configuration** 创建 `HumanVisionSdkPreset`。
+从 **HumanVision → Create Default SDK Configuration** 创建或选中项目启动资产 `Assets/Resources/HumanVisionSdkConfiguration.asset`。Project 右键 **Create → Human Vision → SDK Configuration** 可创建单独的场景预设。
 配置图像尺寸、模型等级、CPU/GPU/NPU、人数和区域。地址可以留空，在初始化代码中提供。
-菜单 **HumanVision → Create SDK** 自动创建总控并绑定配置资产（优先使用当前选中的配置资产，否则复用 Assets/HumanVisionSdk 下的默认资产）。也可以给空物体添加 `HumanVisionSdk`，关闭 `InitializeOnStart`，或直接使用
-[完整脚本](examples/HumanVisionGameplayExample.cs.txt)（自动补齐总控）。
+菜单 **HumanVision → Create SDK** 创建总控并绑定预设。选中的预设优先，随后查找项目默认资产。也可以给空物体添加 `HumanVisionSdk`，关闭 `InitializeOnStart`，或直接使用
+[完整脚本](examples/HumanVisionGameplayExample.cs)（自动补齐总控）。
 
 ```csharp
 using System.Collections;
@@ -46,7 +46,7 @@ yield return sdk.Initialize(request);
 ```
 
 也可以在总控的 `Configuration Asset` 中拖入资产，直接 `yield return sdk.Initialize()`。
-未指定资产的旧场景继续读取内嵌配置。运行中的设置、`Configuration`、`ActiveConfiguration`
+启动优先级为显式初始化参数、组件绑定资产、项目默认资产、组件内嵌参数。项目默认可在 Editor 和 Player 中通过 `HumanVisionSdkPreset.LoadProjectDefault()` 读取。运行中的设置、`Configuration`、`ActiveConfiguration`
 及资产 `CreateOptions()` 都是深副本，不会因修改数组/地址而污染资产。
 `SetOptions()` 是显式修改资产内存的工具 API；编辑器保存还需 `SetDirty/SaveAssets`。
 

@@ -2,10 +2,21 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <mutex>
 #include <thread>
 
 namespace hvinput {
+class InputSurfaceReleasePacer final {
+ public:
+  static constexpr int64_t kSpacingUs = 24000;
+  bool Ready(int64_t now_us) const { return now_us >= next_release_us_; }
+  void RecordRelease(int64_t now_us) { next_release_us_ = now_us + kSpacingUs; }
+
+ private:
+  int64_t next_release_us_ = 0;
+};
+
 // Owns only the output worker, not the codec/reader. Declare AFTER the resources
 // and callback captures so every return/reconnect joins before their destruction.
 // Network reads must never gate output draining. The callback must be bounded

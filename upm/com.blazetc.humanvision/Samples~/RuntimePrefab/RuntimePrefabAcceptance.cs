@@ -14,6 +14,7 @@ namespace HumanVisionAcceptance
         [SerializeField] private string rtspUrl = "";
         [SerializeField, Range(1, 8)] private int maxBodies = 4;
         [SerializeField] private bool autoConnect;
+        [SerializeField] private HumanVisionSdkPreset startupPreset;
         [SerializeField] private RuntimePrefabRedrawRig redrawRig;
 
         private static readonly Color Highlight = new Color(.22f,.91f,1);
@@ -30,6 +31,7 @@ namespace HumanVisionAcceptance
         private readonly bool[,] valid = new bool[8, 32];
         private readonly long[] ids = new long[8];
         private HumanVisionRuntimeView view;
+        private HumanVisionSdkOptions startup;
         private HumanVisionSdkConfiguration recognition;
         private HumanVisionPresentedFrame pair;
         private HumanVisionTextureFrame input;
@@ -49,7 +51,7 @@ namespace HumanVisionAcceptance
         {
             Application.targetFrameRate = 60;
             telemetry.Reset();
-            LoadRegionSettings();
+            LoadStartup();
             if (autoConnect) Run(Connect());
         }
 
@@ -59,8 +61,27 @@ namespace HumanVisionAcceptance
             if (uiFont != null) Destroy(uiFont);
         }
 
-        private void LoadRegionSettings()
+        private void LoadStartup()
         {
+            var preset = startupPreset != null ? startupPreset : HumanVisionSdkPreset.LoadProjectDefault();
+            if (preset != null) {
+                startup = preset.CreateOptions();
+                maxBodies = startup.Recognition.MaxBodies;
+                recognition = startup.Recognition.Clone();
+                if (!recognition.UseRegions)
+                    recognition.Regions = HumanVisionSdkConfiguration.CreateEqualRegions(maxBodies);
+                recognition.UseRegions = true;
+                rtspUrl = InputAddress(startup);
+                status = "已载入 SDK 默认配置";
+                return;
+            }
+
+            startup = new HumanVisionSdkOptions {
+                SourceKind = InputKind.Rtsp,
+                AccelerationMode = IsAndroid ? HumanVisionAccelerationMode.Graphics : HumanVisionAccelerationMode.Cpu,
+                UseWindowsCpu = !IsAndroid,
+                InputQuality = ModelInputQuality.Low
+            };
             recognition = new HumanVisionSdkConfiguration {
                 MaxBodies = maxBodies, UseRegions = true, Regions = HumanVisionSdkConfiguration.CreateEqualRegions(maxBodies)
             };
@@ -82,33 +103,79 @@ namespace HumanVisionAcceptance
 
         private IEnumerator Connect()
         {
+            var options = startup.Clone();
             string address = rtspUrl.Trim();
-            if (!Uri.TryCreate(address, UriKind.Absolute, out var uri) || uri.Scheme != "rtsp" || string.IsNullOrEmpty(uri.Host)) {
-                status = "请输入有效的 rtsp:// 地址";
-                yield break;
+            switch (options.SourceKind) {
+                case InputKind.WebCamera: options.Input.CameraDevice = address; break;
+                case InputKind.Video: options.Input.VideoPath = address; break;
+                case InputKind.Rtsp: options.Input.RtspUrl = address; break;
             }
+            options.Recognition = recognition.Clone();
+            options.OpenInputOnInitialize = true;
+            yield return Initialize(options);
+        }
+
+        private IEnumerator Initialize(HumanVisionSdkOptions options)
+        {
+            try { options.Validate(); }
+            catch (ArgumentException error) { status = error.Message; yield break; }
             if (view == null)
             {
                 view = HumanVisionRuntimeView.Create();
                 view.FramePresented += CountPresented;
             }
-            var options = view.Sdk.Configuration;
-            options.SourceKind = InputKind.Rtsp;
-            options.Input.RtspUrl = address;
-            options.RtspTcp = true;
-            options.UseWindowsCpu = true;
-            options.AccelerationMode = HumanVisionAccelerationMode.Graphics;
-            if (Application.platform == RuntimePlatform.Android) options.InputQuality = ModelInputQuality.Low;
-            options.Recognition = recognition.Clone();
-            options.OpenInputOnInitialize = true;
-            if (Application.platform == RuntimePlatform.WindowsEditor || Application.platform == RuntimePlatform.WindowsPlayer) {
+            if (string.IsNullOrWhiteSpace(options.RuntimeRoot) &&
+                (Application.platform == RuntimePlatform.WindowsEditor || Application.platform == RuntimePlatform.WindowsPlayer)) {
                 string staged = Path.Combine(Application.streamingAssetsPath, "HumanVision", "Runtime");
                 if (File.Exists(Path.Combine(staged, "index.json"))) options.RuntimeRoot = staged;
             }
-            status = "正在连接 RTSP…";
+            status = "正在启动 SDK…";
             presented = 0;
             yield return view.Sdk.Initialize(options);
-            status = view.Sdk.IsRunning ? "RTSP 已连接，等待 / 接收同帧结果" : view.Sdk.LastError;
+            if (!view.Sdk.IsRunning || !string.IsNullOrEmpty(view.Sdk.LastError)) {
+                status = view.Sdk.LastError;
+                yield break;
+            }
+            startup = view.Sdk.Configuration;
+            recognition = startup.Recognition.Clone();
+            maxBodies = recognition.MaxBodies;
+            status = "输入已连接，等待 / 接收同帧结果";
+        }
+
+        private static bool IsAndroid => Application.platform == RuntimePlatform.Android;
+        private bool FixedQuality => IsAndroid && startup.AccelerationMode != HumanVisionAccelerationMode.Graphics;
+
+        private static string InputAddress(HumanVisionSdkOptions options)
+        {
+            switch (options.SourceKind) {
+                case InputKind.WebCamera: return options.Input.CameraDevice ?? "";
+                case InputKind.Video: return options.Input.VideoPath ?? "";
+                default: return options.Input.RtspUrl ?? "";
+            }
+        }
+
+        private void SelectCompute(HumanVisionAccelerationMode mode, ModelInputQuality quality)
+        {
+            bool running = view != null && view.Sdk.IsRunning;
+            var options = running ? view.Sdk.Configuration : startup.Clone();
+            options.AccelerationMode = mode;
+            options.UseWindowsCpu = mode == HumanVisionAccelerationMode.Cpu;
+            options.InputQuality = IsAndroid && mode != HumanVisionAccelerationMode.Graphics
+                ? ModelInputQuality.Low : quality;
+            if (running) Run(Initialize(options));
+            else startup = options;
+        }
+
+        private void DrawModelButton(Rect rect, ModelInputQuality quality, string label)
+        {
+            if (GUI.Button(rect, label, startup.InputQuality == quality ? selected : button))
+                SelectCompute(startup.AccelerationMode, quality);
+        }
+
+        private void DrawBackendButton(Rect rect, HumanVisionAccelerationMode mode, string label)
+        {
+            if (GUI.Button(rect, label, startup.AccelerationMode == mode ? selected : button))
+                SelectCompute(mode, startup.InputQuality);
         }
 
         private IEnumerator Restart()
@@ -155,7 +222,13 @@ namespace HumanVisionAcceptance
             var requestedRecognition = recognition.Clone();
             requestedRecognition.MaxBodies = requested;
             requestedRecognition.Regions = HumanVisionSdkConfiguration.CreateEqualRegions(requested);
-            if (view != null && !view.Sdk.TryApplyConfiguration(requestedRecognition)) {
+            if (view != null && view.Sdk.IsRunning && view.Sdk.ActiveAccelerationMode == HumanVisionAccelerationMode.Neural) {
+                var options = view.Sdk.Configuration;
+                options.Recognition = requestedRecognition;
+                Run(Initialize(options));
+                return;
+            }
+            if (view != null && view.Sdk.IsInitialized && !view.Sdk.TryApplyConfiguration(requestedRecognition)) {
                 status = view.Sdk.LastError;
                 return;
             }
@@ -205,7 +278,8 @@ namespace HumanVisionAcceptance
                 sdkLine = "SDK 未创建";
             } else {
                 var sdk = view.Sdk;
-                sdkLine = $"{sdk.State}  |  {sdk.RuntimeProfile}  |  {sdk.FreshResultFps:F1} 识别 FPS  |  识别区域 {capacity}";
+                var size = sdk.AnalysisInputSize;
+                sdkLine = $"{sdk.State}  |  {sdk.ActiveAccelerationMode} / {sdk.RuntimeProfile}  |  模型 {size.x}×{size.y}  |  区域 {capacity}";
                 if (!view.SupportsMatchedFrames) sdkLine += "  |  当前图形设备不支持同帧纹理";
             }
             inputLine = hasInput && live != null
@@ -218,6 +292,7 @@ namespace HumanVisionAcceptance
 
         private void OnGUI()
         {
+            if (startup == null) return;
             InitStyles();
             var previousMatrix = GUI.matrix;
             float scale = Mathf.Min(Screen.width / 1440f, Screen.height / 866f);
@@ -227,11 +302,24 @@ namespace HumanVisionAcceptance
             try {
                 Box(new Rect(0,0,1440,866), Background);
                 GUI.Label(new Rect(28, 12, 900, 52), "Human Vision  /  Runtime Prefab 验收", heading);
-                GUI.Label(new Rect(30, 65, 1250, 30), "01  实机图像    /    02  同帧骨骼    /    03  SDK 公共接口", small);
+                GUI.Label(new Rect(30, 65, 135, 30), FixedQuality ? "固定模型等级" : "模型等级", small);
+                GUI.enabled = !operating && !FixedQuality;
+                DrawModelButton(new Rect(177, 64, 80, 32), ModelInputQuality.Low, "低");
+                DrawModelButton(new Rect(265, 64, 80, 32), ModelInputQuality.Medium, "中");
+                DrawModelButton(new Rect(353, 64, 80, 32), ModelInputQuality.High, "高");
+                GUI.enabled = !operating;
+                GUI.Label(new Rect(894, 65, 140, 30), "分析设备", small);
+                DrawBackendButton(new Rect(1020, 64, 105, 32), HumanVisionAccelerationMode.Cpu, "CPU");
+                DrawBackendButton(new Rect(1133, 64, 105, 32), HumanVisionAccelerationMode.Graphics, "GPU");
+                GUI.enabled = !operating && IsAndroid;
+                DrawBackendButton(new Rect(1246, 64, 166, 32), HumanVisionAccelerationMode.Neural, "NPU · RK3588");
+                GUI.enabled = true;
                 Box(new Rect(1188, 24, 224, 34), Inset);
                 GUI.Label(new Rect(1188, 24, 224, 34), $"SDK  {HumanVisionSdk.Version}", badge);
 
-                GUI.Label(new Rect(28, 104, 118, 34), "RTSP 地址", body);
+                string addressLabel = startup.SourceKind == InputKind.WebCamera ? "设备名称" :
+                    startup.SourceKind == InputKind.Video ? "视频路径" : "RTSP 地址";
+                GUI.Label(new Rect(28, 104, 118, 34), addressLabel, body);
                 rtspUrl = GUI.TextField(new Rect(146, 104, 1060, 34), rtspUrl, field);
                 GUI.enabled = !operating;
                 if (GUI.Button(new Rect(1224, 104, 188, 34), "连接 / 应用地址", selected)) Run(Connect());
@@ -261,7 +349,7 @@ namespace HumanVisionAcceptance
                 GUI.Label(new Rect(45, 720, 1349, 32), status ?? "", small);
                 GUI.Label(new Rect(45, 754, 1349, 31), telemetry.PerformanceLine, small);
                 GUI.Label(new Rect(45, 785, 1349, 31), telemetry.ReadLine, small);
-                GUI.Label(new Rect(29, 833, 1376, 29), "实时图像可先于识别更新。右侧只在图像与骨骼匹配时显示。", small);
+                GUI.Label(new Rect(29, 833, 1376, 29), telemetry.StageLine, small);
             } finally {
                 GUI.matrix = previousMatrix;
                 GUI.enabled = true;

@@ -3,13 +3,28 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
+#include <cstring>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
 
 #define CHECK(c) do { if (!(c)) { std::fprintf(stderr,"FAIL %d: %s\n",__LINE__,#c); return 1; } } while (0)
 
-int main() {
+int main(int argc, char** argv) {
+  if (argc == 2 && std::strcmp(argv[1], "SurfaceReleaseCadence") == 0) {
+    hvinput::InputSurfaceReleasePacer pacer;
+    CHECK(pacer.Ready(0));
+    pacer.RecordRelease(1000);
+    CHECK(!pacer.Ready(24999));
+    CHECK(pacer.Ready(25000));
+    CHECK(pacer.Ready(51000));
+    // The next interval starts at the real release, with no burst catch-up.
+    pacer.RecordRelease(51000);
+    CHECK(!pacer.Ready(74999));
+    CHECK(pacer.Ready(75000));
+    std::puts("PASS: Surface releases stay at least 24 ms apart");
+    return 0;
+  }
   // Simulate a decoder completing after its input was queued. No second packet
   // is sent: output must still be drained while the network producer is idle.
   std::mutex mutex;

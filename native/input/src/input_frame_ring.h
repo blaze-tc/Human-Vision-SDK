@@ -8,6 +8,7 @@ class InputFrameRing {
  std::array<InputFrameSlot,3> slots_{}; uint64_t generation_=0; uint64_t drops_=0; int published_=-1;
 public:
  void Begin(uint64_t generation); int Acquire(uint64_t generation,uint64_t sequence);
+ bool CanStartConversion() const;
  bool Queue(int slot,uint64_t fence); bool Complete(int slot,uint64_t completed);
  void Observe(int slot,uint64_t sequence); void Release(int slot,uint64_t sequence); void Cancel(int slot); void Close(); void Collect(uint64_t completed);
  int Published()const{return published_;} uint64_t Drops()const{return drops_;}

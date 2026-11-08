@@ -148,9 +148,16 @@ void Session::Decode() {
   uint64_t last_packets=0,last_queued=0,last_outputs=0,last_images=0;
   uint32_t matrix=declared.matrix,range=declared.range,transfer=0,primaries=0;
   AImageCropRect codec_crop{};bool codec_crop_known=false;
+  InputSurfaceReleasePacer release_pacer;
+  if (production) __android_log_print(ANDROID_LOG_INFO, "HVInputGate",
+      "input_surface_release order=decoder spacing_us=%lld",
+      static_cast<long long>(InputSurfaceReleasePacer::kSpacingUs));
   auto drain=[&] {
     AMediaCodecBufferInfo output{};
     for(int count=0;count<16 && !stop;++count) {
+      // Release in decoder dequeue order. Pacing leaves the reader poll below
+      // active between releases so Surface bursts cannot hide acquired images.
+      if (production && !release_pacer.Ready(NowUs())) break;
       // A bounded wait avoids a hot spin; subsequent outputs drain immediately.
       auto index=AMediaCodec_dequeueOutputBuffer(r.codec,&output,count==0?2000:0);
       if(index==AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
@@ -176,6 +183,7 @@ void Session::Decode() {
       auto release=AMediaCodec_releaseOutputBuffer(r.codec,index,true);
       if(release!=AMEDIA_OK) {fail("render hardware output Surface",release);return;}
       ++outputs_released;
+      if (production) release_pacer.RecordRelease(NowUs());
     }
     AndroidDecodedImage image;
     int acquired=AImageReader_acquireLatestImageAsync(r.reader,&image.image,&image.acquire_fd);
