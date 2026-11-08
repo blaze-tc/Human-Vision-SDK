@@ -1,3 +1,9 @@
+## 2026-11-08 preview.12 Windows YOLO 迁移
+
+Windows Editor 和 Player 的 CPU、DirectML 均按低、中、高档位选择 YOLOv8n-pose。
+升级安装自动更新桌面资源并保留既有已校验的本地 Android 资源。
+验收以实际模型、后端和按区域的同帧读取为准。公开素材仅使用 [DancingTest](reports/2026-11-08-preview12-windows-yolo.md)。
+
 ## 2026-11-08 preview.11 发布验证
 
 将解码器输出顺序、释放节奏和纹理读取保护并入 Android Input 共用源码。

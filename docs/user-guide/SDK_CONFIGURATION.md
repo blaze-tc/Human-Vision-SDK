@@ -1,6 +1,6 @@
 # ScriptableObject 配置与统一 API
 
-适用版本：SDK **0.4.0-preview.11** / Input **0.1.0-preview.6**。Android CPU/NPU 完整资源安装见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)；公共附件范围见[安装说明](../UPM_INSTALLATION.md)。
+适用版本：SDK **0.4.0-preview.12** / Input **0.1.0-preview.6**。Android CPU/NPU 完整资源安装见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)；公共附件范围见[安装说明](../UPM_INSTALLATION.md)。
 这是当前版本的接入说明；历史 Release 的验证结果不自动适用于本次变更。
 
 ## 最小接入
@@ -76,7 +76,7 @@ CPU 和 NPU 必须以当前模型包的能力说明为准。NPU 仅支持已接�
 不能在 OnePlus 上验证 RK3588 NPU；不支持的模式会报错，不静默切换。
 preview.8 的完整本地 Android 资源补充包使用 YOLOv8n-pose CPU 模型，固定输入 512×288，支持 1–8 人；
 CPU 的人数上限不切换模型。Vulkan 保留低/中/高三个原模型，NPU 保留已恢复的低档 RKNN 模型。
-Windows CPU/DirectML 模型保持原版本。安装和哈希校验见 [本地 CPU 资源说明](LOCAL_ANDROID_CPU_YOLO.md)。
+Windows CPU 与 DirectML 使用同一套 YOLOv8n-pose 权重。低、中、高分别为 512×288、640×384、960×576。模型准备使用 SDK 随附的图结构与现有 NCNN 权重。Android 私有资源见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)。
 旧代码直接创建 `HumanVisionSdkOptions` 时仍须注意 `UseWindowsCpu` 兼容开关；推荐从资产创建副本。
 
 ## 主要 API

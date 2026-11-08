@@ -28,7 +28,7 @@ HV_PipelineConfigV1 BuildPipelineConfig(const PipelineSelection& selection,int c
  // until common tracking selects public slots; do not rank-truncate at inference.
  int candidates=capacity;
  if(selection.pack->pipeline_id=="pipeline.yolo.tensor"||selection.pack->pipeline_id=="pipeline.yolo.cpu"||
-    selection.pack->pipeline_id=="pipeline.rtmo")
+    selection.pack->pipeline_id=="pipeline.yolo.desktop"||selection.pack->pipeline_id=="pipeline.rtmo")
   candidates=std::min({int(HV_MAX_PEOPLE),selection.pack->max_people,int(selection.plugin->api.max_people)});
  return {sizeof(HV_PipelineConfigV1),HV_PLUGIN_API_V1,candidates,0,
          selection.pack->manifest_json.c_str(),asset_root,options};
@@ -81,6 +81,9 @@ bool RuntimeSession::Start(const std::filesystem::path& root,const std::string& 
  for(auto query:{HV_QueryOrtCpuPlugin,HV_QueryRtmoPipeline,HV_QueryTopDownPipeline,HV_QueryHandPipeline,
                  HV_QueryRknnPluginV1,HV_QueryYoloTensorPipelineV1,HV_QueryYoloCpuPipelineV1})
   if(!registry_.Register(query,error))return false;
+#if defined(_WIN32)
+ if(!registry_.Register(HV_QueryYoloDesktopPipelineV1,error))return false;
+#endif
  // Optional compiled providers may be absent; profile resolution records fallback.
  std::string optional;registry_.Register(HV_QueryOrtAcceleratedPlugin,optional);registry_.Register(HV_QueryOrtXnnpackPlugin,optional);registry_.Register(HV_QueryOrtQnnPlugin,optional);
  profile_=ProfileManager(root/"profiles").Resolve(profile,capacity,registry_,ModelPackManager(root/"modelpacks"),error);

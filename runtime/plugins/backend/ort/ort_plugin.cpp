@@ -4,6 +4,9 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#if defined(_WIN32)
+#include "json/json.hpp"
+#endif
 
 namespace {
 struct Session {
@@ -30,7 +33,14 @@ HV_Result CreateSession(const HV_BackendConfigV1* config,void** out,HV_ErrorBuff
  }
  try {
   auto session=std::make_unique<Session>(provider,!strict,expected);std::string detail;
-  if(!session->backend.Load(std::filesystem::u8path(config->model_path_utf8),detail)){Error(error,detail.c_str());return HV_ERR_MODEL_LOAD;}
+  const auto model=std::filesystem::u8path(config->model_path_utf8);
+#if defined(_WIN32)
+  const auto options=nlohmann::json::parse(config->options_utf8?config->options_utf8:"{}",nullptr,false);
+  const auto weights=options.is_object()?options.value("external_initializers",std::string{}):std::string{};
+  if(!session->backend.Load(model,detail,std::filesystem::u8path(weights))){Error(error,detail.c_str());return HV_ERR_MODEL_LOAD;}
+#else
+  if(!session->backend.Load(model,detail)){Error(error,detail.c_str());return HV_ERR_MODEL_LOAD;}
+#endif
   *out=session.release();return HV_OK;
  }catch(const std::exception& e){Error(error,e.what());return HV_ERR_INTERNAL;}
  catch(...){Error(error,"CPU backend creation exception");return HV_ERR_INTERNAL;}

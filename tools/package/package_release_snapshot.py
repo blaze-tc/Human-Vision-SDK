@@ -254,12 +254,15 @@ def offline_assets(root):
     assets, translations = {}, []
     for name in PACKAGES:
         package = root / 'upm' / name
+        runtime_source = (package / 'RuntimeData/windows-yolo-index.json').is_file()
         for relative in file_hashes(package):
             if relative.endswith('.meta'):
                 continue
             data, meta = (package / relative).read_bytes(), (package / (relative + '.meta')).read_bytes()
             if name == PACKAGES[0]:
-                dest, exported, exported_meta = offline_path(relative), offline_bytes(relative, data), offline_meta(relative, meta)
+                dest = offline_path(relative, runtime_source)
+                exported = offline_bytes(relative, data)
+                exported_meta = offline_meta(relative, meta, runtime_source=runtime_source)
             else:
                 dest, exported, exported_meta = input_path(relative), data, meta
             if dest in assets:

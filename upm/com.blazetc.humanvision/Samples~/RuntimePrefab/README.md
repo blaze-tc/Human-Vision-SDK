@@ -16,4 +16,4 @@ RuntimeSkeletonReader.cs 展示按区域 index 读取关节，RuntimePrefabAccep
 HUD 显示游戏、输入、新识别、配对帧率、最长配对间隔、Update 取数成功次数及 SDK 各阶段耗时。
 CPU、GPU、NPU 和模型等级以平台及安装资源为准。NPU 需要 RK3588 双模式构建及本地补充包。
 
-[完整接入说明](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.0-preview.11/docs/user-guide/UNITY_RUNTIME_PREFAB.md)
+[完整接入说明](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.0-preview.12/docs/user-guide/UNITY_RUNTIME_PREFAB.md)

@@ -18,17 +18,27 @@ namespace HumanVision.Tests
         public void WindowsDefaultRestoresAcceptedDirectMlWithoutUnconditionalCpu(RuntimePlatform platform)
         {
             var settings = JsonUtility.FromJson<SharedRecognitionSettings>("{\"Version\":1,\"MaxBodies\":4}");
-            Assert.That(Select(settings, platform), Is.EqualTo("windows-pc-directml"));
+            Assert.That(Select(settings, platform), Is.EqualTo("windows-yolo-directml-medium"));
             Assert.That(settings.MaxBodies, Is.EqualTo(4));
         }
         [Test] public void ExplicitCpuChoicePersistsAndAndroidStillUsesItsBakedRuntimeMode()
         {
             var settings = JsonUtility.FromJson<SharedRecognitionSettings>("{\"Version\":1,\"MaxBodies\":8,\"UseWindowsCpu\":true}");
-            Assert.That(Select(settings, RuntimePlatform.WindowsEditor), Is.EqualTo("windows-pc-cpu"));
+            Assert.That(Select(settings, RuntimePlatform.WindowsEditor), Is.EqualTo("windows-yolo-cpu-medium"));
             var restored = JsonUtility.FromJson<SharedRecognitionSettings>(JsonUtility.ToJson(settings));
-            Assert.That(Select(restored, RuntimePlatform.WindowsPlayer), Is.EqualTo("windows-pc-cpu"));
+            Assert.That(Select(restored, RuntimePlatform.WindowsPlayer), Is.EqualTo("windows-yolo-cpu-medium"));
             Assert.That(Select(restored, RuntimePlatform.Android), Is.EqualTo("auto"));
             Assert.That(restored.MaxBodies, Is.EqualTo(8));
+        }
+        [TestCase(ModelInputQuality.Low, "low")]
+        [TestCase(ModelInputQuality.Medium, "medium")]
+        [TestCase(ModelInputQuality.High, "high")]
+        public void WindowsQualitySelectsTheSameLevelForCpuAndDirectMl(ModelInputQuality quality, string suffix)
+        {
+            var settings = new SharedRecognitionSettings { InputQuality = quality };
+            Assert.That(Select(settings, RuntimePlatform.WindowsEditor), Is.EqualTo("windows-yolo-directml-" + suffix));
+            settings.AccelerationMode = HumanVisionAccelerationMode.Cpu;
+            Assert.That(Select(settings, RuntimePlatform.WindowsPlayer), Is.EqualTo("windows-yolo-cpu-" + suffix));
         }
     }
 }

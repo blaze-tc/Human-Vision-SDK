@@ -16,19 +16,36 @@ namespace HumanVision.Editor
         [Serializable] private sealed class Index { public string version; public Entry[] files; }
         [Serializable] private sealed class Entry { public string path; public string sha256; }
         [Serializable] private sealed class StageReceipt { public int schema_version; public string stage_id; public bool local_evaluation_only; public string index_sha256; }
-        static HumanVisionModelInstaller() { EditorApplication.delayCall += Prepare; }
+        static HumanVisionModelInstaller()
+        {
+            EditorApplication.delayCall += Prepare;
+            EditorApplication.playModeStateChanged += state => {
+                if (state == PlayModeStateChange.ExitingEditMode) Prepare();
+            };
+        }
         [MenuItem("HumanVision/Install Packaged Models")]
         public static void Prepare()
         {
             var package = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/com.blazetc.humanvision/package.json");
-            if (package == null || string.IsNullOrEmpty(package.resolvedPath)) return;
-            string models = Path.Combine(package.resolvedPath, "RuntimeData");
-            if (!Directory.Exists(models)) throw new BuildFailedException("HumanVision UPM model directory is missing. Reinstall the complete package.");
+            string models = package == null || string.IsNullOrEmpty(package.resolvedPath)
+                ? "Assets/HumanVision/RuntimeData" : Path.Combine(package.resolvedPath, "RuntimeData");
+            if (!Directory.Exists(models)) {
+                if (package == null) return;
+                throw new BuildFailedException("HumanVision UPM model directory is missing. Reinstall the complete package.");
+            }
             string target = "Assets/StreamingAssets/HumanVision/Runtime";
-            if (PreserveExplicitStage(target)) return;
             Directory.CreateDirectory(target);
+            const string windowsIndex = "windows-yolo-index.json";
+            bool preserve = PreserveExplicitStage(target);
+            bool changed = !preserve && InstallIndex(models, target, "index.json");
+            if (File.Exists(Path.Combine(models, windowsIndex)))
+                changed |= InstallIndex(models, target, windowsIndex);
+            if (changed) AssetDatabase.Refresh();
+        }
+        private static bool InstallIndex(string models, string target, string indexName)
+        {
             bool changed = false;
-            string indexPath = Path.Combine(models, "index.json");
+            string indexPath = Path.Combine(models, indexName);
             var index = JsonUtility.FromJson<Index>(File.ReadAllText(indexPath));
             if (index == null || index.files == null) throw new BuildFailedException("Invalid HumanVision runtime index");
             foreach (var entry in index.files) {
@@ -45,9 +62,9 @@ namespace HumanVision.Editor
                 else File.WriteAllBytes(destination + ".tmp", verifiedText);
                 File.Copy(destination + ".tmp", destination, true); File.Delete(destination + ".tmp"); changed = true;
             }
-            string targetIndex = Path.Combine(target, "index.json");
+            string targetIndex = Path.Combine(target, indexName);
             if (!File.Exists(targetIndex) || Hash(targetIndex) != Hash(indexPath)) { File.Copy(indexPath, targetIndex, true); changed = true; }
-            if (changed) AssetDatabase.Refresh();
+            return changed;
         }
         private static bool PreserveExplicitStage(string target)
         {

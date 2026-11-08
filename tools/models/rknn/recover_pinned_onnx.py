@@ -32,6 +32,7 @@ class WeightReader:
     """NCNN ModelBin binary layout: tagged weights, aligned halves, untagged bias."""
     def __init__(self, blob):
         self.blob, self.offset = blob, 0
+        self.storage = None
 
     def take(self, size):
         if size < 0 or self.offset + size > len(self.blob):
@@ -44,8 +45,10 @@ class WeightReader:
         tag = struct.unpack('<I', self.take(4))[0]
         if tag == 0x01306B47:
             size = count * 2
+            self.storage = (self.offset, size, True)
             value = np.frombuffer(self.take((size + 3) & ~3), dtype='<f2', count=count)
         elif tag == 0:
+            self.storage = (self.offset, count * 4, False)
             value = np.frombuffer(self.take(count * 4), dtype='<f4')
         else:
             raise ValueError('unsupported NCNN weight encoding: ' + hex(tag))
@@ -55,6 +58,7 @@ class WeightReader:
         return value
 
     def bias(self, count):
+        self.storage = (self.offset, count * 4, False)
         value = np.frombuffer(self.take(count * 4), dtype='<f4').copy()
         if not np.isfinite(value).all():
             raise ValueError('nonfinite source biases')
@@ -104,7 +108,7 @@ def parse_layers(text):
     return layers
 
 
-def recover(param, weights, output, width, height):
+def recover(param, weights, output, width, height, *, external_weights=False):
     validate_source(param, weights)  # Before loading ONNX or creating output files.
     if min(width, height) < 32 or max(width, height) > 960 or width % 32 or height % 32:
         raise ValueError('static width/height must be multiples of32, within32..960')
@@ -123,6 +127,23 @@ def recover(param, weights, output, width, height):
     def node(kind, inputs, outputs, name, **attrs):
         nodes.append(helper.make_node(kind, inputs, outputs, name=name, **attrs))
 
+    def parameter(name, value, storage):
+        if not external_weights:
+            return constant(name, value)
+        offset, size, half = storage
+        tensor = TensorProto()
+        tensor.name = name + '_fp16' if half else name
+        tensor.dims.extend(value.shape)
+        tensor.data_type = TensorProto.FLOAT16 if half else TensorProto.FLOAT
+        tensor.data_location = TensorProto.EXTERNAL
+        for key, text in (('location', 'yolov8n_pose.ncnn.bin'), ('offset', str(offset)), ('length', str(size))):
+            entry = tensor.external_data.add()
+            entry.key, entry.value = key, text
+        initializers.append(tensor)
+        if half:
+            node('Cast', [tensor.name], [name], name + '_expand', to=TensorProto.FLOAT)
+        return name
+
     for kind, name, bottom, top, p in layers:
         if kind == 'Input':
             if bottom or top != ['in0'] or p:
@@ -136,10 +157,12 @@ def recover(param, weights, output, width, height):
             if count % (out_channels * kw * kh):
                 raise ValueError('Convolution weight shape mismatch')
             kernel = reader.weights(count).reshape(out_channels, -1, kh, kw)
+            kernel_storage = reader.storage
             bias = reader.bias(out_channels)
             left, upper = int(p.get(4, 0)), int(p.get(14, p.get(4, 0)))
             pads = [upper, left, int(p.get(16, upper)), int(p.get(15, left))]
-            node('Conv', bottom + [constant(name + '_w', kernel), constant(name + '_b', bias)],
+            node('Conv', bottom + [parameter(name + '_w', kernel, kernel_storage),
+                                   parameter(name + '_b', bias, reader.storage)],
                  top, name, kernel_shape=[kh, kw],
                  strides=[int(p.get(13, p.get(3, 1))), int(p.get(3, 1))],
                  dilations=[int(p.get(12, p.get(2, 1))), int(p.get(2, 1))], pads=pads)
@@ -195,7 +218,8 @@ def recover(param, weights, output, width, height):
                               opset_imports=[helper.make_opsetid('', 13)])
     model.ir_version = 9
     model = onnx.shape_inference.infer_shapes(model, strict_mode=True)
-    onnx.checker.check_model(model, full_check=True)
+    if not external_weights:
+        onnx.checker.check_model(model, full_check=True)
     output.parent.mkdir(parents=True, exist_ok=True)
     onnx.save(model, str(output))
     receipt = dict(source_param_sha256=PARAM_SHA, source_bin_sha256=BIN_SHA,

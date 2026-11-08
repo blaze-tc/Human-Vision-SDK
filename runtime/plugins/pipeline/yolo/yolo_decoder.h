@@ -9,7 +9,7 @@ struct Geometry {
 };
 bool BuildGeometry(int source_width,int source_height,int target,Geometry& out) noexcept;
 bool BuildGeometry(int source_width,int source_height,int width,int height,Geometry& out) noexcept;
-// CPU-only 512x288 canvas; existing rectangular GPU/NPU admission stays strict.
+// Packed video letterbox for ORT profiles; GPU/NPU admission stays separate.
 bool BuildLetterboxGeometry(int source_width,int source_height,int width,int height,Geometry& out) noexcept;
 int AnchorCount(int target) noexcept;
 int AnchorCount(int width,int height) noexcept;

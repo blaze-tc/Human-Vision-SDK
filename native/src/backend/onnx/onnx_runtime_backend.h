@@ -28,6 +28,10 @@ public:
     OnnxRuntimeBackend& operator=(const OnnxRuntimeBackend&) = delete;
 
     bool Load(const std::filesystem::path& model_path, std::string& error) override;
+#if defined(_WIN32)
+    bool Load(const std::filesystem::path& model_path, std::string& error,
+              const std::filesystem::path& external_initializers);
+#endif
     std::string ActualProvider() const;
     std::string FallbackReason() const;
     bool Run(

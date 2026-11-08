@@ -15,7 +15,7 @@ namespace HumanVision
     public sealed class HumanVisionSdk : MonoBehaviour
     {
         /// <summary>托管 SDK 版本，便于区分实机日志对应的发布包。</summary>
-        public const string Version = "0.4.0-preview.11";
+        public const string Version = "0.4.0-preview.12";
         [SerializeField, Tooltip("场景配置资产。留空使用项目默认资产，没有项目默认资产时使用内嵌参数。")]
         private HumanVisionSdkPreset configurationAsset;
         private bool configurationLoaded;
@@ -116,7 +116,7 @@ namespace HumanVision
         /// <summary>实际成功应用的语义加速器；请求失败时保持旧值。</summary>
         public HumanVisionAccelerationMode ActiveAccelerationMode => IsInitialized
             ? RuntimeProfile == HumanVisionAndroidAccelerationSelection.NeuralProfile ? HumanVisionAccelerationMode.Neural
-                : RuntimeProfile == HumanVisionAndroidAccelerationSelection.CpuProfile || RuntimeProfile == "windows-pc-cpu" ? HumanVisionAccelerationMode.Cpu : HumanVisionAccelerationMode.Graphics
+                : RuntimeProfile == HumanVisionAndroidAccelerationSelection.CpuProfile || SharedRecognitionSettings.IsDesktopCpu(RuntimeProfile) ? HumanVisionAccelerationMode.Cpu : HumanVisionAccelerationMode.Graphics
             : active?.AccelerationMode ?? HumanVisionAccelerationMode.Graphics;
         /// <summary>当前使用的资源目录与实际模型包；输入采集尺寸与模型尺寸分别记录。</summary>
         public string RuntimeRootPath => preparedRoot ?? "";
@@ -212,7 +212,7 @@ namespace HumanVision
             var nativeConfig = new HumanVisionConfig { RuntimeRoot = root, Profile = contract.ProfileId, MaxBodies = candidate.Recognition.MaxBodies };
             HumanVisionStagedInitialization<HumanVisionRuntimeSession> pending = null;
             long preparedRevision = 0;
-            if (candidate.AccelerationMode == HumanVisionAccelerationMode.Neural ||
+            if (SharedRecognitionSettings.IsDesktopYolo(contract.ProfileId) || candidate.AccelerationMode == HumanVisionAccelerationMode.Neural ||
                 (Application.platform == RuntimePlatform.Android && candidate.AccelerationMode == HumanVisionAccelerationMode.Cpu)) {
                 // Resolve Android metadata on the main thread above. Only pure managed/native CPU creation runs here.
                 var requestedRegions = candidate.Recognition.UseRegions ? candidate.Recognition.Regions : Array.Empty<Rect>();
@@ -316,7 +316,7 @@ namespace HumanVision
                 }
                 AnalysisContract capacityContract = null;
                 if (IsInitialized && manager.MaxBodies != candidate.MaxBodies &&
-                    (RuntimeProfile == HumanVisionAndroidAccelerationSelection.CpuProfile || RuntimeProfile == "windows-pc-cpu")) {
+                    (RuntimeProfile == HumanVisionAndroidAccelerationSelection.CpuProfile || SharedRecognitionSettings.IsDesktopCpu(RuntimeProfile))) {
                     capacityContract = new SharedRecognitionSettings { MaxBodies = candidate.MaxBodies }.ResolveContract(preparedRoot, RuntimeProfile);
                 }
                 if (IsInitialized && !ApplyRecognition(candidate)) return false;
@@ -532,14 +532,14 @@ namespace HumanVision
         public int GetColorImageWidth() => GetColorImageTex() != null ? GetColorImageTex().width : 0;
         /// <summary>当前实际图像高度，尚无纹理为 0。</summary>
         public int GetColorImageHeight() => GetColorImageTex() != null ? GetColorImageTex().height : 0;
-        /// <summary>在识别启动前准备 Android 模型等级目录；不创建 Native 会话，不打开输入，不改变运行配置。</summary>
+        /// <summary>在识别启动前准备模型等级目录，不创建 Native 会话或打开输入。</summary>
         public IEnumerator PrepareInputQualities(string runtimeRoot = "")
         {
             string profile = null;
             try { profile = QualityProfile(ConfiguredOptions); }
             catch (Exception e) { qualityCapabilities = HumanVisionSdkQualityCapabilities.Failed("", e.Message); }
             if (profile == null) yield break;
-            if (profile != HumanVisionModelInputQualities.AdmittedRuntimeMode && profile != HumanVisionAndroidAccelerationSelection.NeuralProfile && profile != HumanVisionAndroidAccelerationSelection.CpuProfile) yield break;
+            if (!SupportsQualityPreparation(profile)) yield break;
             string root = string.IsNullOrWhiteSpace(runtimeRoot) ? preparedRoot : runtimeRoot;
             string failure = "";
             if (string.IsNullOrEmpty(root)) yield return HumanVisionRuntimeData.Prepare(value => root = value, value => failure = value);
@@ -551,7 +551,11 @@ namespace HumanVision
         }
         private static string QualityProfile(HumanVisionSdkOptions candidate) => Application.platform == RuntimePlatform.Android
             ? HumanVisionAndroidAccelerationSelection.ResolveInstalled(candidate.AccelerationMode, candidate.AccelerationMode == HumanVisionAccelerationMode.Neural ? ModelInputQuality.Low : candidate.InputQuality, false)
-            : new SharedRecognitionSettings { UseWindowsCpu = candidate.UseWindowsCpu, AccelerationMode = candidate.AccelerationMode }.RuntimeProfileFor(Application.platform);
+            : new SharedRecognitionSettings { UseWindowsCpu = candidate.UseWindowsCpu, AccelerationMode = candidate.AccelerationMode,
+                InputQuality = candidate.InputQuality }.RuntimeProfileFor(Application.platform);
+        private static bool SupportsQualityPreparation(string profile) => SharedRecognitionSettings.IsDesktopYolo(profile) ||
+            profile == HumanVisionModelInputQualities.AdmittedRuntimeMode || profile == HumanVisionAndroidAccelerationSelection.NeuralProfile ||
+            profile == HumanVisionAndroidAccelerationSelection.CpuProfile;
         /// <summary>读取当前或草稿平台的能力说明；结果区分固定模型、准备中与校验失败。</summary>
         public HumanVisionSdkQualityCapabilities GetInputQualityCapabilities(HumanVisionSdkOptions requested = null)
         {
@@ -559,7 +563,7 @@ namespace HumanVision
             try { candidate = requested ?? Configuration; profile = QualityProfile(candidate); }
             catch (Exception e) { return HumanVisionSdkQualityCapabilities.Failed("", e.Message); }
             string root = string.IsNullOrWhiteSpace(candidate.RuntimeRoot) ? preparedRoot : candidate.RuntimeRoot;
-            if (profile != HumanVisionModelInputQualities.AdmittedRuntimeMode && profile != HumanVisionAndroidAccelerationSelection.NeuralProfile && profile != HumanVisionAndroidAccelerationSelection.CpuProfile) return HumanVisionSdkQualityCapabilities.Load(root, profile);
+            if (!SupportsQualityPreparation(profile)) return HumanVisionSdkQualityCapabilities.Load(root, profile);
             if (qualityCapabilities == null || qualityRoot != root || qualityCapabilities.RuntimeProfile != profile || qualityCapacity != candidate.Recognition.MaxBodies) {
                 qualityRoot = root; qualityCapacity = candidate.Recognition.MaxBodies; qualityCapabilities = HumanVisionSdkQualityCapabilities.Load(root, profile, qualityCapacity);
             }

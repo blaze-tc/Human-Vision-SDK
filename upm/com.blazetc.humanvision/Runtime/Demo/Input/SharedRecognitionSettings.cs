@@ -43,14 +43,23 @@ namespace HumanVision.Demo
                 else if (InputQuality != ModelInputQuality.Medium)
                     throw new InvalidOperationException("The selected model input quality is missing from this build. Stage the same-mode quality catalog and ModelPacks, or choose Medium for the legacy profile.");
             }
-            // Unsupported PC/ORT profiles preserve their real contract and the saved Android choice.
             return AnalysisContract.Load(root, profile, MaxBodies);
         }
 
         public string RuntimeProfileFor(RuntimePlatform platform)
         {
-            return platform == RuntimePlatform.Android ? "auto" : UseWindowsCpu || AccelerationMode == HumanVisionAccelerationMode.Cpu ? "windows-pc-cpu" : "windows-pc-directml";
+            if (platform == RuntimePlatform.Android) return "auto";
+            bool cpu = UseWindowsCpu || AccelerationMode == HumanVisionAccelerationMode.Cpu;
+            if (platform == RuntimePlatform.WindowsEditor || platform == RuntimePlatform.WindowsPlayer)
+                return DesktopProfile(cpu, InputQuality);
+            return cpu ? "windows-pc-cpu" : "windows-pc-directml";
         }
+
+        internal static string DesktopProfile(bool cpu, ModelInputQuality quality) =>
+            (cpu ? "windows-yolo-cpu-" : "windows-yolo-directml-") + quality.ToString().ToLowerInvariant();
+        internal static bool IsDesktopYolo(string profile) => profile.StartsWith("windows-yolo-", StringComparison.Ordinal);
+        internal static bool IsDesktopCpu(string profile) => profile == "windows-pc-cpu" ||
+            profile.StartsWith("windows-yolo-cpu-", StringComparison.Ordinal);
 
         public void ResizeRegions(int count)
         {

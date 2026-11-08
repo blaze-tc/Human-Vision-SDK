@@ -3,11 +3,11 @@
     "composition_id": "main-preview7-restored-android-cpu-yolo-v1",
     "distribution_qualified": false,
     "hardware_fps_acceptance": false,
-    "input_native_sha256": "0639a50ecbe765bda84a4dbc6616bd9f5fcedbf51839e2dfb7c1588650511457",
+    "input_native_sha256": "e3599d46d8f09775dc132513cd5e388f4b7fed11a5c54355f69f21dca0032dde",
     "sdk_native_sha256": "32ce9715ad8a6daae5b47dd5d628e6340f354715eca24c11b84f651407694804",
-    "windows_default_profile": "windows-pc-directml",
-    "windows_explicit_cpu_profile": "windows-pc-cpu",
-    "windows_native_sha256": "8a7f5248bf45f24f7f282d4dfbe4b73ceb26752ebf811f74f6afe113b10868c9"
+    "windows_default_profile": "windows-yolo-directml-medium",
+    "windows_explicit_cpu_profile": "windows-yolo-cpu-medium",
+    "windows_native_sha256": "72e2ffdbc1140d7221d8ef46d3c1ef44f87c14c91fb404f740aa2fed8ca80397"
   },
   "cpu_yolo_extension": {
     "baseline_sdk_native_sha256": "8689efb872d76a825595ec4701375cf0c3c0f44d27a12d9bf2a8c9240ece4681",
@@ -29,6 +29,14 @@
       "sha256": "8b191ccf81be8a47ce5de993bc325f9ad6d218a5c1ec819e16455af844736730"
     },
     {
+      "path": "modelpacks/rtmo-t-416/README.md",
+      "sha256": "848ac0ab68f7783cbf8b09fefb685426c64c65ddcfa02a9ba4e94a7136502f89"
+    },
+    {
+      "path": "modelpacks/rtmo-t-416/SOURCES.md",
+      "sha256": "65cab3acfad55148d551cfebd4f2ba8c43dd8e151c77ac30a1073f9fac7ab9f3"
+    },
+    {
       "path": "modelpacks/rtmo-t-416/body.onnx",
       "sha256": "20aad6e2e42359cac1c5b4a0b2da00e29bfe91a72a782fdcf287d273a04c1b24"
     },
@@ -41,12 +49,28 @@
       "sha256": "6ed2a7166bec589bb7aa5322b26c01cec2a5db3a0b691e92f503ecf6a3de0f90"
     },
     {
-      "path": "modelpacks/rtmo-t-416/README.md",
-      "sha256": "848ac0ab68f7783cbf8b09fefb685426c64c65ddcfa02a9ba4e94a7136502f89"
+      "path": "modelpacks/yolov8n-pose-desktop-high/body.onnx",
+      "sha256": "10a40977e5c4c018142c5fc8055c87badb4b15e6a2251e22f5d340e60c0fe012"
     },
     {
-      "path": "modelpacks/rtmo-t-416/SOURCES.md",
-      "sha256": "65cab3acfad55148d551cfebd4f2ba8c43dd8e151c77ac30a1073f9fac7ab9f3"
+      "path": "modelpacks/yolov8n-pose-desktop-high/manifest.json",
+      "sha256": "8149ea7b5e2333a7b6638bc0ff423a4019573b70a37e44a672e725402272e0e5"
+    },
+    {
+      "path": "modelpacks/yolov8n-pose-desktop-low/body.onnx",
+      "sha256": "4172ce39ee7163aa297dc4c7d2e438c2aa6c402e5e33dca38f393aa0a2d69cc3"
+    },
+    {
+      "path": "modelpacks/yolov8n-pose-desktop-low/manifest.json",
+      "sha256": "e02d58bf7206d60383d2d21f1fb1fd87687e1b2b6e04ed8c6588a43eccceca7e"
+    },
+    {
+      "path": "modelpacks/yolov8n-pose-desktop-medium/body.onnx",
+      "sha256": "2904df776828b10c1c749603d8d10795e6adb7ece39103998a2a24c1ad822093"
+    },
+    {
+      "path": "modelpacks/yolov8n-pose-desktop-medium/manifest.json",
+      "sha256": "f8d422850669c2a4aebca464e988ae9f00aa874e3f074e1d9d1ea6aef2c4c71e"
     },
     {
       "path": "modelpacks/yolov8n-pose-rectangle512x288-fp32-quality-low-local/modelpack.json",
@@ -103,6 +127,30 @@
     {
       "path": "profiles/windows-pc-directml.json",
       "sha256": "1185fe744196637eec468fecbd20ee97b83cb58fdb02dfd17685d1e30473331d"
+    },
+    {
+      "path": "profiles/windows-yolo-cpu-high.json",
+      "sha256": "829b6ba9ad5a87a858ec6b3341418f11ea2b8047d115838a0a521c571521afdc"
+    },
+    {
+      "path": "profiles/windows-yolo-cpu-low.json",
+      "sha256": "bf98b81ba50929279f6e3b98d5373a2718e2db3020230b532f9f466dcc4a8280"
+    },
+    {
+      "path": "profiles/windows-yolo-cpu-medium.json",
+      "sha256": "f4a6ca08376f3da317caa6f2a4ee067d99333296a411343c23c6c2c09655f1d7"
+    },
+    {
+      "path": "profiles/windows-yolo-directml-high.json",
+      "sha256": "7516a7e24e762da49d73029adb291129aab065da11da4d4f1af44d9650988150"
+    },
+    {
+      "path": "profiles/windows-yolo-directml-low.json",
+      "sha256": "95e41d38770720eb356965c943fe13df3716d65d424ab2bb2a1f07070872cba6"
+    },
+    {
+      "path": "profiles/windows-yolo-directml-medium.json",
+      "sha256": "7addd63b29e82fe503714c13de89555733be7ceff67fa45417a85e76ccf08cb7"
     }
   ],
   "fixture": "android-yolo/device-runs/seven-640/gpu-fp32-866e333068bf4b058ca0c40176faf897",
@@ -135,5 +183,5 @@
   "shape_id": "rectangle640x384",
   "size": 640,
   "source_aspect_ratio": "16:9",
-  "version": "model-input-qualities-v1-local-fp32"
+  "version": "0.4.0-preview.12"
 }

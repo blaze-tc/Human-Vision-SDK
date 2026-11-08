@@ -69,9 +69,10 @@ AUDIT_FALLBACK = 'Path.Combine(Directory.GetParent(Application.dataPath).FullNam
 OFFLINE_AUDIT_FALLBACK = 'Path.Combine(Application.dataPath, "HumanVision", "android-gpu-bridge-symbols.json")'
 
 
-def offline_path(relative):
+def offline_path(relative, runtime_source=False):
     for source, target in (('Runtime/Plugins', 'Assets/Plugins'),
-                           ('RuntimeData', 'Assets/StreamingAssets/HumanVision/Runtime'),
+                           ('RuntimeData', 'Assets/HumanVision/RuntimeData' if runtime_source else
+                            'Assets/StreamingAssets/HumanVision/Runtime'),
                            ('Runtime/Demo', 'Assets/HumanVision/Demo'),
                            ('Samples~', 'Assets/HumanVision/Samples')):
         if relative == source or relative.startswith(source + '/'):
@@ -79,10 +80,10 @@ def offline_path(relative):
     return 'Assets/HumanVision/' + relative
 
 
-def offline_meta(relative, meta, folder=False):
+def offline_meta(relative, meta, folder=False, runtime_source=False):
     # Avoid UPM/StreamingAssets data GUID collisions across the two layouts.
     if relative == 'RuntimeData' or relative.startswith('RuntimeData/'):
-        value = metadata(offline_path(relative))
+        value = metadata(offline_path(relative, runtime_source))
         if folder:
             value = value.replace('DefaultImporter:', 'folderAsset: yes\nDefaultImporter:')
         return value.encode()

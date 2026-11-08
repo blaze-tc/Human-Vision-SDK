@@ -55,9 +55,9 @@ bool BuildGeometry(int sw,int sh,int target,Geometry& out) noexcept {
     out={target,target,(target-rw)/2,(target-rh)/2,sw,sh,float(scale)};return true;
 }
 bool BuildLetterboxGeometry(int sw,int sh,int width,int height,Geometry& out) noexcept {
-    out={};if(sw<=0||sh<=0||width!=512||height!=288)return false;
+    out={};if(sw<=0||sh<=0||!AnchorCount(width,height))return false;
     // Retain the exact existing aspect proof and scale for qualified 16:9.
-    if(int64_t(sw)*9==int64_t(sh)*16)return BuildGeometry(sw,sh,width,height,out);
+    if(width==512&&height==288&&int64_t(sw)*9==int64_t(sh)*16)return BuildGeometry(sw,sh,width,height,out);
     const bool width_limited=int64_t(sw)*height>=int64_t(sh)*width;
     const double scale=width_limited?double(width)/sw:double(height)/sh;
     const int rw=width_limited?width:int(sw*scale),rh=width_limited?int(sh*scale):height;

@@ -24,7 +24,26 @@ namespace HumanVision
                 catch (Exception e) { failed(e.Message); yield break; }
             }
             string root = Path.Combine(Application.persistentDataPath, "HumanVisionRuntime");
-            foreach (var entry in index.files) {
+            var entries = new List<Entry>(index.files);
+            if (Application.platform == RuntimePlatform.WindowsEditor || Application.platform == RuntimePlatform.WindowsPlayer) {
+                // An installed local Android stage retains its signed index.
+                // The desktop overlay owns only its new profile and graph paths.
+                string overlay = source + "windows-yolo-index.json";
+                if (File.Exists(overlay)) {
+                    try {
+                        var indexed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var entry in entries) indexed.Add(entry.path, entry.sha256);
+                        foreach (var entry in ReadIndex(File.ReadAllText(overlay)).files) {
+                            if (indexed.TryGetValue(entry.path, out string existing)) {
+                                if (existing != entry.sha256) throw new InvalidDataException("Windows YOLO index conflicts with the runtime index: " + entry.path);
+                            } else {
+                                entries.Add(entry);
+                            }
+                        }
+                    } catch (Exception e) { failed(e.Message); yield break; }
+                }
+            }
+            foreach (var entry in entries) {
                 string target;
                 bool cached;
                 try {

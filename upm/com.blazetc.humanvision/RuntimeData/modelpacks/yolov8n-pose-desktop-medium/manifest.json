@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "pack_id": "yolov8n-pose-desktop-medium",
+  "pack_version": "1.0.0",
+  "pipeline_id": "pipeline.yolo.desktop",
+  "max_people": 8,
+  "capabilities": [
+    "body_pose",
+    "multi_person"
+  ],
+  "local_evaluation_only": true,
+  "distribution_qualified": false,
+  "hardware_fps_acceptance": false,
+  "models": [
+    {
+      "role": "body",
+      "format": "onnx",
+      "asset_path": "body.onnx",
+      "sha256": "2904df776828b10c1c749603d8d10795e6adb7ece39103998a2a24c1ad822093",
+      "decoder_id": "yolov8_pose_dfl17_v1",
+      "source": "Bundled NCNN ModelPack yolov8n-pose-rectangle512x288-fp32-quality-low-local",
+      "license": "Upstream model license applies; local evaluation only, no redistribution qualification",
+      "conversion_recipe": "tools/models/rknn/stage_windows_yolo.py (external initializers)",
+      "input_contract": {
+        "width": 640,
+        "height": 384,
+        "tensor_layout": "NCHW",
+        "tensor_dtype": "fp32",
+        "color_order": "RGB",
+        "normalization": {
+          "mean": [
+            0,
+            0,
+            0
+          ],
+          "norm": [
+            0.00392156862745098,
+            0.00392156862745098,
+            0.00392156862745098
+          ]
+        },
+        "input_blob": "in0",
+        "crop_mode": "letterbox",
+        "pad_rgb": [
+          114,
+          114,
+          114
+        ]
+      },
+      "output_contract": {
+        "decoder": "yolov8_pose_dfl17_v1",
+        "output_blobs": [
+          "out0",
+          "out1"
+        ],
+        "tensor_dtype": "fp32",
+        "rows": 5040,
+        "columns": [
+          65,
+          51
+        ],
+        "max_output_bytes": {
+          "out0": 1310400,
+          "out1": 1028160
+        }
+      }
+    }
+  ]
+}

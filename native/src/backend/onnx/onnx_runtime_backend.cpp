@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -117,6 +118,15 @@ std::string OnnxRuntimeBackend::FallbackReason() const { return impl_->fallback_
 bool OnnxRuntimeBackend::Load(
     const std::filesystem::path& model_path,
     std::string& error) {
+#if defined(_WIN32)
+    return Load(model_path,error,{});
+}
+
+bool OnnxRuntimeBackend::Load(
+    const std::filesystem::path& model_path,
+    std::string& error,
+    const std::filesystem::path& external_initializers) {
+#endif
 #if defined(__ANDROID__)
     struct stat file_info{};
     const bool regular_file = stat(model_path.c_str(), &file_info) == 0 && S_ISREG(file_info.st_mode);
@@ -193,6 +203,30 @@ bool OnnxRuntimeBackend::Load(
         }
 #endif
         std::unique_ptr<Ort::Session> session;
+#if defined(_WIN32)
+        // ONNX Runtime copies these slices into its own tensors during session
+        // creation. Keep the byte buffer and its options local until that returns.
+        if(!external_initializers.empty()){
+            std::ifstream source(external_initializers,std::ios::binary|std::ios::ate);
+            const auto size=source.tellg();
+            if(!source||size<=0||size>16*1024*1024){
+                error="Missing or invalid Windows YOLO external initializer file.";
+                return false;
+            }
+            std::vector<char> weights(static_cast<size_t>(size));
+            source.seekg(0);
+            if(!source.read(weights.data(),size)){
+                error="Cannot read Windows YOLO external initializer file.";
+                return false;
+            }
+            auto options=impl_->session_options.Clone();
+            options.AddExternalInitializersFromFilesInMemory({external_initializers.filename().native()},
+                                                             {weights.data()},{weights.size()});
+            if(impl_->provider==OnnxRuntimeProvider::PlatformAccelerated)
+                options.AddConfigEntry("session.disable_cpu_ep_fallback","1");
+            session=std::make_unique<Ort::Session>(impl_->environment,model_path.c_str(),options);
+        }
+#endif
 #if defined(__ANDROID__)
         try {
             session = std::make_unique<Ort::Session>(impl_->environment, model_path.c_str(), impl_->session_options);
@@ -204,7 +238,7 @@ bool OnnxRuntimeBackend::Load(
             session = std::make_unique<Ort::Session>(impl_->environment, model_path.c_str(), impl_->session_options);
         }
 #else
-        session = std::make_unique<Ort::Session>(impl_->environment, model_path.c_str(), impl_->session_options);
+        if(!session)session = std::make_unique<Ort::Session>(impl_->environment, model_path.c_str(), impl_->session_options);
 #endif
         if (session->GetInputCount() != 1) {
             error = "ONNX backend requires exactly one input: " + model_path.string();

@@ -1,6 +1,6 @@
 # Human Vision SDK 安装与接入
 
-SDK **0.4.0-preview.11** / Input **0.1.0-preview.6**，Unity **2021.3+**，Windows x64 / Android ARM64。
+SDK **0.4.0-preview.12** / Input **0.1.0-preview.6**，Unity **2021.3+**，Windows x64 / Android ARM64。
 官方 Samples 包含 **SDK Settings** 和 **Runtime Prefab Acceptance**。源码和两个 Git UPM 子目录位于同一个 GitHub 仓库。
 
 ## 安装顺序
@@ -8,35 +8,37 @@ SDK **0.4.0-preview.11** / Input **0.1.0-preview.6**，Unity **2021.3+**，Windo
 先安装 Input，等编译完成，再安装 SDK。Input 负责 Camera/Video/RTSP 采集与预览，
 SDK 负责推理、骨骼、跟踪、人数与区域。选择 Git UPM、tgz 或 unitypackage 中的一种方式。
 已有项目先备份配置，更换安装方式时移除原 SDK/Input 副本，避免重复脚本、GUID 与 native 库。
+已有内嵌包的项目在 Unity 关闭后更新 `Packages/com.blazetc.humanvision`，保留项目配置与现有 Input 0.1.0-preview.6。重新打开 Unity 后，SDK 自动安装桌面 YOLO 配置和图结构。切换安装方式前先移除旧副本。
 
 Git：Window → Package Manager → + → Add package from git URL，依次添加：
 
 ```text
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.11
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.11
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.12
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.12
 ```
 
 必须显式添加两个 Git 子目录；SDK 的版本依赖不能自动发现另一个 Git 包。
 两包使用同一个发布标签；Input 的实际包版本仍为 0.1.0-preview.6。
 
 离线：先导入 `HumanVisionInput-0.1.0-preview.6.unitypackage`，再导入
-`HumanVisionSDK-0.4.0-preview.11.unitypackage`。每步等待导入与编译完成。
+`HumanVisionSDK-0.4.0-preview.12.unitypackage`。每步等待导入与编译完成。
+离线包将随附资源导入 `Assets/HumanVision/RuntimeData`。Unity 会自动更新运行目录，保留通过校验的本地 Android 资源及其索引。也可通过 **HumanVision → Install Packaged Models** 手动重试。
 UPM tarball：依次安装 `com.blazetc.humanvision.input-0.1.0-preview.6.tgz` 和
-`com.blazetc.humanvision-0.4.0-preview.11.tgz`。用附件 `SHA256SUMS.txt` 校验下载内容。
+`com.blazetc.humanvision-0.4.0-preview.12.tgz`。用附件 `SHA256SUMS.txt` 校验下载内容。
 
 ## Android 完整 CPU / NPU 资源
 
 公共包提供 SDK、Input、Windows 原生依赖和原 Android Vulkan 资源。
 **Android CPU YOLO ONNX、RKNN 模型和 librknnrt.so 不在公共附件中。**
 本地完整测试需要继续导入匹配的
-`HumanVision-LocalAndroidCpuResources-0.4.0-preview.8.unitypackage`，然后执行
+`HumanVision-LocalAndroidCpuResources-0.4.0-preview.12.unitypackage`，然后执行
 **HumanVision → Enable Local Android CPU Resources**。工具验证 52 项 Runtime 与原生库哈希。
 详细步骤及导出工具见[本地资源部署](user-guide/LOCAL_ANDROID_CPU_YOLO.md)。
 该补充包、含完整资源的 APK 和用户视频保存在本地测试交付目录，不作为公共 Release 附件。
 缺少资源时初始化明确失败；选择 CPU/GPU/NPU 不代表对应资源自动下载或设备已经支持。
 
 Android：ARM64、IL2CPP、API 26+；Vulkan 模式需要兼容的 GPU。RK3588 NPU 需要匹配设备和驱动。
-Windows 保留原 CPU/DirectML 路线。模型上游许可证及评估/分发标记保持原样。
+Windows CPU 与 DirectML 均使用 YOLOv8n-pose，支持低、中、高三档。模型上游许可证及评估/分发标记保持原样。
 
 ## 配置、API 与 Settings
 

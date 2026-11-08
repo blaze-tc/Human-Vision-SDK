@@ -321,7 +321,20 @@ TEST(YoloCpuPipeline, LetterboxGeometryAndDecoderOptInLeaveDefaultAdmissionExact
     EXPECT_FALSE(original.Decode(views,2,geometry,123,bodies,scores,8,count));
     ASSERT_TRUE(cpu.Decode(views,2,geometry,123,bodies,scores,8,count));
     ++geometry.left;EXPECT_FALSE(cpu.Decode(views,2,geometry,123,bodies,scores,8,count));
-    EXPECT_FALSE(BuildLetterboxGeometry(640,480,640,384,geometry));EXPECT_FALSE(BuildLetterboxGeometry(0,480,512,288,geometry));
+    EXPECT_FALSE(BuildLetterboxGeometry(0,480,512,288,geometry));
+}
+TEST(WindowsYoloPipeline, LetterboxPreservesInputAspectAcrossQualityLevels) {
+    using namespace humanvision::runtime::yolo;
+    Geometry geometry{};
+    ASSERT_TRUE(BuildLetterboxGeometry(1280,720,512,288,geometry));
+    EXPECT_EQ(geometry.top,0);
+    ASSERT_TRUE(BuildLetterboxGeometry(1280,720,640,384,geometry));
+    EXPECT_EQ(geometry.top,12);
+    ASSERT_TRUE(BuildLetterboxGeometry(1280,720,960,576,geometry));
+    EXPECT_EQ(geometry.top,18);
+    ASSERT_TRUE(BuildLetterboxGeometry(640,480,640,384,geometry));
+    EXPECT_EQ(geometry.left,64);
+    EXPECT_FALSE(BuildGeometry(640,480,640,384,geometry));
 }
 TEST(YoloCpuPipeline, RealSavedLandscapeOutputsDecodeIdenticallyWithDefaultAndCpuGeometry) {
     using namespace humanvision::runtime::yolo;

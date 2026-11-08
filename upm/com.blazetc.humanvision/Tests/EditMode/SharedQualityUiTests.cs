@@ -132,7 +132,7 @@ namespace HumanVision.Tests
             Assert.That(session.Disposals, Is.Zero, "Contract must be validated before manager Shutdown"); Assert.That(manager.ResultSequence, Is.EqualTo(12)); Assert.That(nav.Shared.MaxBodies, Is.EqualTo(4), "Failed Apply must retain the saved draft");
             Assert.That(nav.Input.Source, Is.SameAs(source)); Assert.That(source.CloseCount, Is.Zero);
             var adapter = owner.GetComponent<HumanVisionInputAdapter>(); Assert.That(typeof(HumanVisionInputAdapter).GetField("source", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(adapter), Is.SameAs(source), "Preflight rejection must leave the recognition consumer attached");
-            Assert.That(nav.Status, Does.Contain("windows-pc-cpu"));
+            Assert.That(nav.Status, Does.Contain("windows-yolo-cpu-"));
         }
         [Test] public void SavePersistsDraftWithoutChangingActiveRegionsOrContract()
         {

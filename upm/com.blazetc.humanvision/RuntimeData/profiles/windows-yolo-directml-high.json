@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "profile": "windows-yolo-directml-high",
+  "body": {
+    "pipeline": "pipeline.yolo.desktop",
+    "modelPack": "yolov8n-pose-desktop-high"
+  },
+  "hands": {
+    "enabled": false,
+    "fps": 15
+  },
+  "body_fps": 30,
+  "output": {
+    "hz": 60
+  },
+  "backend": {
+    "preference": [
+      "backend.ort.directml"
+    ],
+    "allow_fallback": false
+  }
+}

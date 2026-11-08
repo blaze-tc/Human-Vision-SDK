@@ -208,9 +208,9 @@ namespace HumanVision.Tests
                 HumanVisionSdkSettingsStore.Save(saved, controller.Draft);
                 var loaded = HumanVisionSdkSettingsStore.Load(saved);
                 Assert.False(loaded.ToOptions().UseWindowsCpu);
-                Assert.That(new SharedRecognitionSettings { UseWindowsCpu = loaded.UseWindowsCpu }.RuntimeProfileFor(RuntimePlatform.WindowsPlayer), Is.EqualTo("windows-pc-directml"));
+                Assert.That(new SharedRecognitionSettings { UseWindowsCpu = loaded.UseWindowsCpu }.RuntimeProfileFor(RuntimePlatform.WindowsPlayer), Is.EqualTo("windows-yolo-directml-medium"));
                 choice.value = 1; Assert.True(controller.Draft.UseWindowsCpu);
-                Assert.That(new SharedRecognitionSettings { UseWindowsCpu = controller.Draft.UseWindowsCpu }.RuntimeProfileFor(RuntimePlatform.WindowsPlayer), Is.EqualTo("windows-pc-cpu"));
+                Assert.That(new SharedRecognitionSettings { UseWindowsCpu = controller.Draft.UseWindowsCpu }.RuntimeProfileFor(RuntimePlatform.WindowsPlayer), Is.EqualTo("windows-yolo-cpu-medium"));
                 Assert.IsNull(controller.Active); Assert.IsNull(controller.Saved); Assert.False(sdk.IsInitialized);
             } finally { if (File.Exists(saved)) File.Delete(saved); UnityEngine.Object.DestroyImmediate(owner); }
         }

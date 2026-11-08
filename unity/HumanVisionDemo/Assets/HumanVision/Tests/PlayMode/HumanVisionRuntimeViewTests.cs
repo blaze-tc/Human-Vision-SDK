@@ -102,7 +102,7 @@ namespace HumanVision.Tests
                 };
                 yield return sdk.Initialize(options);
                 Assert.True(sdk.IsRunning, sdk.LastError);
-                Assert.That(sdk.RuntimeProfile, Is.EqualTo("windows-pc-cpu"));
+                Assert.That(sdk.RuntimeProfile, Is.EqualTo("windows-yolo-cpu-medium"));
                 double deadline = Time.realtimeSinceStartupAsDouble + 35;
                 while ((!pixelVerified || pairs < 25) && Time.realtimeSinceStartupAsDouble < deadline) yield return null;
                 Assert.True(pixelVerified, $"No drawn person was validated ({pairs} pairs, {sdk.FreshResultFps:F1} result FPS, {sdk.LastError}).");

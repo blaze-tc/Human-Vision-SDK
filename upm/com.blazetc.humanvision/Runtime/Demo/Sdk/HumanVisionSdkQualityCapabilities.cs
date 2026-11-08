@@ -1,4 +1,5 @@
 using System;
+using HumanVision.Demo;
 
 namespace HumanVision
 {
@@ -19,6 +20,20 @@ namespace HumanVision
         internal static HumanVisionSdkQualityCapabilities Load(string root, string profile, int maxBodies)
         {
             profile = profile ?? "";
+            if (SharedRecognitionSettings.IsDesktopYolo(profile)) {
+                if (string.IsNullOrEmpty(root))
+                    return new HumanVisionSdkQualityCapabilities(profile, "正在准备 Windows YOLO 模型资源。", Array.Empty<ModelInputQualityChoice>());
+                try {
+                    bool cpu = SharedRecognitionSettings.IsDesktopCpu(profile);
+                    var levels = new[] { ModelInputQuality.Low, ModelInputQuality.Medium, ModelInputQuality.High };
+                    var values = Array.ConvertAll(levels, level => {
+                        string selected = SharedRecognitionSettings.DesktopProfile(cpu, level);
+                        var contract = AnalysisContract.Load(root, selected, maxBodies);
+                        return new ModelInputQualityChoice(level, selected, contract.PoseWidth, contract.PoseHeight);
+                    });
+                    return new HumanVisionSdkQualityCapabilities(profile, "Windows CPU 和 DirectML 使用同一组 YOLOv8n-pose 档位。", values);
+                } catch (Exception e) { return Failed(profile, e.Message); }
+            }
             if (profile == HumanVisionAndroidAccelerationSelection.CpuProfile) {
                 if (string.IsNullOrEmpty(root)) return new HumanVisionSdkQualityCapabilities(profile,"正在准备 Android CPU 模型资源。",Array.Empty<ModelInputQualityChoice>());
                 try {

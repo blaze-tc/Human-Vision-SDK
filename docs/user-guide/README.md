@@ -2,7 +2,7 @@
 
 # Human Vision SDK 中文使用文档
 
-适用版本：SDK **0.4.0-preview.11** / Input **0.1.0-preview.6**。更新日期 2026-11-08。[版本下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.11)
+适用版本：SDK **0.4.0-preview.12** / Input **0.1.0-preview.6**。更新日期 2026-11-08。[版本下载](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.12)
 
 这套文档面向在**新创建的 Unity 项目**中第一次使用 SDK 的开发者。无需先了解模型或原生推理；先学会Start初始化、输入图像和骨骼结果读取，再按需要查接口。
 
@@ -27,4 +27,4 @@
 
 当前随包Profile关闭真实Hand/Handtip/Thumb推理，32个语义槽位不代表全部为有效观察。模型保留评估/分发资格标记，具体见[第三方说明](../../upm/com.blazetc.humanvision/THIRD_PARTY_NOTICES.md)。历史测量与本次文档检查分开记录，不把安装成功或显示FPS当作持续识别性能。
 
-本次发布见 [preview.11 验证与录屏](../reports/2026-11-08-preview11-runtime-input.md)。Android CPU/NPU 资源见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)。历史版本见 [preview.8 验证](../reports/2026-10-14-preview8-release.md)、[preview.4 验证](../reports/2026-10-05-preview4-release-verification.md)及 [SDK 用户文档验证](../reports/2026-10-07-sdk-user-docs-verification.md)。首次接入以本目录为入口。
+本次发布见 [preview.12 Windows YOLO 验证](../reports/2026-11-08-preview12-windows-yolo.md)。Android CPU/NPU 资源见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)。历史版本见 [preview.8 验证](../reports/2026-10-14-preview8-release.md)、[preview.4 验证](../reports/2026-10-05-preview4-release-verification.md)及 [SDK 用户文档验证](../reports/2026-10-07-sdk-user-docs-verification.md)。首次接入以本目录为入口。

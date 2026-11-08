@@ -11,8 +11,8 @@ CPU 界面“固定模型”表示只提供 512×288 模型输入档位，人数
 | RK3588 NPU | 原低档 512×288 RKNN、原驱动库和输入内存资格检查 | 完整本地补充包；需要 RK3588 硬件 |
 | Windows CPU/DirectML | 恢复版原模型与 Windows 原生库 | SDK 主包 |
 
-先导入 Input 0.1.0-preview.6，再导入 SDK 0.4.0-preview.11，最后导入匹配的私有
-`HumanVision-LocalAndroidCpuResources-0.4.0-preview.11.unitypackage`。补充包安装器会核对 Input 版本对应的原生库哈希。
+先导入 Input 0.1.0-preview.6，再导入 SDK 0.4.0-preview.12，最后导入匹配的私有
+`HumanVision-LocalAndroidCpuResources-0.4.0-preview.12.unitypackage`。补充包安装器会核对 SDK 和 Input 原生库。已有有效本地 Android 资源可保留，重新执行本地资源启用菜单时使用配套版本。
 不要混装 Assets 和 UPM 两套 SDK。旧版本项目先备份，并用本次对应 SDK 替换主包。
 执行 **HumanVision → Enable Local Android CPU Resources**：工具验证 52 个 Runtime 文件，
 以及 SDK/Input/ORT/Windows/RKNN 原生库的准确哈希，成功后启用原 CPU/GPU/NPU 构建模式。

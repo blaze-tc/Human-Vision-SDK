@@ -344,7 +344,7 @@ namespace HumanVision.Tests
                 var requested=executable.ToOptions(Options().RuntimeRoot); requested.OpenInputOnInitialize=false;
                 yield return sdk.Initialize(requested);
                 Assert.True(sdk.IsInitialized,sdk.LastError); Assert.That(sdk.LastError,Is.Empty);
-                Assert.That(sdk.RuntimeProfile,Is.EqualTo("windows-pc-cpu")); Assert.That(sdk.ActiveAccelerationMode,Is.EqualTo(HumanVisionAccelerationMode.Cpu));
+                Assert.That(sdk.RuntimeProfile,Is.EqualTo("windows-yolo-cpu-low")); Assert.That(sdk.ActiveAccelerationMode,Is.EqualTo(HumanVisionAccelerationMode.Cpu));
                 Assert.That(sdk.ActiveConfiguration.AccelerationMode,Is.EqualTo(HumanVisionAccelerationMode.Cpu));
                 HumanVisionSdkSettingsStore.Save(file,executable); Assert.That(HumanVisionSdkSettingsStore.Load(file).AccelerationMode,Is.EqualTo(HumanVisionAccelerationMode.Cpu));
             } finally { File.Delete(file); }
