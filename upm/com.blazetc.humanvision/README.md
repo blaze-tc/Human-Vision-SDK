@@ -4,7 +4,7 @@
 先安装 Input，再安装 SDK；UPM、tgz、unitypackage 选择一种方式。
 [安装](UPM_INSTALLATION.md) · [配置与 API](Documentation/user-guide/SDK_CONFIGURATION.md) ·
 [常驻 Runtime Prefab](Documentation/user-guide/UNITY_RUNTIME_PREFAB.md) ·
-[Settings](Documentation/user-guide/SETTINGS_DEMO.md) · [preview.8 发布核验](Documentation/reports/2026-10-14-preview8-release.md)
+[Settings](Documentation/user-guide/SETTINGS_DEMO.md) · [preview.11 验证与录屏](Documentation/reports/2026-11-08-preview11-runtime-input.md)
 
 Android CPU 使用固定 512×288 YOLOv8n-pose，人数 1–8；完整 CPU 资源需要匹配本地补充包。
 Vulkan 保留低/中/高，RK3588 NPU 保留原低档模型和驱动，Windows 与 Input 保留原路线。

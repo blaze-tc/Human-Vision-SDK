@@ -22,7 +22,11 @@ namespace HumanVisionAcceptance
         private static readonly Color Panel = new Color(.088f,.123f,.173f);
         private static readonly Color Inset = new Color(.025f,.042f,.063f);
         private static readonly Color Dim = new Color(.67f,.75f,.85f);
-        private static readonly int[] CapacityChoices = {1, 2, 4, 8};
+        private const int MaxCapacity = 8;
+        private const float CapacityRowHeight = 32;
+        private static readonly Rect CapacityButton = new Rect(181, 674, 205, 33);
+        private static readonly Rect CapacityMenu = new Rect(CapacityButton.x, CapacityButton.y - MaxCapacity * CapacityRowHeight - 10,
+            CapacityButton.width, MaxCapacity * CapacityRowHeight + 6);
         private static readonly Rect LiveCard = new Rect(28, 152, 680, 460);
         private static readonly Rect PoseCard = new Rect(732, 152, 680, 460);
 
@@ -38,7 +42,7 @@ namespace HumanVisionAcceptance
         private Texture live;
         private Font uiFont;
         private GUIStyle heading, title, body, small, field, button, selected, badge;
-        private bool paired, hasInput, showSdkTexture, operating;
+        private bool paired, hasInput, showSdkTexture, operating, capacityMenuOpen;
         private int presented, visibleJoints, visibleBones;
         private string status = "填入设备可访问的 RTSP 地址，然后点击连接";
         private string sdkLine = "SDK 未创建";
@@ -300,6 +304,7 @@ namespace HumanVisionAcceptance
             GUI.matrix = Matrix4x4.TRS(new Vector3((Screen.width - 1440f * scale) / 2f, (Screen.height - 866f * scale) / 2f, 0),
                 Quaternion.identity, Vector3.one * scale);
             try {
+                DismissCapacityMenu();
                 Box(new Rect(0,0,1440,866), Background);
                 GUI.Label(new Rect(28, 12, 900, 52), "Human Vision  /  Runtime Prefab 验收", heading);
                 GUI.Label(new Rect(30, 65, 135, 30), FixedQuality ? "固定模型等级" : "模型等级", small);
@@ -335,10 +340,8 @@ namespace HumanVisionAcceptance
                     paired ? $"{pair.BodyCount} 人  ·  {visibleJoints} 个点  ·  {visibleBones} 条线" : "没有可绘制的同帧骨骼", small);
                 GUI.Label(new Rect(45, 674, 145, 33), "区域数量", body);
                 GUI.enabled = !operating;
-                for (int i = 0; i < CapacityChoices.Length; i++) {
-                    int count = CapacityChoices[i];
-                    if (GUI.Button(new Rect(181 + i*49, 674, 42, 33), count.ToString(), count == maxBodies ? selected : button)) SetCapacity(count);
-                }
+                if (GUI.Button(CapacityButton, $"{maxBodies} 人  ▾", capacityMenuOpen ? selected : button))
+                    capacityMenuOpen = !capacityMenuOpen;
                 GUI.enabled = view != null && !operating;
                 if (GUI.Button(new Rect(437, 674, 128, 33), "重启 SDK", button)) Run(Restart());
                 if (GUI.Button(new Rect(578, 674, 128, 33), "停止 SDK", button)) Run(StopRuntime());
@@ -350,9 +353,40 @@ namespace HumanVisionAcceptance
                 GUI.Label(new Rect(45, 754, 1349, 31), telemetry.PerformanceLine, small);
                 GUI.Label(new Rect(45, 785, 1349, 31), telemetry.ReadLine, small);
                 GUI.Label(new Rect(29, 833, 1376, 29), telemetry.StageLine, small);
+                if (capacityMenuOpen) DrawCapacityMenu();
             } finally {
                 GUI.matrix = previousMatrix;
                 GUI.enabled = true;
+            }
+        }
+
+        private void DismissCapacityMenu()
+        {
+            if (!capacityMenuOpen) return;
+            if (operating) {
+                capacityMenuOpen = false;
+                return;
+            }
+
+            Event current = Event.current;
+            bool outsideClick = current.type == EventType.MouseDown &&
+                !CapacityButton.Contains(current.mousePosition) && !CapacityMenu.Contains(current.mousePosition);
+            if (outsideClick || (current.type == EventType.KeyDown && current.keyCode == KeyCode.Escape)) {
+                capacityMenuOpen = false;
+                current.Use();
+            }
+        }
+
+        private void DrawCapacityMenu()
+        {
+            Box(CapacityMenu, Inset);
+            for (int count = 1; count <= MaxCapacity; count++) {
+                var row = new Rect(CapacityMenu.x + 3, CapacityMenu.y + 3 + (count - 1) * CapacityRowHeight,
+                    CapacityMenu.width - 6, CapacityRowHeight);
+                if (GUI.Button(row, $"{count} 人", count == maxBodies ? selected : button)) {
+                    capacityMenuOpen = false;
+                    SetCapacity(count);
+                }
             }
         }
 

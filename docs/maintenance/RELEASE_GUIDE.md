@@ -1,6 +1,6 @@
 # v0.4.0-preview.11 发布
 
-SDK 0.4.0-preview.11 / Input 0.1.0-preview.6。包含项目级启动配置、可选 Runtime Prefab Acceptance 和 Android 共用输入调度。以 `tools/package/release-preview11-authority.json` 从最终 Git 提交生成标准八个附件，核对 Git UPM 及 Input-first 离线安装。原生导出、Unity 真机和五人素材验证见[本轮报告](../reports/2026-11-08-preview11-runtime-input.md)。
+SDK 0.4.0-preview.11 / Input 0.1.0-preview.6。包含项目级启动配置、可选 Runtime Prefab Acceptance 和 Android 共用输入调度。以 `tools/package/release-preview11-authority.json` 从最终 Git 提交生成八个标准附件，核对 Git UPM 及 Input-first 离线安装。公开验收媒体只使用 DancingTest。Release 共九件附件，包含一段 DancingTest GIF。原生导出、Editor 安装和 Android 真机五人验证见[本轮报告](../reports/2026-11-08-preview11-runtime-input.md)。
 
 本地双模式资源使用与新版 Input 哈希相符的私有补充包。公共附件按原有评估和分发边界生成。
 

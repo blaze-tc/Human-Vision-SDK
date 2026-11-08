@@ -2,7 +2,7 @@
 
 将解码器输出顺序、释放节奏和纹理读取保护并入 Android Input 共用源码。
 提供项目级 ScriptableObject 默认启动参数，更新可选 Runtime Prefab Acceptance。
-Unity Editor 与 OnePlus 使用本地 Exercise2 RTSP 验证，另测 DancingTest 五人输入。
+Unity Editor 完成安装和 API 检查，OnePlus 的公开验收使用 DancingTest 五人 RTSP 输入。
 RK3588 双模式构建已使用新 Input，NPU 真机由用户后续验收。详见[本轮验证](reports/2026-11-08-preview11-runtime-input.md)。
 
 ## 2026-11-08 RuntimePrefabAcceptance Android 本地验证

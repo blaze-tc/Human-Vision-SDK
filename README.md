@@ -6,7 +6,7 @@
 
 [下载 preview.11](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.11) ·
 [安装](docs/UPM_INSTALLATION.md) · [配置与 API](docs/user-guide/SDK_CONFIGURATION.md) ·
-[中文文档](docs/user-guide/README.md) · [本次验证与限制](docs/reports/2026-11-06-runtime-prefab-preview9.md)
+[中文文档](docs/user-guide/README.md) · [本次验证与录屏](docs/reports/2026-11-08-preview11-runtime-input.md)
 
 ## 安装
 
@@ -52,7 +52,7 @@ CPU 界面“固定模型”表示目前只提供一个模型输入档位，人�
 
 ## 本次验证
 
-Android RTSP 按解码器输出顺序释放，共用 Vulkan 预览等待 Unity 读取已完成纹理。OnePlus 9 Pro 与 Exercise2 的测试记录见[开发状态](docs/DEVELOPMENT_STATUS.md)。RK3588 NPU 的帧率与热机效果由设备验收。
+Android RTSP 按解码器输出顺序释放，Vulkan 预览等待 Unity 读取已完成纹理。OnePlus 9 Pro 上的 DancingTest 五人测试数据和录屏见[验证报告](docs/reports/2026-11-08-preview11-runtime-input.md)。RK3588 NPU 的帧率与热机效果由设备验收。
 
 世界坐标为图像到世界平面的映射；当前随包姿态模型未启用真实手掌/指尖/拇指推理。
 保留模型来源、上游许可证和评估/分发资格标记；本次发布没有授予新的模型商用许可。

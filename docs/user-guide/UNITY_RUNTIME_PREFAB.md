@@ -72,7 +72,7 @@ public sealed class VisionGameInput : MonoBehaviour
 
 在同一个项目或应用的 Settings 样例中启用区域，编辑区域后点击 **Save**。Runtime Prefab 场景启动时会加载
 保存且已启用的区域布局。样例绑定的 Startup Preset 和项目默认资产优先。没有启用的区域配置时，样例使用四个等宽区域。
-在 Demo 点击区域数量会为本次会话生成等宽布局，并把人数上限与区域数组一起应用。HUD 分别显示输入、新识别、配对帧率和阶段耗时。CPU、GPU、NPU 选择以平台和已安装资源为准。
+在 Demo 的「区域数量」下拉框可选择 1–8 人。更改人数后，Demo 为当前会话生成对应的等宽布局，并同时应用人数上限与区域数组。HUD 分别显示输入、新识别、配对帧率和阶段耗时。CPU、GPU、NPU 选择以平台和已安装资源为准。
 
 开启 `Sdk.RegionsEnabled` 后，`view.TryGetBodyId(regionIndex, ...)` 和
 `view.TryGetJointPosition(regionIndex, joint, ...)` 的槽位就是零起始区域 index。
