@@ -52,18 +52,26 @@ stride-aware RGB24/BGR24/RGBA32/BGRA32 CPU frames and emits canonical observatio
 common services still own identity and regions, and unavailable hand points stay
 invalid. This entry point does not advertise GPU input or modify the GPU entry.
 
-Creation checks the private schema-1 512x288 non-quantized ModelPack/profile,
+Creation checks the selected private schema-1 non-quantized ModelPack/profile,
 pinned model SHA, actual conversion/simulator receipt hashes and parsed three-case
 offline qualification. It synchronously creates only `backend.rknn`; initialization
 failure releases partial sessions and returns an error. Use a background candidate
 initializer before switching Unity sessions. No production/device qualification
 is inferred from the saved PC simulator evidence.
 
-Each complete16:9 landscape input resizes to a fixed uint8 RGB NHWC
-`in0[1,288,512,3]`; the RKNN model owns compiled /255 normalization. Fixed storage
-and OpenCV INTER_LINEAR-compatible uint8 rounding support input-resolution changes
-without frame allocations. The same decoder validates exact finite borrowed FP32
-`out0[1,3024,65]` and `out1[1,3024,51]` before copying canonical output. Invalid
+Each complete 16:9 landscape input resizes to the model width using uint8 RGB NHWC.
+Medium and High center-pad RGB 114 above and below the resized image. The RKNN
+model owns compiled /255 normalization.
+
+| Quality | Tensor H×W | Vertical pad per side | Rows in out0/out1 |
+| --- | --- | --- | --- |
+| Low | 288×512 | 0 | 3024 |
+| Medium | 384×640 | 12 | 5040 |
+| High | 576×960 | 18 | 11340 |
+
+Fixed storage and OpenCV INTER_LINEAR-compatible rounding support input-resolution
+changes without frame allocations. The decoder validates finite borrowed FP32
+`out0[1,rows,65]` and `out1[1,rows,51]` before copying canonical output. Invalid
 frames, short output buffers or backend/output errors publish zero body/hand counts.
 `preprocess_ms`, `inference_ms` and `postprocess_ms` measure separate local stages;
 the internal fixed diagnostics registry counts backend attempts/executions.

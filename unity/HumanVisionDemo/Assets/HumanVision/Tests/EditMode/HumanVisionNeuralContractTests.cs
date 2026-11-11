@@ -122,7 +122,7 @@ namespace HumanVision.Tests
         }
 
         [Test]
-        public void DualBuildMetadataBakesExactlyFiveProfilesAndKeepsGraphicsDefault()
+        public void DualBuildMetadataBakesInstalledNeuralProfilesAndKeepsGraphicsDefault()
         {
             string androidManifest = Path.Combine(Path.GetTempPath(), "HumanVision-manifest-" + Guid.NewGuid().ToString("N") + ".xml");
             try {
@@ -137,8 +137,31 @@ namespace HumanVision.Tests
                 var values = document.SelectNodes("//meta-data").Cast<XmlElement>().ToDictionary(value => value.GetAttribute("name", "http://schemas.android.com/apk/res/android"), value => value.GetAttribute("value", "http://schemas.android.com/apk/res/android"));
                 Assert.That(values[HumanVisionAndroidRuntimeSelection.RuntimeModeMetadataKey], Is.EqualTo("android-dual-vulkan-npu"));
                 Assert.That(values[HumanVisionAndroidRuntimeSelection.ProfileIdMetadataKey], Is.EqualTo("android-ncnn-vulkan"));
-                CollectionAssert.AreEqual(new[] { "android-ncnn-vulkan-quality-low", "android-ncnn-vulkan", "android-ncnn-vulkan-quality-high", Profile, "android-cpu-nohands" }, HumanVisionAndroidRuntimeSelection.ParseBakedQualityProfiles(values[HumanVisionAndroidRuntimeSelection.QualityProfilesMetadataKey]));
+                var expected = new[] { "android-ncnn-vulkan-quality-low", "android-ncnn-vulkan", "android-ncnn-vulkan-quality-high", Profile };
+                foreach (string quality in new[] { "android-rknn-npu-quality-medium", "android-rknn-npu-quality-high" })
+                    if (File.Exists(Path.Combine(source, "profiles", quality + ".json"))) expected = expected.Concat(new[] { quality }).ToArray();
+                CollectionAssert.AreEqual(expected.Concat(new[] { "android-cpu-nohands" }), HumanVisionAndroidRuntimeSelection.ParseBakedQualityProfiles(values[HumanVisionAndroidRuntimeSelection.QualityProfilesMetadataKey]));
             } finally { File.Delete(androidManifest); }
+        }
+
+        [Test]
+        public void ThreeInstalledNeuralQualitiesResolveTheirOwnModelGeometry()
+        {
+            if (!File.Exists(Path.Combine(source, "profiles", "android-rknn-npu-quality-high.json")))
+                Assert.Ignore("Install the private three-quality Runtime to verify all three models.");
+            var caps = HumanVisionSdkQualityCapabilities.Load(source, Profile);
+            Assert.That(caps.Error, Is.Empty);
+            Assert.That(caps.Selectable, Is.True);
+            CollectionAssert.AreEqual(new[] { ModelInputQuality.Low, ModelInputQuality.Medium, ModelInputQuality.High },
+                caps.Choices.Select(model => model.Quality));
+            CollectionAssert.AreEqual(new[] { new Vector2Int(512, 288), new Vector2Int(640, 384), new Vector2Int(960, 576) },
+                caps.Choices.Select(model => new Vector2Int(model.Width, model.Height)));
+            foreach (var model in caps.Choices) {
+                var settings = new SharedRecognitionSettings { InputQuality = model.Quality, AccelerationMode = HumanVisionAccelerationMode.Neural };
+                var contract = settings.ResolveContract(source, model.ProfileId);
+                Assert.That(contract.ProfileId, Is.EqualTo(model.ProfileId));
+                Assert.That(new Vector2Int(contract.PoseWidth, contract.PoseHeight), Is.EqualTo(new Vector2Int(model.Width, model.Height)));
+            }
         }
 
         private void Rebind(string field, string hash)

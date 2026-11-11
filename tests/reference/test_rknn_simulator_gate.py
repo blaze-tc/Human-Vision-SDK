@@ -1,6 +1,7 @@
 """Simulator gate boundaries; these do not count as device/inference acceptance."""
 import importlib.util
 from pathlib import Path
+import tempfile
 import unittest
 import numpy as np
 
@@ -36,6 +37,22 @@ class RknnSimulatorGateTests(unittest.TestCase):
         self.assertTrue(np.array_equal(tool.uint8_rgb(chw), byte))
         with self.assertRaisesRegex(ValueError, 'uint8 grid'):
             tool.uint8_rgb(np.full((3, 1, 1), .5, np.float32))
+
+    def test_rectangular_gates_check_all_rows_and_reject_low_output(self):
+        tool = self.tool()
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder)
+            for width, height, rows, top in ((640, 384, 5040, 12), (960, 576, 11340, 18)):
+                with self.subTest(width=width):
+                    tensor = np.zeros((3, height, width), np.float32)
+                    raw = [np.full((rows, columns), -10, np.float32) for columns in (65, 51)]
+                    geometry = tool.fixed_landscape_geometry(width, height, 1024, 576)
+                    self.assertEqual(geometry['top'], top)
+                    metadata = dict(geometry=geometry, expected_people=0, input_sha256='fixture')
+                    bank = [('empty', metadata, tensor, raw)]
+                    self.assertTrue(tool.evaluate(bank, lambda _: raw, output / str(width), 'unit', {})['offline_numerical_passed'])
+                    with self.assertRaisesRegex(ValueError, 'shape mismatch'):
+                        tool.evaluate(bank, lambda _: [value[:3024] for value in raw], output / f'wrong-{width}', 'unit', {})
 
 
 if __name__ == '__main__':

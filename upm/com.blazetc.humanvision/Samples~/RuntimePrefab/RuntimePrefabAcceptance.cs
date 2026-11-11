@@ -14,6 +14,10 @@ namespace HumanVisionAcceptance
         [SerializeField] private string rtspUrl = "";
         [SerializeField, Range(1, 8)] private int maxBodies = 4;
         [SerializeField] private bool autoConnect;
+#if UNITY_EDITOR
+        [SerializeField, Tooltip("Optional local video played when entering Play Mode in the Editor.")]
+        private string editorVideoPath = "";
+#endif
         [SerializeField] private HumanVisionSdkPreset startupPreset;
         [SerializeField] private RuntimePrefabRedrawRig redrawRig;
 
@@ -49,6 +53,9 @@ namespace HumanVisionAcceptance
         private string poseLine = "等待同帧结果";
         private string inputLine = "等待实机图像";
         private float nextStatusAt;
+        private float nextBackendAt;
+        private string diagnosticProfile = "";
+        private string actualBackend = "—";
         private readonly RuntimeAcceptanceTelemetry telemetry = new RuntimeAcceptanceTelemetry();
 
         private void Start()
@@ -56,6 +63,15 @@ namespace HumanVisionAcceptance
             Application.targetFrameRate = 60;
             telemetry.Reset();
             LoadStartup();
+#if UNITY_EDITOR
+            if (!string.IsNullOrWhiteSpace(editorVideoPath)) {
+                startup.SourceKind = InputKind.Video;
+                startup.Input.VideoPath = editorVideoPath.Trim();
+                rtspUrl = startup.Input.VideoPath;
+                Run(Connect());
+                return;
+            }
+#endif
             if (autoConnect) Run(Connect());
         }
 
@@ -82,9 +98,9 @@ namespace HumanVisionAcceptance
 
             startup = new HumanVisionSdkOptions {
                 SourceKind = InputKind.Rtsp,
-                AccelerationMode = IsAndroid ? HumanVisionAccelerationMode.Graphics : HumanVisionAccelerationMode.Cpu,
+                AccelerationMode = IsAndroid ? HumanVisionAccelerationMode.Neural : HumanVisionAccelerationMode.Cpu,
                 UseWindowsCpu = !IsAndroid,
-                InputQuality = ModelInputQuality.Low
+                InputQuality = IsAndroid ? ModelInputQuality.Medium : ModelInputQuality.Low
             };
             recognition = new HumanVisionSdkConfiguration {
                 MaxBodies = maxBodies, UseRegions = true, Regions = HumanVisionSdkConfiguration.CreateEqualRegions(maxBodies)
@@ -143,11 +159,35 @@ namespace HumanVisionAcceptance
             startup = view.Sdk.Configuration;
             recognition = startup.Recognition.Clone();
             maxBodies = recognition.MaxBodies;
+            nextBackendAt = 0;
+            telemetry.Reset();
             status = "输入已连接，等待 / 接收同帧结果";
         }
 
         private static bool IsAndroid => Application.platform == RuntimePlatform.Android;
-        private bool FixedQuality => IsAndroid && startup.AccelerationMode != HumanVisionAccelerationMode.Graphics;
+        private bool FixedQuality => IsAndroid && startup.AccelerationMode == HumanVisionAccelerationMode.Cpu;
+        private static ModelInputQuality QualityForCompute(bool android, HumanVisionAccelerationMode mode, ModelInputQuality quality) =>
+            android && mode == HumanVisionAccelerationMode.Cpu ? ModelInputQuality.Low : quality;
+
+        private static string ReadActualBackend(string diagnostics)
+        {
+            const string key = "Actual backend=";
+            int start = diagnostics?.IndexOf(key, StringComparison.Ordinal) ?? -1;
+            if (start < 0 || (start > 0 && diagnostics[start - 1] != '\n')) return "—";
+            start += key.Length;
+            int end = diagnostics.IndexOf('\n', start);
+            string value = diagnostics.Substring(start, (end < 0 ? diagnostics.Length : end) - start).Trim();
+            return value.Length == 0 ? "—" : value;
+        }
+
+        private void UpdateActualBackend(HumanVisionSdk sdk)
+        {
+            string profile = sdk != null && sdk.IsInitialized ? sdk.RuntimeProfile : "";
+            if (profile == diagnosticProfile && Time.unscaledTime < nextBackendAt) return;
+            diagnosticProfile = profile;
+            nextBackendAt = Time.unscaledTime + 1f;
+            actualBackend = profile.Length == 0 ? "—" : ReadActualBackend(sdk.RuntimeDiagnostics);
+        }
 
         private static string InputAddress(HumanVisionSdkOptions options)
         {
@@ -164,8 +204,7 @@ namespace HumanVisionAcceptance
             var options = running ? view.Sdk.Configuration : startup.Clone();
             options.AccelerationMode = mode;
             options.UseWindowsCpu = mode == HumanVisionAccelerationMode.Cpu;
-            options.InputQuality = IsAndroid && mode != HumanVisionAccelerationMode.Graphics
-                ? ModelInputQuality.Low : quality;
+            options.InputQuality = QualityForCompute(IsAndroid, mode, quality);
             if (running) Run(Initialize(options));
             else startup = options;
         }
@@ -275,7 +314,9 @@ namespace HumanVisionAcceptance
                 visibleBones = redrawRig.VisibleLines;
             }
 
-            telemetry.Observe(updateStart, view != null ? view.Sdk : null, paired, pair, visibleJoints, visibleBones);
+            var activeSdk = view != null ? view.Sdk : null;
+            UpdateActualBackend(activeSdk);
+            telemetry.Observe(updateStart, activeSdk, actualBackend, paired, pair, visibleJoints, visibleBones);
             if (Time.unscaledTime < nextStatusAt) return;
             nextStatusAt = Time.unscaledTime + .15f;
             if (view == null) {
@@ -283,7 +324,8 @@ namespace HumanVisionAcceptance
             } else {
                 var sdk = view.Sdk;
                 var size = sdk.AnalysisInputSize;
-                sdkLine = $"{sdk.State}  |  {sdk.ActiveAccelerationMode} / {sdk.RuntimeProfile}  |  模型 {size.x}×{size.y}  |  区域 {capacity}";
+                string modelSize = size.x > 0 ? $"{size.x}×{size.y}" : "—";
+                sdkLine = $"{sdk.State}  |  模型 {modelSize}  |  实际后端 {actualBackend}  |  区域 {capacity}";
                 if (!view.SupportsMatchedFrames) sdkLine += "  |  当前图形设备不支持同帧纹理";
             }
             inputLine = hasInput && live != null

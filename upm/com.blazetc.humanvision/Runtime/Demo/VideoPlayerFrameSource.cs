@@ -1018,6 +1018,7 @@ namespace HumanVision.Demo
         private void AllocateReadbackResources(int width, int height)
         {
             ReleaseReadbackResources();
+            // The exact GPU readback shader is qualified only for the 512x288 neural profile.
             if(width>=512 && height>=288 && width*9L==height*16L && manager!=null &&
                 manager.ActiveRuntimeProfile==HumanVisionAndroidAccelerationSelection.NeuralProfile &&
                 !string.Equals(Environment.GetEnvironmentVariable("HV_MODEL_READBACK_MODE"),"legacy",StringComparison.Ordinal)) {

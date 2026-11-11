@@ -37,14 +37,21 @@ namespace HumanVision
             // Only legacy single-mode packages may omit their quality catalog.
             if (admittedProfiles == null || admittedProfiles.Length == 0) {
                 if (runtimeMode == HumanVisionAndroidAccelerationSelection.DualMode)
-                    throw new InvalidOperationException("HumanVision Android dual mode requires its exact five-profile allowlist and NCNN Vulkan baked default.");
+                    throw new InvalidOperationException("HumanVision Android dual mode requires its baked profile allowlist and NCNN Vulkan default.");
                 return ResolveConfiguredProfile(configuredProfile, bakedProfile);
             }
             const string mode = HumanVisionModelInputQualities.AdmittedRuntimeMode;
             bool dual = runtimeMode == "android-dual-vulkan-npu";
             var expected = new System.Collections.Generic.HashSet<string>(new[] { mode + "-quality-low", mode, mode + "-quality-high" }, StringComparer.Ordinal);
-            if (dual) { expected.Add(HumanVisionAndroidAccelerationSelection.NeuralProfile); expected.Add(HumanVisionAndroidAccelerationSelection.CpuProfile); }
             var actual = new System.Collections.Generic.HashSet<string>(admittedProfiles, StringComparer.Ordinal);
+            if (dual) {
+                expected.Add(HumanVisionAndroidAccelerationSelection.NeuralProfile);
+                expected.Add(HumanVisionAndroidAccelerationSelection.CpuProfile);
+                if (actual.Contains(HumanVisionAndroidAccelerationSelection.NeuralMediumProfile))
+                    expected.Add(HumanVisionAndroidAccelerationSelection.NeuralMediumProfile);
+                if (actual.Contains(HumanVisionAndroidAccelerationSelection.NeuralHighProfile))
+                    expected.Add(HumanVisionAndroidAccelerationSelection.NeuralHighProfile);
+            }
             if ((!dual && runtimeMode != mode) || bakedProfile != mode || admittedProfiles.Length != expected.Count || actual.Count != expected.Count || !actual.SetEquals(expected))
                 throw new InvalidOperationException("HumanVision Android baked quality profile allowlist does not match the selected runtime mode.");
             if (string.IsNullOrWhiteSpace(configuredProfile) || string.Equals(configuredProfile, "auto", StringComparison.OrdinalIgnoreCase)) return bakedProfile;

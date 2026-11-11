@@ -52,6 +52,22 @@ class ExperimentalStageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'receipt SHA'):
             stage.build_manifest(profile, 'a'*64, 'b'*64)
 
+    def test_neural_qualities_bind_distinct_models_shapes_and_receipts(self):
+        for level, size, rows in (('low', (512, 288), 3024),
+                                  ('medium', (640, 384), 5040),
+                                  ('high', (960, 576), 11340)):
+            with self.subTest(level=level):
+                candidate = stage.CANDIDATES[level]
+                profile = json.loads((stage.TEMPLATES/(candidate.profile+'.json')).read_bytes())
+                manifest = stage.build_manifest(profile, candidate.conversion_sha, candidate.comparison_sha, candidate)
+                model = manifest['models'][0]
+                self.assertEqual((model['input_contract']['width'], model['input_contract']['height']), size)
+                self.assertEqual(model['output_contract']['rows'], rows)
+                self.assertEqual(model['output_contract']['max_output_bytes'], dict(out0=rows*65*4, out1=rows*51*4))
+                if level != 'low':
+                    with self.assertRaisesRegex(ValueError, 'receipt SHA'):
+                        stage.build_manifest(profile, stage.CONVERSION_SHA, stage.COMPARISON_SHA, candidate)
+
     def test_modified_receipt_bytes_are_rejected_before_any_pack_is_written(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);conversion=root/'conversion.json';comparison=root/'comparison.json'

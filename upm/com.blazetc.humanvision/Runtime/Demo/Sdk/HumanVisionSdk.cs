@@ -115,7 +115,7 @@ namespace HumanVision
         public string RuntimeDiagnostics => manager != null && manager.IsInitialized ? manager.RuntimeDiagnostics : "";
         /// <summary>实际成功应用的语义加速器；请求失败时保持旧值。</summary>
         public HumanVisionAccelerationMode ActiveAccelerationMode => IsInitialized
-            ? RuntimeProfile == HumanVisionAndroidAccelerationSelection.NeuralProfile ? HumanVisionAccelerationMode.Neural
+            ? HumanVisionAndroidAccelerationSelection.IsNeuralProfile(RuntimeProfile) ? HumanVisionAccelerationMode.Neural
                 : RuntimeProfile == HumanVisionAndroidAccelerationSelection.CpuProfile || SharedRecognitionSettings.IsDesktopCpu(RuntimeProfile) ? HumanVisionAccelerationMode.Cpu : HumanVisionAccelerationMode.Graphics
             : active?.AccelerationMode ?? HumanVisionAccelerationMode.Graphics;
         /// <summary>当前使用的资源目录与实际模型包；输入采集尺寸与模型尺寸分别记录。</summary>
@@ -310,7 +310,7 @@ namespace HumanVision
             try {
                 if (requested == null) throw new ArgumentNullException(nameof(requested)); requested.Validate();
                 var candidate = requested.Clone();
-                if (IsInitialized && RuntimeProfile == HumanVisionAndroidAccelerationSelection.NeuralProfile && manager.MaxBodies != candidate.MaxBodies) {
+                if (IsInitialized && HumanVisionAndroidAccelerationSelection.IsNeuralProfile(RuntimeProfile) && manager.MaxBodies != candidate.MaxBodies) {
                     Error("Neural capacity changes require asynchronous initialization. Use HumanVisionSdk.Initialize with the updated full HumanVisionSdkOptions; the current session and input are retained.");
                     return false;
                 }
@@ -554,7 +554,7 @@ namespace HumanVision
             : new SharedRecognitionSettings { UseWindowsCpu = candidate.UseWindowsCpu, AccelerationMode = candidate.AccelerationMode,
                 InputQuality = candidate.InputQuality }.RuntimeProfileFor(Application.platform);
         private static bool SupportsQualityPreparation(string profile) => SharedRecognitionSettings.IsDesktopYolo(profile) ||
-            profile == HumanVisionModelInputQualities.AdmittedRuntimeMode || profile == HumanVisionAndroidAccelerationSelection.NeuralProfile ||
+            profile == HumanVisionModelInputQualities.AdmittedRuntimeMode || HumanVisionAndroidAccelerationSelection.IsNeuralProfile(profile) ||
             profile == HumanVisionAndroidAccelerationSelection.CpuProfile;
         /// <summary>读取当前或草稿平台的能力说明；结果区分固定模型、准备中与校验失败。</summary>
         public HumanVisionSdkQualityCapabilities GetInputQualityCapabilities(HumanVisionSdkOptions requested = null)

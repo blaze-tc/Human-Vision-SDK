@@ -28,6 +28,14 @@ UPM tarball：依次安装 `com.blazetc.humanvision.input-0.1.0-preview.6.tgz` �
 
 ## Android 完整 CPU / NPU 资源
 
+GitHub `main` 提供 RK3588 NPU 低、中、高三档的 SDK 接入。需要这三档时，从同一提交安装
+两个 Git UPM 子目录（将上面的发布标签换成对应提交 SHA），在 Package Manager 中导入
+**Runtime Prefab Acceptance**，再导入本地 `RK3588-NPU-Three-Qualities-Resources.unitypackage`，
+执行 **HumanVision → Enable Local Android NPU Qualities**。本地包内包含三档 RKNN 模型和
+`librknnrt.so`。SDK 本身的 `libhumanvision.so` 随 Git UPM 包提供。
+
+使用原 Preview.12 发布附件时，按以下步骤启用原本地资源。
+
 公共包提供 SDK、Input、Windows 原生依赖和原 Android Vulkan 资源。
 **Android CPU YOLO ONNX、RKNN 模型和 librknnrt.so 不在公共附件中。**
 本地完整测试需要继续导入匹配的
@@ -48,10 +56,13 @@ Windows CPU 与 DirectML 均使用 YOLOv8n-pose，支持低、中、高三档。
 **HumanVision → Create SDK** 创建[常驻 Prefab](user-guide/UNITY_RUNTIME_PREFAB.md)并绑定配置资产。Camera 名称、RTSP 地址和视频路径可通过
 `InitializeFromPreset(configuration, kind, address)` 传入。示例见[统一 API](user-guide/SDK_CONFIGURATION.md)。
 
-Android CPU 目前固定 512×288，人数 1–8；GPU 保留低/中/高，RK3588 NPU 保留低档。
+Android CPU 固定 512×288，人数 1–8。Android GPU 和装齐本地资源的 RK3588 NPU 支持
+低档 512×288、中档 640×384、高档 960×576。
 图像尺寸与模型尺寸独立。`Initialized` 在配置成功提交后触发，回调可读取 `ActiveConfiguration`。
 在 Package Manager 的 SDK Samples 中导入 **SDK Settings** 或 **Runtime Prefab Acceptance**。
-Settings 可切换输入并复制日志目录。Runtime Prefab 展示同帧图像、骨骼、游戏 Update 读取和性能指标。
+Settings 可切换输入并复制日志目录。Runtime Prefab 展示同帧图像、骨骼、实际模型尺寸、
+Native 后端、SDK 新识别 FPS 和骨骼同帧 FPS。在 Editor 可通过验收组件的
+**Editor Video Path** 配置本地视频，进入 Play Mode 后自动播放。
 也可以用 **HumanVision → Create SDK settings demo assets** 创建 Settings 场景。
 启动优先级为显式初始化参数、组件绑定资产、项目默认资产、组件内嵌参数。Settings 保存数据由 Settings 场景读取。
 

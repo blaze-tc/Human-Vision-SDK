@@ -31,8 +31,9 @@ NCNN源文件在Windows junction外时，先把真实字节复制到挂载目录
 ## 源图与数值门槛
 
 `recover_pinned_onnx.py` 仅接受当前固定NCNN图/权重SHA及其11类算子合同，
-消费所有权重字节。输出静态Low RGB `[1,3,288,512]`，外部归一化 `/255`，
-保留两个原始张量`[1,3024,65]`和`[1,3024,51]`，不添加人体结果或手部点。
+消费所有权重字节。私有 NPU 档位接受静态 RGB 512×288、640×384、960×576，
+外部归一化 `/255`。两路原始输出为 `[1,rows,65]` 和 `[1,rows,51]`，
+三档分别为 3024、5040 和 11340 行。
 恢复receipt仍是候选，必须真实执行ORT对比才证明样本数值一致。
 
 ```bash
@@ -42,7 +43,7 @@ python tools/models/rknn/recover_pinned_onnx.py \
   --output out/rknn-next/recovered.onnx
 ```
 
-`simulator_gate.py` 校验固定bank的index/输入/reference/执行日志SHA、张量形状与
+`simulator_gate.py` 校验对应档位 bank 的 index/输入/reference/执行日志 SHA、张量形状与
 精度门槛。bank有七人、一人、空画面；空画面为114分析性负样本，一人是实际
 人物图片的填充控制。两者不是完整实机数据覆盖。`convert_candidate.py` 搭配
 `--validation-index`与`--validation-index-sha256`先做ORT gate，再实际编译、
@@ -56,6 +57,11 @@ python tools/models/rknn/convert_candidate.py \
   --validation-index-sha256 5ab8bb97034e957f3176162a63b471790b64514c7ba5a34d17622190167d4c34 \
   --output out/rknn-next/non-quantized
 ```
+
+中、高档转换分别使用 `recover_pinned_onnx.py --width 640 --height 384` 与
+`--width 960 --height 576`，并使用对应形状的 NCNN CPU 参考 bank。通过后，
+`tools/package/stage_rknn_experimental.py --quality medium` 或 `--quality high`
+把对应的固定模型、Profile 和两份验证回执追加到本地 Runtime 索引。
 
 使用Linux和固定 `rknn-toolkit2==2.3.2`，需要ONNX库。输入为有来源/固定SHA的
 原始RGB YOLO式ONNX：静态NCHW、batch1、3通道，H/W为32倍数、不超过960。

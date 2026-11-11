@@ -137,7 +137,7 @@ def main():
     parser.add_argument('--precision', choices=('non-quantized', 'int8', 'hybrid'), default='non-quantized')
     parser.add_argument('--calibration', type=Path)
     parser.add_argument('--hybrid-config', type=Path, help='SHA-bound actual tensor ranges; hybrid precision only')
-    parser.add_argument('--validation-index', type=Path, help='Pinned Low fixture bank; ORT and x86 simulator gates')
+    parser.add_argument('--validation-index', type=Path, help='Shape-matched fixture bank for ORT and x86 simulator gates')
     parser.add_argument('--validation-index-sha256')
     args = parser.parse_args()
     if args.precision != 'hybrid' and args.hybrid_config:

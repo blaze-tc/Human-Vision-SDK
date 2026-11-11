@@ -21,7 +21,7 @@ const auto root=project/"out/rknn-validation-20261009";
 Json ReadJson(const std::filesystem::path& p){std::ifstream f(p);if(!f)throw std::runtime_error("Missing pinned fixture: "+p.string());Json j;f>>j;return j;}
 template<class T> std::vector<T> Read(const std::filesystem::path& p){std::ifstream f(p,std::ios::binary|std::ios::ate);if(!f)throw std::runtime_error(p.string());const auto n=static_cast<size_t>(f.tellg());if(n%sizeof(T))throw std::runtime_error("Invalid fixture bytes");std::vector<T> v(n/sizeof(T));f.seekg(0);f.read(reinterpret_cast<char*>(v.data()),n);return v;}
 std::string Hash(const std::filesystem::path& p){auto v=Read<uint8_t>(p);return picosha2::hash256_hex_string(v);}
-HV_TensorViewV1 View(const char* name,const std::vector<float>& v,int columns){HV_TensorViewV1 t{};t.struct_size=sizeof(t);t.api_version=1;t.name=name;t.element_type=1;t.rank=3;t.dimensions[0]=1;t.dimensions[1]=3024;t.dimensions[2]=columns;t.data=v.data();t.byte_count=v.size()*4;return t;}
+HV_TensorViewV1 View(const char* name,const std::vector<float>& v,int columns){HV_TensorViewV1 t{};t.struct_size=sizeof(t);t.api_version=1;t.name=name;t.element_type=1;t.rank=3;t.dimensions[0]=1;t.dimensions[1]=static_cast<int64_t>(v.size()/columns);t.dimensions[2]=columns;t.data=v.data();t.byte_count=v.size()*4;return t;}
 struct RecordedBackend {
     int creates=0,runs=0,releases=0;bool fail_create=false,partial_failure=false,invalid_api=false,fail_run=false;
     int malformed=0;
@@ -56,13 +56,20 @@ void HV_CALL ReleaseBackend(void* p,const HV_BackendApiV1*,void*){++static_cast<
 struct Pipeline {
     HV_PluginApiV1 api{sizeof(HV_PluginApiV1),1};RecordedBackend recorded;void* instance=nullptr;
     char message[1024]{};HV_ErrorBufferV1 error{sizeof(error),1,message,sizeof(message)};
-    Json manifest=ReadJson(root/"tensor-pipeline-manifest.json");
-    Json profile=ReadJson(project/"tools/models/rknn/templates/android-rknn-npu-quality-low.json");
+    Json manifest,profile;
+    std::filesystem::path assets;
     std::vector<HV_BodyObservationV1> bodies=std::vector<HV_BodyObservationV1>(8);
     HV_PipelineOutputV1 output{sizeof(output),1,bodies.data(),8};
-    Pipeline(){if(HV_QueryYoloTensorPipelineV1(1,&api)!=HV_OK)throw std::runtime_error("Query failed");recorded.Fixture("seven");}
+    Pipeline(Json manifest,Json profile,std::filesystem::path assets)
+        :manifest(std::move(manifest)),profile(std::move(profile)),assets(std::move(assets)){
+        if(HV_QueryYoloTensorPipelineV1(1,&api)!=HV_OK)throw std::runtime_error("Query failed");
+    }
+    Pipeline():Pipeline(ReadJson(root/"tensor-pipeline-manifest.json"),
+        ReadJson(project/"tools/models/rknn/templates/android-rknn-npu-quality-low.json"),root){
+        recorded.Fixture("seven");
+    }
     ~Pipeline(){if(instance)api.pipeline->destroy(instance);}
-    HV_Result Create(int max=8){const auto m=manifest.dump(),p=profile.dump(),r=root.u8string();HV_PipelineConfigV1 config{sizeof(config),1,max,0,m.c_str(),r.c_str(),p.c_str()};HV_HostServicesV1 h{sizeof(h),1,&recorded,CreateBackend,ReleaseBackend};return api.pipeline->create(&config,&h,&instance,&error);}
+    HV_Result Create(int max=8){const auto m=manifest.dump(),p=profile.dump(),r=assets.u8string();HV_PipelineConfigV1 config{sizeof(config),1,max,0,m.c_str(),r.c_str(),p.c_str()};HV_HostServicesV1 h{sizeof(h),1,&recorded,CreateBackend,ReleaseBackend};return api.pipeline->create(&config,&h,&instance,&error);}
     HV_Result Process(const std::vector<uint8_t>& pixels,int width=1024,int height=576,HV_PixelFormat format=HV_PIXEL_RGB24,int stride=0){const int bpp=(format==HV_PIXEL_RGBA32||format==HV_PIXEL_BGRA32)?4:3;HV_PipelineInputV1 in{};in.struct_size=sizeof(in);in.api_version=1;in.frame={sizeof(HV_VideoFrame),width,height,stride?stride:width*bpp,format,42,1234567,pixels.data(),static_cast<int32_t>(pixels.size())};return api.pipeline->process(instance,&in,&output,&error);}
 };
 Json CpuManifest() {
@@ -131,6 +138,52 @@ HV_Result CreateReal(Pipeline& p,RealCpuBackend& real,int capacity=8) {
     HV_HostServicesV1 host{sizeof(host),1,&real,CreateRealCpu,ReleaseRealCpu};
     return p.api.pipeline->create(&config,&host,&p.instance,&p.error);
 }
+}
+
+namespace {
+void CheckRknnLetterbox(const std::filesystem::path& evidence,const char* level,const char* size,
+    const char* bank,int width,int height) {
+    const auto runtime=evidence/"runtime";
+    const auto pack=runtime/"modelpacks"/(std::string("yolov8n-pose-rectangle")+size+"-rknn-nonquantized-experimental");
+    if(!std::filesystem::exists(pack/"manifest.json"))GTEST_SKIP()<<"Private RKNN "<<size<<" evidence is not installed";
+    const auto profile=ReadJson(runtime/"profiles"/(std::string("android-rknn-npu-quality-")+level+".json"));
+    const auto manifest=ReadJson(pack/"manifest.json");
+    Pipeline invalid(manifest,profile,pack);
+    invalid.manifest["models"][0]["output_contract"]["rows"]=3024;
+    EXPECT_EQ(invalid.Create(),HV_ERR_MODEL_LOAD);
+    EXPECT_EQ(invalid.recorded.creates,0);
+
+    Pipeline p(manifest,profile,pack);
+    p.recorded.captured.resize(size_t(width)*height*3);
+    p.recorded.det=Read<float>(evidence/"non-quantized/simulator/seven-out0.fp32");
+    p.recorded.points=Read<float>(evidence/"non-quantized/simulator/seven-out1.fp32");
+    const auto pixels=Read<uint8_t>(evidence/bank/"seven/source.rgb");
+    const auto oracle=Read<uint8_t>(evidence/bank/"seven/prepared.rgb");
+    ASSERT_EQ(p.Create(),HV_OK)<<p.message;
+    EXPECT_EQ(p.recorded.provider,"backend.rknn");
+    ASSERT_EQ(p.Process(pixels),HV_OK)<<p.message;
+    EXPECT_EQ(p.recorded.input.dimensions[1],height);
+    EXPECT_EQ(p.recorded.input.dimensions[2],width);
+    EXPECT_EQ(p.recorded.input.dimensions[3],3);
+    EXPECT_TRUE(p.recorded.captured==oracle);
+    ASSERT_EQ(p.output.body_count,7u);
+    EXPECT_EQ(p.output.hand_count,0u);
+    for(uint32_t i=0;i<p.output.body_count;++i) {
+        const auto& body=p.output.bodies[i];
+        EXPECT_LT(body.joints[HV_CANONICAL_WRIST_LEFT].y_px,body.joints[HV_CANONICAL_SHOULDER_LEFT].y_px);
+    }
+    p.recorded.det.resize(3024*65);
+    p.recorded.points.resize(3024*51);
+    EXPECT_EQ(p.Process(pixels),HV_ERR_INTERNAL);
+    EXPECT_EQ(p.output.body_count,0u);
+}
+}
+
+TEST(YoloTensorPipeline, MediumPrivatePackLetterboxesAndDecodesRecordedRknnOutput) {
+    CheckRknnLetterbox(project/"out/rknn-640x384-20261111","medium","640x384","bank",640,384);
+}
+TEST(YoloTensorPipeline, HighPrivatePackLetterboxesAndDecodesRecordedRknnOutput) {
+    CheckRknnLetterbox(project/"out/rknn-960x576-20261111","high","960x576","bank-fixed",960,576);
 }
 
 TEST(YoloCpuPipeline, RuntimeCompositionRegistersExplicitCpuEntry) {

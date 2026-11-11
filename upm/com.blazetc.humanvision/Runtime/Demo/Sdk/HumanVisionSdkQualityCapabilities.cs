@@ -43,12 +43,11 @@ namespace HumanVision
                         "。模型与尺寸读取当前配置；不提供独立手部模型。实际设备速度以运行统计为准。",Array.Empty<ModelInputQualityChoice>());
                 } catch(Exception e) { return Failed(profile,e.Message); }
             }
-            if (profile == HumanVisionAndroidAccelerationSelection.NeuralProfile) {
+            if (HumanVisionAndroidAccelerationSelection.IsNeuralProfile(profile)) {
                 if (string.IsNullOrEmpty(root)) return new HumanVisionSdkQualityCapabilities(profile, "正在准备 RK3588 NPU 模型资源。", Array.Empty<ModelInputQualityChoice>());
                 try {
-                    HumanVisionNeuralModelContract.Validate(root);
-                    return new HumanVisionSdkQualityCapabilities(profile, "RK3588 NPU 仅提供已通过离线数值验证的低等级 512×288。中 / 高暂不可用；设备性能尚待 RK3588 实测。",
-                        new[] { new ModelInputQualityChoice(ModelInputQuality.Low, profile, 512, 288) });
+                    var choices = HumanVisionNeuralModelContract.LoadInstalled(root, profile);
+                    return new HumanVisionSdkQualityCapabilities(profile, "RK3588 NPU 模型已通过离线数值验证。设备性能以 RK3588 实测为准。", choices);
                 } catch (Exception e) { return Failed(profile, e.Message); }
             }
             if (profile != HumanVisionModelInputQualities.AdmittedRuntimeMode) {

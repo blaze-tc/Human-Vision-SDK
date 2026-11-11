@@ -8,7 +8,11 @@ namespace HumanVision
     {
         internal const string DualMode = "android-dual-vulkan-npu";
         internal const string NeuralProfile = "android-rknn-npu-quality-low";
+        internal const string NeuralMediumProfile = "android-rknn-npu-quality-medium";
+        internal const string NeuralHighProfile = "android-rknn-npu-quality-high";
         internal const string CpuProfile = "android-cpu-nohands";
+        internal static bool IsNeuralProfile(string profile) =>
+            profile == NeuralProfile || profile == NeuralMediumProfile || profile == NeuralHighProfile;
         internal static bool SupportsNeuralDevice(string soc, string hardware)
         {
             return IsSupportedSoc(soc) || IsSupportedSoc(hardware);
@@ -34,9 +38,9 @@ namespace HumanVision
             if (bakedMode != DualMode) throw new InvalidOperationException("RK3588 NPU is not installed in this APK. Build android-dual-vulkan-npu.");
             if (!SupportsNeuralDevice(soc, hardware))
                 throw new InvalidOperationException("RK3588 NPU requires RK3588 / RK3588S / RK3588_T; this device reports ro.soc.model='" + soc + "', ro.hardware='" + hardware + "'. Current session is retained.");
-            if (quality != ModelInputQuality.Low)
-                throw new InvalidOperationException("RK3588 NPU has only the validated Low 512×288 model. Medium / High are unavailable.");
-            return NeuralProfile;
+            string requested = quality == ModelInputQuality.Low ? NeuralProfile :
+                quality == ModelInputQuality.Medium ? NeuralMediumProfile : NeuralHighProfile;
+            return HumanVisionAndroidRuntimeSelection.ResolveConfiguredProfile(requested, bakedProfile, bakedMode, admitted);
         }
         internal static string ResolveInstalled(HumanVisionAccelerationMode mode, ModelInputQuality quality, bool checkDevice = true)
         {

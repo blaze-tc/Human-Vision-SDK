@@ -305,7 +305,7 @@ namespace HumanVision.TestProject.Diagnostics
             catch (Exception e) { session.Record("runtime.diagnostics.failed", reason + ": " + e); }
             // 实验 CPU 张量后端每秒保留最新分段值：预处理/推理/解码及 input-set/run/output-get/release。
             // 这是低频诊断快照，不是逐帧采样；Vulkan 沿用原有稀疏日志频率。
-            nextNativeDiagnostics = Time.realtimeSinceStartupAsDouble + (sdk.RuntimeProfile == "android-rknn-npu-quality-low" ? Math.Max(1, statisticsSeconds) : sdk.HasFreshResult ? 30 : 5);
+            nextNativeDiagnostics = Time.realtimeSinceStartupAsDouble + (sdk.ActiveAccelerationMode == HumanVisionAccelerationMode.Neural ? Math.Max(1, statisticsSeconds) : sdk.HasFreshResult ? 30 : 5);
         }
         private static string Number(double value) => (double.IsNaN(value) || double.IsInfinity(value) ? -1 : value).ToString("F3", Invariant);
         private void CaptureStatistics()
@@ -314,7 +314,7 @@ namespace HumanVision.TestProject.Diagnostics
             FlushPersons();
             FindInputComponents(); double now = Time.realtimeSinceStartupAsDouble;
             // 按已经建立的运行时标记；切换被拒绝时请求配置不能冒充当前实际后端。
-            hardware?.SetNeuralActive(sdk.IsInitialized && sdk.RuntimeProfile == "android-rknn-npu-quality-low");
+            hardware?.SetNeuralActive(sdk.IsInitialized && sdk.ActiveAccelerationMode == HumanVisionAccelerationMode.Neural);
             // One native snapshot per statistics window, never one per rendered frame.
             inferenceInstances = InferenceInstanceSnapshot.Read(sdk.IsInitialized ? sdk.RuntimeDiagnostics : null, sdk.IsInitialized);
             var stats = sdk.Stats; var frame = default(HumanVisionTextureFrame);

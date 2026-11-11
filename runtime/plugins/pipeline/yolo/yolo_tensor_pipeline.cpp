@@ -27,6 +27,29 @@ constexpr char conversion_sha[]="244a28f1bc9e0b1665fe27a3b35e774a732f9f62f752b5f
 constexpr char simulator_sha[]="fe29f669bd5fafecba7a21797cad35f99b9f21b540c419a5f479d98cd03687f9";
 constexpr char profile_sha[]="c7ef0f46de1b8e8175db3e5ae4fa7c89a93c07931f62849fc81da3f79d6628bd";
 
+struct RknnModel {
+    const char *profile, *pack;
+    int width, height;
+    const char *model, *onnx, *bank, *conversion, *simulator, *profile_hash;
+};
+constexpr RknnModel rknn_models[] = {
+    {profile_id,pack_id,width,height,model_sha,onnx_sha,bank_sha,conversion_sha,simulator_sha,profile_sha},
+    {"android-rknn-npu-quality-medium","yolov8n-pose-rectangle640x384-rknn-nonquantized-experimental",640,384,
+     "d2c1d88ed6402ac250cf0f5f1372d7493c25e191f9eb4f655cea27d423f4e0fb",
+     "7e94dece2faf25127481ac010b0d863dabec316cb8116e14cf342ebd92e5d23c",
+     "a022c6b5186784f72e0c5800e40e8662d6a04e9c05285572d68aee4f186d8aa3",
+     "9afce958cd2745388130fd9b92033e159c64da6f617fca6a65b5fd66ecd43259",
+     "7635a4d3eeb2536b9214b79d4635120350584136af9eabba7a8bc93b6d1b1936",
+     "6a2757efb8f9758b51e9475516ec45e7e3f22af75d64f726a8dc745e802a6627"},
+    {"android-rknn-npu-quality-high","yolov8n-pose-rectangle960x576-rknn-nonquantized-experimental",960,576,
+     "b37a3f9f19d1a38966ddfbe9c50b2ecff0417059db138a81264419c89a9c3859",
+     "fb7ad3aff9d1560072880d488d68c72ee46fbdbf5e50e01739177c2a8ee04db8",
+     "aab163a9b306c93e6a315306b02fb36cb8292affc9eeb49fce65049d7809e6e7",
+     "3a6c085951c251d947da8408deb2a3385cd090cfab0093972ed26aa7202ac741",
+     "763dbbbe3ae46a5cd20f60cf4bcd4a483d9371428c24f149ca5b101c82339504",
+     "9d2a75705184c3d4bb2230b286f6a4deb0aeba700667ff35665f359f39776035"}
+};
+
 void Error(HV_ErrorBufferV1* out,const char* message) noexcept {
     if(!out||out->struct_size<sizeof(*out)||out->api_version!=HV_PLUGIN_API_V1||!out->data||!out->capacity)return;
     const auto count=std::min(std::strlen(message),size_t(out->capacity-1));
@@ -65,7 +88,10 @@ Json ReadEvidence(const std::filesystem::path& root,const Json& evidence,const c
     CheckHash(path,expected);
     return ReadConfig(path);
 }
-std::filesystem::path Validate(const Json& manifest,const Json& profile,const std::filesystem::path& root) {
+std::filesystem::path ValidateRknn(const Json& manifest,const Json& profile,const std::filesystem::path& root,
+    const RknnModel& pinned) {
+    const auto [profile_id,pack_id,width,height,model_sha,onnx_sha,bank_sha,conversion_sha,simulator_sha,profile_sha]=pinned;
+    const int rows=yolo::AnchorCount(width,height);
     Require(manifest.at("schema_version")==1&&manifest.at("pack_id")==pack_id&&
         manifest.at("pipeline_id")=="pipeline.yolo.tensor"&&manifest.at("profile_id")==profile_id&&
         manifest.at("profile_sha256")==profile_sha&&manifest.at("max_people")==8&&
@@ -98,12 +124,12 @@ std::filesystem::path Validate(const Json& manifest,const Json& profile,const st
         input.at("crop_mode")=="letterbox"&&input.at("pad_rgb")==Json::array({114,114,114})&&
         input.at("normalization").at("mean")==Json::array({0,0,0})&&
         input.at("normalization").at("norm")==Json::array({1./255.,1./255.,1./255.}),
-        "YOLO tensor requires uint8 RGB NHWC 1x288x512x3 with compiled /255 normalization and pad114");
+        "YOLO tensor requires the pinned uint8 RGB NHWC input with compiled /255 normalization and pad114");
     const auto& output=model.at("output_contract");
     Require(output.at("decoder")=="yolov8_pose_dfl17_v1"&&output.at("output_blobs")==Json::array({"out0","out1"})&&
         output.at("tensor_dtype")=="fp32"&&output.at("rows")==rows&&output.at("columns")==Json::array({65,51})&&
         output.at("max_output_bytes")==Json({{"out0",rows*65*4},{"out1",rows*51*4}}),
-        "YOLO tensor requires exact bounded FP32 out0[1,3024,65] and out1[1,3024,51]");
+        "YOLO tensor requires exact bounded FP32 out0/out1 for the pinned input geometry");
     Require(model.at("backend_options")==Json({{"runtime_library","librknnrt.so"},{"core_mask",7},
         {"input_layout","nhwc"},{"input_type","uint8"}}),"YOLO tensor backend options differ from the pinned non-quantized experiment");
     const auto& evidence=model.at("evidence");
@@ -130,7 +156,7 @@ std::filesystem::path Validate(const Json& manifest,const Json& profile,const st
     const auto path=Asset(root,model.at("asset_path"));
     CheckHash(path,model_sha);
     if(!profile.contains("private_graph_candidate"))return path;
-    Require(profile.at("private_graph_candidate")=="folded-output","Unqualified private model candidate");
+    Require(pinned.width==512&&profile.at("private_graph_candidate")=="folded-output","Unqualified private model candidate");
     // This is an additional private comparison, never a replacement of the
     // baseline pack or a waiver of its numerical admission contract. Pin the
     // graph rewrite, actual compilation and seven/one/empty simulator receipts.
@@ -231,7 +257,8 @@ struct Instance {
         if(int64_t(frame.width)*height==int64_t(frame.height)*width){Preprocess(frame,channels,rgb);return;}
         const bool width_limited=int64_t(frame.width)*height>=int64_t(frame.height)*width;
         const double scale=width_limited?double(width)/frame.width:double(height)/frame.height;
-        const int rw=width_limited?width:int(frame.width*scale),rh=width_limited?int(frame.height*scale):height;
+        const int rw=width_limited?width:int(frame.width*scale);
+        const int rh=!cpu?width*9/16:(width_limited?int(frame.height*scale):height);
         if(source_width!=frame.width||source_height!=frame.height){
             BuildLetterboxAxis(frame.width,horizontal,rw,true);BuildLetterboxAxis(frame.height,vertical,rh,false);
             source_width=frame.width;source_height=frame.height;
@@ -369,11 +396,18 @@ HV_Result CreateImpl(const HV_PipelineConfigV1* config,const HV_HostServicesV1* 
             CheckHash(weights,"6128010de189605795a496f3d3f6baa6435a493b31796ceaf400cced07038da9");
             path=graph.u8string();
             backend_options["external_initializers"]=weights.u8string();
+        } else if(cpu) {
+            path=ValidateCpu(manifest,profile,root).u8string();
         } else {
-            path=(cpu?ValidateCpu:Validate)(manifest,profile,root).u8string();
-            if(!cpu)backend_options=manifest.at("models").at(0).at("backend_options");
+            const auto& profile_name=profile.at("profile");
+            const auto pinned=std::find_if(std::begin(rknn_models),std::end(rknn_models),
+                [&](const RknnModel& model){return profile_name==model.profile;});
+            Require(pinned!=std::end(rknn_models),"YOLO tensor requires a pinned private RKNN profile");
+            path=ValidateRknn(manifest,profile,root,*pinned).u8string();
+            model_width=pinned->width;model_height=pinned->height;
+            backend_options=manifest.at("models").at(0).at("backend_options");
         }
-        // Validate() already pins the model and its compiled normalization. Pass
+        // ValidateRknn() already pins the model and its compiled normalization. Pass
         // that contract explicitly; the generic backend must never guess /255.
         if(!cpu)backend_options["input_transform"]=manifest.at("models").at(0).at("input_contract").at("normalization");
 #if defined(HV_RKNN_INPUT_MEMORY_EXPERIMENT)
@@ -443,7 +477,7 @@ HV_Result HV_CALL Process(void* instance,const HV_PipelineInputV1* input,HV_Pipe
     }
     try {
         const auto begin=Clock::now();
-        if(self.cpu)self.PreprocessLetterbox(frame,channels,rgb,geometry);else self.Preprocess(frame,channels,rgb);
+        self.PreprocessLetterbox(frame,channels,rgb,geometry);
         if(self.cpu)for(size_t pixel=0;pixel<size_t(width)*height;++pixel)
             for(int channel=0;channel<3;++channel)
                 self.planar[size_t(channel)*width*height+pixel]=self.pixels[pixel*3+channel]/255.f;

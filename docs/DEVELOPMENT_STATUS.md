@@ -1,3 +1,12 @@
+## 2026-11-11 RK3588 NPU 三档本地接入
+
+Android RK3588 NPU 接入低档 512×288、中档 640×384、高档 960×576。
+中、高档实际完成非量化 RKNN 转换，通过七人、单人和空画面的 ORT/NCNN/RKNN
+离线数值检查。原生回归 56/56，Unity EditMode 49/49，RKNN 工具测试 22/22。
+Android ARM64 API 26 原生构建、ELF 审计及 Settings APK 构建通过。APK 内的三档模型、
+Profile 白名单和签名已核验，RK3588 真机验收待执行。
+详见[三档接入与验证](reports/2026-11-11-rk3588-npu-qualities.md)。
+
 ## 2026-11-08 preview.12 Windows YOLO 迁移
 
 Windows Editor 和 Player 的 CPU、DirectML 均按低、中、高档位选择 YOLOv8n-pose。

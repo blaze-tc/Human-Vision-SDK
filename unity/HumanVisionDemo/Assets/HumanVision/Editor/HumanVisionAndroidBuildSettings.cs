@@ -77,9 +77,9 @@ namespace HumanVision.Editor
                 foreach (string profile in profiles) ValidateNcnnModelPack(runtimeRoot, profile);
                 if (dual) {
                     if (profiles.Length != 3) throw new InvalidDataException("The dual build requires all three validated graphics qualities.");
-                    ValidateNeuralModelPack(runtimeRoot);
                     ValidateCpuModelPack(runtimeRoot);
-                    profiles = profiles.Concat(new[] { HumanVisionAndroidAccelerationSelection.NeuralProfile, HumanVisionAndroidAccelerationSelection.CpuProfile }).ToArray();
+                    profiles = profiles.Concat(HumanVisionNeuralModelContract.LoadInstalled(runtimeRoot).Select(model => model.ProfileId))
+                        .Concat(new[] { HumanVisionAndroidAccelerationSelection.CpuProfile }).ToArray();
                 }
                 return profiles;
             }

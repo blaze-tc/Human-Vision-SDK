@@ -47,6 +47,24 @@ namespace HumanVision.Tests
             Assert.AreEqual(HumanVisionAndroidFrameRoute.FramePath.Cpu, HumanVisionAndroidFrameRoute.Select("android-rknn-npu-quality-low"));
             Assert.AreEqual(HumanVisionAndroidFrameRoute.FramePath.Gpu, HumanVisionAndroidFrameRoute.Select("android-ncnn-vulkan-quality-high"));
         }
+        [TestCase(ModelInputQuality.Medium, "android-rknn-npu-quality-medium")]
+        [TestCase(ModelInputQuality.High, "android-rknn-npu-quality-high")]
+        public void NeuralQualityRequiresItsBakedProfileAndUsesCpuFrameSubmission(ModelInputQuality quality, string profile)
+        {
+            const string graphics = "android-ncnn-vulkan";
+            const string dual = "android-dual-vulkan-npu";
+            var profiles = Profiles.Concat(new[] { "android-rknn-npu-quality-medium", "android-rknn-npu-quality-high" }).ToArray();
+            Assert.AreEqual(profile, HumanVisionAndroidAccelerationSelection.Resolve(HumanVisionAccelerationMode.Neural,
+                quality, graphics, dual, profiles, "rk3588", ""));
+            Assert.AreEqual(graphics, HumanVisionAndroidRuntimeSelection.ResolveConfiguredProfile("auto", graphics, dual, profiles));
+            Assert.AreEqual(HumanVisionAndroidFrameRoute.FramePath.Cpu, HumanVisionAndroidFrameRoute.Select(profile));
+            Assert.Throws<InvalidOperationException>(() => HumanVisionAndroidAccelerationSelection.Resolve(HumanVisionAccelerationMode.Neural,
+                quality, graphics, dual, Profiles, "rk3588", ""));
+            Assert.Throws<InvalidOperationException>(() => HumanVisionAndroidAccelerationSelection.Resolve(HumanVisionAccelerationMode.Neural,
+                quality, graphics, dual, profiles, "SM8350", "qcom"));
+            Assert.Throws<InvalidOperationException>(() => HumanVisionAndroidRuntimeSelection.ResolveConfiguredProfile("auto",
+                graphics, dual, profiles.Where(value => value != "android-rknn-npu-quality-low").ToArray()));
+        }
         [Test]
         public void SavedInvalidAccelerationIsRejectedRatherThanIgnored()
         {

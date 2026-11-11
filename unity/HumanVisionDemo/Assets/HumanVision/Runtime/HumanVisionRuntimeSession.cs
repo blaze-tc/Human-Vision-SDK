@@ -171,7 +171,7 @@ namespace HumanVision
         public void ReconfigureMaxBodies(int maxBodies)
         {
             if (maxBodies == MaxBodies) return;
-            if (ProfileId == HumanVisionAndroidAccelerationSelection.NeuralProfile)
+            if (HumanVisionAndroidAccelerationSelection.IsNeuralProfile(ProfileId))
                 throw new InvalidOperationException("Neural capacity changes require asynchronous initialization. Use HumanVisionSdk.Initialize with updated full options; the current session is retained.");
             var updated = _config.Clone(); updated.MaxBodies = maxBodies; updated.Validate();
             RenderTexture activeGpuSource = _gpuSourceTexture;

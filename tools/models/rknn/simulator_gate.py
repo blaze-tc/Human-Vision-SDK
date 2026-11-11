@@ -15,6 +15,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'ncnn'))
 from yolo_pose_gate import compare, associate_annotations, LIMITS, MODEL_HASHES
 
 
+def output_rows(width, height):
+    if (width, height) not in ((512, 288), (640, 384), (960, 576)):
+        raise ValueError('validation bank requires 512x288, 640x384 or 960x576 input')
+    return sum((width // stride) * (height // stride) for stride in (8, 16, 32))
+
+
+def fixed_landscape_geometry(width, height, source_width, source_height):
+    if min(source_width, source_height) <= 0 or source_width * 9 != source_height * 16:
+        raise ValueError('rectangular RKNN validation requires a 16:9 source')
+    resized_height = width * 9 // 16
+    return dict(width=width, height=height, resized_width=width, resized_height=resized_height,
+                left=0, top=(height - resized_height) // 2, scale=width / source_width,
+                source_width=source_width, source_height=source_height)
+
+
 def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -44,7 +59,7 @@ def uint8_rgb(chw):
     return pixels.transpose(1, 2, 0).copy()
 
 
-def read_bank(index_path, index_sha):
+def read_bank(index_path, index_sha, input_shape=None):
     if sha(index_path) != index_sha:
         raise ValueError('validation index SHA mismatch')
     index = json.loads(index_path.read_text(encoding='utf-8'))
@@ -52,8 +67,11 @@ def read_bank(index_path, index_sha):
                            bin_sha256=MODEL_HASHES['yolov8n_pose.ncnn.bin'])
     if index.get('schema_version') != 1 or index.get('source_model') != expected_source:
         raise ValueError('validation source model mismatch')
-    if index.get('input_shape') != [1, 3, 288, 512]:
-        raise ValueError('validation bank is not the pinned Low tensor shape')
+    shape = index.get('input_shape')
+    if shape not in ([1, 3, 288, 512], [1, 3, 384, 640], [1, 3, 576, 960]) or (input_shape is not None and shape != input_shape):
+        raise ValueError('validation bank and ONNX input tensor shapes must match')
+    _, _, height, width = shape
+    rows = output_rows(width, height)
     base, bank = index_path.parent.resolve(), []
     for entry in index['fixtures']:
         folder = (base / entry['directory']).resolve()
@@ -64,14 +82,15 @@ def read_bank(index_path, index_sha):
             raise ValueError('fixture metadata SHA mismatch')
         metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
         g = metadata['geometry']
-        if metadata['limits'] != LIMITS or (g['width'], g['height']) != (512, 288):
+        if (metadata['limits'] != LIMITS or (g['width'], g['height']) != (width, height) or
+                (width != 512 and g != fixed_landscape_geometry(width, height, g['source_width'], g['source_height']))):
             raise ValueError('frozen fixture geometry/limits mismatch')
         if sha(folder / 'input.fp32') != metadata['input_sha256']:
             raise ValueError('fixture input SHA mismatch')
         tensor = np.fromfile(folder / 'input.fp32', np.float32)
-        if tensor.size != 3 * 288 * 512:
+        if tensor.size != 3 * height * width:
             raise ValueError('fixture input count mismatch')
-        tensor = tensor.reshape(3, 288, 512)
+        tensor = tensor.reshape(3, height, width)
         uint8_rgb(tensor)  # Enforce the same byte preprocessing for both paths.
         reference = []
         execution = metadata['reference_execution']
@@ -84,9 +103,9 @@ def read_bank(index_path, index_sha):
             if sha(path) != execution['output_sha256'][blob]:
                 raise ValueError('NCNN reference output SHA mismatch')
             value = np.fromfile(path, np.float32)
-            if value.size != 3024 * columns:
+            if value.size != rows * columns:
                 raise ValueError('NCNN reference output count mismatch')
-            reference.append(canonical_output(value.reshape(3024, columns), 3024, columns))
+            reference.append(canonical_output(value.reshape(rows, columns), rows, columns))
         bank.append((entry['directory'], metadata, tensor, reference))
     if {name for name, *_ in bank} != {'seven', 'one', 'empty'} or len(bank) != 3:
         raise ValueError('validation requires all three fixed fixture controls')
@@ -102,7 +121,9 @@ def evaluate(bank, predict, output, kind, identity):
         raw = predict(tensor)
         if len(raw) != 2:
             raise ValueError('candidate must return exactly the two raw pose tensors')
-        actual = [canonical_output(raw[0], 3024, 65), canonical_output(raw[1], 3024, 51)]
+        g = metadata['geometry']
+        rows = output_rows(g['width'], g['height'])
+        actual = [canonical_output(raw[0], rows, 65), canonical_output(raw[1], rows, 51)]
         result = compare(*reference, *actual, metadata['geometry'], metadata['expected_people'])
         if metadata.get('annotations'):
             result['annotation_reference'] = associate_annotations(result['reference'], metadata['annotations'])
@@ -112,7 +133,6 @@ def evaluate(bank, predict, output, kind, identity):
             # Existing seven-person raised-arm evidence: do not accept seven
             # boxes while quietly losing the observed shoulder/wrist joints.
             arms = []
-            g = metadata['geometry']
             for body in result.get('actual', []):
                 shoulder, wrist = body['joints'][5], body['joints'][9]
                 valid = all(j[2] >= .2 and 0 <= j[0] < g['source_width'] and
@@ -139,9 +159,11 @@ def onnx_gate(onnx_path, index_path, index_sha, output):
     options = ort.SessionOptions()
     options.intra_op_num_threads = 2
     session = ort.InferenceSession(str(onnx_path), sess_options=options, providers=['CPUExecutionProvider'])
-    if session.get_inputs()[0].shape != [1, 3, 288, 512] or [v.name for v in session.get_outputs()] != ['out0', 'out1']:
+    inputs = session.get_inputs()
+    if (len(inputs) != 1 or inputs[0].name != 'in0' or
+            [v.name for v in session.get_outputs()] != ['out0', 'out1']):
         raise ValueError('recovered ONNX tensor contract mismatch')
-    report = evaluate(read_bank(index_path, index_sha),
+    report = evaluate(read_bank(index_path, index_sha, inputs[0].shape),
         lambda tensor: session.run(['out0', 'out1'], {'in0': tensor[None]}), output,
         'ORT recovered graph vs NCNN CPU', dict(onnx_sha256=sha(onnx_path),
             validation_index_sha256=index_sha, onnxruntime_version=ort.__version__, provider=session.get_providers()))

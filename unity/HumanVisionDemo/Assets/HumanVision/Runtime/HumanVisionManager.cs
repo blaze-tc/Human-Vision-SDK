@@ -95,7 +95,7 @@ namespace HumanVision
 
         public bool TryInitialize(HumanVisionConfig requestedConfig)
         {
-            if (requestedConfig?.Profile == HumanVisionAndroidAccelerationSelection.NeuralProfile) {
+            if (HumanVisionAndroidAccelerationSelection.IsNeuralProfile(requestedConfig?.Profile)) {
                 ReportError("Neural model initialization must run asynchronously. Use HumanVisionSdk.Initialize with the Neural acceleration preference.");
                 return false;
             }
@@ -225,7 +225,7 @@ namespace HumanVision
         internal HumanVisionRuntimeSession DetachNeuralRuntimeSession()
         {
             var runtime = _session as HumanVisionRuntimeSession;
-            if (runtime == null || (runtime.ProfileId != HumanVisionAndroidAccelerationSelection.NeuralProfile && runtime.ProfileId != HumanVisionAndroidAccelerationSelection.CpuProfile) || runtime.UsesGpuFrames) return null;
+            if (runtime == null || (!HumanVisionAndroidAccelerationSelection.IsNeuralProfile(runtime.ProfileId) && runtime.ProfileId != HumanVisionAndroidAccelerationSelection.CpuProfile) || runtime.UsesGpuFrames) return null;
             _session = null;
             return runtime;
         }

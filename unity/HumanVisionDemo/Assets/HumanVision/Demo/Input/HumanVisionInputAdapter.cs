@@ -91,7 +91,7 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
         if(newlyObserved){manager.RecordSourceArrival(false);observedSource=frame.SourceId;observedGeneration=frame.Generation;observedFrame=frame.FrameId;}
         try {
             if(manager.UsesAndroidGpuFrames)ValidateGpuGeometry(frame.Width,frame.Height);
-            else if(Application.platform==RuntimePlatform.Android&&source is RtspFrameSource&&manager.ActiveRuntimeProfile!=HumanVisionAndroidAccelerationSelection.NeuralProfile&&manager.ActiveRuntimeProfile!=HumanVisionAndroidAccelerationSelection.CpuProfile)
+            else if(Application.platform==RuntimePlatform.Android&&source is RtspFrameSource&&!HumanVisionAndroidAccelerationSelection.IsNeuralProfile(manager.ActiveRuntimeProfile)&&manager.ActiveRuntimeProfile!=HumanVisionAndroidAccelerationSelection.CpuProfile)
                 throw new InvalidOperationException("Android hardware RTSP requires the explicitly selected GPU runtime. The existing CPU modes do not accept this source; preview continues.");
             Slot free=null;for(int i=0;i<slots.Length;i++)if(!slots[i].Active){free=slots[i];break;}
             if(free==null)return;

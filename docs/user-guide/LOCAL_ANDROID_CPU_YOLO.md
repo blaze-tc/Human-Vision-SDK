@@ -1,5 +1,24 @@
 # 本地 Android CPU / GPU / NPU 部署
 
+## 2026-11-11 RK3588 NPU 三档本地包
+
+从 GitHub 安装包含三档适配的 Git UPM 版本时，导入本地的
+`RK3588-NPU-Three-Qualities-Resources.unitypackage`，再执行
+**HumanVision → Enable Local Android NPU Qualities**。从 Package Manager 的 SDK Samples 导入
+**Runtime Prefab Acceptance**。此安装方式使用 Git UPM 提供的 SDK 和 Input。
+
+使用 Assets 离线安装时，按以下顺序导入两个包。
+
+先导入 HumanVision Input 0.1.0-preview.6，再导入
+`HumanVisionSDK-RK3588-NPU-Three-Qualities-Local.unitypackage`。
+在 Unity 执行 **HumanVision → Enable Local Android NPU Qualities**。
+在 SDK Settings 选择 **RK3588 NPU**，再选低档 512×288、中档 640×384或高档 960×576并应用。
+代码接入使用 `HumanVisionAccelerationMode.Neural` 和相应的 `ModelInputQuality`。
+三档均使用非量化 RKNN，结果包含人体骨骼，独立手部模型关闭。
+性能与驱动兼容性由 RK3588 真机验收。
+
+## Preview.12 原本地资源包
+
 preview.8 在恢复的 preview.7 上接入 YOLOv8n-pose CPU，并修复初始化回调的配置提交顺序。
 公共 API 不变，Input 仍为 0.1.0-preview.5。完整资源补充包保存在本地，与公共 SDK 主包配套使用。
 CPU 界面“固定模型”表示只提供 512×288 模型输入档位，人数仍可设置 1–8；多档 CPU 需要另外匹配并验证模型资源。

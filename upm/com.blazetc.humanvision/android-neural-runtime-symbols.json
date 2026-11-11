@@ -1,12 +1,11 @@
 {
-  "native_sha256": "32ce9715ad8a6daae5b47dd5d628e6340f354715eca24c11b84f651407694804",
-  "runtime_sha256": "07a8398be5caed21a1998ffa313e0425bb9e76b154a8dbbc667d71722c009351",
   "abi": "arm64-v8a",
   "api_level": 26,
-  "rknn_tensor_symbols_verified": true,
-  "distribution_qualified": false,
   "device_performance_verified": false,
-  "private_dispatch_experiment": true,
-  "input_memory_candidate": "same-frame complete-output and timing qualification",
-  "followup_audit": "out/main-cpu-android-candidates-audit.log"
+  "distribution_qualified": false,
+  "local_evaluation_only": true,
+  "native_sha256": "23ff6808eca5eb9b273b5401339d8b4a8ae1b7b743ceed7b2d09a1e13e076114",
+  "rknn_tensor_symbols_verified": true,
+  "rknn_vendor_symbols": 12,
+  "runtime_sha256": "07a8398be5caed21a1998ffa313e0425bb9e76b154a8dbbc667d71722c009351"
 }
