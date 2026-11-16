@@ -231,10 +231,17 @@ namespace HumanVision.Input
         private HumanVisionTextureFrame latest;
 
         public SourceGeneration(SourceRetirement retirement)
+            : this(retirement, checked((ulong)Interlocked.Increment(ref nextSourceId)))
+        {
+        }
+
+        // Separate publications from one decoder share its identity but advance independently.
+        internal SourceGeneration(SourceRetirement retirement, ulong sourceId)
         {
             this.retirement = retirement ?? throw new ArgumentNullException(nameof(retirement));
             retirement.CheckThread();
-            sourceId = checked((ulong)Interlocked.Increment(ref nextSourceId));
+            if (sourceId == 0) throw new ArgumentOutOfRangeException(nameof(sourceId));
+            this.sourceId = sourceId;
         }
 
         public ulong SourceId { get { retirement.CheckThread(); return sourceId; } }

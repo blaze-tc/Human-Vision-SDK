@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Threading.Tasks;
 using HumanVision.Demo;
 using HumanVision.Input;
 using UnityEngine;
@@ -15,7 +16,7 @@ namespace HumanVision
     public sealed class HumanVisionSdk : MonoBehaviour
     {
         /// <summary>托管 SDK 版本，便于区分实机日志对应的发布包。</summary>
-        public const string Version = "0.4.0-preview.13";
+        public const string Version = "0.4.0-preview.14";
         [SerializeField, Tooltip("场景配置资产。留空使用项目默认资产，没有项目默认资产时使用内嵌参数。")]
         private HumanVisionSdkPreset configurationAsset;
         private bool configurationLoaded;
@@ -49,6 +50,7 @@ namespace HumanVision
         private VideoPlayerFrameSource bridge;
         private IHumanVisionFrameSource source;
         private readonly HumanVisionObservedRate publicationRate = new HumanVisionObservedRate();
+        private readonly HumanVisionObservedRate analysisPublicationRate = new HumanVisionObservedRate();
         private readonly HumanVisionObservedRate resultRate = new HumanVisionObservedRate();
         private HumanVisionSdkLifetime host, retirement;
         private HumanVisionSdkOptions active;
@@ -63,6 +65,7 @@ namespace HumanVision
         private readonly Vector3[] corners = new Vector3[4];
         private string preparedRoot;
         private AnalysisContract activeContract;
+        private RtspStreamSelector.Selection selectedRtspStream;
         private HumanVisionSdkQualityCapabilities qualityCapabilities;
         private string qualityRoot;
         private int qualityCapacity;
@@ -108,11 +111,19 @@ namespace HumanVision
         public HumanVisionStats Stats => manager != null ? manager.Stats : default;
         /// <summary>最近约一秒主线程观测到的不同输入发布帧/秒；停止、换源时清零。</summary>
         public double InputPublicationFps => publicationRate.Rate;
+        /// <summary>最近约一秒的识别输入发布帧率。支持解码分路时独立于预览。</summary>
+        public double AnalysisInputPublicationFps => SeparateAnalysisSource != null ? analysisPublicationRate.Rate : publicationRate.Rate;
         /// <summary>最近约一秒被 SDK 接受的新来源帧结果/秒，含明确无人结果；不是逐人骨骼或渲染帧率。</summary>
         public double FreshResultFps => resultRate.Rate;
         /// <summary>当前实际 Runtime 配置和诊断字符串，用于实机日志；尚未初始化时为空。</summary>
         public string RuntimeProfile => manager != null && manager.IsInitialized ? manager.ActiveRuntimeProfile : "";
         public string RuntimeDiagnostics => manager != null && manager.IsInitialized ? manager.RuntimeDiagnostics : "";
+        /// <summary>当前 RTSP 码流的公开标签。标准路径分为主、辅、第三流，标签不包含登录信息。</summary>
+        public string SelectedRtspStreamLabel => RtspStreamSelector.StreamLabel(selectedRtspStream.Address);
+        /// <summary>连接前探测到的编码尺寸；尚未探测或未返回尺寸时为零。预览尺寸以已发布的输入帧为准。</summary>
+        public Vector2Int SelectedRtspStreamSize => selectedRtspStream.Size;
+        /// <summary>Android RTSP 硬解报告的输入尺寸，尚未建立或不可用时为零。</summary>
+        public Vector2Int RtspDecodedInputSize => source is RtspFrameSource rtsp ? rtsp.DecodedInputSize : Vector2Int.zero;
         /// <summary>实际成功应用的语义加速器；请求失败时保持旧值。</summary>
         public HumanVisionAccelerationMode ActiveAccelerationMode => IsInitialized
             ? HumanVisionAndroidAccelerationSelection.IsNeuralProfile(RuntimeProfile) ? HumanVisionAccelerationMode.Neural
@@ -122,6 +133,8 @@ namespace HumanVision
         public string RuntimeRootPath => preparedRoot ?? "";
         public string ActiveModelPack => IsInitialized ? activeContract?.ModelPackId ?? "" : "";
         public Vector2Int AnalysisInputSize => IsInitialized && activeContract != null ? new Vector2Int(activeContract.PoseWidth, activeContract.PoseHeight) : Vector2Int.zero;
+        /// <summary>Actual dimensions of the latest successfully submitted recognition frame, or zero while unavailable.</summary>
+        public Vector2Int SubmittedAnalysisInputSize => IsRunning && bridge != null ? bridge.SubmittedAnalysisInputSize : Vector2Int.zero;
         /// <summary>原始结果序号。</summary>
         public long ResultSequence => manager != null ? manager.ResultSequence : 0;
         /// <summary>来源帧 ID；未初始化为 -1。</summary>
@@ -209,6 +222,22 @@ namespace HumanVision
                 contract = shared.ResolveContract(root, baseProfile);
             } catch (Exception e) { Error(e.Message); State = previousState; }
             if (contract == null) yield break;
+            RtspStreamSelector.Selection stream = default;
+            if (candidate.OpenInputOnInitialize && candidate.SourceKind == InputKind.Rtsp) {
+                Uri requestedUri = new Uri(candidate.Input.RtspUrl);
+                stream = new RtspStreamSelector.Selection(requestedUri, default, "requested_stream");
+                if (candidate.AutoSelectRtspStream && candidate.RtspTcp) {
+                    var bounds = new Vector2Int(candidate.Input.RequestedWidth, candidate.Input.RequestedHeight);
+                    var probe = Task.Run(() => RtspStreamSelector.Select(requestedUri, bounds, RtspStreamSelector.Probe));
+                    while (!probe.IsCompleted && token == operation && isActiveAndEnabled) yield return null;
+                    if (token != operation || !isActiveAndEnabled) yield break;
+                    if (probe.Status == TaskStatus.RanToCompletion) stream = probe.Result;
+                    else {
+                        _ = probe.Exception;
+                        stream = new RtspStreamSelector.Selection(requestedUri, default, "probe_error_requested_stream");
+                    }
+                }
+            }
             var nativeConfig = new HumanVisionConfig { RuntimeRoot = root, Profile = contract.ProfileId, MaxBodies = candidate.Recognition.MaxBodies };
             HumanVisionStagedInitialization<HumanVisionRuntimeSession> pending = null;
             long preparedRevision = 0;
@@ -267,7 +296,22 @@ namespace HumanVision
                     case InputKind.Video: source = go.AddComponent<VideoFrameSource>(); break;
                     case InputKind.Rtsp: source = go.AddComponent<RtspFrameSource>(); break;
                 }
-                source.Open(candidate.ToSourceSettings()); bridge.BindUnifiedSource(source);
+                Vector2Int splitSize = Vector2Int.zero;
+                if (candidate.UseModelSizedAnalysisInput && Application.platform == RuntimePlatform.Android &&
+                    candidate.AccelerationMode != HumanVisionAccelerationMode.Cpu && source is RtspFrameSource rtsp &&
+                    AnalysisInputSize == new Vector2Int(512, 288)) {
+                    splitSize = AnalysisInputSize;
+                    rtsp.ConfigureAnalysisOutput(splitSize);
+                }
+                var sourceSettings = candidate.ToSourceSettings();
+                if (sourceSettings is RtspSourceSettings rtspSettings && stream.Address != null &&
+                    !string.Equals(stream.Address.OriginalString, candidate.Input.RtspUrl, StringComparison.Ordinal))
+                    rtspSettings.Location = stream.Address.AbsoluteUri;
+                source.Open(sourceSettings);
+                bridge.BindUnifiedSource(source, splitSize);
+                selectedRtspStream = stream;
+                if (candidate.AutoSelectRtspStream && stream.Address != null)
+                    Debug.Log($"HumanVision RTSP stream: {SelectedRtspStreamLabel} probed={stream.Size.x}x{stream.Size.y} reason={stream.Reason}");
                 acceptResults = true; State = HumanVisionSdkState.Opening;
             } catch (Exception e) { Error(e.Message); }
             if (State != HumanVisionSdkState.Opening) {
@@ -355,7 +399,8 @@ namespace HumanVision
             stopAfterRetirement = discardCandidate;
             if (discardCandidate) { initialization?.Abandon(); initialization = null; }
             ++operation; acceptResults = sourceFresh = false; sourceId = sourceGeneration = 0;
-            publicationRate.Reset(Time.realtimeSinceStartupAsDouble); resultRate.Reset(Time.realtimeSinceStartupAsDouble);
+            selectedRtspStream = default;
+            ResetFrameRates(Time.realtimeSinceStartupAsDouble);
             raw?.Clear(); sampled?.Clear(); RefreshIdentityEvents();
             if (manager != null) manager.ResultUpdated -= OnResult;
             if (host != null) {
@@ -372,18 +417,29 @@ namespace HumanVision
         }
         private void Update()
         {
+            double now = Time.realtimeSinceStartupAsDouble;
             bool freshInput = false;
-            if (acceptResults && source != null && source.State == InputSourceState.Streaming && source.TryGetLatestFrame(-1, out var frame)) {
-                long age = InputMonotonicClock.NowUs - frame.PublishedTimestampUs;
-                freshInput = age >= 0 && age <= (active?.Recognition.MaximumResultAgeMilliseconds ?? 1000) * 1000d;
+            var separate = SeparateAnalysisSource;
+            if (acceptResults && source != null && source.State == InputSourceState.Streaming &&
+                TryGetRecognitionSourceFrame(-1, out var frame)) {
+                long inputNowUs = InputMonotonicClock.NowUs;
+                double validAgeUs = (active?.Recognition.MaximumResultAgeMilliseconds ?? 1000) * 1000d;
+                freshInput = IsFreshPublication(in frame, inputNowUs, validAgeUs);
                 if (sourceId != 0 && (sourceId != frame.SourceId || sourceGeneration != frame.Generation)) {
                     raw?.Clear(); sampled?.Clear(); minimumSequence = ResultSequence;
-                    publicationRate.Reset(Time.realtimeSinceStartupAsDouble); resultRate.Reset(Time.realtimeSinceStartupAsDouble);
+                    ResetFrameRates(now);
                 }
                 sourceId = frame.SourceId; sourceGeneration = frame.Generation;
-                if (freshInput) publicationRate.Observe(frame.FrameId);
+                if (separate == null) {
+                    if (freshInput) publicationRate.Observe(frame.FrameId);
+                } else {
+                    if (freshInput) analysisPublicationRate.Observe(frame.FrameId);
+                    if (source.TryGetLatestFrame(-1, out var preview) && preview.SourceId == sourceId &&
+                        preview.Generation == sourceGeneration && IsFreshPublication(in preview, inputNowUs, validAgeUs))
+                        publicationRate.Observe(preview.FrameId);
+                }
             }
-            publicationRate.Tick(Time.realtimeSinceStartupAsDouble); resultRate.Tick(Time.realtimeSinceStartupAsDouble);
+            publicationRate.Tick(now); analysisPublicationRate.Tick(now); resultRate.Tick(now);
             sourceFresh = freshInput;
             if (HasFreshResult && manager != null) {
                 sampled.Clear();
@@ -395,12 +451,32 @@ namespace HumanVision
                 string message = source.LastError; BeginStop(); State = HumanVisionSdkState.Error; Error(message);
             }
         }
+        private static bool IsFreshPublication(in HumanVisionTextureFrame frame, long nowUs, double maxAgeUs)
+        {
+            long age = nowUs - frame.PublishedTimestampUs;
+            return age >= 0 && age <= maxAgeUs;
+        }
+        private void ResetFrameRates(double now)
+        {
+            publicationRate.Reset(now);
+            analysisPublicationRate.Reset(now);
+            resultRate.Reset(now);
+        }
+        private RtspFrameSource SeparateAnalysisSource =>
+            source is RtspFrameSource rtsp && rtsp.HasSeparateAnalysis ? rtsp : null;
+        private bool TryGetRecognitionSourceFrame(long afterFrameId, out HumanVisionTextureFrame frame)
+        {
+            frame = default;
+            var separate = SeparateAnalysisSource;
+            return separate != null ? separate.TryGetLatestAnalysisFrame(afterFrameId, out frame) :
+                source != null && source.TryGetLatestFrame(afterFrameId, out frame);
+        }
         private void OnResult(long sequence)
         {
             if (!acceptResults || !sourceFresh || manager == null || sequence <= minimumSequence ||
                 !bridge.CanPresentResult(manager.SourceFrameId)) return;
             // 帧像素已应用镜像/旋转。来源代次改变时拒绝上一代晚到结果。
-            if (!source.TryGetLatestFrame(-1, out var input) || input.SourceId != sourceId || input.Generation != sourceGeneration) {
+            if (!TryGetRecognitionSourceFrame(-1, out var input) || input.SourceId != sourceId || input.Generation != sourceGeneration) {
                 raw.Clear(); sampled.Clear(); sourceFresh = false; minimumSequence = sequence; RefreshIdentityEvents(); return;
             }
             // 无区域模式也需要版本隔离，防止重新配置前的晚到结果被当成当前观测。
@@ -527,6 +603,21 @@ namespace HumanVision
         {
             frame = default;
             return IsRunning && source.TryGetLatestFrame(afterFrameId, out frame);
+        }
+        /// <summary>借用最新识别输入。支持解码分路时，无需等同帧预览发布。</summary>
+        public bool TryGetAnalysisInputFrame(long afterFrameId, out HumanVisionTextureFrame frame)
+        {
+            frame = default;
+            return IsRunning && TryGetRecognitionSourceFrame(afterFrameId, out frame);
+        }
+        /// <summary>同一解码帧的识别发布、SDK 接受和预览发布时间，使用 InputMonotonic 微秒。</summary>
+        /// <remarks>SDK 接受表示已预留复制或回读，并不代表模型已完成推理。</remarks>
+        public bool TryGetMatchedAnalysisInputTiming(out long inputFrameId, out long analysisPublishedUs,
+            out long analysisAcceptedUs, out long previewPublishedUs)
+        {
+            inputFrameId = analysisPublishedUs = analysisAcceptedUs = previewPublishedUs = -1;
+            return IsRunning && bridge != null && bridge.TryGetMatchedAnalysisInputTiming(out inputFrameId,
+                out analysisPublishedUs, out analysisAcceptedUs, out previewPublishedUs);
         }
         /// <summary>当前实际图像宽度，尚无纹理为 0。</summary>
         public int GetColorImageWidth() => GetColorImageTex() != null ? GetColorImageTex().width : 0;

@@ -41,6 +41,30 @@ namespace HumanVision.Tests
             yield return sdk.StopSdk(); yield return sdk.Shutdown();
             Assert.False(sdk.IsInitialized); Assert.That(initialized, Is.EqualTo(1)); Assert.That(stopped, Is.EqualTo(1));
         }
+        [UnityTest] public IEnumerator ShutdownWaitsForAsynchronousInputCloseBeforeReinitialization()
+        {
+            yield return sdk.Initialize(Options());
+            Assert.True(sdk.IsInitialized, sdk.LastError);
+            var pending = new DeferredCloseSource();
+            typeof(HumanVisionSdk).GetField("source", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(sdk, pending);
+            int stopped = 0;
+            sdk.Stopped += () => stopped++;
+            var shutdown = sdk.Shutdown();
+            try {
+                Assert.True(shutdown.MoveNext(), "SDK shutdown must wait for the input owner's asynchronous close.");
+                Assert.That(pending.State, Is.EqualTo(InputSourceState.Closing));
+                Assert.That(sdk.State, Is.EqualTo(HumanVisionSdkState.Stopping));
+                yield return null;
+                Assert.That(stopped, Is.Zero);
+            } finally {
+                pending.FinishClose();
+            }
+            yield return shutdown;
+            Assert.That(sdk.State, Is.EqualTo(HumanVisionSdkState.Stopped));
+            Assert.That(stopped, Is.EqualTo(1));
+            yield return sdk.Initialize(Options());
+            Assert.True(sdk.IsInitialized, sdk.LastError);
+        }
         [UnityTest] public IEnumerator InvalidApplyKeepsActiveNativeConfiguration()
         {
             yield return sdk.Initialize(Options()); Assert.True(sdk.IsInitialized, sdk.LastError);
@@ -374,6 +398,17 @@ namespace HumanVision.Tests
             var handle=session.GetType().GetField("_handle",BindingFlags.Instance|BindingFlags.NonPublic);
             bool releasedBeforeStopped=false; sdk.Stopped+=()=>releasedBeforeStopped=(System.IntPtr)handle.GetValue(session)==System.IntPtr.Zero;
             yield return sdk.StopSdk(); Assert.True(releasedBeforeStopped); Assert.False(manager.IsInitialized);
+        }
+        private sealed class DeferredCloseSource : IHumanVisionFrameSource
+        {
+            public InputSourceState State { get; private set; } = InputSourceState.Streaming;
+            public string LastError => string.Empty;
+            public Texture CurrentTexture => null;
+            public void Open(HumanVisionSourceSettings settings) => State = InputSourceState.Streaming;
+            public void Close() => State = InputSourceState.Closing;
+            internal void FinishClose() => State = InputSourceState.Stopped;
+            public bool TryGetLatestFrame(long after, out HumanVisionTextureFrame frame) { frame = default; return false; }
+            public bool TryAcquireSourceCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease) { lease = default; return false; }
         }
         private sealed class CapturedSource : IHumanVisionFrameSource
         {

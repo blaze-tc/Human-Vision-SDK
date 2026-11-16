@@ -16,6 +16,7 @@ namespace HumanVision.Demo
         public HumanVisionAccelerationMode AccelerationMode = HumanVisionAccelerationMode.Graphics;
         public ModelInputQuality GraphicsInputQuality = ModelInputQuality.Medium;
         public bool UseWindowsCpu = true, RtspTcp = true, AutoStart;
+        public bool AutoSelectRtspStream, UseModelSizedAnalysisInput;
         /// <summary>输入启动等待上限（秒），默认读取配置资产；设置界面始终打开输入。</summary>
         public float InputOpenTimeoutSeconds = 15;
         /// <summary>默认 Runtime 目录，留空自动准备；Controller 显式目录优先。</summary>
@@ -33,6 +34,7 @@ namespace HumanVision.Demo
             var value = new HumanVisionSettingsData { Recognition = options.Recognition.Clone(), SourceKind = options.SourceKind,
                 InputQuality = options.InputQuality, AccelerationMode = options.AccelerationMode, GraphicsInputQuality = options.InputQuality,
                 UseWindowsCpu = options.UseWindowsCpu, RtspTcp = options.RtspTcp, AutoStart = autoStart,
+                AutoSelectRtspStream = options.AutoSelectRtspStream, UseModelSizedAnalysisInput = options.UseModelSizedAnalysisInput,
                 InputOpenTimeoutSeconds = options.InputOpenTimeoutSeconds, RuntimeRoot = options.RuntimeRoot };
             // 三种输入继承相同的图像/镜像默认值，各自持有副本，切换页签互不改写。
             string inputJson = JsonUtility.ToJson(options.Input);
@@ -45,7 +47,8 @@ namespace HumanVision.Demo
         public HumanVisionSdkOptions ToOptions(string runtimeRoot = "") => new HumanVisionSdkOptions {
             Recognition = Recognition.Clone(), SourceKind = SourceKind, Input = JsonUtility.FromJson<DemoModeSettings>(JsonUtility.ToJson(Mode)),
             InputQuality = InputQuality, AccelerationMode = AccelerationMode, UseWindowsCpu = UseWindowsCpu, RtspTcp = RtspTcp, RuntimeRoot = string.IsNullOrWhiteSpace(runtimeRoot) ? RuntimeRoot : runtimeRoot,
-            InputOpenTimeoutSeconds = InputOpenTimeoutSeconds
+            InputOpenTimeoutSeconds = InputOpenTimeoutSeconds,
+            AutoSelectRtspStream = AutoSelectRtspStream, UseModelSizedAnalysisInput = UseModelSizedAnalysisInput
         };
         /// <summary>验证所有保存模式；未使用模式允许暂时没有地址。</summary>
         public void Validate()

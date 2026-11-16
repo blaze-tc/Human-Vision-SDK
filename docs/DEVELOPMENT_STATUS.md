@@ -1,3 +1,26 @@
+## 2026-11-16 preview.14 RTSP 分路与选流
+
+Android Input 通过同一解码帧生成独立识别纹理和预览纹理。GPU/NPU 低档给模型路由 `512×288`，并保留两路源帧身份。宇视同通道 H.264 自动选流由 SDK 启动选项控制，场地预览继续按有效同帧结果显示。公开 Runtime Prefab Acceptance 展示选流与三个独立帧率；SDK Settings 保存两项启动开关。
+
+- `pwsh -NoProfile -File tools/package/build_input_native.ps1 -Platform Android -ApiLevel 26 -RunTests` 通过，Windows Input 55/55、Android ELF/API26 审核通过。原有导出保留，Android 与 Windows Input 分别新增 5 项和 1 项导出。Windows 公共 DLL 实际 RTSP 探测及无响应检查通过。
+- Unity 2021.3.45f1 Roslyn 编译 Input、SDK UPM 与 Demo 镜像的 Windows/Editor 和 Android 条件路径；选流及尺寸回归 18/18。
+- 独立项目顺序导入 Input 与 SDK 离线包。团结编辑器 EditMode `HumanVisionSettingsDemoTests|RtspStreamSelectionTests|AndroidRtspOutputSizeTests` 47/47，PlayMode `HumanVisionRuntimeViewTests` 2/2（本地 Exercise-8 RTSP）。
+- 先前独立验收 APK 的 OnePlus 热机数据、发布范围和设备验证边界见[本轮报告](reports/2026-11-16-preview14-rtsp-streams.md)。
+
+## 2026-11-16 RK3588 4K 输入调度和模型尺寸直出候选
+
+客户日志记录 4K H.264 解码约 25 FPS、720p 和 540p 新结果均约 15 FPS、每秒约 10 帧在送入转换前被更新。原有 44–46 ms 统计是从提交到观察到 fence 完成的时间，包含队列和轮询。
+
+Android Vulkan 在空闲槽可用时开始转换下一帧，保留已领取纹理的复制租约。旧的未领取帧只在新帧真实完成后退役。Unity 在发起本轮转换机会前发布已完成帧并释放可回收槽位。新增槽位压力和待帧替换诊断。
+
+RuntimePrefabAcceptance 新增 `512×288 直出`。4K 解码图一次采样为低档模型尺寸。识别和同帧预览使用此尺寸。符合 RKNN 低档路径时保留一份独立 sRGB 快照和读回，省去恒等缩放和额外的验证读回。切换发布档位时等待旧 RTSP 输入释放后再初始化。
+
+- `ctest --test-dir out/android-input-release/host-v180 -C Release --output-on-failure` 54/54。固定 25 Hz 输入、30 Hz Unity 时钟的 150 帧模拟中，转换完成由 90 帧增加至 119 帧，待处理帧替换由 59 次降至 29 次。
+- Android ARM64/API26 Input 候选构建通过。与现有 Android Input 库比较，42 项公开导出、145 项导入及动态依赖一致。
+- `py -3.13 tools/maintenance/check_architecture_boundaries.py`、`py -3.13 tools/maintenance/generate_component_catalog.py --check`、`py -3.13 tools/test/verify_upm_git_newlines.py` 通过。
+- 本地 OnePlus 9 Pro 通过 RuntimePrefabAcceptance Android Graphics 候选的五段连续切档。用硬件解码接收 4K25 Exercise-8 RTSP，输入发布 24.88–25.11 FPS。512×288 直出段输入 24.93 FPS，107 个含人体的结果完成同帧配对。五次输入关闭均有配平的原生退役记账。RK3588 热机后的骨骼帧率和利用率待该硬件测得。
+- RuntimePrefabAcceptance RK3588 测试 APK 已构建并经 `verify_apk.py` 核对签名、场景、原生库和 62 个运行时文件。APK SHA-256 为 `b629c3c867c3b75a889298c09547597714b831a7d5a25bc7c91a770dc44293ad`。状态为本地候选。
+
 ## 2026-11-16 preview.13 发布验证
 
 基于 `e88dbdd` 的 RK3588 三档接入发布场地预览同帧修复。SDK `0.4.0-preview.13`，Input `0.1.0-preview.6` 字节保持一致。公开包沿用配套本地资源的分发范围。场地预览和业务动作是两条调用路径，跨栏王的跳跃和冲刺需独立复测。

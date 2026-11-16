@@ -1,3 +1,20 @@
+# v0.4.0-preview.14 RTSP 选流与独立识别输入
+
+SDK `0.4.0-preview.14` 与 Input `0.1.0-preview.7` 使用同一 Git 标签。Android 与 Windows 的 Input 原生库为新版。Git UPM 或离线导入均先装 Input，再装 SDK。需运行 RK3588 NPU 的项目另装匹配新版 Input 哈希的本地资源。
+
+```powershell
+pwsh -NoProfile -File tools/package/build_input_native.ps1 -Platform Android -ApiLevel 26 -RunTests
+py -3.13 tools/package/check_input_package.py --root upm/com.blazetc.humanvision.input
+py -3.13 tools/package/package_release_snapshot.py --authority tools/package/release-preview14-authority.json --verify-only
+py -3.13 tools/package/test_package_release_snapshot.py
+py -3.13 tools/maintenance/check_architecture_boundaries.py
+py -3.13 tools/maintenance/generate_component_catalog.py --check
+py -3.13 tools/test/verify_upm_git_newlines.py
+py -3.13 tools/package/package_release_snapshot.py --authority tools/package/release-preview14-authority.json --output out/releases/v0.4.0-preview.14-final
+```
+
+从最终提交构建八个附件，下载草稿附件并核对 SHA-256 后发布。公共附件包含两个包、两个 Samples 和安装资料。私有 Android RKNN 模型、厂商库、本地补充包、测试 APK 与业务视频由原有本地路径管理。
+
 # v0.4.0-preview.13 场地预览同帧修复
 
 从包含 RK3588 三档接入的 SDK 主线发布 0.4.0-preview.13，Input 使用 0.1.0-preview.6。

@@ -14,6 +14,12 @@ HV_INPUT_API int HV_INPUT_CALL HV_Input_BindUnityTarget(HV_InputHandle,void* uni
 HV_INPUT_API HV_InputRenderEvent HV_INPUT_CALL HV_Input_GetRenderEventFunc(void);
 typedef struct HV_InputGpuFrame { HV_InputFrameInfo frame; uint32_t slot, reserved; } HV_InputGpuFrame;
 HV_INPUT_API int HV_INPUT_CALL HV_Input_BindGpuTargets(HV_InputHandle,void* const textures[3],uint32_t width,uint32_t height,uint64_t generation,int rotation,int mirror);
+// Optional companion binding. Bind analysis first while output targets are
+// retired, then bind preview for the same decoder generation to start both.
+HV_INPUT_API int HV_INPUT_CALL HV_Input_BindGpuAnalysisTargets(HV_InputHandle,void* const textures[3],uint32_t width,uint32_t height,uint64_t generation);
+HV_INPUT_API int HV_INPUT_CALL HV_Input_PollGpuAnalysisFrame(HV_InputHandle,uint64_t after,HV_InputGpuFrame*);
+HV_INPUT_API int HV_INPUT_CALL HV_Input_ReleaseGpuAnalysisSlot(HV_InputHandle,uint32_t slot,uint64_t sequence);
+HV_INPUT_API int HV_INPUT_CALL HV_Input_AcknowledgeGpuAnalysisFrame(HV_InputHandle,uint64_t generation,uint64_t sequence);
 HV_INPUT_API int HV_INPUT_CALL HV_Input_GetGpuGeometry(HV_InputHandle,uint32_t*,uint32_t*,uint64_t*);
 HV_INPUT_API int HV_INPUT_CALL HV_Input_PollGpuFrame(HV_InputHandle,uint64_t after,HV_InputGpuFrame*);
 HV_INPUT_API int HV_INPUT_CALL HV_Input_ReleaseGpuSlot(HV_InputHandle,uint32_t slot,uint64_t sequence);

@@ -66,6 +66,28 @@ namespace HumanVision.Tests
             Assert.That((string)clone.Rtsp.RtspUrl, Is.EqualTo("rtsp://localhost/live"));
             Assert.False(ReferenceEquals(data.Recognition.Regions, clone.Recognition.Regions));
         }
+        [Test] public void RtspOptionsSurviveSettingsSerializationAndApply()
+        {
+            var requested = new HumanVisionSdkOptions {
+                SourceKind = HumanVision.Input.InputKind.Rtsp,
+                AutoSelectRtspStream = true,
+                UseModelSizedAnalysisInput = true
+            };
+            requested.Input.RtspUrl = "rtsp://camera/media/video1";
+            requested.Input.RequestedWidth = 1920;
+            requested.Input.RequestedHeight = 1080;
+
+            var restored = HumanVisionSettingsData.FromOptions(requested).Clone().ToOptions();
+            Assert.That(restored.AutoSelectRtspStream, Is.True);
+            Assert.That(restored.UseModelSizedAnalysisInput, Is.True);
+            Assert.That(restored.Input.RtspUrl, Is.EqualTo(requested.Input.RtspUrl));
+            Assert.That(restored.Input.RequestedWidth, Is.EqualTo(1920));
+            Assert.That(restored.Input.RequestedHeight, Is.EqualTo(1080));
+
+            var oldSettings = JsonUtility.FromJson<HumanVisionSettingsData>("{\"Version\":1}");
+            Assert.That(oldSettings.AutoSelectRtspStream, Is.False);
+            Assert.That(oldSettings.UseModelSizedAnalysisInput, Is.False);
+        }
         [Test] public void StoreRejectsInvalidDraftAndKeepsCorruptOriginal()
         {
             var type = Find("HumanVisionSdkSettingsStore"); Assert.NotNull(type);

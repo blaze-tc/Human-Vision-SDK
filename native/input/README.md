@@ -1,5 +1,23 @@
 # Independent input native plugin
 
+## Model-sized Android output and RTSP probing
+
+An Android Vulkan source can bind an optional three-texture `512×288` analysis
+output before binding its preview textures. Both outputs use the decoder frame's
+sequence, generation and timestamps. The analysis conversion runs first and
+publishes after its GPU fence completes. The consumer acknowledges that exact
+frame after handing it to inference. The preview uses the same decoded image
+and its own conversion fence. A late consumer can delay the preview handoff
+for at most 42 ms before scheduling or discarding it. Each output has its own
+slot lease. Preview-only clients keep using the existing binding and poll API.
+The native `input_analysis_cadence` record reports completed analysis output,
+acknowledgements and preview pressure once per interval.
+
+The internal `HV_Input_ProbeRtsp` binding on Android and Windows checks H.264
+dimensions over RTSP TCP. It inspects codec parameters or SPS data and uses a
+single deadline for connection and compressed reads. The binding opens no
+decoder. Callers probe away from the Unity main thread.
+
 Consumes compressed H.264 over RTSP TCP. Produces Windows CPU RGBA, or Android
 PRIVATE decoded AHB leases for GPU conversion. It has no SDK, Runtime Host,
 model, ORT, ncnn or SDK clock dependency. The V1 SDK ABI is separate and stable.
@@ -41,8 +59,9 @@ GPU retirement. Decoder image/lease/fd counters remain a separate ownership
 domain. Cache/Vulkan errors preserve their first stage and result through decoder
 interruption and reconnect; Vulkan result values are not formatted as FFmpeg errno.
 
-Pending decoded frames are
-latest-only. Conversion waits while Unity has an unobserved publication or all output slots are occupied. The compressed application backlog
+Pending decoded frames are latest-only. Conversion can use a free output slot
+while Unity has an unobserved publication. If all slots hold live work or leases,
+conversion waits for a free slot. The compressed application backlog
 retains one packet; decoder pressure or transport failure recreates the reader,
 decoder and RTSP session and waits for a real keyframe. Healthy admitted P/B
 packets are preserved. Missing reliable crop/color/capabilities fail explicitly.
@@ -51,7 +70,9 @@ Task3 V1 layouts/exports remain unchanged. Android `HV_Input_PollFrame` only rea
 completed metadata and does not retain an output. The additive Android
 `HV_Input_PollGpuFrame` returns and atomically acknowledges the exact latest
 sequence/generation/slot; `HV_Input_ReleaseGpuSlot` returns that observed slot only
-after consumer source-copy fences finish. Conversion preserves an unread publication and waits for the next render event. MediaCodec releases buffers in decoder output order at least 24 ms apart while ImageReader continues polling.
+after consumer source-copy fences finish. Conversion preserves an unread
+publication until a newer fence completes. MediaCodec releases buffers in
+decoder output order at least 24 ms apart while ImageReader continues polling.
 `BindGpuTargets` binds exactly three borrowed Unity textures; `GetGpuGeometry`
 reports actual pending crop geometry, not request dimensions. All GPU publication
 requires actual converter fence completion. Positive acquire fd import consumes a

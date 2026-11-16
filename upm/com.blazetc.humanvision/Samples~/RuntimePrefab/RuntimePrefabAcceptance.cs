@@ -98,9 +98,9 @@ namespace HumanVisionAcceptance
 
             startup = new HumanVisionSdkOptions {
                 SourceKind = InputKind.Rtsp,
-                AccelerationMode = IsAndroid ? HumanVisionAccelerationMode.Neural : HumanVisionAccelerationMode.Cpu,
+                AccelerationMode = IsAndroid ? HumanVisionAccelerationMode.Graphics : HumanVisionAccelerationMode.Cpu,
                 UseWindowsCpu = !IsAndroid,
-                InputQuality = IsAndroid ? ModelInputQuality.Medium : ModelInputQuality.Low
+                InputQuality = ModelInputQuality.Low
             };
             recognition = new HumanVisionSdkConfiguration {
                 MaxBodies = maxBodies, UseRegions = true, Regions = HumanVisionSdkConfiguration.CreateEqualRegions(maxBodies)
@@ -128,7 +128,13 @@ namespace HumanVisionAcceptance
             switch (options.SourceKind) {
                 case InputKind.WebCamera: options.Input.CameraDevice = address; break;
                 case InputKind.Video: options.Input.VideoPath = address; break;
-                case InputKind.Rtsp: options.Input.RtspUrl = address; break;
+                case InputKind.Rtsp:
+                    options.Input.RtspUrl = address;
+                    options.Input.RequestedWidth = 1920;
+                    options.Input.RequestedHeight = 1080;
+                    options.AutoSelectRtspStream = true;
+                    options.UseModelSizedAnalysisInput = true;
+                    break;
             }
             options.Recognition = recognition.Clone();
             options.OpenInputOnInitialize = true;
@@ -325,12 +331,20 @@ namespace HumanVisionAcceptance
                 var sdk = view.Sdk;
                 var size = sdk.AnalysisInputSize;
                 string modelSize = size.x > 0 ? $"{size.x}×{size.y}" : "—";
-                sdkLine = $"{sdk.State}  |  模型 {modelSize}  |  实际后端 {actualBackend}  |  区域 {capacity}";
+                sdkLine = $"{sdk.State}  |  模型 {modelSize}  |  识别输入 {sdk.AnalysisInputPublicationFps:F1} FPS  |  {actualBackend}  |  区域 {capacity}";
                 if (!view.SupportsMatchedFrames) sdkLine += "  |  当前图形设备不支持同帧纹理";
             }
             inputLine = hasInput && live != null
                 ? $"{live.width} × {live.height}  ·  输入 #{input.FrameId}  ·  {view.Sdk.InputPublicationFps:F1} FPS"
                 : "等待实机图像";
+            if (hasInput && live != null && startup.SourceKind == InputKind.Rtsp &&
+                !string.IsNullOrEmpty(view.Sdk.SelectedRtspStreamLabel)) {
+                var decoded = view.Sdk.RtspDecodedInputSize;
+                var probed = view.Sdk.SelectedRtspStreamSize;
+                string detected = decoded.x > 0 ? $" 解码 {decoded.x}×{decoded.y}" :
+                    probed.x > 0 ? $" 探测 {probed.x}×{probed.y}" : "";
+                inputLine = $"{view.Sdk.SelectedRtspStreamLabel}{detected}  ·  预览 {live.width}×{live.height}";
+            }
             poseLine = paired
                 ? $"输入 #{pair.InputFrameId}  ·  提交 #{pair.SourceFrameId}  ·  结果 #{pair.ResultSequence}  ·  已配对 {presented}"
                 : "等待同帧结果";

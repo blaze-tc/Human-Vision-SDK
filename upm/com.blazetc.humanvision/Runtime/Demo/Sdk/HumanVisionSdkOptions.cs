@@ -17,6 +17,8 @@ namespace HumanVision
         public DemoModeSettings Input = new DemoModeSettings();
         /// <summary>RTSP 使用 TCP；关闭后使用 UDP。</summary>
         public bool RtspTcp = true;
+        /// <summary>连接前探测已知同通道 RTSP 地址，以请求尺寸为上限选择最清晰的可用码流。默认按原地址连接。</summary>
+        public bool AutoSelectRtspStream;
         /// <summary>Windows 默认 CPU；关闭时使用已有 GPU 配置。</summary>
         public bool UseWindowsCpu = true;
         /// <summary>平台已声明的输入质量档位；不支持的平台保持真实固定合同。</summary>
@@ -28,6 +30,8 @@ namespace HumanVision
         public string RuntimeRoot = "";
         /// <summary>默认初始化后打开输入；关闭可只准备 Runtime，然后手动配置输入。</summary>
         public bool OpenInputOnInitialize = true;
+        /// <summary>Limit the recognition transport to the selected model size while preserving the source publication for display.</summary>
+        public bool UseModelSizedAnalysisInput;
         /// <summary>等待输入进入 Streaming 的最长时间，单位秒。</summary>
         [Min(1)] public float InputOpenTimeoutSeconds = 15;
         /// <summary>深复制可修改设置；调用方修改副本不会改变运行中的 SDK。</summary>

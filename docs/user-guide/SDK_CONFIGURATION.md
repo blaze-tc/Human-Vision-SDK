@@ -1,6 +1,6 @@
 # ScriptableObject 配置与统一 API
 
-适用版本：SDK **0.4.0-preview.13** / Input **0.1.0-preview.6**。Android CPU/NPU 完整资源安装见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)；公共附件范围见[安装说明](../UPM_INSTALLATION.md)。
+适用版本：SDK **0.4.0-preview.14** / Input **0.1.0-preview.7**。Android CPU/NPU 完整资源安装见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)；公共附件范围见[安装说明](../UPM_INSTALLATION.md)。
 这是当前版本的接入说明；历史 Release 的验证结果不自动适用于本次变更。
 
 ## 最小接入
@@ -65,6 +65,8 @@ yield return sdk.Initialize(request);
 | `MaximumHandAgeMilliseconds` | 手关节 200 ms；不是人体新结果帧率 | 应用识别配置 |
 | `Input.Mirror` | 水平镜像；骨骼映射同步处理 | 重新初始化 |
 | `RtspTcp` | 默认 TCP，false 为 UDP | 重新初始化 |
+| `AutoSelectRtspStream` | 默认关闭。启用后在 RTSP/TCP 接入时探测同通道的宇视 H.264 码流尺寸 | 打开 RTSP 时 |
+| `UseModelSizedAnalysisInput` | 默认关闭。启用后允许 Android RTSP 的 GPU/NPU 低档从解码帧独立生成模型输入 | 重新初始化 |
 | `InputOpenTimeoutSeconds` | 默认 15 秒；APK 视频首次缓存另有有界准备等待 | 初始化 |
 | `RuntimeRoot` | 留空自动准备安装资源 | 初始化 |
 | `OpenInputOnInitialize` | 默认 true；false 只准备 Runtime，成功为 Ready | 初始化 |
@@ -78,6 +80,24 @@ preview.8 的完整本地 Android 资源补充包使用 YOLOv8n-pose CPU 模型�
 CPU 的人数上限不切换模型。Vulkan 保留低/中/高三个原模型，NPU 保留已恢复的低档 RKNN 模型。
 Windows CPU 与 DirectML 使用同一套 YOLOv8n-pose 权重。低、中、高分别为 512×288、640×384、960×576。模型准备使用 SDK 随附的图结构与现有 NCNN 权重。Android 私有资源见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)。
 旧代码直接创建 `HumanVisionSdkOptions` 时仍须注意 `UseWindowsCpu` 兼容开关；推荐从资产创建副本。
+
+### Android RTSP 低档
+
+```csharp
+var options = configuration.CreateOptionsForInput(InputKind.Rtsp, rtspAddress);
+options.Input.RequestedWidth = 1920;
+options.Input.RequestedHeight = 1080;
+options.InputQuality = ModelInputQuality.Low;
+options.AutoSelectRtspStream = true;
+options.UseModelSizedAnalysisInput = true;
+yield return sdk.Initialize(options);
+```
+
+配置为 RK3588 NPU 时使用 `HumanVisionAccelerationMode.Neural` 和匹配的本地资源。Android RTSP 在 GPU 或 NPU 模型为 `512×288` 时可从同一解码帧分出预览和识别，识别提交无需等待预览发布。其他档位沿用其原有输入路径。
+
+自动选流支持宇视 `/media/video1` 到 `/media/video3`，以及相同通道的 `/unicast/cN/s0/live` 到 `/unicast/cN/s2/live`。SDK 选尺寸上限以内像素数最高的可用 H.264 码流。只有 4K 可用时仍解码 4K，预览等比缩到上限以内。未知地址格式沿用给定地址。选流只在打开输入时执行，输入和账号配置保存在原选项中。
+
+`SelectedRtspStreamLabel` 和 `SelectedRtspStreamSize` 记录选择与探测值。`RtspDecodedInputSize` 是 Android 实际解码尺寸，预览尺寸可从 `TryGetInputFrame` 读取。分别用 `InputPublicationFps`、`AnalysisInputPublicationFps` 和 `FreshResultFps` 检查预览、识别供帧与新结果。叠画使用同帧图像，业务动作可独立消费 `ResultUpdated`。
 
 ## 主要 API
 

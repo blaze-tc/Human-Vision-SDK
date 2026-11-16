@@ -31,6 +31,10 @@ namespace HumanVision
                 if (release.IsFaulted) Debug.LogException(release.Exception.GetBaseException());
             }
             manager?.Shutdown();
+            // Android RTSP retains the process-wide native input owner until
+            // its decoder and GPU resources have retired. Keep the host alive
+            // and delay Stopped so immediate reinitialization can acquire it.
+            while (source != null && source.State == InputSourceState.Closing) yield return null;
             Complete = true;
             complete?.Invoke();
             Destroy(gameObject);

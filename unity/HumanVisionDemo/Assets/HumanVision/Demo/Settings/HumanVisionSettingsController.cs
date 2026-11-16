@@ -52,11 +52,13 @@ namespace HumanVision.Demo
             // 首次 Apply 之前就创建日志，资源缺失、配置读取及输入打开失败也有证据。
             logger = new HumanVisionSettingsLogger(); Guard(() => logger.BeginStartup());
             logger.Record("controller.start", "settings=" + HumanVisionSdkSettingsStore.DefaultPath + " runtimeOverride=" + runtimeRoot);
+            view.Preview.color = view.Preview.texture == null ? Color.black : Color.white;
             view.Bind(this); Reload(HumanVisionSdkSettingsStore.DefaultPath);
             Guard(() => logger.ApplySettings(draft, configurationLoaded));
             view.ShowDraft(draft); RefreshQualities();
             sdk.Initialized += ConnectRenderer; sdk.ErrorOccurred += OnError; sdk.Stopped += DisconnectRenderer;
             sdk.UserEntered += OnUserEntered; sdk.UserExited += OnUserExited; sdk.RegionOccupancyChanged += OnRegionChanged;
+            if (sdk.IsRunning) ConnectRenderer();
             applying = true; view.SetBusy(true);
             yield return sdk.PrepareInputQualities(runtimeRoot);
             applying = false; RefreshQualities(); view.SetBusy(false);
@@ -195,7 +197,13 @@ namespace HumanVision.Demo
             view.SetQualities(capability.Choices, capability.Message);
             if (!string.IsNullOrEmpty(capability.Error)) logger?.Record("quality.error", capability.Error);
         }
-        private void DisconnectRenderer() { logger?.Record("stop.complete", "Runtime and input safely released"); if (view != null) { view.Overlay.Configure(null, null); view.Preview.texture = null; } }
+        private void DisconnectRenderer() {
+            logger?.Record("stop.complete", "Runtime and input safely released");
+            if (view == null) return;
+            view.Overlay.Configure(null, null);
+            view.Preview.texture = null;
+            view.Preview.color = Color.black;
+        }
         private void OnError(string error) { message = "SDK：" + Redact(error); logger?.Record("sdk.error", "state=" + sdk.State + " input=" + sdk.InputState + " error=" + error); }
         private void OnUserEntered(int index, long id) => logger?.Record("user.entered", "slot=" + index + " id=" + id);
         private void OnUserExited(int index, long id) => logger?.Record("user.exited", "slot=" + index + " id=" + id);
@@ -203,21 +211,26 @@ namespace HumanVision.Demo
         private void Update()
         {
             if (sdk == null || view == null) return;
-            var texture = sdk.GetColorImageTex(); view.Preview.texture = texture; view.Preview.color = texture == null ? Color.black : Color.white;
-            if (texture != null) view.Preview.GetComponent<UnityEngine.UI.AspectRatioFitter>().aspectRatio = (float)texture.width / texture.height;
             view.SetBusy(Busy);
             if (Time.realtimeSinceStartupAsDouble < nextStatus) return; nextStatus = Time.realtimeSinceStartupAsDouble + .2;
             string occupancy = "";
             for (int i = 0; i < sdk.GetMaxBodies(); i++) occupancy += " " + i + ":" + (sdk.TryGetRegionOccupancy(i, out bool occupied) ? occupied ? "有人" : "无人" : "未知");
             view.SetStatus(Redact(string.IsNullOrEmpty(OperationNotice) ? message : OperationNotice) + "\nSDK " + sdk.State + " / Input " + sdk.InputState + "　实际人数 " + sdk.GetUsersCount() + "/" + sdk.GetMaxBodies() +
-                "　输入 " + sdk.InputPublicationFps.ToString("F1") + " / 新结果 " + sdk.FreshResultFps.ToString("F1") + " FPS\n" + FrameStatus() + "　槽位：" + occupancy);
+                "　预览 " + sdk.InputPublicationFps.ToString("F1") + " / 识别输入 " + sdk.AnalysisInputPublicationFps.ToString("F1") +
+                " / 新结果 " + sdk.FreshResultFps.ToString("F1") + " FPS\n" + FrameStatus() + "　槽位：" + occupancy);
             try { logger?.Tick(sdk); } catch (Exception e) { message = "日志写入失败：" + Redact(e.Message); }
             if (logger != null && !string.IsNullOrEmpty(logger.LastWriteError)) message = "日志写入失败：" + logger.LastWriteError;
         }
         private string FrameStatus(){
             if(sdk.FrameBridge==null)return "输入 / 结果帧：未启动";
             var p=sdk.FrameBridge.PresentationStats;
-            return "输入帧 "+p.inputFrame+" / 结果源帧 "+p.resultFrame+" / 显示帧 "+p.displayFrame+"（显示延时 "+p.delayMs.ToString("F0")+"ms）";
+            string frames = "输入帧 "+p.inputFrame+" / 结果源帧 "+p.resultFrame+" / 显示帧 "+p.displayFrame+"（显示延时 "+p.delayMs.ToString("F0")+"ms）";
+            if (string.IsNullOrEmpty(sdk.SelectedRtspStreamLabel)) return frames;
+            var decoded = sdk.RtspDecodedInputSize;
+            var probed = sdk.SelectedRtspStreamSize;
+            string dimensions = decoded.x > 0 ? $" 解码 {decoded.x}×{decoded.y}" :
+                probed.x > 0 ? $" 探测 {probed.x}×{probed.y}" : "";
+            return $"当前码流 {sdk.SelectedRtspStreamLabel}{dimensions}　{frames}";
         }
         private void Guard(Action work) { try { work(); } catch (Exception e) { message = Redact(e.Message); logger?.Record("configuration.rejected", e.GetType().Name + ": " + e.Message, e.StackTrace); } }
         /// <summary>UI/日志错误文本去除 RTSP 凭据；原始输入地址仅存在于编辑字段和用户配置文件。</summary>

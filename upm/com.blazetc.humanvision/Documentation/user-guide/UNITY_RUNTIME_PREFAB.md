@@ -5,6 +5,7 @@
 切换游戏端重绘与 SDK 合成。离线包的样例位于 `Assets/HumanVision/Samples/RuntimePrefab`。
 运行时展开 Hierarchy 的 `API Redraw - Scene Rig → Skeleton Objects` 可选中 Mesh 关节点与 LineRenderer。
 Android 使用 Vulkan、ARM64、IL2CPP，Player Settings 的 Internet Access 设为 Require。
+RTSP 样例启用 [同通道选流与模型尺寸分路](SDK_CONFIGURATION.md#android-rtsp-低档)。左侧可确认当前码流、解码或探测尺寸和实际预览尺寸。
 
 在 Unity 选择 **HumanVision → Create SDK**，菜单会把带配置资产的 `HumanVisionRuntime` Prefab 放在场景根级，默认进入 Play Mode 时按配置启动。也可直接使用包中的 `Runtime/Demo/Resources/HumanVisionRuntime.prefab`，或者用代码调用 `HumanVisionRuntimeView.Create()`；后两种方式由调用方显式启动。项目只需创建一次。场景切换时保留，重复创建时使用原实例。
 
@@ -50,8 +51,8 @@ public sealed class VisionGameInput : MonoBehaviour
 }
 ```
 
-如果希望只在新识别帧上做动作判断，在场景脚本启用时订阅 `FramePresented`，禁用时取消订阅。事件在 SDK 主线程提交整组绘制后触发；游戏的 `Update()` 读取最近一次完成发布的配对，轮询可在两个新结果之间读到相同序号。
-可用 `SourceId`、`SourceGeneration`、`SourceFrameId`、`ResultSequence` 区分新观察，换源后清理游戏历史。处理游戏时间窗时使用帧号与时间戳，不能把同一个姿态算作多次独立观测。场景脚本若需要在自己的 LateUpdate 里读取当轮最新结果，可设置执行顺序晚于 200；事件没有此要求。
+叠画和拍照可订阅 `FramePresented`，事件在 SDK 主线程提交配对后触发。`TryGetFrame` 在相邻两次发布之间可以返回同一序号。配对结果带 `SourceId`、`SourceGeneration`、`SourceFrameId` 与 `ResultSequence`。
+跑跳等只依赖骨骼数据的动作应订阅 `Sdk.ResultUpdated`，用 `CopySkeletonByIndex` 读取新骨骼并复用缓冲区。用源帧时间驱动动作时间窗，按结果序号去重，重新打开输入或切换来源时清理历史。结果回调不依赖预览纹理是否完成配对。
 
 | 入口 | 用途 |
 | --- | --- |

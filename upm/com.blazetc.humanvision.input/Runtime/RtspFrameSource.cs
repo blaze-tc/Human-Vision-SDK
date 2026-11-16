@@ -10,6 +10,7 @@ namespace HumanVision.Input
     public sealed class RtspFrameSource : UnityTextureFrameSource
     {
         private HumanVisionSourceSettings androidSettings;
+        private Vector2Int analysisOutputSize, androidOpenAnalysisSize;
         private int androidTimeout, androidDelay;
         private bool androidOpenRequested, androidSuspended;
         // Cold boundary around the external GPU/native owner; lifetime policy stays in this component.
@@ -36,8 +37,14 @@ namespace HumanVision.Input
             public string LastError => source.LastError;
             public IntPtr Handle => source.Handle;
             public bool Pending => source.Pending;
+            internal Vector2Int DecodedInputSize => source.DecodedInputSize;
             public bool TryGetLatestFrame(long after, out HumanVisionTextureFrame frame) => source.TryGetLatestFrame(after, out frame);
             public bool TryAcquireSourceCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease) => source.TryAcquireSourceCopyLease(in frame, out lease);
+            internal bool HasSeparateAnalysis => source.HasSeparateAnalysis;
+            internal void ConfigureAnalysisOutput(Vector2Int size) => source.ConfigureAnalysisOutput(size);
+            internal bool TryGetLatestAnalysisFrame(long after, out HumanVisionTextureFrame frame) => source.TryGetLatestAnalysisFrame(after, out frame);
+            internal bool TryAcquireAnalysisCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease) => source.TryAcquireAnalysisCopyLease(in frame, out lease);
+            internal bool AcknowledgeAnalysisFrame(in HumanVisionTextureFrame frame) => source.AcknowledgeAnalysisFrame(in frame);
             public void Open(HumanVisionSourceSettings settings, int timeout, int delay) => source.Open(settings, timeout, delay);
             public void Tick() => source.Tick();
             public void PumpGpu() => source.PumpGpu();
@@ -89,6 +96,37 @@ namespace HumanVision.Input
         public override Texture CurrentTexture => android != null ? android.CurrentTexture : base.CurrentTexture;
         public override bool TryGetLatestFrame(long after, out HumanVisionTextureFrame frame) { if (android != null) return android.TryGetLatestFrame(after, out frame); return base.TryGetLatestFrame(after, out frame); }
         public override bool TryAcquireSourceCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease) { if (android != null) return android.TryAcquireSourceCopyLease(in frame, out lease); return base.TryAcquireSourceCopyLease(in frame, out lease); }
+
+        /// <summary>Configure the qualified Android 512×288 output for the next Open; zero keeps the preview-only path.</summary>
+        internal void ConfigureAnalysisOutput(Vector2Int size)
+        {
+            if (!UsesAndroidSource) return;
+            CheckThread();
+            if (size != Vector2Int.zero && size != new Vector2Int(512, 288))
+                throw new ArgumentOutOfRangeException(nameof(size), "Separate Android analysis output requires 512×288.");
+            analysisOutputSize = size;
+        }
+
+        internal Vector2Int DecodedInputSize => android is AndroidSource hardware ? hardware.DecodedInputSize : Vector2Int.zero;
+
+        internal bool HasSeparateAnalysis => android is AndroidSource split && split.HasSeparateAnalysis;
+
+        internal bool TryGetLatestAnalysisFrame(long after, out HumanVisionTextureFrame frame)
+        {
+            frame = default;
+            return android is AndroidSource split && split.TryGetLatestAnalysisFrame(after, out frame);
+        }
+
+        internal bool TryAcquireAnalysisCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease)
+        {
+            lease = default;
+            return android is AndroidSource split && split.TryAcquireAnalysisCopyLease(in frame, out lease);
+        }
+
+        /// <summary>Notify the input scheduler that the consumer queued the analysis frame successfully.</summary>
+        internal bool AcknowledgeAnalysisFrame(in HumanVisionTextureFrame frame) =>
+            android is AndroidSource split && split.AcknowledgeAnalysisFrame(in frame);
+
         internal IntPtr AndroidHandle => android == null ? IntPtr.Zero : android.Handle;
         private IntPtr handle, rgba;
         private uint capacity;
@@ -128,6 +166,7 @@ namespace HumanVision.Input
                         RequestedFramesPerSecond = settings.RequestedFramesPerSecond, DisplayMirror = settings.DisplayMirror,
                         Transport = RtspTransport.Tcp, OpenTimeoutMs = timeout, ReconnectDelayMs = delay
                     };
+                    androidOpenAnalysisSize = analysisOutputSize;
                     androidTimeout = timeout; androidDelay = delay; androidOpenRequested = true;
                     OpenAndroidWhenReady();
                 } catch (Exception ex) {
@@ -169,6 +208,7 @@ namespace HumanVision.Input
                 if (androidSuspended || android.Pending) { State = InputSourceState.Closing; LastError = string.Empty; return; }
                 // Consume before the call: errors must never turn into an implicit retry.
                 androidOpenRequested = false;
+                if (android is AndroidSource split) split.ConfigureAnalysisOutput(androidOpenAnalysisSize);
                 android.Open(androidSettings, androidTimeout, androidDelay);
             }
             State = android.State; LastError = android.LastError;

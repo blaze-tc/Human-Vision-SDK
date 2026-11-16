@@ -16,4 +16,8 @@ RuntimeSkeletonReader.cs 展示按区域 index 读取关节，RuntimePrefabAccep
 HUD 显示游戏、输入、新识别、配对帧率、最长配对间隔、Update 取数成功次数及 SDK 各阶段耗时。
 CPU、GPU、NPU 和模型等级以平台及安装资源为准。NPU 需要 RK3588 双模式构建及本地补充包。
 
-[完整接入说明](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.0-preview.13/docs/user-guide/UNITY_RUNTIME_PREFAB.md)
+RTSP 连接启用同通道宇视码流探测，优先用 `1920×1080` 以内分辨率最高的 H.264 码流。
+仅有 4K 时仍可连接，Unity 预览等比限制在 `1920×1080` 以内。Android GPU/NPU 低档通过独立分路送入 `512×288`。
+左侧预览下方显示所选码流与解码或探测尺寸，状态行单独显示识别输入帧率。无预设时，Android 样例以 GPU 低档启动，安装匹配本地资源后可切换 RK3588 NPU。
+
+[完整接入说明](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.0-preview.14/docs/user-guide/UNITY_RUNTIME_PREFAB.md)

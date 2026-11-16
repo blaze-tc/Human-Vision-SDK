@@ -21,6 +21,11 @@ int main(){
  const uint8_t limited[]={1,0x42,0xc0,0x1e,0xff,0xe1,0,0x1b,0x67,0x42,0xc0,0x1e,0xda,0x02,0x80,0xbf,0xe5,0xc0,0x5a,0x81,0x01,0x03,0x20,0,0,3,0,0x20,0,0,6,0x41,0xe2,0xc5,0xd4,1,0,4,0x68,0xce,0x0f,0xc8};
  if(!hvinput::ParseH264Color(limited,sizeof(limited),c)||c.matrix!=1||c.range!=2||c.matrix_code!=6||c.primaries!=2||c.transfer!=2)return 1;
  auto absent=Syntax(false,0);if(!hvinput::ParseH264Color(absent.data(),absent.size(),c)||c.present||c.matrix||c.range)return 1;
+ int width=0,height=0;
+ if(!hvinput::ParseH264Geometry(sps,sizeof(sps),width,height)||width!=640||height!=360)return 1;
+ if(!hvinput::ParseH264Geometry(limited,sizeof(limited),width,height)||width!=640||height!=360)return 1;
+ if(!hvinput::ParseH264Geometry(absent.data(),absent.size(),width,height)||width!=640||height!=368)return 1;
+ if(hvinput::ParseH264Geometry(avcc,sizeof(avcc),width,height)||width||height)return 1;
  auto unsupported=Syntax(true,9);if(hvinput::ParseH264Color(unsupported.data(),unsupported.size(),c)||c.matrix||c.range)return 1;
  auto unspecified=Syntax(true,2);if(!hvinput::ParseH264Color(unspecified.data(),unspecified.size(),c)||!c.present||c.matrix||c.range!=1||c.matrix_code!=2)return 1;
  std::puts("H264 actual VUI bounded parse PASS");return 0;

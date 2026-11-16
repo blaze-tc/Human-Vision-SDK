@@ -1,10 +1,10 @@
-# Human Vision SDK 0.4.0-preview.13
+# Human Vision SDK 0.4.0-preview.14
 
-预发布评估版，依赖 Input 0.1.0-preview.6。Unity/V1 API 保持兼容。
+预发布评估版，依赖 Input 0.1.0-preview.7。Unity/V1 API 保持兼容。
 先安装 Input，再安装 SDK；UPM、tgz、unitypackage 选择一种方式。
 [安装](UPM_INSTALLATION.md) · [配置与 API](Documentation/user-guide/SDK_CONFIGURATION.md) ·
 [常驻 Runtime Prefab](Documentation/user-guide/UNITY_RUNTIME_PREFAB.md) ·
-[Settings](Documentation/user-guide/SETTINGS_DEMO.md) · [本次验证](Documentation/reports/2026-11-16-preview13-venue-overlay.md)
+[Settings](Documentation/user-guide/SETTINGS_DEMO.md) · [本次验证](Documentation/reports/2026-11-16-preview14-rtsp-streams.md)
 
 Android CPU 使用固定 512×288 YOLOv8n-pose，人数 1–8；完整 CPU 资源需要匹配本地补充包。
 Vulkan 和 RK3588 NPU 提供低、中、高档。RK3588 NPU 需要匹配的本地三档模型和运行库。

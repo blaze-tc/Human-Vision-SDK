@@ -216,14 +216,15 @@ namespace HumanVision.Demo
                     now - frame.PublishedTimestampUs < 1000000;
             }
         }
-        public void BindUnifiedSource(IHumanVisionFrameSource source) {
+        public void BindUnifiedSource(IHumanVisionFrameSource source) => BindUnifiedSource(source, Vector2Int.zero);
+        internal void BindUnifiedSource(IHumanVisionFrameSource source, Vector2Int analysisLimit) {
             if(source==null)throw new ArgumentNullException(nameof(source));
             DetachUnifiedSource();_unifiedSource=source;
             if(manager==null)manager=GetComponent<HumanVisionManager>();
             if(_inputAdapter==null){_inputAdapter=GetComponent<HumanVisionInputAdapter>();if(_inputAdapter==null)_inputAdapter=gameObject.AddComponent<HumanVisionInputAdapter>();}
             _inputAdapter.manager=manager;_unifiedPreviewLastId = -1; _unifiedPreviewCount = 0; _unifiedPreviewFps = 0; _unifiedPreviewStart = Time.unscaledTime;
             _inputAdapter.presentationBridge=CaptureRuntimeViewFrames?this:null;
-            _inputAdapter.Bind(source);_livePreview=true;
+            _inputAdapter.Bind(source,analysisLimit);_livePreview=true;
         }
         public void DetachUnifiedSource(){if(_inputAdapter!=null)_inputAdapter.Detach();_unifiedSource=null;ResetPresentation();if(CaptureRuntimeViewFrames)PresentMatchedOverlay(null);ResetRuntimeViewHistory();}
         internal bool CaptureRuntimeViewFrames { get; set; }
@@ -246,6 +247,12 @@ namespace HumanVision.Demo
             return _runtimeViewHistory!=null&&latest.SourceId==_runtimeViewSource&&latest.Generation==_runtimeViewGeneration&&
                 latest.Width==_runtimeViewWidth&&latest.Height==_runtimeViewHeight&&
                 _runtimeViewHistory.TryPresentExact(resultFrameId,out texture,out inputFrameId);
+        }
+        internal bool TryGetMatchedAnalysisInputTiming(out long inputFrameId,out long analysisPublishedUs,
+            out long analysisAcceptedUs,out long previewPublishedUs) {
+            inputFrameId=analysisPublishedUs=analysisAcceptedUs=previewPublishedUs=-1;
+            return _inputAdapter!=null&&_inputAdapter.TryGetMatchedAnalysisInputTiming(out inputFrameId,
+                out analysisPublishedUs,out analysisAcceptedUs,out previewPublishedUs);
         }
         private void ResetRuntimeViewHistory() {
             _runtimeViewHistory?.Dispose();_runtimeViewHistory=null;
@@ -453,9 +460,20 @@ namespace HumanVision.Demo
         public int SourceHeight { get; private set; }
         // Pixel joints/bounds use the accepted inference image, never the independent
         // preview texture. HD and 4K previews can share a bounded 1280x720 readback.
-        internal int ResultPixelWidth => manager != null && manager.UsesAndroidGpuFrames ? SourceWidth :
+        internal Vector2Int SubmittedAnalysisInputSize => manager != null && manager.UsesAndroidGpuFrames
+            ? _inputAdapter?.SubmittedGpuAnalysisSize ?? Vector2Int.zero
+            : new Vector2Int(_acceptedPixelWidth,_acceptedPixelHeight);
+        private Vector2Int GpuResultSize {
+            get {
+                var size = SubmittedAnalysisInputSize;
+                if (size != Vector2Int.zero) return size;
+                var splitSize = _inputAdapter?.AnalysisLimit ?? Vector2Int.zero;
+                return splitSize != Vector2Int.zero ? splitSize : new Vector2Int(SourceWidth, SourceHeight);
+            }
+        }
+        internal int ResultPixelWidth => manager != null && manager.UsesAndroidGpuFrames ? GpuResultSize.x :
             _acceptedPixelWidth > 0 ? _acceptedPixelWidth : _renderTexture != null ? _renderTexture.width : SourceWidth;
-        internal int ResultPixelHeight => manager != null && manager.UsesAndroidGpuFrames ? SourceHeight :
+        internal int ResultPixelHeight => manager != null && manager.UsesAndroidGpuFrames ? GpuResultSize.y :
             _acceptedPixelHeight > 0 ? _acceptedPixelHeight : _renderTexture != null ? _renderTexture.height : SourceHeight;
         public long ReadbackDrops { get; private set; }
         public long ReadbackErrors { get; private set; }
@@ -476,7 +494,8 @@ namespace HumanVision.Demo
         /// <summary>无分配的统计副本；completed 为回调计数，submitted 为成功送达 SDK 的计数。</summary>
         public CpuReadbackStatistics CpuReadbackStats { get {
             var value=_cpuReadbackStats;
-            value.modelReadback=_modelReadback==null?"legacy":_modelReadback.Rejected?"rejected-pixel-mismatch":_modelReadback.Qualified?"qualified-exact-rgb":"qualifying-exact-rgb";
+            if (value.modelReadback == null)
+                value.modelReadback=_modelReadback==null?"legacy":_modelReadback.Rejected?"rejected-pixel-mismatch":_modelReadback.Qualified?"qualified-exact-rgb":"qualifying-exact-rgb";
             value.comparedFrames=_modelReadback?.Compared??0;
             value.pixelWidth=ResultPixelWidth;value.pixelHeight=ResultPixelHeight;
             for(int i=0;i<_slots.Length;i++)if(_slots[i]!=null&&_slots[i].Busy)value.pending++;
@@ -574,7 +593,9 @@ namespace HumanVision.Demo
         }
         internal void InvalidateCpuInputGeneration() {
             _minimumUsableResultFrameId=_nextSubmissionFrameId;
+            _acceptedPixelWidth=_acceptedPixelHeight=0;
             if(_modelReadback!=null)_modelReadback=new ModelReadbackQualification();
+            _cpuReadbackStats.modelReadback = null;
             _cpuAdmission.Reset();
         }
         private bool SubmitExternalCpuTexture(Texture texture, long timestampUs, bool independentSnapshot = false)
@@ -602,6 +623,11 @@ namespace HumanVision.Demo
                 AllocateReadbackResources(size.x, size.y);
                 VideoLayoutChanged?.Invoke();
             }
+            // At native model size the resize oracle is RGB identity. Keep the
+            // owned sRGB source snapshot and its lease fence, and read it once.
+            bool identityModelReadback = independentSnapshot && _modelReadback != null &&
+                size.x == ExactModelReadback.Width && size.y == ExactModelReadback.Height &&
+                texture.width == size.x && texture.height == size.y;
             _acceptReadbacks = true;
             int index = FindAvailableSlot();
             if (index < 0) { ReadbackDrops++; return false; }
@@ -651,7 +677,7 @@ namespace HumanVision.Demo
             ++FullFrameReadbackRequests;
             _cpuReadbackStats.blitMeanMs=_blitSumMs/FullFrameReadbackRequests;
             try {
-                if(independentSnapshot && _modelReadback!=null && !_modelReadback.Rejected) {
+                if(!identityModelReadback && independentSnapshot && _modelReadback!=null && !_modelReadback.Rejected) {
                     EnsureModelSnapshot(slot);
                     if(SystemInfo.supportsGraphicsFence) {
                         _sourceCopyCommands.Clear();
@@ -679,6 +705,7 @@ namespace HumanVision.Demo
                 _modelReadback?.Observe(false);
                 throw;
             }
+            _cpuReadbackStats.modelReadback = identityModelReadback ? "identity-model-size-rgb" : null;
             _lastUnifiedReadback=slot.Request;LatestQueuedFrameId=slot.FrameId;
             return true;
         }
@@ -1383,6 +1410,7 @@ namespace HumanVision.Demo
             if(_sourceCopyCommands!=null){_sourceCopyCommands.Release();_sourceCopyCommands=null;}
             if(_modelReadbackMaterial!=null)DestroyOwnedTexture(_modelReadbackMaterial);
             _modelReadbackMaterial=null;_modelReadback=null;
+            _cpuReadbackStats.modelReadback = null;
             _acceptedPixelWidth=_acceptedPixelHeight=0;
         }
 
