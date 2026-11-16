@@ -1,3 +1,25 @@
+# v0.4.0-preview.13 场地预览同帧修复
+
+从包含 RK3588 三档接入的 SDK 主线发布 0.4.0-preview.13，Input 使用 0.1.0-preview.6。
+`tools/package/release-preview13-authority.json` 固定两个 UPM 包的文件、GUID 和原生库校验范围。
+由最终提交生成两个 `.tgz`、两个 `.unitypackage`、README、资产索引、源提交记录及 SHA-256 清单。
+验证先装 Input 再装 SDK，以及两个 Git UPM 子目录按同一个发布标签安装。
+
+公共 Release 发布 SDK 和 Input。Android CPU 独立 ONNX、RKNN 模型、`librknnrt.so`、
+完整本地补充包、业务录像和本地测试 APK 留在原有本地交付范围内。
+详细验证和设备边界见[本轮报告](../reports/2026-11-16-preview13-venue-overlay.md)。
+
+```powershell
+py -3.13 tools/package/package_release_snapshot.py --authority tools/package/release-preview13-authority.json --verify-only
+py -3.13 tools/package/test_package_release_snapshot.py
+py -3.13 tools/maintenance/check_architecture_boundaries.py
+py -3.13 tools/maintenance/generate_component_catalog.py --check
+py -3.13 tools/test/verify_upm_git_newlines.py
+py -3.13 tools/package/package_release_snapshot.py --authority tools/package/release-preview13-authority.json --output out/releases/v0.4.0-preview.13-final
+```
+
+核对远端主线后快进，使用 annotated tag 指向最终提交。在 draft prerelease 上传并下载核验八个附件的 SHA-256，再发布。
+
 # v0.4.0-preview.8 发布
 
 用户于 2026-10-14 明确要求核验后合并 main、发布 GitHub Release 并完善文档。

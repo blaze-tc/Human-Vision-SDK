@@ -225,7 +225,7 @@ namespace HumanVision.Demo
             _inputAdapter.presentationBridge=CaptureRuntimeViewFrames?this:null;
             _inputAdapter.Bind(source);_livePreview=true;
         }
-        public void DetachUnifiedSource(){if(_inputAdapter!=null)_inputAdapter.Detach();_unifiedSource=null;ResetPresentation();ResetRuntimeViewHistory();}
+        public void DetachUnifiedSource(){if(_inputAdapter!=null)_inputAdapter.Detach();_unifiedSource=null;ResetPresentation();if(CaptureRuntimeViewFrames)PresentMatchedOverlay(null);ResetRuntimeViewHistory();}
         internal bool CaptureRuntimeViewFrames { get; set; }
         private PresentationTextureHistory _runtimeViewHistory;
         private ulong _runtimeViewSource, _runtimeViewGeneration;
@@ -250,6 +250,53 @@ namespace HumanVision.Demo
         private void ResetRuntimeViewHistory() {
             _runtimeViewHistory?.Dispose();_runtimeViewHistory=null;
         }
+        private HumanVisionOverlay _previewOverlay;
+        private Texture _matchedPreviewTexture;
+        private long _matchedPreviewInputFrame = -1, _matchedPreviewResultFrame = -1, _matchedPreviewSequence = -1;
+        private double _matchedPreviewAgeMs, _matchedPreviewSelectedAt;
+        private HumanVisionSdk MatchedPreviewOwner {
+            get {
+                var owner = HumanVisionRuntimeView.Instance?.Sdk;
+                return owner != null && owner.FrameBridge == this ? owner : null;
+            }
+        }
+        private bool RequiresMatchedOverlay => CaptureRuntimeViewFrames && targetDisplay != null &&
+            _previewOverlay != null && _previewOverlay.isActiveAndEnabled;
+
+        internal void RegisterPreviewOverlay(HumanVisionOverlay overlay) {
+            if (CaptureRuntimeViewFrames) _previewOverlay = overlay;
+        }
+
+        internal void UnregisterPreviewOverlay(HumanVisionOverlay overlay) {
+            if (_previewOverlay == overlay) _previewOverlay = null;
+        }
+
+        internal bool CanDrawPreviewOverlay(long resultFrameId) => CanPresentResult(resultFrameId) &&
+            (!RequiresMatchedOverlay || (_matchedPreviewTexture != null && resultFrameId == _matchedPreviewResultFrame &&
+                targetDisplay.texture == _matchedPreviewTexture && manager.ResultSequence == _matchedPreviewSequence));
+
+        private void PresentMatchedOverlay(Texture liveTexture) {
+            Texture matchedTexture = null;
+            long inputFrame = -1, resultFrame = -1, sequence = -1;
+            if (liveTexture != null && RequiresMatchedOverlay) {
+                var owner = MatchedPreviewOwner;
+                if (owner != null && CanPresentResult(owner.SourceFrameId) &&
+                    owner.TryGetRuntimeViewResult(out _, out matchedTexture, out inputFrame)) {
+                    resultFrame = owner.SourceFrameId;
+                    sequence = owner.ResultSequence;
+                    _matchedPreviewAgeMs = owner.ResultAgeMilliseconds;
+                    _matchedPreviewSelectedAt = Time.realtimeSinceStartupAsDouble;
+                }
+            }
+            bool changed = sequence != _matchedPreviewSequence || inputFrame != _matchedPreviewInputFrame ||
+                resultFrame != _matchedPreviewResultFrame || matchedTexture != _matchedPreviewTexture;
+            _matchedPreviewTexture = matchedTexture;
+            _matchedPreviewInputFrame = inputFrame;
+            _matchedPreviewResultFrame = resultFrame;
+            _matchedPreviewSequence = sequence;
+            SetPreviewTexture(matchedTexture != null ? matchedTexture : liveTexture);
+            if (changed) PresentationFrameChanged?.Invoke();
+        }
         private PresentationTextureHistory _displayHistory;
         private readonly PresentationPoseHistory _displayPoses=new PresentationPoseHistory();
         private ulong _displaySource, _displayGeneration;
@@ -266,15 +313,17 @@ namespace HumanVision.Demo
         }
         public PresentationStatistics PresentationStats=>new PresentationStatistics {
             inputFrame=_unifiedPreviewLastId,submittedFrame=LatestSubmittedFrameId,resultFrame=manager!=null?manager.SourceFrameId:-1,
-            displayFrame=PresentationFrameId,poseBeforeFrame=_displayPoses.BeforeFrame,poseAfterFrame=_displayPoses.AfterFrame,
-            delayMs=_displayHistory?.TimestampUs>0?Time.realtimeSinceStartupAsDouble*1000-_displayHistory.TimestampUs/1000d:0,
-            mode=UsesPresentationTimeline?_displayPoses.Mode:"live-latest"
+            displayFrame=PresentationFrameId,
+            poseBeforeFrame=_matchedPreviewTexture!=null?_matchedPreviewResultFrame:_displayPoses.BeforeFrame,
+            poseAfterFrame=_matchedPreviewTexture!=null?_matchedPreviewResultFrame:_displayPoses.AfterFrame,
+            delayMs=_matchedPreviewTexture!=null?_matchedPreviewAgeMs+(Time.realtimeSinceStartupAsDouble-_matchedPreviewSelectedAt)*1000:
+                _displayHistory?.TimestampUs>0?Time.realtimeSinceStartupAsDouble*1000-_displayHistory.TimestampUs/1000d:0,
+            mode=_matchedPreviewTexture!=null?"matched":UsesPresentationTimeline?_displayPoses.Mode:"live-latest"
         };
         private void ResetPresentation(){_displayHistory?.Dispose();_displayHistory=null;_displayPoses.Reset();_displaySource=_displayGeneration=0;_displaySequence=-1;_displayDelayMs=120;}
         private void PresentUnifiedTimeline(Texture texture) {
             // The persistent view presents strict source pairs; no second
             // adaptive/interpolated presentation history is needed on its host.
-            if(CaptureRuntimeViewFrames) { PresentLiveTexture(texture); return; }
             if(!SystemInfo.supportsGraphicsFence||string.Equals(Environment.GetEnvironmentVariable("HV_PRESENTATION_MODE"),"live",StringComparison.Ordinal)) {PresentLiveTexture(texture);return;}
             if(!_unifiedSource.TryGetLatestFrame(-1,out var frame))return;
             if(_displaySource!=frame.SourceId||_displayGeneration!=frame.Generation||_displayWidth!=frame.Width||_displayHeight!=frame.Height){
@@ -309,7 +358,13 @@ namespace HumanVision.Demo
 
             if(_unifiedSource==null)return;
             var texture=_unifiedSource.CurrentTexture;
-            if(texture!=null){if(SourceWidth!=texture.width||SourceHeight!=texture.height){SourceWidth=texture.width;SourceHeight=texture.height;VideoLayoutChanged?.Invoke();}PresentUnifiedTimeline(texture);}
+            if(texture!=null && (SourceWidth!=texture.width||SourceHeight!=texture.height)){
+                SourceWidth=texture.width;SourceHeight=texture.height;VideoLayoutChanged?.Invoke();
+            }
+            // Reuse the persistent view's exact snapshots for a bound overlay.
+            // Live preview remains available while no matching result is ready.
+            if (CaptureRuntimeViewFrames) PresentMatchedOverlay(texture);
+            else if (texture != null) PresentUnifiedTimeline(texture);
             LastError=!string.IsNullOrEmpty(_unifiedSource.LastError)?_unifiedSource.LastError:_inputAdapter.LastError;
         }
 
@@ -382,8 +437,13 @@ namespace HumanVision.Demo
         private void PresentLiveTexture(Texture texture)
         {
             _liveTexture = texture;
-            if (targetDisplay != null) { targetDisplay.texture = texture; targetDisplay.color = Color.white; }
-            if (aspectRatioFitter != null) aspectRatioFitter.aspectRatio = (float)texture.width / texture.height;
+            if (!RequiresMatchedOverlay) SetPreviewTexture(texture);
+        }
+
+        private void SetPreviewTexture(Texture texture)
+        {
+            if (targetDisplay != null) { targetDisplay.texture = texture; targetDisplay.color = texture == null ? Color.black : Color.white; }
+            if (texture != null && aspectRatioFitter != null) aspectRatioFitter.aspectRatio = (float)texture.width / texture.height;
         }
 
         public event Action VideoLayoutChanged;
@@ -434,8 +494,10 @@ namespace HumanVision.Demo
         public double VideoFrameRate => _unifiedSource != null ? _unifiedPreviewFps : !IsStillImage && _videoPlayer != null ? _videoPlayer.frameRate : 0d;
         public int PresentationDelayFrames => presentationDelayFrames;
         public long LatestSubmittedFrameId => _unifiedSource!=null&&_inputAdapter!=null?_inputAdapter.LatestSubmittedFrameId:_latestSubmittedFrameId;
-        public long PresentationFrameId => UsesPresentationTimeline ? _displayHistory.FrameId : _unifiedSource != null && _inputAdapter != null ? _inputAdapter.LatestPreviewFrameId : _presentationFrameId;
-        public Texture PresentationTexture => UsesPresentationTimeline ? _displayHistory.Texture : _unifiedSource!=null?_unifiedSource.CurrentTexture:_livePreview ? _liveTexture : (targetDisplay != null ? targetDisplay.texture : _renderTexture);
+        public long PresentationFrameId => _matchedPreviewTexture != null ? _matchedPreviewInputFrame :
+            UsesPresentationTimeline ? _displayHistory.FrameId : _unifiedSource != null && _inputAdapter != null ? _inputAdapter.LatestPreviewFrameId : _presentationFrameId;
+        public Texture PresentationTexture => _matchedPreviewTexture != null ? _matchedPreviewTexture :
+            UsesPresentationTimeline ? _displayHistory.Texture : _unifiedSource!=null?_unifiedSource.CurrentTexture:_livePreview ? _liveTexture : (targetDisplay != null ? targetDisplay.texture : _renderTexture);
 
         public void StopFrames() { DetachUnifiedSource();if(_ownedUnifiedVideo!=null)_ownedUnifiedVideo.Close();StopCurrentVideo(); _liveTexture = null; _livePendingFrameId = -1; _nextLiveSubmitTime = 0; }
 

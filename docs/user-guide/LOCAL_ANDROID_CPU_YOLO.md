@@ -1,21 +1,14 @@
 # 本地 Android CPU / GPU / NPU 部署
 
-## 2026-11-11 RK3588 NPU 三档本地包
+## preview.13 RK3588 NPU 三档本地包
 
-从 GitHub 安装包含三档适配的 Git UPM 版本时，导入本地的
-`RK3588-NPU-Three-Qualities-Resources.unitypackage`，再执行
-**HumanVision → Enable Local Android NPU Qualities**。从 Package Manager 的 SDK Samples 导入
-**Runtime Prefab Acceptance**。此安装方式使用 Git UPM 提供的 SDK 和 Input。
+从 preview.13 安装两个 Git UPM 子目录后，导入匹配的本地 `RK3588-NPU-Three-Qualities-Resources.unitypackage`，
+执行 **HumanVision → Enable Local Android NPU Qualities**。已有三档安装可保留项目中的本地资源和运行库。
+离线安装使用与主包及 Assets 布局配套的本地补充包，保持 SDK、Input 与原生库各一份。
 
-使用 Assets 离线安装时，按以下顺序导入两个包。
-
-先导入 HumanVision Input 0.1.0-preview.6，再导入
-`HumanVisionSDK-RK3588-NPU-Three-Qualities-Local.unitypackage`。
-在 Unity 执行 **HumanVision → Enable Local Android NPU Qualities**。
-在 SDK Settings 选择 **RK3588 NPU**，再选低档 512×288、中档 640×384或高档 960×576并应用。
-代码接入使用 `HumanVisionAccelerationMode.Neural` 和相应的 `ModelInputQuality`。
-三档均使用非量化 RKNN，结果包含人体骨骼，独立手部模型关闭。
-性能与驱动兼容性由 RK3588 真机验收。
+在 SDK Settings 选择 **RK3588 NPU**，再选低档 512×288、中档 640×384 或高档 960×576 并应用。
+代码使用 `HumanVisionAccelerationMode.Neural` 与相应的 `ModelInputQuality`。
+三档使用非量化 RKNN，独立手部模型关闭，持续识别性能和动作响应由 RK3588 设备验收。
 
 ## Preview.12 原本地资源包
 

@@ -1,6 +1,6 @@
 # Human Vision SDK 安装与接入
 
-SDK **0.4.0-preview.12** / Input **0.1.0-preview.6**，Unity **2021.3+**，Windows x64 / Android ARM64。
+SDK **0.4.0-preview.13** / Input **0.1.0-preview.6**，Unity **2021.3+**，Windows x64 / Android ARM64。
 官方 Samples 包含 **SDK Settings** 和 **Runtime Prefab Acceptance**。源码和两个 Git UPM 子目录位于同一个 GitHub 仓库。
 
 ## 安装顺序
@@ -13,37 +13,28 @@ SDK 负责推理、骨骼、跟踪、人数与区域。选择 Git UPM、tgz 或 
 Git：Window → Package Manager → + → Add package from git URL，依次添加：
 
 ```text
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.12
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.12
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.13
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.13
 ```
 
 必须显式添加两个 Git 子目录；SDK 的版本依赖不能自动发现另一个 Git 包。
 两包使用同一个发布标签；Input 的实际包版本仍为 0.1.0-preview.6。
 
 离线：先导入 `HumanVisionInput-0.1.0-preview.6.unitypackage`，再导入
-`HumanVisionSDK-0.4.0-preview.12.unitypackage`。每步等待导入与编译完成。
+`HumanVisionSDK-0.4.0-preview.13.unitypackage`。每步等待导入与编译完成。
 离线包将随附资源导入 `Assets/HumanVision/RuntimeData`。Unity 会自动更新运行目录，保留通过校验的本地 Android 资源及其索引。也可通过 **HumanVision → Install Packaged Models** 手动重试。
 UPM tarball：依次安装 `com.blazetc.humanvision.input-0.1.0-preview.6.tgz` 和
-`com.blazetc.humanvision-0.4.0-preview.12.tgz`。用附件 `SHA256SUMS.txt` 校验下载内容。
+`com.blazetc.humanvision-0.4.0-preview.13.tgz`。用附件 `SHA256SUMS.txt` 校验下载内容。
 
 ## Android 完整 CPU / NPU 资源
 
-GitHub `main` 提供 RK3588 NPU 低、中、高三档的 SDK 接入。需要这三档时，从同一提交安装
-两个 Git UPM 子目录（将上面的发布标签换成对应提交 SHA），在 Package Manager 中导入
-**Runtime Prefab Acceptance**，再导入本地 `RK3588-NPU-Three-Qualities-Resources.unitypackage`，
-执行 **HumanVision → Enable Local Android NPU Qualities**。本地包内包含三档 RKNN 模型和
-`librknnrt.so`。SDK 本身的 `libhumanvision.so` 随 Git UPM 包提供。
+preview.13 的 SDK 支持 RK3588 NPU 低、中、高三档。已安装本地三档资源的项目升级时，保留项目中的资源文件、运行库和构建设置。
+新接入 Git UPM 项目时，安装上述两个子目录，再导入匹配的本地 `RK3588-NPU-Three-Qualities-Resources.unitypackage`，执行 **HumanVision → Enable Local Android NPU Qualities**。
+使用离线包的项目可使用与主包和安装布局配套的本地资源。若仍在使用 preview.12 的独立 CPU/NPU 补充包，按该版本的配套说明安装。
+详细步骤见[本地 Android 资源部署](user-guide/LOCAL_ANDROID_CPU_YOLO.md)。
 
-使用原 Preview.12 发布附件时，按以下步骤启用原本地资源。
-
-公共包提供 SDK、Input、Windows 原生依赖和原 Android Vulkan 资源。
-**Android CPU YOLO ONNX、RKNN 模型和 librknnrt.so 不在公共附件中。**
-本地完整测试需要继续导入匹配的
-`HumanVision-LocalAndroidCpuResources-0.4.0-preview.12.unitypackage`，然后执行
-**HumanVision → Enable Local Android CPU Resources**。工具验证 52 项 Runtime 与原生库哈希。
-详细步骤及导出工具见[本地资源部署](user-guide/LOCAL_ANDROID_CPU_YOLO.md)。
-该补充包、含完整资源的 APK 和用户视频保存在本地测试交付目录，不作为公共 Release 附件。
-缺少资源时初始化明确失败；选择 CPU/GPU/NPU 不代表对应资源自动下载或设备已经支持。
+公共包提供 SDK、Input、原生依赖和 Android Vulkan 模型。Android CPU 独立 YOLO ONNX、RKNN 模型和 `librknnrt.so` 通过匹配的本地补充包提供。
+带完整本地模型的测试 APK、补充包和用户视频保存在本地交付目录。缺少所选模式的资源时，SDK 会报告初始化错误。
 
 Android：ARM64、IL2CPP、API 26+；Vulkan 模式需要兼容的 GPU。RK3588 NPU 需要匹配设备和驱动。
 Android 的 GPU、CPU 和 RK3588 NPU 路径均使用 YOLOv8n-pose，并共用本版 Input 的 RTSP 解码和纹理发布优化。要在同一应用切换 GPU 与 NPU，请使用 `android-dual-vulkan-npu` 构建并导入配套的本地资源。
@@ -68,4 +59,4 @@ Native 后端、SDK 新识别 FPS 和骨骼同帧 FPS。在 Editor 可通过验�
 
 ## 验证记录
 
-Editor 和 OnePlus 9 Pro 的本次验证见[开发状态](DEVELOPMENT_STATUS.md)。区域坐标来自画面平面，RK3588 NPU 的设备表现单独验收。
+Windows Editor 已用 RTSP 验证场地预览的同帧叠画。RK3588 的持续识别性能和动作响应仍需设备验收。见[验证记录](reports/2026-11-16-preview13-venue-overlay.md)。

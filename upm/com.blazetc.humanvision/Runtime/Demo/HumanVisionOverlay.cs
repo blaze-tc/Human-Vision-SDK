@@ -90,7 +90,7 @@ namespace HumanVision.Demo
             if (manager == null || frameSource == null ||
                 frameSource.SourceWidth <= 0 || frameSource.SourceHeight <= 0 ||
                 frameSource.DisplayBodyCount <= 0 || frameSource.DisplayBodies == null ||
-                !frameSource.CanPresentResult(manager.SourceFrameId))
+                !frameSource.CanDrawPreviewOverlay(manager.SourceFrameId))
             {
                 return;
             }
@@ -283,6 +283,7 @@ namespace HumanVision.Demo
 
             if (frameSource != null)
             {
+                frameSource.RegisterPreviewOverlay(this);
                 frameSource.VideoLayoutChanged -= OnVideoLayoutChanged;
                 frameSource.VideoLayoutChanged += OnVideoLayoutChanged;
                 frameSource.PresentationFrameChanged -= OnPresentationFrameChanged;
@@ -299,6 +300,7 @@ namespace HumanVision.Demo
 
             if (frameSource != null)
             {
+                frameSource.UnregisterPreviewOverlay(this);
                 frameSource.VideoLayoutChanged -= OnVideoLayoutChanged;
                 frameSource.PresentationFrameChanged -= OnPresentationFrameChanged;
             }
@@ -316,10 +318,11 @@ namespace HumanVision.Demo
 
         private void OnPresentationFrameChanged()
         {
+            if (!isActiveAndEnabled) return;
             if (manager == null || frameSource == null ||
-                !frameSource.CanPresentResult(manager.SourceFrameId))
+                !frameSource.CanDrawPreviewOverlay(manager.SourceFrameId))
             {
-                canvasRenderer.Clear();
+                if (TryGetComponent<CanvasRenderer>(out var renderer)) renderer.Clear();
                 // Clear removes materials as well as geometry. Restore them in the
                 // next UI rebuild, otherwise later valid skeleton meshes stay invisible.
                 SetMaterialDirty();

@@ -1,10 +1,13 @@
 using System.Collections;
 using System.IO;
+using System.Reflection;
+using HumanVision.Demo;
 using HumanVision.Input;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using UnityEngine.UI;
 
 namespace HumanVision.Tests
 {
@@ -109,6 +112,7 @@ namespace HumanVision.Tests
                 Assert.GreaterOrEqual(pairs, 25);
                 Assert.True(view.TryGetFrame(out var beforeRestart));
                 Debug.Log($"HV_RUNTIME_VIEW_RTSP verified {pairs}/{accepted} matched/accepted results; resolution={beforeRestart.ColorTexture.width}x{beforeRestart.ColorTexture.height}, last input={beforeRestart.InputFrameId}, native={beforeRestart.SourceFrameId}.");
+                yield return VerifySettingsOverlay(view);
 
                 yield return sdk.StopSdk();
                 Assert.False(view.TryGetFrame(out _));
@@ -128,6 +132,86 @@ namespace HumanVision.Tests
             } finally {
                 Object.Destroy(probe);
                 if (view != null) Object.Destroy(view.gameObject);
+            }
+        }
+
+        private static IEnumerator VerifySettingsOverlay(HumanVisionRuntimeView view)
+        {
+            var sdk = view.Sdk;
+            var canvas = new GameObject("Settings preview test canvas", typeof(Canvas));
+            var previewObject = new GameObject("Settings video", typeof(RawImage), typeof(AspectRatioFitter));
+            previewObject.transform.SetParent(canvas.transform, false);
+            var preview = previewObject.GetComponent<RawImage>();
+            var fitter = previewObject.GetComponent<AspectRatioFitter>();
+            var overlayObject = new GameObject("Settings skeleton overlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(HumanVisionOverlay));
+            overlayObject.transform.SetParent(previewObject.transform, false);
+            var overlay = overlayObject.GetComponent<HumanVisionOverlay>();
+
+            System.Action<HumanVisionPresentedFrame> observePair = null;
+            VideoPlayerFrameSource bridge = null;
+            try {
+                // Borrow the already running SDK using the same bindings as Settings.
+                var bridgeProperty = typeof(HumanVisionSdk).GetProperty("FrameBridge", BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(bridgeProperty);
+                bridge = (VideoPlayerFrameSource)bridgeProperty.GetValue(sdk);
+                Assert.NotNull(bridge);
+                var manager = bridge.GetComponent<HumanVisionManager>();
+                Assert.NotNull(manager);
+                bridge.Configure(manager, preview, fitter);
+                overlay.Configure(manager, bridge);
+                overlay.ConfigureStyle(9, 27);
+
+                var populateOverlay = typeof(HumanVisionOverlay).GetMethod("OnPopulateMesh",
+                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+                Assert.NotNull(populateOverlay);
+                int observedPairs = 0;
+                int allPairs = 0;
+                string mismatch = null;
+                observePair = pair => {
+                    allPairs++;
+                    if (pair.BodyCount == 0 || observedPairs >= 3 || mismatch != null) return;
+                    if (!overlay.enabled) {
+                        if (preview.texture != view.GetLiveTexture())
+                            mismatch = "The hidden skeleton overlay did not restore the live image.";
+                    } else if (preview.texture != pair.ColorTexture) {
+                        mismatch = "The enabled Settings skeleton overlay must display the same source texture as its pose.";
+                    } else if (manager.SourceFrameId != pair.SourceFrameId || manager.ResultSequence != pair.ResultSequence) {
+                        mismatch = "The Settings overlay's current body data must match the presented result identity.";
+                    } else if (bridge.PresentationFrameId != pair.InputFrameId ||
+                               bridge.PresentationStats.poseBeforeFrame != pair.SourceFrameId) {
+                        mismatch = "Settings diagnostics must identify the displayed image and its exact pose.";
+                    } else {
+                        using (var vertices = new VertexHelper()) {
+                            populateOverlay.Invoke(overlay, new object[] { vertices });
+                            if (vertices.currentVertCount == 0)
+                                mismatch = "A matched visible body must produce Settings overlay geometry.";
+                        }
+                    }
+                    observedPairs++;
+                };
+                view.FramePresented += observePair;
+
+                foreach (bool showSkeleton in new[] { true, false, true }) {
+                    overlay.enabled = showSkeleton;
+                    observedPairs = allPairs = 0;
+                    double deadline = Time.realtimeSinceStartupAsDouble + 35;
+                    while (observedPairs < 3 && mismatch == null && Time.realtimeSinceStartupAsDouble < deadline) {
+                        // Settings writes the live image during Update before the bridge selects its final presentation.
+                        preview.texture = view.GetLiveTexture();
+                        yield return null;
+                    }
+
+                    Assert.IsNull(mismatch);
+                    Assert.AreEqual(3, observedPairs,
+                        $"Expected visible RTSP pairs with skeleton enabled={showSkeleton}. All pairs: {allPairs}, " +
+                        $"input {sdk.InputPublicationFps:F1}, results {sdk.FreshResultFps:F1}, bodies {manager.BodyCount}. {sdk.LastError} {bridge.LastError}");
+                }
+                Debug.Log("HV_RTSP_SETTINGS_OVERLAY verified 6 matched overlays with geometry and 3 live previews with skeleton hidden.");
+            } finally {
+                view.FramePresented -= observePair;
+                overlay.Configure(null, null);
+                if (bridge != null) bridge.Configure(bridge.GetComponent<HumanVisionManager>(), null, null);
+                Object.Destroy(canvas);
             }
         }
 

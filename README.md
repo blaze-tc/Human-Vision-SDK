@@ -1,24 +1,24 @@
 # Human Vision SDK
 
-当前版本：SDK **0.4.0-preview.12** / Input **0.1.0-preview.6**，Unity **2021.3+**。
+当前版本：SDK **0.4.0-preview.13** / Input **0.1.0-preview.6**，Unity **2021.3+**。
 这是预发布评估版。Unity 游戏通过稳定 API 使用 Camera、RTSP、Video 图像，读取人体、
 骨骼、人数和区域结果；默认配置使用 ScriptableObject，输入地址可在初始化代码中传入。
 
-[下载 preview.12](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.12) ·
+[下载 preview.13](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.13) ·
 [安装](docs/UPM_INSTALLATION.md) · [配置与 API](docs/user-guide/SDK_CONFIGURATION.md) ·
-[中文文档](docs/user-guide/README.md) · [本次验证与录屏](docs/reports/2026-11-08-preview12-windows-yolo.md)
+[中文文档](docs/user-guide/README.md) · [本次验证](docs/reports/2026-11-16-preview13-venue-overlay.md)
 
 ## 安装
 
 先安装 Input，再安装 SDK。Git UPM、tgz 和 unitypackage 选择一种安装方式，避免重复组件和原生库。
 
 ```text
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.12
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.12
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.13
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.13
 ```
 
 离线顺序：`HumanVisionInput-0.1.0-preview.6.unitypackage` →
-`HumanVisionSDK-0.4.0-preview.12.unitypackage`。两个 tgz 为等价的 UPM 安装方式。
+`HumanVisionSDK-0.4.0-preview.13.unitypackage`。两个 tgz 为等价的 UPM 安装方式。
 附件提供 `SHA256SUMS.txt`、资产索引和源提交记录。
 
 **Android YOLO CPU 与 RK3588 NPU 的完整资源仍使用匹配的本地补充包**，安装方法见
@@ -44,7 +44,7 @@ Runtime Prefab 样例展示实时预览、同帧图像与骨骼以及游戏在 U
 | --- | --- |
 | Android CPU | YOLOv8n-pose FP32，512×288，1–8 人；需要本地补充包 |
 | Android GPU / Vulkan | YOLOv8n-pose：低 512×288、中 640×384、高 960×576 |
-| RK3588 NPU | 保留原低档 512×288 模型与驱动；需要完整本地补充包和设备支持 |
+| RK3588 NPU | 低 512×288、中 640×384、高 960×576，需要匹配的本地模型、运行库和设备支持 |
 | Windows CPU / DirectML | YOLOv8n-pose，低 512×288、中 640×384、高 960×576 |
 
 Android CPU 界面“固定模型”表示目前只提供一个模型输入档位，人数仍可调整。
@@ -52,7 +52,7 @@ Android CPU 界面“固定模型”表示目前只提供一个模型输入档�
 
 ## 本次验证
 
-Windows 六档组合和 OnePlus 9 Pro 均以 DancingTest 验证实际模型与同帧读取。数据和录屏见[验证报告](docs/reports/2026-11-08-preview12-windows-yolo.md)。RK3588 NPU 的帧率与热机效果由设备验收。
+常驻 Runtime Prefab 的场地设置预览在开启骨骼时显示该次识别对应的图像，关闭骨骼或等待有效配对时显示实时画面。Windows 同源 RTSP 对照见[验证报告](docs/reports/2026-11-16-preview13-venue-overlay.md)。RK3588 的持续识别性能和动作响应仍需设备验收。
 
 世界坐标为图像到世界平面的映射；当前随包姿态模型未启用真实手掌/指尖/拇指推理。
 保留模型来源、上游许可证和评估/分发资格标记；本次发布没有授予新的模型商用许可。

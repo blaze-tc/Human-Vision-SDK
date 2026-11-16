@@ -1,3 +1,31 @@
+## 2026-11-16 preview.13 发布验证
+
+基于 `e88dbdd` 的 RK3588 三档接入发布场地预览同帧修复。SDK `0.4.0-preview.13`，Input `0.1.0-preview.6` 字节保持一致。公开包沿用配套本地资源的分发范围。场地预览和业务动作是两条调用路径，跨栏王的跳跃和冲刺需独立复测。
+
+- `py -3.13 tools/package/package_release_snapshot.py --authority tools/package/release-preview13-authority.json --verify-only` 校验通过。672 个文件、364 个 GUID、8 个 Android SO、9 个 Windows DLL、32 个公共 Runtime 索引文件。离线包有 360 个文件或目录资产。
+- `py -3.13 tools/package/test_package_release_snapshot.py` 15/15。架构边界、公共接口、组件目录核对与 `tools/test/verify_upm_git_newlines.py` 通过。
+- Windows `humanvision_native_tests --gtest_filter=YoloTensorPipeline.*:RknnBackend.*:RknnLibrary.*:YoloRgbPreprocess.*:YoloCpuPipeline.*` 56/56。全量执行 375 项，344 通过，31 项因本地历史黄金数据或模型缺失失败。原生代码与 `e88dbdd` 一致，保留失败记录。
+- RKNN 转换、模拟器门槛、stage、folded 与 NCNN recovery 五组 Python 测试 22/22。使用 Unity 2021.3.45f1 Roslyn 及 Android Bee 引用编译 SDK 的 UPM 和 Demo 两套源码，均无诊断。
+- Windows RTSP 同帧回归沿用 11 月 13 日原始证据。11 月 16 日独立 Unity 2021.3.45f1 批处理遇到 Editor 许可证错误。目标设备上最终发布包的时延、持续帧率和游戏动作验收待完成。[场地修复与之前的对照](reports/2026-11-16-preview13-venue-overlay.md)
+
+## 2026-11-13 常驻 SDK 场地预览同帧修复
+
+场地页借用 Runtime Prefab 时，骨骼开启使用该识别结果对应的原图，
+关闭骨骼或暂无可用配对时显示实时预览。共享帧桥复用现有快照，
+骨骼层以实际显示纹理及结果帧号、序号验证配对。
+
+- Unity 2021.3.45f1 Windows 批处理 `-runTests -testPlatform PlayMode -testFilter HumanVision.Tests.HumanVisionRuntimeViewTests`，
+  输入为本机 DancingTest RTSP。旧版在设置页绑定上复现错帧，修复后 2/2。
+  验证 25/25 个 Prefab 配对结果、6 个带几何的同帧设置页结果、关闭骨骼时的
+  3 个实时预览样本，以及停启后的来源隔离。
+- UnitySkills 8090 EditMode `HumanVision.Tests.HumanVisionSettingsDemoTests` 28/28、
+  `HumanVision.Tests.InputAdapterTests` 25/25、
+  `HumanVision.Tests.PresentationPoseHistoryTests` 4/4。使用测试工程 Bee Android 响应文件，
+  通过 Unity 自带 Roslyn 编译 `HumanVision.Demo.dll`。
+- `py -3.13 tools/maintenance/check_architecture_boundaries.py` 与
+  `py -3.13 tools/maintenance/generate_component_catalog.py --check` 均通过。
+  本次未修改业务项目，RK3588 上的叠画验收和端到端响应时间待测。
+
 ## 2026-11-11 RK3588 NPU 三档本地接入
 
 Android RK3588 NPU 接入低档 512×288、中档 640×384、高档 960×576。
