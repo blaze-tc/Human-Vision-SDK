@@ -1,5 +1,9 @@
 # 本地 Android CPU / GPU / NPU 部署
 
+## preview.15 RK3588 NPU 三档本地资源
+
+先使用 Git 标签 `v0.4.0-preview.15` 安装 Input `0.1.0-preview.8` 和 SDK `0.4.0-preview.15`。导入对应的 `RK3588-NPU-Three-Qualities-Resources-preview.15.unitypackage` 后，运行 **HumanVision → Enable Local Android NPU Qualities**，核对实际加载的原生库和模型。
+
 ## preview.14 RK3588 NPU 三档本地资源
 
 先安装 Git 标签 `v0.4.0-preview.14` 对应的 Input `0.1.0-preview.7` 与 SDK `0.4.0-preview.14`。导入匹配新版 Input 原生库的 `RK3588-NPU-Three-Qualities-Resources-preview.14.unitypackage`，运行 **HumanVision → Enable Local Android NPU Qualities**。保留项目的预设、运行配置和已校验的模型资源。确认工程只有一份有效的 Input、SDK 和 `librknnrt.so`。

@@ -1,3 +1,20 @@
+# v0.4.0-preview.15 RTSP 同帧画面与槽位跟踪
+
+SDK `0.4.0-preview.15` 和 Input `0.1.0-preview.8` 使用同一 Git 标签。先安装 Input，再安装 SDK。Android RK3588 使用匹配的本地资源包。
+
+```powershell
+pwsh -NoProfile -File tools/package/build_input_native.ps1 -Platform Android -ApiLevel 26 -RunTests
+py -3.13 tools/package/check_input_package.py --root upm/com.blazetc.humanvision.input
+py -3.13 tools/package/package_release_snapshot.py --authority tools/package/release-preview15-authority.json --verify-only
+py -3.13 tools/package/test_package_release_snapshot.py
+py -3.13 tools/maintenance/check_architecture_boundaries.py
+py -3.13 tools/maintenance/generate_component_catalog.py --check
+py -3.13 tools/test/verify_upm_git_newlines.py
+py -3.13 tools/package/package_release_snapshot.py --authority tools/package/release-preview15-authority.json --output out/releases/v0.4.0-preview.15-final
+```
+
+从最终提交生成八个公共附件。校验远端带注释的标签，下载草稿中的八个附件逐个核对 SHA-256，再发布 prerelease。本地 RKNN 资源和测试 APK 沿本地交付路径管理。见[同帧画面验收报告](../reports/2026-11-17-rtsp-preview-cadence.md)。
+
 # v0.4.0-preview.14 RTSP 选流与独立识别输入
 
 SDK `0.4.0-preview.14` 与 Input `0.1.0-preview.7` 使用同一 Git 标签。Android 与 Windows 的 Input 原生库为新版。Git UPM 或离线导入均先装 Input，再装 SDK。需运行 RK3588 NPU 的项目另装匹配新版 Input 哈希的本地资源。

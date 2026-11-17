@@ -1,3 +1,7 @@
+## 2026-11-17 preview.15 发布范围
+
+SDK `0.4.0-preview.15` 和 Input `0.1.0-preview.8` 使用同一 Git 标签。发布内容包括 Android RTSP 快照租约和槽位追踪、低档模型图片同帧合成，以及 Runtime Prefab 的验收与 JSONL 导出。4K 和 1080p 同素材对照与验证边界见[验收报告](reports/2026-11-17-rtsp-preview-cadence.md)。
+
 ## 2026-11-17 RuntimePrefab 同帧画面与 RTSP 槽位改进
 
 Android 低档分路可以用已提交识别的 `512×288` 图像生成右侧同帧合成。相同输入帧号与 SDK 结果号决定配对，左侧预览继续由独立的高清分支提供。公开 Runtime Prefab Acceptance 启用此选项，并导出帧阶段与同帧间隔的 JSONL。

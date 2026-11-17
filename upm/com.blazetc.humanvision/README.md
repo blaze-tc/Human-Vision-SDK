@@ -1,6 +1,6 @@
-# Human Vision SDK 0.4.0-preview.14
+# Human Vision SDK 0.4.0-preview.15
 
-预发布评估版，依赖 Input 0.1.0-preview.7。Unity/V1 API 保持兼容。
+预发布评估版，依赖 Input 0.1.0-preview.8。Unity/V1 API 保持兼容。
 先安装 Input，再安装 SDK；UPM、tgz、unitypackage 选择一种方式。
 [安装](UPM_INSTALLATION.md) · [配置与 API](Documentation/user-guide/SDK_CONFIGURATION.md) ·
 [常驻 Runtime Prefab](Documentation/user-guide/UNITY_RUNTIME_PREFAB.md) ·
