@@ -39,12 +39,19 @@ namespace HumanVision.Input
             public bool Pending => source.Pending;
             internal Vector2Int DecodedInputSize => source.DecodedInputSize;
             public bool TryGetLatestFrame(long after, out HumanVisionTextureFrame frame) => source.TryGetLatestFrame(after, out frame);
+            internal bool TryGetDecodedGeometry(in HumanVisionTextureFrame frame, out Vector2Int decodedSize, out ulong nativeGeneration) =>
+                source.TryGetDecodedGeometry(in frame, out decodedSize, out nativeGeneration);
             public bool TryAcquireSourceCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease) => source.TryAcquireSourceCopyLease(in frame, out lease);
             internal bool HasSeparateAnalysis => source.HasSeparateAnalysis;
             internal void ConfigureAnalysisOutput(Vector2Int size) => source.ConfigureAnalysisOutput(size);
             internal bool TryGetLatestAnalysisFrame(long after, out HumanVisionTextureFrame frame) => source.TryGetLatestAnalysisFrame(after, out frame);
             internal bool TryAcquireAnalysisCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease) => source.TryAcquireAnalysisCopyLease(in frame, out lease);
             internal bool AcknowledgeAnalysisFrame(in HumanVisionTextureFrame frame) => source.AcknowledgeAnalysisFrame(in frame);
+            internal void RecordAnalysisSnapshotCompletion(ulong sourceId, ulong generation, long frameId, long observedUs,
+                RtspAnalysisSnapshotStatus status) => source.RecordAnalysisSnapshotCompletion(sourceId, generation, frameId, observedUs, status);
+            internal void RecordAnalysisReadbackCompletion(ulong sourceId, ulong generation, long frameId, long observedUs, bool succeeded) =>
+                source.RecordAnalysisReadbackCompletion(sourceId, generation, frameId, observedUs, succeeded);
+            internal int CopyAnalysisSlotTimings(RtspAnalysisSlotTiming[] destination) => source.CopyAnalysisSlotTimings(destination);
             public void Open(HumanVisionSourceSettings settings, int timeout, int delay) => source.Open(settings, timeout, delay);
             public void Tick() => source.Tick();
             public void PumpGpu() => source.PumpGpu();
@@ -96,6 +103,13 @@ namespace HumanVision.Input
         public override Texture CurrentTexture => android != null ? android.CurrentTexture : base.CurrentTexture;
         public override bool TryGetLatestFrame(long after, out HumanVisionTextureFrame frame) { if (android != null) return android.TryGetLatestFrame(after, out frame); return base.TryGetLatestFrame(after, out frame); }
         public override bool TryAcquireSourceCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease) { if (android != null) return android.TryAcquireSourceCopyLease(in frame, out lease); return base.TryAcquireSourceCopyLease(in frame, out lease); }
+        /// <summary>Actual decoder size for the current Android preview frame, before resizing.</summary>
+        internal bool TryGetDecodedGeometry(in HumanVisionTextureFrame frame, out Vector2Int decodedSize, out ulong nativeGeneration)
+        {
+            decodedSize = default;
+            nativeGeneration = 0;
+            return android is AndroidSource source && source.TryGetDecodedGeometry(in frame, out decodedSize, out nativeGeneration);
+        }
 
         /// <summary>Configure the qualified Android 512×288 output for the next Open; zero keeps the preview-only path.</summary>
         internal void ConfigureAnalysisOutput(Vector2Int size)
@@ -126,6 +140,26 @@ namespace HumanVision.Input
         /// <summary>Notify the input scheduler that the consumer queued the analysis frame successfully.</summary>
         internal bool AcknowledgeAnalysisFrame(in HumanVisionTextureFrame frame) =>
             android is AndroidSource split && split.AcknowledgeAnalysisFrame(in frame);
+
+        /// <summary>Record a consumer's main-thread observation of the source snapshot state.</summary>
+        internal void RecordAnalysisSnapshotCompletion(ulong sourceId, ulong generation, long frameId, long observedUs,
+            RtspAnalysisSnapshotStatus status)
+        {
+            if (android is AndroidSource split) split.RecordAnalysisSnapshotCompletion(sourceId, generation, frameId, observedUs, status);
+        }
+
+        /// <summary>Record a CPU readback completion observed on the Unity main thread.</summary>
+        internal void RecordAnalysisReadbackCompletion(ulong sourceId, ulong generation, long frameId, long observedUs, bool succeeded)
+        {
+            if (android is AndroidSource split) split.RecordAnalysisReadbackCompletion(sourceId, generation, frameId, observedUs, succeeded);
+        }
+
+        /// <summary>Copy recent split-analysis timings oldest first into a caller-owned buffer.</summary>
+        internal int CopyAnalysisSlotTimings(RtspAnalysisSlotTiming[] destination)
+        {
+            if (destination == null) throw new ArgumentNullException(nameof(destination));
+            return android is AndroidSource split ? split.CopyAnalysisSlotTimings(destination) : 0;
+        }
 
         internal IntPtr AndroidHandle => android == null ? IntPtr.Zero : android.Handle;
         private IntPtr handle, rgba;

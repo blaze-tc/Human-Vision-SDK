@@ -204,7 +204,7 @@ namespace HumanVision
         {
             if (_leasedTexture == IntPtr.Zero) Begin(target);
             var submission = new AndroidGpuSubmissionClockNative {
-                Size=56,Version=1,Texture=target.GetNativeTexturePtr(),Width=frame.Width,Height=frame.Height,
+                Size=56,Version=1,Texture=target.GetNativeTexturePtr(),Width=target.width,Height=target.height,
                 FrameId=frame.FrameId,TimestampUs=timestampUs,RotationDegrees=0,Mirrored=0,
                 // Publication availability is explicitly distinct from sensor/decode time.
                 CaptureSteadyUs=RuntimeBindings.HV_RuntimeClockUs()-Math.Max(0,(long)(Time.realtimeSinceStartupAsDouble*1000000.0)-timestampUs)

@@ -5,13 +5,17 @@
 An Android Vulkan source can bind an optional three-texture `512×288` analysis
 output before binding its preview textures. Both outputs use the decoder frame's
 sequence, generation and timestamps. The analysis conversion runs first and
-publishes after its GPU fence completes. The consumer acknowledges that exact
-frame after handing it to inference. The preview uses the same decoded image
-and its own conversion fence. A late consumer can delay the preview handoff
-for at most 42 ms before scheduling or discarding it. Each output has its own
-slot lease. Preview-only clients keep using the existing binding and poll API.
+publishes after its GPU fence completes. The converter can then retain that
+decoded image as one pending preview with an independent fence and slot lease.
+A ready analysis frame takes priority over pending preview. When analysis
+cannot run, a pending preview can use a free preview slot during the first
+120 ms after analysis completion. The acknowledgement records that an observed
+analysis frame was offered to the consumer. Preview-only clients keep using
+the existing binding and poll API.
 The native `input_analysis_cadence` record reports completed analysis output,
-acknowledgements and preview pressure once per interval.
+acknowledgements, decoded-frame replacement and preview pressure once per
+interval. When a decoder changes geometry on the same connection, a new
+generation pauses both output rings until managed textures match the new crop.
 
 The internal `HV_Input_ProbeRtsp` binding on Android and Windows checks H.264
 dimensions over RTSP TCP. It inspects codec parameters or SPS data and uses a
@@ -129,6 +133,8 @@ No additional frame queue, CPU pixel mapping, or inference instance is added.
 
 `input_decode_cadence` records received video packets, codec inputs/outputs, and
 acquired images once per second. Packet rate is explicitly not camera FPS.
+The codec interval matches queue-begin and output-dequeue by PTS. Ambiguous,
+missing or skipped timestamps are counted separately.
 `input_gpu_cadence` records render callbacks, busy/empty callbacks, conversion
 completions, ring drops and pending-image replacements. Ring drops include both
 slot pressure and superseded unobserved publications. Decode-to-submit and

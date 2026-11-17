@@ -29,29 +29,103 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
     }
     private AcceptedAnalysisFrame[] acceptedAnalysisFrames;
     private long lastMatchedInputId=-1, lastMatchedAnalysisPublishedUs, lastMatchedAnalysisAcceptedUs, lastMatchedPreviewPublishedUs;
-    private sealed class CpuFence:ISourceCopyFence {
-        internal AsyncGPUReadbackRequest Request;
-        internal GraphicsFence CopyFence;
-        internal bool HasCopyFence, HasRequest;
+    private long nextSplitFeedLogUs;
+    internal readonly struct AnalysisCopyTrace {
+        private readonly RtspFrameSource source;
+        internal readonly ulong SourceId, Generation;
+        private readonly long frameId;
+        internal AnalysisCopyTrace(RtspFrameSource source,in HumanVisionTextureFrame frame) {
+            this.source=source;
+            SourceId=frame.SourceId;Generation=frame.Generation;frameId=frame.FrameId;
+        }
+        internal void RecordSnapshot(RtspAnalysisSnapshotStatus status) {
+            if(source!=null)source.RecordAnalysisSnapshotCompletion(SourceId,Generation,frameId,InputMonotonicClock.NowUs,status);
+        }
+        internal void RecordReadback(bool succeeded) {
+            if(source!=null)source.RecordAnalysisReadbackCompletion(SourceId,Generation,frameId,InputMonotonicClock.NowUs,succeeded);
+        }
+    }
+    internal sealed class CpuFence:ISourceCopyFence {
+        private GraphicsFence copyFence;
+        private bool hasFence, fenceQueryFailed, unavailableReported, readbackSucceeded, complete;
+        internal ulong Attempt {get;private set;}
+        internal AnalysisCopyTrace Trace {get;private set;}
+        internal bool HasQueuedCopy {get;private set;}
+        internal bool HasRequest {get;private set;}
+        internal bool ReadbackError {get;private set;}
+        internal void Begin(in AnalysisCopyTrace trace) {
+            ++Attempt;Trace=trace;
+            HasQueuedCopy=HasRequest=ReadbackError=false;
+            hasFence=fenceQueryFailed=unavailableReported=readbackSucceeded=complete=false;
+        }
+        internal void Arm(GraphicsFence fence,bool canPoll) {
+            copyFence=fence;hasFence=canPoll;HasQueuedCopy=true;
+        }
+        internal void MarkRequestQueued() => HasRequest=true;
+        internal void ObserveReadback(ulong attempt,bool succeeded) {
+            // The bridge keeps its owned texture after the source is retired. A
+            // callback for a recycled adapter slot cannot complete its next copy.
+            if(attempt!=Attempt || !HasQueuedCopy || complete)return;
+            readbackSucceeded=succeeded;ReadbackError=!succeeded;
+        }
+        internal void Reset() {Trace=default;HasQueuedCopy=false;}
         public bool IsComplete {
             get {
-                if(HasRequest && Request.done)return true;
+                if(complete)return true;
                 // The source is no longer needed after the actual GPU copy. The
                 // bridge separately retains the owned snapshot until readback completes.
-                if(!HasCopyFence)return false;
-                try {return CopyFence.passed;}
-                catch(NotSupportedException){return false;}
-                catch(InvalidOperationException){return false;}
+                if(hasFence&&!fenceQueryFailed) {
+                    try {
+                        if(copyFence.passed) {
+                            complete=true;
+                            Trace.RecordSnapshot(RtspAnalysisSnapshotStatus.FencePassed);
+                            return true;
+                        }
+                    }
+                    catch(NotSupportedException) {fenceQueryFailed=true;}
+                    catch(InvalidOperationException) {fenceQueryFailed=true;}
+                }
+                // A successful read proves the earlier GPU copy has finished. An
+                // errored read, or a missing callback, cannot establish that proof.
+                if(readbackSucceeded) {
+                    complete=true;
+                    Trace.RecordSnapshot(!hasFence?RtspAnalysisSnapshotStatus.ReadbackCompletedFenceUnavailable:
+                        fenceQueryFailed?RtspAnalysisSnapshotStatus.ReadbackCompletedFenceQueryFailed:
+                        RtspAnalysisSnapshotStatus.ReadbackCompletedBeforeFenceObserved);
+                    return true;
+                }
+                if(!unavailableReported&&(!hasFence||fenceQueryFailed)) {
+                    unavailableReported=true;
+                    Trace.RecordSnapshot(hasFence?RtspAnalysisSnapshotStatus.FenceQueryFailed:RtspAnalysisSnapshotStatus.FenceUnavailable);
+                }
+                return false;
             }
         }
     }
-    private sealed class Slot {
+    private sealed class Slot:ISourceCopyFence {
         internal readonly HumanVisionAndroidFrameCopyFence Gpu=new HumanVisionAndroidFrameCopyFence();
         internal readonly CpuFence Cpu=new CpuFence();
         internal RenderTexture Target;
         internal SourceCopyLease Lease;
-        internal ulong SourceId, Generation;
-        internal bool Active,GpuPath;
+        internal AnalysisCopyTrace Trace;
+        internal bool Active,GpuPath,GpuSnapshotObserved,GpuQueryFailureReported;
+        public bool IsComplete {
+            get {
+                if(!GpuPath)return Cpu.IsComplete;
+                if(GpuSnapshotObserved)return true;
+                try {if(!Gpu.IsComplete)return false;}
+                catch {
+                    if(!GpuQueryFailureReported) {
+                        GpuQueryFailureReported=true;
+                        Trace.RecordSnapshot(RtspAnalysisSnapshotStatus.FenceQueryFailed);
+                    }
+                    throw;
+                }
+                GpuSnapshotObserved=true;
+                Trace.RecordSnapshot(Gpu.Outcome==1?RtspAnalysisSnapshotStatus.NativeFencePassed:RtspAnalysisSnapshotStatus.NativeCopyFailed);
+                return true;
+            }
+        }
     }
     public Texture PreviewTexture {get;private set;}
     public long LatestPreviewFrameId {get;private set;}=-1;
@@ -125,6 +199,10 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
                 source.TryAcquireSourceCopyLease(in frame,out lease);
             if(!acquired)return;
             free.Lease=lease;
+            free.Trace=new AnalysisCopyTrace(splitSource,in frame);
+            free.GpuPath=manager.UsesAndroidGpuFrames;
+            free.GpuSnapshotObserved=free.GpuQueryFailureReported=false;
+            if(!free.GpuPath)free.Cpu.Begin(in free.Trace);
             bool accepted=false;
             try {
                 long unityNowUs=(long)(Time.realtimeSinceStartupAsDouble*1000000);
@@ -132,7 +210,7 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
                 long timestamp=manager.UsesRuntimeProfile&&!manager.UsesAndroidGpuFrames
                     ? InputTimestampMapping.ToUnity(in frame,inputNowUs,unityNowUs)
                     : unityNowUs-Math.Max(0,inputNowUs-frame.PublishedTimestampUs);
-                if(manager.UsesAndroidGpuFrames) {
+                if(free.GpuPath) {
                     if(free.Target==null) {
                         var size=analysisLimit==Vector2Int.zero ? new Vector2Int(frame.Width,frame.Height) :
                             AnalysisRenderTextureGeometry.CalculateTargetSize(frame.Width,frame.Height,analysisLimit.x,analysisLimit.y);
@@ -140,12 +218,10 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
                         free.Target=new RenderTexture(size.x,size.y,0,RenderTextureFormat.ARGB32,RenderTextureReadWrite.Linear);
                         free.Target.Create();
                     }
-                    gpuActive=true;free.GpuPath=true;
-                    free.SourceId=frame.SourceId;free.Generation=frame.Generation;
+                    gpuActive=true;
                     if(!ReferenceEquals(provenanceOwner,manager)){provenanceOwner=manager;provenanceSink=manager.SetCaptureProvenance;}
                     ForwardPublicationProvenance(in frame,provenanceSink);
                     accepted=manager.SubmitUnifiedGpuFrame(frame.Texture,free.Target,in frame,timestamp,free.Gpu);
-                    if(free.Gpu.Active){lease.RetireAfter(free.Gpu);free.Active=true;}
                 } else {
                     if(!ReferenceEquals(provenanceOwner,manager)){provenanceOwner=manager;provenanceSink=manager.SetCaptureProvenance;}
                     ForwardPublicationProvenance(in frame,provenanceSink);
@@ -160,35 +236,33 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
                         else cpuBridge.ConfigureLiveInput(true,analysisLimit.x,analysisLimit.y);
                         cpuBridgeConfigured=true;
                     }
-                    free.GpuPath=false;
-                    accepted=cpuBridge.TrySubmitUnifiedCpuFrame(frame.Texture,timestamp,out var request,out var copyFence,out var hasCopyFence);
-                    if(accepted){free.Cpu.Request=request;free.Cpu.HasRequest=true;free.Cpu.CopyFence=copyFence;free.Cpu.HasCopyFence=hasCopyFence;lease.RetireAfter(free.Cpu);free.Active=true;}
+                    accepted=cpuBridge.TrySubmitUnifiedCpuFrame(frame.Texture,timestamp,free.Cpu);
                 }
-                if(!free.Active)lease.Dispose();
-                if(accepted){
-                    submitted=manager.UsesAndroidGpuFrames?frame.FrameId:cpuBridge.LatestQueuedFrameId;
-                    if(firstSubmitted<0)firstSubmitted=submitted;
-                    latest=frame.FrameId;
-                    // CPU allocates its own submission IDs. Retain the original
-                    // publication under the actual ID native results will return.
-                    if(splitSource!=null) {
-                        long acceptedUs=InputMonotonicClock.NowUs;
-                        if(splitSource.AcknowledgeAnalysisFrame(in frame)) RememberAcceptedAnalysis(in frame,acceptedUs);
-                        UpdateSplitPreview();
-                    } else presentationBridge?.CaptureRuntimeViewFrame(in frame,submitted);
+            } finally {
+                // Queueing can fail after the source is referenced by GPU work.
+                if(free.GpuPath?free.Gpu.Active:free.Cpu.HasQueuedCopy) {
+                    lease.RetireAfter(free);free.Active=true;
+                } else {
+                    lease.Dispose();free.Cpu.Reset();free.Trace=default;
                 }
-                LastError=string.Empty;
-            } catch {
-                // The bridge binds its native token before Execute. Unknown queued
-                // completion retains the exact input lease and both strong textures.
-                if(free.Gpu.Active&&!free.Active){lease.RetireAfter(free.Gpu);free.Active=true;}
-                else if(!free.GpuPath && !free.Active && cpuBridge!=null && cpuBridge.TryGetQueuedSourceCopy(out var pendingCopy)) {
-                    free.Cpu.HasRequest=false;free.Cpu.HasCopyFence=true;free.Cpu.CopyFence=pendingCopy;
-                    lease.RetireAfter(free.Cpu);free.Active=true;
-                }
-                else if(!free.Active)lease.Dispose();
-                throw;
             }
+            if(accepted){
+                submitted=free.GpuPath?frame.FrameId:cpuBridge.LatestQueuedFrameId;
+                if(firstSubmitted<0)firstSubmitted=submitted;
+                latest=frame.FrameId;
+                // CPU allocates its own submission IDs. Retain the original
+                // publication under the actual ID native results will return.
+                if(splitSource!=null) {
+                    long acceptedUs=InputMonotonicClock.NowUs;
+                    bool acknowledged=splitSource.AcknowledgeAnalysisFrame(in frame);
+                    RememberAcceptedAnalysis(in frame,acceptedUs,acknowledged);
+                    if(presentationBridge!=null && presentationBridge.CaptureAnalysisRuntimeViewFrames &&
+                        presentationBridge.CaptureRuntimeViewFrame(in frame,submitted,analysisFrame:true))
+                        RecordMatchedFrame(in frame,frame.PublishedTimestampUs,acceptedUs);
+                    UpdateSplitPreview();
+                } else presentationBridge?.CaptureRuntimeViewFrame(in frame,submitted);
+            }
+            LastError=string.Empty;
             // A temporary rejection must not retire this source frame. On the
             // next Unity tick TryGetLatestFrame supplies it or a newer one;
             // acceptance retires it exactly once without creating a frame queue.
@@ -197,14 +271,21 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
     private void ResetSplitMatching() {
         if(acceptedAnalysisFrames!=null)Array.Clear(acceptedAnalysisFrames,0,acceptedAnalysisFrames.Length);
         lastMatchedInputId=-1;
+        nextSplitFeedLogUs=0;
     }
-    private void RememberAcceptedAnalysis(in HumanVisionTextureFrame frame,long acceptedUs) {
+    private void RememberAcceptedAnalysis(in HumanVisionTextureFrame frame,long acceptedUs,bool acknowledged) {
         if(acceptedAnalysisFrames==null)acceptedAnalysisFrames=new AcceptedAnalysisFrame[32];
         acceptedAnalysisFrames[(int)(frame.FrameId%acceptedAnalysisFrames.Length)]=new AcceptedAnalysisFrame {
             Source=frame.SourceId,Generation=frame.Generation,InputId=frame.FrameId,ResultId=submitted,
             DecodeUs=frame.SourceTimestampUs,Clock=frame.SourceClockId,
             PublishedUs=frame.PublishedTimestampUs,AcceptedUs=acceptedUs
         };
+        if(acceptedUs<nextSplitFeedLogUs)return;
+        nextSplitFeedLogUs=acceptedUs+1000000;
+        long previousPreview=-1;
+        if(source.TryGetLatestFrame(-1,out var preview)&&preview.SourceId==frame.SourceId&&preview.Generation==frame.Generation)
+            previousPreview=preview.FrameId;
+        Debug.Log($"HumanVision RTSP split feed: source={frame.SourceId} generation={frame.Generation} frame={frame.FrameId} analysis_published_us={frame.PublishedTimestampUs} accepted_us={acceptedUs} previous_preview_frame={previousPreview} acknowledged={(acknowledged?1:0)}");
     }
     private void UpdateSplitPreview() {
         if(!source.TryGetLatestFrame(-1,out var frame)) {
@@ -212,15 +293,19 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
             return;
         }
         PreviewTexture=frame.Texture;LatestPreviewFrameId=frame.FrameId;
-        if(closing||acceptedAnalysisFrames==null||frame.SourceId!=sourceId||
+        if(closing||presentationBridge==null||presentationBridge.CaptureAnalysisRuntimeViewFrames||
+           acceptedAnalysisFrames==null||frame.SourceId!=sourceId||
            frame.Generation!=generation||frame.FrameId==lastMatchedInputId)return;
         var accepted=acceptedAnalysisFrames[(int)(frame.FrameId%acceptedAnalysisFrames.Length)];
         if(accepted.Source!=frame.SourceId||accepted.Generation!=frame.Generation||accepted.InputId!=frame.FrameId||
            accepted.Clock!=frame.SourceClockId||accepted.DecodeUs!=frame.SourceTimestampUs)return;
-        presentationBridge?.CaptureRuntimeViewFrame(in frame,accepted.ResultId);
+        if(!presentationBridge.CaptureRuntimeViewFrame(in frame,accepted.ResultId))return;
+        RecordMatchedFrame(in frame,accepted.PublishedUs,accepted.AcceptedUs);
+    }
+    private void RecordMatchedFrame(in HumanVisionTextureFrame frame,long analysisPublishedUs,long acceptedUs) {
         lastMatchedInputId=frame.FrameId;
-        lastMatchedAnalysisPublishedUs=accepted.PublishedUs;
-        lastMatchedAnalysisAcceptedUs=accepted.AcceptedUs;
+        lastMatchedAnalysisPublishedUs=analysisPublishedUs;
+        lastMatchedAnalysisAcceptedUs=acceptedUs;
         lastMatchedPreviewPublishedUs=frame.PublishedTimestampUs;
     }
     internal bool TryGetMatchedAnalysisInputTiming(out long inputFrameId,out long analysisPublishedUs,
@@ -232,6 +317,18 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
         analysisAcceptedUs=lastMatchedAnalysisAcceptedUs;
         previewPublishedUs=lastMatchedPreviewPublishedUs;
         return true;
+    }
+    internal bool TryGetResultDecodeAgeMs(long resultFrameId, out long inputFrameId, out double ageMs) {
+        inputFrameId = -1; ageMs = -1;
+        if (resultFrameId < 0 || acceptedAnalysisFrames == null || sourceId == 0) return false;
+        foreach (var accepted in acceptedAnalysisFrames) {
+            if (accepted.Source != sourceId || accepted.Generation != generation || accepted.ResultId != resultFrameId) continue;
+            if (!InputMonotonicClock.TryGetNativeFrameAgeUs(accepted.Clock, accepted.DecodeUs, out long ageUs)) return false;
+            inputFrameId = accepted.InputId;
+            ageMs = ageUs / 1000d;
+            return true;
+        }
+        return false;
     }
     internal VideoPlayerFrameSource presentationBridge;
     internal static void ForwardPublicationProvenance(in HumanVisionTextureFrame frame,Action<uint> forward) {
@@ -250,18 +347,17 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
         try {
             for(int i=0;i<slots.Length;i++){
                 var slot=slots[i];if(!slot.Active)continue;
-                bool complete=slot.GpuPath?slot.Gpu.IsComplete:slot.Cpu.IsComplete;
-                if(!complete||!slot.Lease.IsRetired)continue;
+                if(!slot.IsComplete||!slot.Lease.IsRetired)continue;
                 if(slot.GpuPath){
                     if(slot.Gpu.Outcome==1){
                         CopiedFrames++;
-                        if(source!=null&&!closing&&slot.SourceId==sourceId&&slot.Generation==generation)
+                        if(source!=null&&!closing&&slot.Trace.SourceId==sourceId&&slot.Trace.Generation==generation)
                             SubmittedGpuAnalysisSize=new Vector2Int(slot.Target.width,slot.Target.height);
                     }else DroppedUnsubmittedFrames++;
                     slot.Gpu.ReleaseAcknowledgedLease();
                 }
-                else {if(!slot.Cpu.HasRequest || slot.Cpu.Request.done&&slot.Cpu.Request.hasError)DroppedUnsubmittedFrames++;else CopiedFrames++;}
-                slot.Active=false;
+                else {if(!slot.Cpu.HasRequest||slot.Cpu.ReadbackError)DroppedUnsubmittedFrames++;else CopiedFrames++;}
+                slot.Cpu.Reset();slot.Trace=default;slot.Active=false;
             }
             if(!closing||AnyActive())return;
             if(gpuActive){

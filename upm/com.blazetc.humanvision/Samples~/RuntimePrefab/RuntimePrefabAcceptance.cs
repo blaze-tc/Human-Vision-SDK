@@ -57,11 +57,18 @@ namespace HumanVisionAcceptance
         private string diagnosticProfile = "";
         private string actualBackend = "—";
         private readonly RuntimeAcceptanceTelemetry telemetry = new RuntimeAcceptanceTelemetry();
+        private readonly RuntimePrefabAcceptanceDiagnostics diagnostics = new RuntimePrefabAcceptanceDiagnostics();
+        private string diagnosticsPhase = "manual";
+        private long loggedInputFrame = -1;
+        private ulong loggedSource, loggedGeneration;
+        private bool measuring, cancelMeasurement, inputOpened;
+        private bool previousRetain, previousAnalysisPreview;
 
         private void Start()
         {
             Application.targetFrameRate = 60;
             telemetry.Reset();
+            showSdkTexture = true;
             LoadStartup();
 #if UNITY_EDITOR
             if (!string.IsNullOrWhiteSpace(editorVideoPath)) {
@@ -77,7 +84,12 @@ namespace HumanVisionAcceptance
 
         private void OnDestroy()
         {
-            if (view != null) view.FramePresented -= CountPresented;
+            if (view != null) {
+                view.FramePresented -= CountPresented;
+                view.RetainLastOverlayDuringPairGaps = previousRetain;
+                view.UseAnalysisFrameForMatchedPreview = previousAnalysisPreview;
+            }
+            diagnostics.Dispose();
             if (uiFont != null) Destroy(uiFont);
         }
 
@@ -119,7 +131,11 @@ namespace HumanVisionAcceptance
             }
         }
 
-        private void CountPresented(HumanVisionPresentedFrame frame) => presented++;
+        private void CountPresented(HumanVisionPresentedFrame frame)
+        {
+            presented++;
+            telemetry.ObservePresented(in frame, diagnostics.ObservePresented(in frame));
+        }
 
         private IEnumerator Connect()
         {
@@ -143,13 +159,23 @@ namespace HumanVisionAcceptance
 
         private IEnumerator Initialize(HumanVisionSdkOptions options)
         {
+            inputOpened = false;
             try { options.Validate(); }
             catch (ArgumentException error) { status = error.Message; yield break; }
             if (view == null)
             {
                 view = HumanVisionRuntimeView.Create();
                 view.FramePresented += CountPresented;
+                previousRetain = view.RetainLastOverlayDuringPairGaps;
+                previousAnalysisPreview = view.UseAnalysisFrameForMatchedPreview;
             }
+            view.RetainLastOverlayDuringPairGaps = true;
+            view.UseAnalysisFrameForMatchedPreview = true;
+            diagnostics.BindSdk(view.Sdk);
+            loggedInputFrame = -1;
+            diagnostics.SetInputAddress(options.SourceKind == InputKind.Rtsp ? options.Input.RtspUrl : null);
+            var bounds = new Vector2Int(options.Input.RequestedWidth, options.Input.RequestedHeight);
+            diagnostics.Mark(diagnosticsPhase, "request", bounds);
             if (string.IsNullOrWhiteSpace(options.RuntimeRoot) &&
                 (Application.platform == RuntimePlatform.WindowsEditor || Application.platform == RuntimePlatform.WindowsPlayer)) {
                 string staged = Path.Combine(Application.streamingAssetsPath, "HumanVision", "Runtime");
@@ -159,7 +185,8 @@ namespace HumanVisionAcceptance
             presented = 0;
             yield return view.Sdk.Initialize(options);
             if (!view.Sdk.IsRunning || !string.IsNullOrEmpty(view.Sdk.LastError)) {
-                status = view.Sdk.LastError;
+                status = diagnostics.Redact(view.Sdk.LastError);
+                diagnostics.Mark(diagnosticsPhase, "failed", bounds, status, view.Sdk);
                 yield break;
             }
             startup = view.Sdk.Configuration;
@@ -168,6 +195,63 @@ namespace HumanVisionAcceptance
             nextBackendAt = 0;
             telemetry.Reset();
             status = "输入已连接，等待 / 接收同帧结果";
+            inputOpened = true;
+            if (options.SourceKind == InputKind.Rtsp) {
+                diagnostics.RecordStreamSelection(diagnosticsPhase, view.Sdk.SelectedRtspStreamLabel,
+                    view.Sdk.SelectedRtspStreamSize, options.AutoSelectRtspStream ? "automatic" : "specified", bounds);
+                loggedInputFrame = -1;
+            }
+        }
+
+        private IEnumerator MeasureAcceptance()
+        {
+            measuring = true;
+            cancelMeasurement = false;
+            diagnosticsPhase = "stage_1_native";
+            var bounds = new Vector2Int(1920, 1080);
+            try {
+                yield return Connect();
+                var sdk = view == null ? null : view.Sdk;
+                double readyBy = Time.realtimeSinceStartupAsDouble + 20;
+                while (!cancelMeasurement && inputOpened && sdk != null && sdk.IsRunning && !sdk.HasFreshResult &&
+                    Time.realtimeSinceStartupAsDouble < readyBy) yield return null;
+                if (cancelMeasurement) {
+                    diagnostics.Mark("campaign", "cancelled", bounds);
+                    status = "已取消测试";
+                    yield break;
+                }
+                if (!inputOpened || sdk == null || !sdk.IsRunning || !sdk.HasFreshResult) {
+                    diagnostics.Mark("campaign", "failed", bounds, "no_fresh_result", sdk);
+                    status = "测试未取得新结果";
+                    yield break;
+                }
+                const double duration = 180;
+                double until = Time.realtimeSinceStartupAsDouble + duration;
+                double lastResultAt = Time.realtimeSinceStartupAsDouble;
+                long latest = diagnostics.AcceptedResults;
+                long initial = latest, valid = diagnostics.ValidSkeletonResults, pairedValid = diagnostics.ValidSkeletonPresented;
+                diagnostics.Mark(diagnosticsPhase, "ready", bounds, sdk: sdk);
+                while (!cancelMeasurement && sdk.IsRunning && Time.realtimeSinceStartupAsDouble < until) {
+                    double now = Time.realtimeSinceStartupAsDouble;
+                    if (latest != diagnostics.AcceptedResults) {
+                        latest = diagnostics.AcceptedResults;
+                        lastResultAt = now;
+                    }
+                    if (now - lastResultAt >= 5) break;
+                    status = $"验收剩余 {Mathf.CeilToInt((float)(until - now))} 秒";
+                    yield return null;
+                }
+                bool complete = !cancelMeasurement && sdk.IsRunning && Time.realtimeSinceStartupAsDouble >= until;
+                bool hasSkeleton = diagnostics.ValidSkeletonResults > valid && diagnostics.ValidSkeletonPresented > pairedValid;
+                string outcome = cancelMeasurement ? "cancelled" : complete ? hasSkeleton ? "complete" : "partial" : "failed";
+                diagnostics.Mark("campaign", outcome, bounds, $"accepted={latest-initial} valid={diagnostics.ValidSkeletonResults-valid} paired={diagnostics.ValidSkeletonPresented-pairedValid}", sdk);
+                status = cancelMeasurement ? "已取消测试" : complete
+                    ? hasSkeleton ? "测试已完成，可以导出 JSONL" : "测试已结束，有效同帧骨骼证据不足"
+                    : "测试已结束，结果更新中断";
+            } finally {
+                measuring = false;
+                diagnosticsPhase = "manual";
+            }
         }
 
         private static bool IsAndroid => Application.platform == RuntimePlatform.Android;
@@ -186,13 +270,16 @@ namespace HumanVisionAcceptance
             return value.Length == 0 ? "—" : value;
         }
 
+        internal static string NormalizeBackend(string value, string profile) =>
+            value == "CPU" && (profile == "windows-yolo-cpu-low" || profile == "android-cpu-nohands") ? "backend.ort.cpu" : value;
+
         private void UpdateActualBackend(HumanVisionSdk sdk)
         {
             string profile = sdk != null && sdk.IsInitialized ? sdk.RuntimeProfile : "";
             if (profile == diagnosticProfile && Time.unscaledTime < nextBackendAt) return;
             diagnosticProfile = profile;
             nextBackendAt = Time.unscaledTime + 1f;
-            actualBackend = profile.Length == 0 ? "—" : ReadActualBackend(sdk.RuntimeDiagnostics);
+            actualBackend = profile.Length == 0 ? "—" : NormalizeBackend(ReadActualBackend(sdk.RuntimeDiagnostics), profile);
         }
 
         private static string InputAddress(HumanVisionSdkOptions options)
@@ -322,7 +409,19 @@ namespace HumanVisionAcceptance
 
             var activeSdk = view != null ? view.Sdk : null;
             UpdateActualBackend(activeSdk);
-            telemetry.Observe(updateStart, activeSdk, actualBackend, paired, pair, visibleJoints, visibleBones);
+            if (hasInput) {
+                diagnostics.ObservePreview(in input);
+                if (startup.SourceKind == InputKind.Rtsp &&
+                    (loggedInputFrame < 0 || loggedSource != input.SourceId || loggedGeneration != input.Generation) &&
+                    activeSdk.TryGetInputDecodedGeometry(in input, out var decodedSize, out ulong nativeGeneration)) {
+                    loggedInputFrame = input.FrameId;
+                    loggedSource = input.SourceId;
+                    loggedGeneration = input.Generation;
+                    diagnostics.RecordDisplayedStream(diagnosticsPhase, in input, decodedSize, nativeGeneration);
+                }
+            }
+            if (activeSdk != null) diagnostics.Sample(activeSdk, diagnosticsPhase);
+            telemetry.Observe(updateStart, activeSdk, actualBackend, paired, pair, visibleJoints, visibleBones, diagnostics.ValidSkeletonFps);
             if (Time.unscaledTime < nextStatusAt) return;
             nextStatusAt = Time.unscaledTime + .15f;
             if (view == null) {
@@ -368,6 +467,16 @@ namespace HumanVisionAcceptance
                 DrawModelButton(new Rect(177, 64, 80, 32), ModelInputQuality.Low, "低");
                 DrawModelButton(new Rect(265, 64, 80, 32), ModelInputQuality.Medium, "中");
                 DrawModelButton(new Rect(353, 64, 80, 32), ModelInputQuality.High, "高");
+                GUI.enabled = measuring || !operating;
+                if (GUI.Button(new Rect(458, 64, 165, 32), measuring ? "取消一键测试" : "一键测试", button)) {
+                    if (measuring) cancelMeasurement = true;
+                    else Run(MeasureAcceptance());
+                }
+                GUI.enabled = true;
+                if (GUI.Button(new Rect(635, 64, 208, 32), "导出 JSONL / 复制路径", button) && diagnostics.Export()) {
+                    GUIUtility.systemCopyBuffer = diagnostics.ExportPath;
+                    status = diagnostics.Status;
+                }
                 GUI.enabled = !operating;
                 GUI.Label(new Rect(894, 65, 140, 30), "分析设备", small);
                 DrawBackendButton(new Rect(1020, 64, 105, 32), HumanVisionAccelerationMode.Cpu, "CPU");
@@ -387,8 +496,13 @@ namespace HumanVisionAcceptance
                 GUI.enabled = true;
 
                 DrawCard(LiveCard, "实时输入 · 识别区域", live, inputLine, showRegions: true);
+                Texture right = null;
+                if (showSdkTexture && view != null && view.TryGetDisplayedFrame(out var displayed))
+                    right = displayed.OverlayTexture;
+                else if (!showSdkTexture && paired)
+                    right = redrawRig?.Output;
                 DrawCard(PoseCard, showSdkTexture ? "Prefab 合成画面" : "公共接口重绘 · Update()",
-                    paired ? (showSdkTexture ? pair.OverlayTexture : redrawRig?.Output) : null, poseLine);
+                    right, poseLine);
 
                 Box(new Rect(28, 624, 1384, 205), Panel);
                 GUI.Label(new Rect(45, 633, 870, 32), sdkLine, body);

@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using HumanVision.Demo;
+using HumanVision.Input;
 using UnityEngine;
 
 namespace HumanVision
@@ -34,17 +35,31 @@ namespace HumanVision
     public sealed class HumanVisionRuntimeView : MonoBehaviour
     {
         private const string PrefabResource = "HumanVisionRuntime";
+        public const double DisplayFrameHoldSeconds = .5d;
         [SerializeField] private Camera offscreenCamera;
         private HumanVisionRuntimeDrawing drawing;
         private HumanVisionPresentedFrame current;
         private VideoPlayerFrameSource currentBridge;
         private long currentRevision;
-        private bool published, unloading;
+        private double lastComposedAt;
+        private int currentWidth, currentHeight;
+        private bool published, pairAvailable, unloading;
         private readonly HumanVisionCanonicalJoint[] joints = new HumanVisionCanonicalJoint[SkeletonImagePlane.JointCount];
 
         public static HumanVisionRuntimeView Instance { get; private set; }
         public HumanVisionSdk Sdk { get; private set; }
         public Camera OffscreenCamera => offscreenCamera;
+        /// <summary>Keep the last composed overlay visible while this input waits for another matched result.</summary>
+        public bool RetainLastOverlayDuringPairGaps { get; set; }
+        /// <summary>Use the model-sized image for split RTSP pairs. Set before initializing the SDK.</summary>
+        public bool UseAnalysisFrameForMatchedPreview
+        {
+            get => Sdk.CaptureAnalysisRuntimeViewFrames;
+            set => Sdk.CaptureAnalysisRuntimeViewFrames = value;
+        }
+        /// <summary>Whether a composed image for the current binding stopped advancing for the preview timeout.</summary>
+        public bool DisplayedFrameExpired => HasRetainedPreviewTimedOut &&
+            Sdk.TryGetInputFrame(-1, out var input) && CanDisplay(in input);
         /// <summary>Exact texture retention requires a graphics fence. Live preview remains available without it.</summary>
         public bool SupportsMatchedFrames => SystemInfo.supportsGraphicsFence;
         /// <summary>Invoked on the main thread after a new matched result and its drawing have been submitted.</summary>
@@ -99,14 +114,36 @@ namespace HumanVision
         public bool TryGetFrame(out HumanVisionPresentedFrame frame)
         {
             frame = default;
-            if (!published || !isActiveAndEnabled || unloading || currentBridge != Sdk.FrameBridge ||
-                currentRevision != Sdk.RecognitionRevision || !Sdk.HasFreshResult ||
-                !Sdk.TryGetInputFrame(-1, out var input) || input.SourceId != current.SourceId ||
-                input.Generation != current.SourceGeneration || current.ColorTexture == null || input.Width != current.ColorTexture.width ||
-                input.Height != current.ColorTexture.height) return false;
+            if (!pairAvailable || !Sdk.HasFreshResult || current.ColorTexture == null ||
+                !Sdk.TryGetInputFrame(-1, out var input) || !CanDisplay(in input)) return false;
             frame = current;
             return true;
         }
+
+        /// <summary>Borrow the displayed composition and its original frame identity. This display-only query leaves ColorTexture empty.</summary>
+        public bool TryGetDisplayedFrame(out HumanVisionPresentedFrame frame)
+        {
+            frame = default;
+            if (!published || HasRetainedPreviewTimedOut || (!pairAvailable && !RetainLastOverlayDuringPairGaps) ||
+                !Sdk.TryGetInputFrame(-1, out var input) || !CanDisplay(in input) ||
+                !current.OverlayTexture.IsCreated()) return false;
+            frame = DisplayOnlyFrame();
+            return true;
+        }
+
+        private HumanVisionPresentedFrame DisplayOnlyFrame() =>
+            new HumanVisionPresentedFrame(current.SourceId, current.SourceGeneration, current.SourceFrameId,
+                current.InputFrameId, current.ResultSequence, current.SourceTimestampUs, current.BodyCount,
+                null, current.OverlayTexture);
+
+        private bool HasRetainedPreviewTimedOut => RetainLastOverlayDuringPairGaps && published &&
+            Time.realtimeSinceStartupAsDouble - lastComposedAt >= DisplayFrameHoldSeconds;
+
+        private bool CanDisplay(in HumanVisionTextureFrame input) =>
+            published && isActiveAndEnabled && !unloading && currentBridge == Sdk.FrameBridge &&
+            currentRevision == Sdk.RecognitionRevision && input.SourceId == current.SourceId &&
+            input.Generation == current.SourceGeneration && current.OverlayTexture != null &&
+            input.Width == currentWidth && input.Height == currentHeight;
 
         /// <summary>Get the stable ID in a drawn slot. Slots can have gaps; use Sdk.GetMaxBodies() as the traversal limit.</summary>
         public bool TryGetBodyId(int index, out long id)
@@ -135,6 +172,11 @@ namespace HumanVision
         {
             if (drawing == null || unloading) return;
             if (!Sdk.TryGetRuntimeViewResult(out var input, out var color, out long inputFrameId)) {
+                if (RetainLastOverlayDuringPairGaps && CanDisplay(in input)) {
+                    if (pairAvailable) current = DisplayOnlyFrame();
+                    pairAvailable = false;
+                    return;
+                }
                 ClearFrame(!Sdk.IsRunning);
                 return;
             }
@@ -159,14 +201,20 @@ namespace HumanVision
                 sequence, Sdk.SourceTimestampUs, count, color, drawing.Target);
             currentBridge = Sdk.FrameBridge;
             currentRevision = Sdk.RecognitionRevision;
+            currentWidth = input.Width;
+            currentHeight = input.Height;
             published = true;
-            if (isNew) FramePresented?.Invoke(current);
+            pairAvailable = true;
+            if (isNew) {
+                lastComposedAt = Time.realtimeSinceStartupAsDouble;
+                FramePresented?.Invoke(current);
+            }
         }
 
         private void ClearFrame(bool release)
         {
             if (published || release && drawing?.Target != null) drawing?.Clear(release);
-            current = default; currentBridge = null; published = false;
+            current = default; currentBridge = null; published = pairAvailable = false;
         }
 
         private void OnDisable() => ClearFrame(true);

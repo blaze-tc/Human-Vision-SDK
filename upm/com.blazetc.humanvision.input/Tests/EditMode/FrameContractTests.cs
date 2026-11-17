@@ -58,6 +58,49 @@ namespace HumanVision.Input.Tests
         }
 
         [Test]
+        public void DecoderOutputsPublishIndependentlyWithTheSameFrameIdentity()
+        {
+            var retirement = new SourceRetirement();
+            var preview = new SourceGeneration(retirement);
+            var analysis = new SourceGeneration(retirement, preview.SourceId);
+            var generation = preview.BeginGeneration();
+            Assert.That(analysis.BeginGeneration(), Is.EqualTo(generation));
+            var previewTexture = new Texture2D(8, 4);
+            var analysisTexture = new Texture2D(4, 2);
+            try {
+                var previewToken = retirement.Register(generation, previewTexture, () => { });
+                var analysisToken = retirement.Register(generation, analysisTexture, () => { });
+                var analysisFrame = Frame(analysis, generation, 1, analysisTexture, analysisToken);
+                var previewFrame = Frame(preview, generation, 1, previewTexture, previewToken);
+                Assert.That(analysis.TryPublish(in analysisFrame), Is.True);
+                Assert.That(preview.TryGetLatestFrame(-1, out _), Is.False);
+                Assert.That(analysis.TryAcquireSourceCopyLease(in analysisFrame, out var lease), Is.True);
+                var fence = new CopyFence();
+                lease.RetireAfter(fence);
+
+                Assert.That(preview.TryPublish(in previewFrame), Is.True);
+                Assert.That(previewFrame.SourceId, Is.EqualTo(analysisFrame.SourceId));
+                Assert.That(previewFrame.FrameId, Is.EqualTo(analysisFrame.FrameId));
+                Assert.That(preview.TryAcquireSourceCopyLease(in analysisFrame, out _), Is.False);
+
+                Assert.That(analysis.BeginGeneration(), Is.EqualTo(preview.BeginGeneration()));
+                Assert.That(analysis.TryGetLatestFrame(-1, out _), Is.False);
+                Assert.That(preview.TryGetLatestFrame(-1, out _), Is.False);
+                Assert.That(analysis.TryPublish(in analysisFrame), Is.False);
+                Assert.That(preview.TryPublish(in previewFrame), Is.False);
+                retirement.Poll();
+                Assert.That(retirement.PendingResourceCount, Is.EqualTo(1));
+                fence.IsComplete = true;
+                retirement.Poll();
+                Assert.That(retirement.PendingResourceCount, Is.Zero);
+            }
+            finally {
+                UnityEngine.Object.DestroyImmediate(previewTexture);
+                UnityEngine.Object.DestroyImmediate(analysisTexture);
+            }
+        }
+
+        [Test]
         public void OldGenerationCannotPublish()
         {
             var retirement = new SourceRetirement();

@@ -5,20 +5,23 @@
 using namespace hvinput;
 
 int main() {
-    InputSplitSchedule handoff;
-    if (handoff.Waiting()) return 1;
-    handoff.CompleteAnalysis(3, 101, 1000);
-    if (!handoff.Waiting() || handoff.Sequence() != 101) return 2;
-    if (handoff.Acknowledge(2, 101, 3000) || handoff.Acknowledge(3, 100, 3000)) return 3;
-    if (handoff.Decide(42999, true, true) != PreviewDecision::Wait ||
-        handoff.Decide(43000, true, true) != PreviewDecision::Discard ||
-        handoff.Decide(43000, true, false) != PreviewDecision::Convert ||
-        handoff.Decide(2000, false, true) != PreviewDecision::Discard) return 4;
-    if (!handoff.Acknowledge(3, 101, 2000) || !handoff.Acknowledge(3, 101, 3000) ||
-        handoff.CompletedUs() != 1000 || handoff.AcknowledgedUs() != 2000 ||
-        handoff.Decide(2000, true, true) != PreviewDecision::Convert) return 5;
-    handoff.Reset();
-    if (handoff.Acknowledge(3, 101, 3000)) return 6;
+    InputSplitSchedule schedule;
+    if (schedule.Choose(1000, false, true) != SplitWork::None) return 1;
+    schedule.OfferPreview(101, 1000);
+    if (schedule.Sequence() != 101 || schedule.CompletedUs() != 1000) return 2;
+    // A running decode never waits for preview or for a Unity acknowledgement.
+    if (schedule.Choose(2000, true, true) != SplitWork::Analysis ||
+        schedule.Choose(2000, true, false) != SplitWork::Analysis) return 3;
+    // Without ready analysis, use available GPU time for the latest preview.
+    if (schedule.Choose(1000, false, true) != SplitWork::Preview ||
+        schedule.Choose(2000, false, false) != SplitWork::DiscardPreview ||
+        schedule.Choose(120999, false, true) != SplitWork::Preview ||
+        schedule.Choose(121000, false, true) != SplitWork::DiscardPreview) return 4;
+    schedule.OfferPreview(102, 121000);
+    if (schedule.Sequence() != 102 || schedule.Choose(121001, false, true) != SplitWork::Preview) return 5;
+    schedule.Reset();
+    if (schedule.Choose(121001, false, true) != SplitWork::None ||
+        schedule.Choose(121001, true, true) != SplitWork::Analysis) return 6;
 
     // Both output slots refer to one decoded frame and wait for distinct fences.
     InputFrameRing analysis, preview;
@@ -37,6 +40,6 @@ int main() {
     analysis.Collect(7);
     if (analysis.Live() != 0 || preview.Live() != 1) return 9;
 
-    std::puts("Independent frame identity, split fences and bounded preview handoff PASS");
+    std::puts("Independent frame identity, split fences and bounded preview opportunity PASS");
     return 0;
 }

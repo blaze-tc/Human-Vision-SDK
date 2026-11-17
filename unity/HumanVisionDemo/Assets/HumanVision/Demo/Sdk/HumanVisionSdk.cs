@@ -154,6 +154,7 @@ namespace HumanVision
         internal HumanVisionManager RuntimeManager => manager;
         internal VideoPlayerFrameSource FrameBridge => bridge;
         internal bool CaptureRuntimeViewFrames { get; set; }
+        internal bool CaptureAnalysisRuntimeViewFrames { get; set; }
         internal long RecognitionRevision => revision;
         internal bool TryGetRuntimeViewResult(out HumanVisionTextureFrame input, out Texture color, out long inputFrameId)
         {
@@ -269,6 +270,7 @@ namespace HumanVision
             manager = go.AddComponent<HumanVisionManager>();
             bridge = go.AddComponent<VideoPlayerFrameSource>(); bridge.Configure(manager, null, null);
             bridge.CaptureRuntimeViewFrames = CaptureRuntimeViewFrames;
+            bridge.CaptureAnalysisRuntimeViewFrames = CaptureAnalysisRuntimeViewFrames;
             bool initialized;
             if (pending != null) {
                 var prepared = pending.Take(); if (ReferenceEquals(initialization, pending)) initialization = null;
@@ -604,11 +606,27 @@ namespace HumanVision
             frame = default;
             return IsRunning && source.TryGetLatestFrame(afterFrameId, out frame);
         }
+        /// <summary>Actual decoder size and generation for the current Android RTSP preview frame.</summary>
+        public bool TryGetInputDecodedGeometry(in HumanVisionTextureFrame frame, out Vector2Int decodedSize, out ulong nativeGeneration)
+        {
+            decodedSize = default;
+            nativeGeneration = 0;
+            return IsRunning && source is RtspFrameSource rtsp && rtsp.TryGetDecodedGeometry(in frame, out decodedSize, out nativeGeneration);
+        }
         /// <summary>借用最新识别输入。支持解码分路时，无需等同帧预览发布。</summary>
         public bool TryGetAnalysisInputFrame(long afterFrameId, out HumanVisionTextureFrame frame)
         {
             frame = default;
             return IsRunning && TryGetRecognitionSourceFrame(afterFrameId, out frame);
+        }
+        /// <summary>Copies recent RTSP analysis texture and readback timings on the Unity thread.</summary>
+        public int CopyAnalysisSlotTimings(RtspAnalysisSlotTiming[] destination) =>
+            source is RtspFrameSource rtsp ? rtsp.CopyAnalysisSlotTimings(destination) : 0;
+        /// <summary>Elapsed time since native RTSP decode for this exact Runtime frame, in milliseconds.</summary>
+        public bool TryGetResultDecodeAgeMs(long resultFrameId, out long inputFrameId, out double ageMs)
+        {
+            inputFrameId = -1; ageMs = -1;
+            return IsRunning && bridge != null && bridge.TryGetResultDecodeAgeMs(resultFrameId, out inputFrameId, out ageMs);
         }
         /// <summary>同一解码帧的识别发布、SDK 接受和预览发布时间，使用 InputMonotonic 微秒。</summary>
         /// <remarks>SDK 接受表示已预留复制或回读，并不代表模型已完成推理。</remarks>

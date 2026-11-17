@@ -15,6 +15,24 @@ namespace HumanVision.Input
         public static long StopwatchFrequency => Stopwatch.Frequency;
         public static FrameClockDomain Domain => FrameClockDomain.InputMonotonic;
 
+        /// <summary>Read elapsed time in the native input frame's own clock.</summary>
+        public static bool TryGetNativeFrameAgeUs(ulong clockId, long sourceUs, out long ageUs)
+        {
+            ageUs = -1;
+            if (clockId == 0 || sourceUs < 0) return false;
+            var clock = NativeInputBindings.ClockInfo.Create();
+            try {
+                if (NativeInputBindings.HV_Input_QueryClock(ref clock) != 0 || clock.ClockId != clockId ||
+                    clock.NowUs < sourceUs) return false;
+            } catch (System.DllNotFoundException) {
+                return false;
+            } catch (System.EntryPointNotFoundException) {
+                return false;
+            }
+            ageUs = clock.NowUs - sourceUs;
+            return true;
+        }
+
         /// <summary>Elapsed microseconds, truncated toward zero; equal readings are allowed.</summary>
         public static long NowUs
         {

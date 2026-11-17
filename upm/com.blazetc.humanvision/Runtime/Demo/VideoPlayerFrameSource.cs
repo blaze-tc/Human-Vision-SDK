@@ -228,24 +228,27 @@ namespace HumanVision.Demo
         }
         public void DetachUnifiedSource(){if(_inputAdapter!=null)_inputAdapter.Detach();_unifiedSource=null;ResetPresentation();if(CaptureRuntimeViewFrames)PresentMatchedOverlay(null);ResetRuntimeViewHistory();}
         internal bool CaptureRuntimeViewFrames { get; set; }
+        internal bool CaptureAnalysisRuntimeViewFrames { get; set; }
         private PresentationTextureHistory _runtimeViewHistory;
         private ulong _runtimeViewSource, _runtimeViewGeneration;
         private int _runtimeViewWidth, _runtimeViewHeight;
-        internal void CaptureRuntimeViewFrame(in HumanVisionTextureFrame frame,long resultFrameId) {
-            if(_unifiedSource==null||!SystemInfo.supportsGraphicsFence)return;
+        private bool _runtimeViewUsesAnalysis;
+        internal bool CaptureRuntimeViewFrame(in HumanVisionTextureFrame frame,long resultFrameId,bool analysisFrame=false) {
+            if(_unifiedSource==null||!SystemInfo.supportsGraphicsFence)return false;
             if(_runtimeViewHistory==null||_runtimeViewSource!=frame.SourceId||_runtimeViewGeneration!=frame.Generation||
-                _runtimeViewWidth!=frame.Width||_runtimeViewHeight!=frame.Height) {
+                _runtimeViewWidth!=frame.Width||_runtimeViewHeight!=frame.Height||_runtimeViewUsesAnalysis!=analysisFrame) {
                 ResetRuntimeViewHistory();
                 _runtimeViewSource=frame.SourceId;_runtimeViewGeneration=frame.Generation;
                 _runtimeViewWidth=frame.Width;_runtimeViewHeight=frame.Height;
+                _runtimeViewUsesAnalysis=analysisFrame;
                 _runtimeViewHistory=new PresentationTextureHistory();
             }
-            _runtimeViewHistory.Capture(_unifiedSource,in frame,resultFrameId,frame.PublishedTimestampUs);
+            return _runtimeViewHistory.Capture(_unifiedSource,in frame,resultFrameId,frame.PublishedTimestampUs,analysisFrame);
         }
         internal bool TryPresentRuntimeViewFrame(in HumanVisionTextureFrame latest,long resultFrameId,out Texture texture,out long inputFrameId) {
             texture=null;inputFrameId=-1;
             return _runtimeViewHistory!=null&&latest.SourceId==_runtimeViewSource&&latest.Generation==_runtimeViewGeneration&&
-                latest.Width==_runtimeViewWidth&&latest.Height==_runtimeViewHeight&&
+                (_runtimeViewUsesAnalysis||latest.Width==_runtimeViewWidth&&latest.Height==_runtimeViewHeight)&&
                 _runtimeViewHistory.TryPresentExact(resultFrameId,out texture,out inputFrameId);
         }
         internal bool TryGetMatchedAnalysisInputTiming(out long inputFrameId,out long analysisPublishedUs,
@@ -253,6 +256,11 @@ namespace HumanVision.Demo
             inputFrameId=analysisPublishedUs=analysisAcceptedUs=previewPublishedUs=-1;
             return _inputAdapter!=null&&_inputAdapter.TryGetMatchedAnalysisInputTiming(out inputFrameId,
                 out analysisPublishedUs,out analysisAcceptedUs,out previewPublishedUs);
+        }
+        internal bool TryGetResultDecodeAgeMs(long resultFrameId, out long inputFrameId, out double ageMs)
+        {
+            inputFrameId = -1; ageMs = -1;
+            return _inputAdapter != null && _inputAdapter.TryGetResultDecodeAgeMs(resultFrameId, out inputFrameId, out ageMs);
         }
         private void ResetRuntimeViewHistory() {
             _runtimeViewHistory?.Dispose();_runtimeViewHistory=null;
@@ -586,11 +594,8 @@ namespace HumanVision.Demo
             hasSourceCopyFence=accepted&&_lastHasSourceCopyFence;
             return accepted;
         }
-        // Also available when RequestIntoNativeArray throws after a copy was queued.
-        // The adapter must retire the source against this fence, not Dispose its lease.
-        internal bool TryGetQueuedSourceCopy(out GraphicsFence fence) {
-            fence=_lastSourceCopyFence; return _lastHasSourceCopyFence;
-        }
+        internal bool TrySubmitUnifiedCpuFrame(Texture texture,long timestampUs,HumanVisionInputAdapter.CpuFence sourceCopy)
+            => SubmitExternalCpuTexture(texture,timestampUs,true,sourceCopy);
         internal void InvalidateCpuInputGeneration() {
             _minimumUsableResultFrameId=_nextSubmissionFrameId;
             _acceptedPixelWidth=_acceptedPixelHeight=0;
@@ -598,7 +603,8 @@ namespace HumanVision.Demo
             _cpuReadbackStats.modelReadback = null;
             _cpuAdmission.Reset();
         }
-        private bool SubmitExternalCpuTexture(Texture texture, long timestampUs, bool independentSnapshot = false)
+        private bool SubmitExternalCpuTexture(Texture texture, long timestampUs, bool independentSnapshot = false,
+            HumanVisionInputAdapter.CpuFence sourceCopy = null)
         {
             independentSnapshot&=!_legacySourceCopy;
             if (_livePreview) PresentLiveTexture(texture);
@@ -636,6 +642,10 @@ namespace HumanVision.Demo
             long blitStarted=System.Diagnostics.Stopwatch.GetTimestamp();
             _lastHasSourceCopyFence=false;
             _lastSourceCopyFence=default;
+            slot.CopyFence=default;slot.HasCopyFence=slot.FailedReadback=false;
+            slot.SourceCopy=sourceCopy;
+            slot.SourceCopyAttempt=sourceCopy?.Attempt??0;
+            slot.CopyTrace=sourceCopy?.Trace??default;
             if(independentSnapshot) {
                 // Each pending read owns its pixels. A later frame never overwrites
                 // the texture being read, even when readback callbacks arrive out of order.
@@ -650,19 +660,26 @@ namespace HumanVision.Demo
                     if(_sourceCopyCommands==null)_sourceCopyCommands=new CommandBuffer {name="HumanVision source snapshot copy"};
                     _sourceCopyCommands.Clear();
                     _sourceCopyCommands.Blit(texture,readbackTexture);
+                    // Texture reuse is polled on the CPU, including on Vulkan
+                    // devices with no async compute queue.
                     _lastSourceCopyFence=_sourceCopyCommands.CreateGraphicsFence(
-                        GraphicsFenceType.AsyncQueueSynchronisation,SynchronisationStageFlags.PixelProcessing);
+                        GraphicsFenceType.CPUSynchronisation,SynchronisationStageFlags.PixelProcessing);
                     _lastHasSourceCopyFence=true;
-                    Graphics.ExecuteCommandBuffer(_sourceCopyCommands);
-                } else Graphics.Blit(texture,readbackTexture);
-            } else Graphics.Blit(texture,readbackTexture);
+                }
+            }
+            slot.CopyFence=_lastSourceCopyFence;slot.HasCopyFence=_lastHasSourceCopyFence;
+            sourceCopy?.Arm(_lastSourceCopyFence,_lastHasSourceCopyFence);
+            try {
+                if(_lastHasSourceCopyFence)Graphics.ExecuteCommandBuffer(_sourceCopyCommands);
+                else Graphics.Blit(texture,readbackTexture);
+            } catch {
+                slot.Busy=slot.FailedReadback=true;
+                throw;
+            }
             _cpuReadbackStats.sourceCopyFence=_lastHasSourceCopyFence?1:0;
             _blitSumMs+=ElapsedMilliseconds(blitStarted);
             slot.ReadbackStarted=System.Diagnostics.Stopwatch.GetTimestamp();
             slot.Busy = true;
-            slot.FailedReadback=false;
-            slot.CopyFence=_lastSourceCopyFence;
-            slot.HasCopyFence=_lastHasSourceCopyFence;
             slot.UseModelPixels=false; slot.ProbePending=false; slot.ProbeQueued=false; slot.PrimaryDone=false; slot.ProbeDone=false;
             slot.PrimaryError=slot.ProbeError=false;
             slot.FrameId = _nextSubmissionFrameId++;
@@ -682,7 +699,7 @@ namespace HumanVision.Demo
                     if(SystemInfo.supportsGraphicsFence) {
                         _sourceCopyCommands.Clear();
                         _sourceCopyCommands.Blit(readbackTexture,slot.ModelSnapshot,_modelReadbackMaterial);
-                        slot.CopyFence=_sourceCopyCommands.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation,SynchronisationStageFlags.PixelProcessing);
+                        slot.CopyFence=_sourceCopyCommands.CreateGraphicsFence(GraphicsFenceType.CPUSynchronisation,SynchronisationStageFlags.PixelProcessing);
                         Graphics.ExecuteCommandBuffer(_sourceCopyCommands);
                     } else Graphics.Blit(readbackTexture,slot.ModelSnapshot,_modelReadbackMaterial);
                     if(_modelReadback.Qualified) {
@@ -705,6 +722,7 @@ namespace HumanVision.Demo
                 _modelReadback?.Observe(false);
                 throw;
             }
+            sourceCopy?.MarkRequestQueued();
             _cpuReadbackStats.modelReadback = identityModelReadback ? "identity-model-size-rgb" : null;
             _lastUnifiedReadback=slot.Request;LatestQueuedFrameId=slot.FrameId;
             return true;
@@ -1004,6 +1022,9 @@ namespace HumanVision.Demo
 
         private void OnPrimaryReadback(int index, AsyncGPUReadbackRequest request) {
             var slot=_slots[index];slot.Request=request;slot.PrimaryError=request.hasError;slot.PrimaryDone=true;
+            slot.CopyTrace.RecordReadback(!slot.PrimaryError);
+            slot.SourceCopy?.ObserveReadback(slot.SourceCopyAttempt,!slot.PrimaryError);
+            slot.CopyTrace=default;slot.SourceCopy=null;
             if(slot.FailedReadback)return;
             if(!slot.ProbePending || slot.ProbeDone)CompleteReadback(index);
         }
@@ -1361,11 +1382,13 @@ namespace HumanVision.Demo
                 slot.Busy = false;
                 if(slot.Snapshot!=null) {
                     if(slot.FailedReadback && slot.HasCopyFence) DeferredGpuTextureRelease.Retire(slot.Snapshot,slot.CopyFence);
+                    else if(slot.FailedReadback && slot.SourceCopy!=null)DeferredGpuTextureRelease.Retire(slot.Snapshot,slot.SourceCopy);
                     else {slot.Snapshot.Release();DestroyOwnedTexture(slot.Snapshot);}
                     slot.Snapshot=null;
                 }
                 if(slot.ModelSnapshot!=null) {
                     if(slot.FailedReadback && slot.HasCopyFence)DeferredGpuTextureRelease.Retire(slot.ModelSnapshot,slot.CopyFence);
+                    else if(slot.FailedReadback && slot.SourceCopy!=null)DeferredGpuTextureRelease.Retire(slot.ModelSnapshot,slot.SourceCopy);
                     else {slot.ModelSnapshot.Release();DestroyOwnedTexture(slot.ModelSnapshot);}
                     slot.ModelSnapshot=null;
                 }
@@ -1380,6 +1403,7 @@ namespace HumanVision.Demo
                 {
                     slot.TopLeftBuffer.Dispose();
                 }
+                slot.SourceCopy=null;slot.CopyTrace=default;
             }
 
             if (targetDisplay != null)
@@ -1418,7 +1442,7 @@ namespace HumanVision.Demo
             for(int index=0;index<_slots.Length;index++) {
                 var slot=_slots[index];
                 if(slot!=null && slot.FailedReadback && slot.HasCopyFence && (!slot.ProbeQueued || slot.ProbeDone)) {
-                    try {if(slot.CopyFence.passed){slot.Busy=false;slot.FailedReadback=false;}}
+                    try {if(slot.CopyFence.passed){slot.Busy=false;slot.FailedReadback=false;slot.SourceCopy=null;slot.CopyTrace=default;}}
                     catch(InvalidOperationException) { /* Unknown completion retains the snapshot. */ }
                     catch(NotSupportedException) { }
                 }
@@ -1473,6 +1497,9 @@ namespace HumanVision.Demo
             internal Action<AsyncGPUReadbackRequest> ProbeCompletion;
             internal GraphicsFence CopyFence;
             internal bool HasCopyFence, FailedReadback, UseModelPixels, ProbePending, ProbeQueued, PrimaryDone, ProbeDone, PrimaryError, ProbeError;
+            internal HumanVisionInputAdapter.CpuFence SourceCopy;
+            internal HumanVisionInputAdapter.AnalysisCopyTrace CopyTrace;
+            internal ulong SourceCopyAttempt;
             internal Action<AsyncGPUReadbackRequest> Completion;
             internal bool Busy;
             internal long FrameId;

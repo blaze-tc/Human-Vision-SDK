@@ -237,6 +237,7 @@ public sealed class InputAdapterTests {
         var submit = typeof(VideoPlayerFrameSource).GetMethod("TrySubmitUnifiedCpuFrame", BindingFlags.Instance | BindingFlags.NonPublic,
             null, signature, null);
         Assert.That(submit, Is.Not.Null, "Decode texture retirement must have its own copy fence, independent of readback completion.");
+        var fenceType = typeof(UnityEngine.Rendering.GraphicsFence).GetField("m_FenceType", BindingFlags.Instance | BindingFlags.NonPublic);
         var source = new Source(1280,720); var go = new GameObject("independent CPU snapshots");
         try {
             var manager = go.AddComponent<HumanVisionManager>(); var session = new RecordingSession(); Set(manager,"_session",session);
@@ -249,6 +250,10 @@ public sealed class InputAdapterTests {
                     default(UnityEngine.Rendering.GraphicsFence),false};
                 Assert.That(submit.Invoke(bridge,args),Is.True);
                 Assert.That((bool)args[4],Is.EqualTo(SystemInfo.supportsGraphicsFence));
+                if(SystemInfo.supportsGraphicsFence) {
+                    Assert.That(fenceType.GetValue(args[3]),Is.EqualTo(UnityEngine.Rendering.GraphicsFenceType.CPUSynchronisation),
+                        "The Unity thread must observe the snapshot fence without requiring an async compute queue.");
+                }
                 var slots = (Array)Get(bridge,"_slots");
                 var slot = slots.GetValue(i);
                 var snapshot = slot.GetType().GetField("Snapshot",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(slot);
@@ -260,6 +265,25 @@ public sealed class InputAdapterTests {
             UnityEngine.Rendering.AsyncGPUReadback.WaitAllRequests(); Assert.That(session.Count,Is.EqualTo(limit));
             Assert.That(bridge.CpuReadbackStats.pending,Is.Zero);
         } finally {DestroyCpuTestObject(go,source);UnityEngine.Object.DestroyImmediate(source.Texture);}
+    }
+    [Test] public void SourceCopyFallbackRequiresSuccessfulReadbackForTheCurrentAttempt() {
+        var fence=new HumanVisionInputAdapter.CpuFence();
+        var trace=default(HumanVisionInputAdapter.AnalysisCopyTrace);
+        fence.Begin(in trace);
+        fence.Arm(default,false);
+        ulong original=fence.Attempt;
+        Assert.That(fence.IsComplete,Is.False);
+        fence.ObserveReadback(original,true);
+        Assert.That(fence.IsComplete,Is.True);
+        fence.Reset();
+
+        fence.Begin(in trace);
+        fence.Arm(default,false);
+        fence.ObserveReadback(original,true);
+        Assert.That(fence.IsComplete,Is.False,"An old snapshot's readback cannot release a reused source slot.");
+        fence.ObserveReadback(fence.Attempt,false);
+        Assert.That(fence.IsComplete,Is.False,"An errored readback does not establish GPU copy completion.");
+        Assert.That(fence.ReadbackError,Is.True);
     }
     [Test] public void ResolutionChangeHidesPreviousGeometryUntilANewAcceptedResult() {
         var source=new Source(640,360);var larger=new Texture2D(1920,1080,TextureFormat.RGBA32,false,true);var go=new GameObject("geometry fence");

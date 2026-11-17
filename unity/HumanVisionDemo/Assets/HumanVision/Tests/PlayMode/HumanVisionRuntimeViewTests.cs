@@ -113,9 +113,11 @@ namespace HumanVision.Tests
                 Assert.True(view.TryGetFrame(out var beforeRestart));
                 Debug.Log($"HV_RUNTIME_VIEW_RTSP verified {pairs}/{accepted} matched/accepted results; resolution={beforeRestart.ColorTexture.width}x{beforeRestart.ColorTexture.height}, last input={beforeRestart.InputFrameId}, native={beforeRestart.SourceFrameId}.");
                 yield return VerifySettingsOverlay(view);
+                yield return VerifyOverlayRetention(view, probe);
 
                 yield return sdk.StopSdk();
                 Assert.False(view.TryGetFrame(out _));
+                Assert.False(view.TryGetDisplayedFrame(out _));
                 Assert.False(view.TryGetJointTransform(0, HumanVisionCanonicalJointId.Nose, out _));
                 Assert.IsNull(view.GetLiveTexture());
                 pairs = 0;
@@ -132,6 +134,56 @@ namespace HumanVision.Tests
             } finally {
                 Object.Destroy(probe);
                 if (view != null) Object.Destroy(view.gameObject);
+            }
+        }
+
+        private static IEnumerator VerifyOverlayRetention(HumanVisionRuntimeView view, Texture2D probe)
+        {
+            var sdk = view.Sdk;
+            double deadline = Time.realtimeSinceStartupAsDouble + 5;
+            while (!view.TryGetFrame(out _) && Time.realtimeSinceStartupAsDouble < deadline) yield return null;
+            Assert.True(view.TryGetFrame(out var original), "A real paired result is required before forcing a preview gap.");
+            Assert.False(view.RetainLastOverlayDuringPairGaps);
+
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var bridge = typeof(HumanVisionSdk).GetProperty("FrameBridge", flags).GetValue(sdk);
+            var resetHistory = typeof(VideoPlayerFrameSource).GetMethod("ResetRuntimeViewHistory", flags);
+            var updateView = typeof(HumanVisionRuntimeView).GetMethod("LateUpdate", flags);
+            var before = Pixel(original.OverlayTexture, probe, 1, 1);
+            Assert.Greater(before.a, .5f, "The current composition must contain the camera image.");
+
+            view.RetainLastOverlayDuringPairGaps = true;
+            try {
+                // Drop the image history for one tick while the live input and accepted result remain available.
+                resetHistory.Invoke(bridge, null);
+                updateView.Invoke(view, null);
+                Assert.True(sdk.HasFreshResult);
+                Assert.False(view.TryGetFrame(out _));
+                Assert.False(view.TryGetJointTransform(0, HumanVisionCanonicalJointId.Nose, out _));
+                Assert.True(view.TryGetDisplayedFrame(out var held));
+                Assert.AreSame(original.OverlayTexture, held.OverlayTexture);
+                Assert.AreEqual(original.InputFrameId, held.InputFrameId);
+                Assert.AreEqual(original.ResultSequence, held.ResultSequence);
+                Assert.IsNull(held.ColorTexture);
+                var duringGap = Pixel(held.OverlayTexture, probe, 1, 1);
+                Assert.That(ColorDistance(before, duringGap), Is.LessThan(.01f));
+                Assert.That(duringGap.a, Is.EqualTo(before.a).Within(.01f));
+
+                var presentedAt = typeof(HumanVisionRuntimeView).GetField("lastComposedAt", flags);
+                Assert.NotNull(presentedAt);
+                presentedAt.SetValue(view, Time.realtimeSinceStartupAsDouble - 1d);
+                Assert.True(view.DisplayedFrameExpired);
+                Assert.False(view.TryGetDisplayedFrame(out _), "Expired composition must leave the display.");
+
+                deadline = Time.realtimeSinceStartupAsDouble + 5;
+                while (!view.TryGetFrame(out _) && Time.realtimeSinceStartupAsDouble < deadline) yield return null;
+                Assert.True(view.TryGetFrame(out var next), "The live input must resume exact pairing.");
+                Assert.Greater(next.ResultSequence, held.ResultSequence);
+                Assert.True(view.TryGetDisplayedFrame(out var displayed));
+                Assert.AreEqual(next.ResultSequence, displayed.ResultSequence);
+                Assert.False(view.DisplayedFrameExpired);
+            } finally {
+                view.RetainLastOverlayDuringPairGaps = false;
             }
         }
 

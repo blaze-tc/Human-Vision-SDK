@@ -1,3 +1,11 @@
+## 2026-11-17 RuntimePrefab 同帧画面与 RTSP 槽位改进
+
+Android 低档分路可以用已提交识别的 `512×288` 图像生成右侧同帧合成。相同输入帧号与 SDK 结果号决定配对，左侧预览继续由独立的高清分支提供。公开 Runtime Prefab Acceptance 启用此选项，并导出帧阶段与同帧间隔的 JSONL。
+
+Android RTSP 分路使用三个识别纹理槽，GPU 快照完成后可归还输入纹理，回读由独立的快照纹理继续。输入原生队列和诊断同步到可单独构建的 Input 包。
+
+构建、接口核对和本地 4K / 1080p 对照见[本轮验收报告](reports/2026-11-17-rtsp-preview-cadence.md)。
+
 ## 2026-11-16 preview.14 RTSP 分路与选流
 
 Android Input 通过同一解码帧生成独立识别纹理和预览纹理。GPU/NPU 低档给模型路由 `512×288`，并保留两路源帧身份。宇视同通道 H.264 自动选流由 SDK 启动选项控制，场地预览继续按有效同帧结果显示。公开 Runtime Prefab Acceptance 展示选流与三个独立帧率；SDK Settings 保存两项启动开关。

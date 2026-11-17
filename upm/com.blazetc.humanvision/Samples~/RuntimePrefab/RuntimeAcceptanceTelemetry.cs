@@ -26,7 +26,23 @@ namespace HumanVisionAcceptance
             lastSource = lastGeneration = 0;
         }
 
-        internal void Observe(long startTicks, HumanVisionSdk sdk, string backend, bool paired, HumanVisionPresentedFrame frame, int joints, int bones)
+        internal void ObservePresented(in HumanVisionPresentedFrame frame, bool validSkeleton)
+        {
+            bool sameSource = frame.SourceId == lastSource && frame.SourceGeneration == lastGeneration;
+            if (sameSource && frame.ResultSequence == lastSequence && frame.SourceFrameId == lastNative) return;
+            double now = Time.realtimeSinceStartupAsDouble;
+            ++newPairs;
+            if (validSkeleton) ++newSkeletonPairs;
+            if (lastPairAt > 0 && sameSource) maxPairInterval = Math.Max(maxPairInterval, now - lastPairAt);
+            lastPairAt = now;
+            lastSource = frame.SourceId;
+            lastGeneration = frame.SourceGeneration;
+            lastSequence = frame.ResultSequence;
+            lastNative = frame.SourceFrameId;
+        }
+
+        internal void Observe(long startTicks, HumanVisionSdk sdk, string backend, bool paired, HumanVisionPresentedFrame frame,
+            int joints, int bones, double validSkeletonFps)
         {
             double now = Time.realtimeSinceStartupAsDouble;
             ++updates;
@@ -36,18 +52,6 @@ namespace HumanVisionAcceptance
             if (validTextures) {
                 ++pairedUpdates;
                 if (joints > 0) ++poseUpdates;
-                if (frame.SourceId != lastSource || frame.SourceGeneration != lastGeneration ||
-                    frame.ResultSequence != lastSequence || frame.SourceFrameId != lastNative) {
-                    ++newPairs;
-                    if (joints > 0) ++newSkeletonPairs;
-                    if (lastPairAt > 0 && frame.SourceId == lastSource && frame.SourceGeneration == lastGeneration)
-                        maxPairInterval = Math.Max(maxPairInterval, now - lastPairAt);
-                    lastPairAt = now;
-                    lastSource = frame.SourceId;
-                    lastGeneration = frame.SourceGeneration;
-                    lastSequence = frame.ResultSequence;
-                    lastNative = frame.SourceFrameId;
-                }
             }
             if (sdk == null || !sdk.IsRunning) {
                 lastPairAt = 0;
@@ -67,7 +71,8 @@ namespace HumanVisionAcceptance
             double fpsGap = inputFps - freshFps;
             double pairedFps = newPairs / seconds, skeletonFps = newSkeletonPairs / seconds;
             string pairInterval = maxPairInterval > 0 ? $"{maxPairInterval * 1000:F0} ms" : "—";
-            PerformanceLine = $"游戏 {fps:F1} FPS / {averageFrame:F1} ms  |  输入 {inputFps:F1}  |  SDK 新识别 {freshFps:F1} FPS  |  骨骼同帧 {skeletonFps:F1} FPS  |  配对 {pairedFps:F1} FPS  |  Unity {memoryMiB} MiB";
+            string validRate = validSkeletonFps >= 0 ? $"  |  有效骨骼 {validSkeletonFps:F1} FPS" : "";
+            PerformanceLine = $"游戏 {fps:F1} FPS / {averageFrame:F1} ms  |  预览 {inputFps:F1}  |  新识别 {freshFps:F1} FPS{validRate}  |  同帧骨骼 {skeletonFps:F1} FPS  |  配对 {pairedFps:F1} FPS";
             ReadLine = $"Update 取帧 {pairedUpdates}/{updates} · 取点 {poseUpdates}/{updates} · 新配对 {newPairs}  |  最长配对间隔 {pairInterval}  |  取数 + 提交绘制 {updateMs:F2} ms";
             StageLine = $"SDK 预处理 {stats.DetectionMs:F1} ms  ·  推理 {stats.PoseMs:F1} ms  ·  后处理 {stats.TrackingMs:F1} ms  ·  结果年龄 {(ageMs >= 0 ? ageMs.ToString("F1") + " ms" : "—")}";
             if (Application.platform == RuntimePlatform.Android) {

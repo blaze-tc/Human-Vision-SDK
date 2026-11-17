@@ -11,13 +11,14 @@ namespace HumanVision.Input
         private const int SlotCount = 3;
         private readonly SourceRetirement retirement = new SourceRetirement();
         private readonly GpuOutput preview, analysis;
+        private readonly RtspAnalysisSlotLedger analysisTimings;
         private readonly InputRetirementRegistration registration;
         private readonly byte[] error = new byte[1024];
         private IntPtr handle, renderEvent;
-        private ulong nativeGeneration, bindingGeneration;
+        private ulong nativeGeneration;
         private long frameId, frameIdBase;
         private int maximumWidth, maximumHeight;
-        private Vector2Int analysisSize;
+        private Vector2Int analysisSize, decodedSize;
         private bool closing, rebinding, mirror;
 
         private sealed class GpuOutput
@@ -39,20 +40,63 @@ namespace HumanVision.Input
         internal Texture CurrentTexture => closing ? null : preview.Timeline.CurrentTexture;
         internal bool Pending => handle != IntPtr.Zero || retirement.PendingResourceCount != 0;
         internal IntPtr Handle => handle;
-        internal Vector2Int DecodedInputSize { get; private set; }
+        internal Vector2Int DecodedInputSize => State == InputSourceState.Streaming ? decodedSize : Vector2Int.zero;
         internal bool HasSeparateAnalysis => handle != IntPtr.Zero && !closing && analysisSize != Vector2Int.zero;
 
         internal AndroidRtspGpuSource()
         {
             preview = new GpuOutput(new SourceGeneration(retirement));
             analysis = new GpuOutput(new SourceGeneration(retirement, preview.Timeline.SourceId));
+            analysisTimings = new RtspAnalysisSlotLedger(analysis.Timeline.SourceId);
             registration = new InputRetirementRegistration(retirement, Progress, () => Pending);
         }
 
         internal bool TryGetLatestFrame(long after, out HumanVisionTextureFrame frame) => preview.Timeline.TryGetLatestFrame(after, out frame);
+        internal bool TryGetDecodedGeometry(in HumanVisionTextureFrame frame, out Vector2Int geometry, out ulong generation)
+        {
+            geometry = default;
+            generation = 0;
+            if (closing || rebinding || nativeGeneration == 0 || decodedSize == Vector2Int.zero ||
+                !preview.Timeline.TryGetLatestFrame(-1, out var latest) ||
+                frame.SourceId != latest.SourceId || frame.Generation != latest.Generation || frame.FrameId != latest.FrameId ||
+                frame.ResourceToken != latest.ResourceToken || frame.Texture != latest.Texture)
+                return false;
+            geometry = decodedSize;
+            generation = nativeGeneration;
+            return true;
+        }
         internal bool TryAcquireSourceCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease) => preview.Timeline.TryAcquireSourceCopyLease(in frame, out lease);
         internal bool TryGetLatestAnalysisFrame(long after, out HumanVisionTextureFrame frame) => analysis.Timeline.TryGetLatestFrame(after, out frame);
         internal bool TryAcquireAnalysisCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease) => analysis.Timeline.TryAcquireSourceCopyLease(in frame, out lease);
+
+        internal void RecordAnalysisSnapshotCompletion(ulong sourceId, ulong generation, long frameId, long observedUs,
+            RtspAnalysisSnapshotStatus status)
+        {
+            retirement.CheckThread();
+            analysisTimings.RecordSnapshot(sourceId, generation, frameId, observedUs, status);
+        }
+
+        internal void RecordAnalysisReadbackCompletion(ulong sourceId, ulong generation, long frameId, long observedUs, bool succeeded)
+        {
+            retirement.CheckThread();
+            analysisTimings.RecordReadback(sourceId, generation, frameId, observedUs, succeeded);
+        }
+
+        internal int CopyAnalysisSlotTimings(RtspAnalysisSlotTiming[] destination)
+        {
+            retirement.CheckThread();
+            int count = analysisTimings.CopyTo(destination);
+            if (!HasSeparateAnalysis || rebinding || State != InputSourceState.Streaming) return count;
+            for (int i = 0; i < count; ++i) {
+                ref var row = ref destination[i];
+                if (row.Generation != analysis.Timeline.Generation || row.NativeGeneration != nativeGeneration ||
+                    row.NativeSequence != analysis.Sequences[row.Slot]) continue;
+                row.SlotOutstanding = true;
+                row.SlotIsLatest = row.Slot == analysis.LatestSlot;
+                row.SlotHasPendingCopy = retirement.HasPendingCopies(analysis.Textures[row.Slot]);
+            }
+            return count;
+        }
 
         internal void ConfigureAnalysisOutput(Vector2Int size)
         {
@@ -112,7 +156,7 @@ namespace HumanVision.Input
             } finally { Marshal.FreeHGlobal(url); }
             renderEvent = NativeInputBindings.HV_Input_GetRenderEventFunc();
             maximumWidth = settings.RequestedWidth; maximumHeight = settings.RequestedHeight;
-            nativeGeneration = bindingGeneration = 0; closing = rebinding = false; mirror = settings.DisplayMirror;
+            nativeGeneration = 0; decodedSize = default; closing = rebinding = false; mirror = settings.DisplayMirror;
             State = InputSourceState.Opening; LastError = "Waiting for RTSP connection, first keyframe and actual decoder geometry.";
             BeginOutputGeneration();
         }
@@ -130,23 +174,16 @@ namespace HumanVision.Input
             if (state == 3) {
                 State = InputSourceState.Reconnecting;
                 LastError = "RTSP disconnected; waiting for reconnect and a new keyframe.";
-                DecodedInputSize = Vector2Int.zero;
+                // A reconnect supersedes any in-progress resize. Closing the
+                // timelines means the replacement binding must begin them again.
+                rebinding = false;
                 CloseTimelines();
                 IssueRenderEvent();
                 return;
             }
-            if (!rebinding && NativeInputBindings.HV_Input_GetGpuGeometry(handle, out var w, out var h, out var generation) == 0 && generation != nativeGeneration) {
-                if (w == 0 || h == 0 || w > 4096 || h > 4096) throw new InvalidOperationException("Actual decoder output geometry is unsupported.");
-                DecodedInputSize = new Vector2Int((int)w, (int)h);
-                // MediaCodec 解出相机原尺寸。预览仍走原有上限，独立分析纹理由同一个解码帧生成。
-                var output = SelectOutputSize((int)w, (int)h, maximumWidth, maximumHeight);
-                preview.Width = (uint)output.x; preview.Height = (uint)output.y;
-                analysis.Width = (uint)analysisSize.x; analysis.Height = (uint)analysisSize.y;
-                bindingGeneration = generation; rebinding = true;
-                Debug.Log("HumanVision RTSP GPU geometry: decoded=" + w + "x" + h +
-                    " requestedMaximum=" + maximumWidth + "x" + maximumHeight +
-                    " publishedOutput=" + preview.Width + "x" + preview.Height + " nativeGeneration=" + generation +
-                    (HasSeparateAnalysis ? " analysisOutput=" + analysis.Width + "x" + analysis.Height : ""));
+            if (!rebinding && NativeInputBindings.HV_Input_GetGpuGeometry(handle, out var w, out var h, out var generation) == 0 &&
+                (generation != nativeGeneration || w != (uint)decodedSize.x || h != (uint)decodedSize.y)) {
+                rebinding = true;
                 NativeInputBindings.HV_Input_RetireGpuTargets(handle);
                 BeginOutputGeneration();
             }
@@ -157,17 +194,30 @@ namespace HumanVision.Input
                 }
                 DestroyRetiredTextures();
                 if (retirement.PendingResourceCount != 0) return;
+                // During retirement the decoder keeps only its latest image.
+                // Read it again so this rebuild does not bind superseded geometry.
+                if (NativeInputBindings.HV_Input_GetGpuGeometry(handle, out w, out h, out generation) != 0)
+                    return;
+                if (w == 0 || h == 0 || w > 4096 || h > 4096)
+                    throw new InvalidOperationException("Actual decoder output geometry is unsupported.");
+                var output = SelectOutputSize((int)w, (int)h, maximumWidth, maximumHeight);
+                preview.Width = (uint)output.x; preview.Height = (uint)output.y;
+                analysis.Width = (uint)analysisSize.x; analysis.Height = (uint)analysisSize.y;
                 if (HasSeparateAnalysis) {
                     AllocateTargets(analysis, "analysis");
                     if (NativeInputBindings.HV_Input_BindGpuAnalysisTargets(handle, analysis.Pointers, analysis.Width,
-                            analysis.Height, bindingGeneration) != 0)
+                            analysis.Height, generation) != 0)
                         throw new InvalidOperationException("RTSP GPU analysis target binding failed after actual target retirement.");
                 }
                 AllocateTargets(preview, "preview");
                 int bound = NativeInputBindings.HV_Input_BindGpuTargets(handle, preview.Pointers, preview.Width, preview.Height,
-                    bindingGeneration, 0, mirror ? 1 : 0);
+                    generation, 0, mirror ? 1 : 0);
                 if (bound != 0) throw new InvalidOperationException("RTSP GPU target binding failed after actual target retirement.");
-                nativeGeneration = bindingGeneration; rebinding = false;
+                nativeGeneration = generation; decodedSize = new Vector2Int((int)w, (int)h); rebinding = false;
+                Debug.Log("HumanVision RTSP GPU geometry: decoded=" + w + "x" + h +
+                    " requestedMaximum=" + maximumWidth + "x" + maximumHeight +
+                    " publishedOutput=" + preview.Width + "x" + preview.Height + " nativeGeneration=" + generation +
+                    (HasSeparateAnalysis ? " analysisOutput=" + analysis.Width + "x" + analysis.Height : ""));
             }
             if (HasSeparateAnalysis) {
                 if (NativeInputBindings.HV_Input_PollGpuAnalysisFrame(handle, analysis.Sequence, out var modelFrame) == 0)
@@ -184,7 +234,7 @@ namespace HumanVision.Input
         private void BeginOutputGeneration()
         {
             preview.Timeline.BeginGeneration();
-            analysis.Timeline.BeginGeneration();
+            analysisTimings.BeginGeneration(analysis.Timeline.BeginGeneration());
             preview.LatestSlot = analysis.LatestSlot = -1;
             preview.Sequence = analysis.Sequence = 0;
             frameIdBase = frameId;
@@ -192,6 +242,7 @@ namespace HumanVision.Input
 
         private void CloseTimelines()
         {
+            analysisTimings.Close();
             preview.Timeline.Close();
             analysis.Timeline.Close();
         }
@@ -230,6 +281,8 @@ namespace HumanVision.Input
                 output.Tokens[slot], info.DecodedTimestampUs, FrameClockDomain.SourceLocalMonotonic, info.ClockId);
             if (!output.Timeline.TryPublish(in frame))
                 throw new InvalidOperationException("RTSP GPU frame publication rejected invalid metadata.");
+            if (output == analysis)
+                analysisTimings.Publish(frame.Generation, frame.FrameId, info.Generation, info.Sequence, slot, frame.PublishedTimestampUs);
             frameId = Math.Max(frameId, logicalFrameId);
             output.LatestSlot = slot; output.Sequences[slot] = info.Sequence; output.Sequence = info.Sequence;
             State = InputSourceState.Streaming; LastError = string.Empty;
@@ -238,10 +291,16 @@ namespace HumanVision.Input
         private void ReleaseUnusedSlots(GpuOutput output, bool isAnalysis)
         {
             for (int i = 0; i < SlotCount; ++i) {
-                if (i == output.LatestSlot || output.Sequences[i] == 0 || retirement.HasPendingCopies(output.Textures[i])) continue;
-                if (isAnalysis) NativeInputBindings.HV_Input_ReleaseGpuAnalysisSlot(handle, (uint)i, output.Sequences[i]);
-                else NativeInputBindings.HV_Input_ReleaseGpuSlot(handle, (uint)i, output.Sequences[i]);
-                output.Sequences[i] = 0;
+                ulong sequence = output.Sequences[i];
+                if (i == output.LatestSlot || sequence == 0 || retirement.HasPendingCopies(output.Textures[i])) continue;
+                int result;
+                if (isAnalysis) {
+                    result = NativeInputBindings.HV_Input_ReleaseGpuAnalysisSlot(handle, (uint)i, sequence);
+                    analysisTimings.RecordRelease(output.Timeline.Generation, checked(frameIdBase + (long)sequence),
+                        nativeGeneration, sequence, i, InputMonotonicClock.NowUs, result);
+                } else result = NativeInputBindings.HV_Input_ReleaseGpuSlot(handle, (uint)i, sequence);
+                // Preserve the native identity so a failed release can be retried on this binding.
+                if (result == 0) output.Sequences[i] = 0;
             }
         }
         // Only schedule native render work. Publication and frame IDs still
@@ -254,7 +313,6 @@ namespace HumanVision.Input
         private void IssueRenderEvent() => GL.IssuePluginEvent(renderEvent, 0x485649);
         internal void Close()
         {
-            DecodedInputSize = Vector2Int.zero;
             if (handle == IntPtr.Zero) return;
             closing = true; rebinding = false; State = InputSourceState.Closing; LastError = "Retiring queued GPU source copies.";
             NativeInputBindings.HV_Input_Close(handle);

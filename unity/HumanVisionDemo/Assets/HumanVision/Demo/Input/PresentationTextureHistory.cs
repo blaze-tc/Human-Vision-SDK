@@ -36,16 +36,21 @@ namespace HumanVision.Demo {
                 SystemInfo.supportsAsyncGPUReadback;
             for(int i=0;i<slots.Length;i++)slots[i]=new Slot();
         }
-        internal void Capture(IHumanVisionFrameSource source,in HumanVisionTextureFrame frame,long timestamp)
+        internal bool Capture(IHumanVisionFrameSource source,in HumanVisionTextureFrame frame,long timestamp)
             => Capture(source, in frame, frame.FrameId, timestamp);
-        internal void Capture(IHumanVisionFrameSource source,in HumanVisionTextureFrame frame,long resultFrameId,long timestamp) {
-            if(resultFrameId<=lastCapture || !SystemInfo.supportsGraphicsFence)return;
+        internal bool Capture(IHumanVisionFrameSource source,in HumanVisionTextureFrame frame,long resultFrameId,long timestamp,
+            bool analysisFrame = false) {
+            if(resultFrameId<=lastCapture || !SystemInfo.supportsGraphicsFence)return false;
             Slot free=null;
             foreach(var s in slots) {
                 if(s.pending && s.IsComplete && s.lease.IsRetired)s.pending=false;
                 if(s!=displayed&&!s.pending&&!s.markerPending&&(free==null||s.time<free.time))free=s;
             }
-            if(free==null||!source.TryAcquireSourceCopyLease(in frame,out var lease))return;
+            if(free==null)return false;
+            SourceCopyLease lease=default;
+            bool acquired=analysisFrame ? source is RtspFrameSource rtsp && rtsp.TryAcquireAnalysisCopyLease(in frame,out lease) :
+                source.TryAcquireSourceCopyLease(in frame,out lease);
+            if(!acquired)return false;
             try {
                 var renderSource=frame.Texture as RenderTexture;
                 if(free.texture==null){free.texture=renderSource!=null?new RenderTexture(renderSource.descriptor):new RenderTexture(frame.Width,frame.Height,0,RenderTextureFormat.ARGB32,RenderTextureReadWrite.Default);free.texture.Create();}
@@ -66,6 +71,7 @@ namespace HumanVision.Demo {
                 free.lease=lease;free.pending=true;lease.RetireAfter(free);
                 Graphics.ExecuteCommandBuffer(commands);
                 free.frame=resultFrameId;free.inputFrame=frame.FrameId;free.time=timestamp;lastCapture=resultFrameId;
+                return true;
             } finally { if(!free.pending)lease.Dispose(); }
         }
         internal bool TryPresentExact(long resultFrameId, out Texture texture, out long inputFrameId) {

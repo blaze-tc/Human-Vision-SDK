@@ -142,7 +142,7 @@ struct Importer:ImageImporter {
 InputImageCache cache(importer);
 std::mutex mutex;std::condition_variable retired;
 Counters session_baseline{};BufferRegistryStats registry_baseline{};bool terminal_reported=false;
-AndroidDecodedImage image_storage, active_storage;
+AndroidDecodedImage image_storage, active_storage, preview_storage;
 InputFrameRing frame_ring;
 bool production=false;int output_slot=-1;
 std::array<void*,3> output_textures{};
@@ -162,18 +162,23 @@ enum class Conversion { Legacy, Analysis, Preview };
 Conversion conversion=Conversion::Legacy;
 uint32_t preview_width=0,preview_height=0;
 uint64_t decoded_sequence=0,active_sequence=0;
+int64_t active_analysis_completed_us=0;
+uint64_t acknowledged_sequence=0;
+int64_t acknowledged_us=0;
 InputSplitSchedule split_schedule;
 InputFrameRing& ConversionRing() { return conversion==Conversion::Analysis ? analysis.ring : frame_ring; }
 uint64_t decoded_drops=0,decoded_pending_replaced=0,old_generation_rejections=0;
-AndroidDecodedImage* pending=nullptr;AndroidDecodedImage* active=nullptr;
+AndroidDecodedImage* pending=nullptr;AndroidDecodedImage* active=nullptr;AndroidDecodedImage* preview_pending=nullptr;
 bool enabled=false,initialized=false,closing=false,paused=false,inflight=false;
-bool HoldingAnalysisImage(){return active&&!inflight&&conversion==Conversion::Analysis&&split_schedule.Waiting();}
 void ReturnImage(AndroidDecodedImage*& p){if(p){
- // AccessQueue runs after the render callback drops this mutex. A newer decoded
- // pending image can be replaced during that gap; returning it must not cancel
- // the output slot already acquired for the distinct active image.
- if(production&&!inflight&&(p==active||!active))ConversionRing().Cancel(output_slot);
- if(p==active){split_schedule.Reset();active_sequence=0;}
+ // Only the active image owns an acquired output slot. Replacing either
+ // mailbox must leave an already scheduled AccessQueue callback untouched.
+ if(p==active){
+  if(production&&!inflight)ConversionRing().Cancel(output_slot);
+  active_sequence=0;
+  active_analysis_completed_us=0;
+ }
+ if(p==preview_pending)split_schedule.Reset();
  p->Reset();p=nullptr;retired.notify_all();}}
 
 HV_InputHandle owner=nullptr;void* unity_texture=nullptr;uint32_t target_width=0,target_height=0;uint64_t target_generation=0;
@@ -195,10 +200,19 @@ struct InputCadence {
 } cadence;
 struct SplitCadence {
  uint64_t analysis_completed=0, acknowledgements=0, preview_started_after_ack=0;
- uint64_t preview_without_ack=0, preview_skipped_timeout=0, preview_skipped_no_slot=0, analysis_no_slot=0;
+ uint64_t preview_without_ack=0, preview_expired=0, preview_skipped_no_slot=0, analysis_no_slot=0;
+ uint64_t preview_yield_to_analysis=0;
+ uint64_t decoded=0, decoded_replaced=0, analysis_published=0;
  int64_t analysis_decode_wait_us=0, analysis_fence_wait_us=0;
 } split_cadence;
 bool SplitEnabled() { return analysis.generation!=0 && analysis.generation==target_generation; }
+void LogSplitFrame(const char* phase, int64_t now) {
+ if (!active || !ShouldLogInputFrame(active_sequence, false)) return;
+ __android_log_print(ANDROID_LOG_INFO,"HVInputGate",
+  "input_split_frame phase=%s generation=%llu sequence=%llu monotonic_us=%lld analysis_complete_us=%lld analysis_ack_us=%lld",
+  phase,(unsigned long long)active->generation,(unsigned long long)active_sequence,(long long)now,
+  (long long)active_analysis_completed_us,(long long)(active_sequence==acknowledged_sequence?acknowledged_us:0));
+}
 void ReportInputCadence(){
  if(!production)return;
  const auto now=NowUs();
@@ -217,14 +231,16 @@ void ReportInputCadence(){
  if(SplitEnabled()){
   const auto& s=split_cadence;
   __android_log_print(ANDROID_LOG_INFO,"HVInputGate",
-   "input_analysis_cadence generation=%llu interval_ms=%.3f completed=%llu analysis_fps=%.3f acknowledgements=%llu preview_started_after_ack=%llu preview_without_ack=%llu preview_skipped_timeout=%llu preview_skipped_no_slot=%llu analysis_no_slot=%llu decoded_to_submit_mean_ms=%.3f submit_to_observed_fence_mean_ms=%.3f host_observation_not_gpu_execution=1",
+   "input_analysis_cadence generation=%llu interval_ms=%.3f completed=%llu analysis_fps=%.3f acknowledgements=%llu preview_started_after_ack=%llu preview_without_ack=%llu preview_expired=%llu preview_skipped_no_slot=%llu analysis_no_slot=%llu decoded_to_submit_mean_ms=%.3f submit_to_observed_fence_mean_ms=%.3f host_observation_not_gpu_execution=1 preview_yield_to_analysis=%llu split_decoded=%llu split_decoded_replaced=%llu analysis_published=%llu",
    (unsigned long long)target_generation,elapsed/1000.0,(unsigned long long)s.analysis_completed,
    s.analysis_completed*1000000.0/elapsed,(unsigned long long)s.acknowledgements,
    (unsigned long long)s.preview_started_after_ack,(unsigned long long)s.preview_without_ack,
-   (unsigned long long)s.preview_skipped_timeout,(unsigned long long)s.preview_skipped_no_slot,
+   (unsigned long long)s.preview_expired,(unsigned long long)s.preview_skipped_no_slot,
    (unsigned long long)s.analysis_no_slot,
    s.analysis_completed?s.analysis_decode_wait_us/1000.0/s.analysis_completed:0,
-   s.analysis_completed?s.analysis_fence_wait_us/1000.0/s.analysis_completed:0);
+   s.analysis_completed?s.analysis_fence_wait_us/1000.0/s.analysis_completed:0,
+   (unsigned long long)s.preview_yield_to_analysis,
+   (unsigned long long)s.decoded,(unsigned long long)s.decoded_replaced,(unsigned long long)s.analysis_published);
  }
  split_cadence={};
  cadence.report_us=now;cadence.events=cadence.busy=cadence.empty=cadence.complete=0;
@@ -263,7 +279,6 @@ bool InitializeResources(){
 // This part is also safe at a main-thread metadata read: no Unity API calls or
 // Vulkan resource destruction. A not-ready/error fence keeps its image leased.
 void PollConversionCompletion(){
- if(HoldingAnalysisImage()&&(closing||paused))ReturnImage(active);
  if(inflight){auto status=api.GetFenceStatus(api.unity.device,fence);if(status==VK_NOT_READY)return;if(status!=VK_SUCCESS){Error("poll conversion GPU fence",status);return;}
   completed_token=token;++counters.completes;inflight=false;
   const auto now=NowUs();
@@ -292,10 +307,21 @@ void PollConversionCompletion(){
   }
   if(ShouldLogInputFrame(active_sequence,!production))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","gpu_color_completed sequence=%llu generation=%llu pts_us=%lld received_us=%lld decoded_us=%lld submitted_us=%lld converted_us=%lld cpu_image_readbacks=0 target_width=%u target_height=%u applied_rotation=%d applied_mirror=%d source_matrix=%u source_range=%u transfer=%u primaries=%u color_space=%u",(unsigned long long)active_sequence,(unsigned long long)active->generation,(long long)active->pts_us,(long long)active->received_us,(long long)active->decoded_us,(long long)diagnostic_submitted_us,(long long)now,target_width,target_height,rotation,mirror,active->matrix,active->color_range,active->transfer,active->primaries,0u);
   if(model_pass&&published){
-   // Keep the AImage lease. Its first FOREIGN ownership release has completed.
-   split_schedule.CompleteAnalysis(active->generation,active_sequence,now);
+   ++split_cadence.analysis_published;
+   active_analysis_completed_us=now;
+   LogSplitFrame("analysis_ready",now);
+   // The completed fence returned image ownership. Retain only the lease
+   // for a preview opportunity, independently of the active conversion.
+   ReturnImage(preview_pending);
+   split_schedule.OfferPreview(active_sequence,now);
+   preview_storage.TakeFrom(*active);
+   preview_pending=&preview_storage;
+   active=nullptr;
+   active_sequence=0;
+   active_analysis_completed_us=0;
    return;
   }
+  if(conversion==Conversion::Preview&&published)LogSplitFrame("preview_ready",now);
   ReturnImage(active);retired.notify_all();
  }
 }
@@ -315,10 +341,11 @@ InputGpuSync gpu_sync(sync_fd_backend);
 void UNITY_INTERFACE_API SubmitOnUnityQueue(int,void*){
  std::lock_guard<std::mutex> lock(mutex);++counters.queue_callbacks;
  if(!active||!source_entry||inflight){Error("queue callback invalid pending conversion");return;}
+ if(closing||paused){ReturnImage(active);return;}
  auto d=api.unity.device;auto* r=static_cast<Imported*>(source_entry->resource);
  const bool model_pass=conversion==Conversion::Analysis;
  bool waited=false;
- // The preview reads the same held AImage after the first real fence.
+ // Preview is optional work for an image whose analysis fence completed.
  // Its original decoder acquire has already been observed.
  if(conversion!=Conversion::Preview&&!gpu_sync.WaitAcquireFdAndOwn(active->acquire_fd,waited)){Error("import actual acquire sync fd");ReturnImage(active);return;}
  if(waited)++counters.positive_waits;else ++counters.already_complete;
@@ -344,8 +371,9 @@ void UNITY_INTERFACE_API SubmitOnUnityQueue(int,void*){
   active->CountReleaseFd();++counters.exports;
  }
  if(conversion==Conversion::Preview){
-  if(split_schedule.AcknowledgedUs())++split_cadence.preview_started_after_ack;
+  if(active_sequence==acknowledged_sequence)++split_cadence.preview_started_after_ack;
   else ++split_cadence.preview_without_ack;
+  LogSplitFrame("preview_submitted",cadence.submitted_us);
  }
  if(ShouldLogInputFrame(active_sequence,!production)){
   diagnostic_submitted_us=NowUs();
@@ -355,15 +383,22 @@ void UNITY_INTERFACE_API SubmitOnUnityQueue(int,void*){
 }
 }
 void CloseOutputRings(){
+ ReturnImage(preview_pending);
+ acknowledged_sequence=0;
+ acknowledged_us=0;
  frame_ring.Close();
  analysis.ring.Close();
  published_frame={};
  analysis.published={};
 }
-bool BeginInputGpu(HV_InputHandle h){std::lock_guard<std::mutex> lock(mutex);if(owner||active||pending||inflight)return false;owner=h;session_baseline=counters;registry_baseline=buffer_registry.Inspect();terminal_reported=false;production=true;enabled=true;closing=paused=false;output_slot=-1;published_frame={};analysis.published={};frame_ring.Begin(1);split_cadence={};return true;}
+static void PauseOutputBindings(){
+ paused=true;
+ CloseOutputRings();
+}
+bool BeginInputGpu(HV_InputHandle h){std::lock_guard<std::mutex> lock(mutex);if(owner||active||pending||preview_pending||inflight)return false;owner=h;session_baseline=counters;registry_baseline=buffer_registry.Inspect();terminal_reported=false;production=true;enabled=true;closing=paused=false;target_generation=0;output_slot=-1;published_frame={};analysis.published={};frame_ring.Begin(1);split_cadence={};acknowledged_sequence=0;acknowledged_us=0;return true;}
 void CloseInputGpu(HV_InputHandle h){std::lock_guard<std::mutex> lock(mutex);if(!production||owner!=h)return;closing=paused=true;CloseOutputRings();ReturnImage(pending);retire_target=true;}
 bool InputGpuRetired(HV_InputHandle h){
- std::lock_guard<std::mutex> lock(mutex);const bool done=!production||owner!=h||(!active&&!pending&&!inflight&&!retire_target&&cache.Live()==0);
+ std::lock_guard<std::mutex> lock(mutex);const bool done=!production||owner!=h||(!active&&!pending&&!preview_pending&&!inflight&&!retire_target&&cache.Live()==0);
  // Report once only after the decoder has deleted its reader/quiesced callbacks
  // and real GPU retirement released cache objects. Never from a removal callback.
  if(done&&production&&owner==h&&h->stop&&h->worker_done&&!terminal_reported){
@@ -381,9 +416,26 @@ void PrepareInputGpuGeneration(Session* h){std::lock_guard<std::mutex> lock(mute
 int PollInputGpuMetadata(HV_InputHandle h,uint64_t after,HV_InputFrameInfo* f){std::lock_guard<std::mutex> lock(mutex);if(!h||h!=owner||!f)return HV_INPUT_INVALID;if(closing||published_frame.frame.sequence<=after||!published_frame.frame.sequence)return HV_INPUT_NO_FRAME;*f=published_frame.frame;return 0;}
 bool InputGpuProduction(Session* h){std::lock_guard<std::mutex> lock(mutex);return production&&owner==h;}
 bool ColorProbeEnabled(){std::lock_guard<std::mutex> lock(mutex);return enabled;}
-bool QueueColorImage(AndroidDecodedImage& image){std::lock_guard<std::mutex> lock(mutex);if(!enabled||closing||paused)return false;if(production){if(pending){ReturnImage(pending);++decoded_drops;++decoded_pending_replaced;}image_storage.TakeFrom(image);pending=&image_storage;return true;}if(pending||active)return false;image_storage.TakeFrom(image);pending=&image_storage;return true;}
+bool QueueColorImage(AndroidDecodedImage& image){
+ std::lock_guard<std::mutex> lock(mutex);
+ if(!enabled||closing)return false;
+ if(production){
+  if(!paused&&target_generation&&image.generation!=target_generation){
+   PauseOutputBindings();
+   split_cadence={};
+  }
+  if(!paused&&SplitEnabled()){
+   ++split_cadence.decoded;
+   if(pending)++split_cadence.decoded_replaced;
+  }
+  // Keep only the newest decoded image during texture retirement. It also
+  // carries the geometry Unity needs to bind the next generation.
+  if(pending){ReturnImage(pending);++decoded_drops;++decoded_pending_replaced;}
+ }else if(paused||pending||active)return false;
+ image_storage.TakeFrom(image);pending=&image_storage;return true;
+}
 void NotifyRemovedBuffer(AImageReader* reader,AHardwareBuffer* buffer){buffer_registry.Notify(reader,buffer);}
-void DrainColorImagesBeforeReaderClose(){std::unique_lock<std::mutex> lock(mutex);if(!enabled)return;closing=true;paused=true;if(production)CloseOutputRings();ReturnImage(pending);if(HoldingAnalysisImage())ReturnImage(active);retired.wait(lock,[]{return !active;});}
+void DrainColorImagesBeforeReaderClose(){std::unique_lock<std::mutex> lock(mutex);if(!enabled)return;closing=true;paused=true;if(production)CloseOutputRings();ReturnImage(pending);retired.wait(lock,[]{return !active;});}
 void ConfigureInputCopyProbeEvent();
 void ConfigureInputRenderEvent(){ConfigureInputCopyProbeEvent();auto* u=InputUnityVulkan();if(!u)return;UnityVulkanPluginEventConfig config{kUnityVulkanRenderPass_EnsureOutside,kUnityVulkanGraphicsQueueAccess_DontCare,kUnityVulkanEventConfigFlag_EnsurePreviousFrameSubmission|kUnityVulkanEventConfigFlag_ModifiesCommandBuffersState};u->ConfigureEvent(event_id,&config);}
 void InputCopyProbeEvent();
@@ -465,9 +517,6 @@ bool PrepareConversion(AndroidDecodedImage& image){
   __android_log_print(ANDROID_LOG_INFO,"HVInputGate","actual_unity_target image=%p format=%u usage=%u storage_features=%u width=%u height=%u",target.image,target.format,target.usage,features.optimalTilingFeatures,target_width,target_height);
  }
  if(production){views[output_slot]=target_view;images[output_slot]=last_target;}
- // The same imported descriptor is reused after the first fence, never
- // updated while an earlier command that uses it is still running.
- if(conversion==Conversion::Preview)return source_entry!=nullptr;
  ImageContract contract{};contract.external_format=c.external_format;contract.format=c.format;contract.features=c.format_features;contract.model=c.model;contract.range=c.range;contract.x_chroma=c.x_chroma;contract.y_chroma=c.y_chroma;std::memcpy(contract.components,c.components,sizeof(c.components));
  AHardwareBuffer_Desc desc{};AHardwareBuffer_describe(image.buffer,&desc);contract.width=desc.width;contract.height=desc.height;
  if(image.matrix==1)contract.model=VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;else if(image.matrix==2)contract.model=VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
@@ -483,44 +532,58 @@ void InputRenderEvent(int id){
   std::lock_guard<std::mutex> lock(mutex);
   if(!enabled)return;
   if(initialized)Poll();
-  ++cadence.events;if(inflight||active)++cadence.busy;else if(!pending)++cadence.empty;ReportInputCadence();
+  ++cadence.events;if(inflight||active)++cadence.busy;else if(!pending&&!preview_pending)++cadence.empty;ReportInputCadence();
   if(retire_target&&!inflight&&!active)RetireOutputTargets();
-  if(closing||paused||inflight)return;
-  if(active){
-   if(!HoldingAnalysisImage())return;
-   const auto now=NowUs();
-   const auto decision=split_schedule.Decide(now,frame_ring.CanStartConversion(),pending!=nullptr);
-   if(decision==PreviewDecision::Wait)return;
-   if(decision==PreviewDecision::Discard){
-    if(frame_ring.CanStartConversion())++split_cadence.preview_skipped_timeout;
+  if(closing||paused||inflight||active)return;
+  const bool pending_current=pending&&(!production||pending->generation==target_generation);
+  auto* mailbox=&pending;
+  uint64_t sequence=token+1;
+  int64_t analysis_completed_us=0;
+  conversion=Conversion::Legacy;
+  if(production&&SplitEnabled()){
+   const bool analysis_ready=pending_current&&analysis.ring.CanStartConversion();
+   if(pending_current&&!analysis_ready)++split_cadence.analysis_no_slot;
+   const bool preview_slot_free=frame_ring.CanStartConversion();
+   switch(split_schedule.Choose(NowUs(),analysis_ready,preview_slot_free)){
+   case SplitWork::Analysis:
+    if(preview_pending){
+     ++split_cadence.preview_yield_to_analysis;
+     ReturnImage(preview_pending);
+    }
+    conversion=Conversion::Analysis;
+    sequence=decoded_sequence+1;
+    break;
+   case SplitWork::Preview:
+    mailbox=&preview_pending;
+    conversion=Conversion::Preview;
+    sequence=split_schedule.Sequence();
+    analysis_completed_us=split_schedule.CompletedUs();
+    break;
+   case SplitWork::DiscardPreview:
+    if(preview_slot_free)++split_cadence.preview_expired;
     else ++split_cadence.preview_skipped_no_slot;
-    ReturnImage(active);
-   }
-  }
-  if(active){
-   conversion=Conversion::Preview;
-   if(!SelectOutputTarget(*active,active_sequence)||!PrepareConversion(*active)){
-    ReturnImage(active);return;
-   }
-  }else{
-   if(!pending)return;
-   conversion=production&&SplitEnabled()?Conversion::Analysis:Conversion::Legacy;
-   const uint64_t sequence=conversion==Conversion::Analysis?decoded_sequence+1:token+1;
-   if(production&&!SelectOutputTarget(*pending,sequence)){
-    if(pending->generation!=target_generation)ReturnImage(pending);
+    ReturnImage(preview_pending);
+    return;
+   case SplitWork::None:
     return;
    }
-   if(!unity_texture)return;
-   if(!PrepareConversion(*pending)){ReturnImage(pending);return;}
-   active_sequence=sequence;
-   if(conversion==Conversion::Analysis)decoded_sequence=sequence;
-   if(production){active_storage.TakeFrom(*pending);pending=nullptr;active=&active_storage;}else{active=pending;pending=nullptr;}
+  }else if(!pending_current){
+   return;
   }
+  if(production&&!SelectOutputTarget(**mailbox,sequence))return;
+  if(!unity_texture)return;
+  if(production){active_storage.TakeFrom(**mailbox);active=&active_storage;}else active=*mailbox;
+  *mailbox=nullptr;
+  if(conversion==Conversion::Preview)split_schedule.Reset();
+  active_sequence=sequence;
+  active_analysis_completed_us=analysis_completed_us;
+  if(!PrepareConversion(*active)){ReturnImage(active);return;}
+  if(conversion==Conversion::Analysis)decoded_sequence=sequence;
  }
  // Flush Unity's AccessTexture layout transition first; only this callback may submit.
  InputUnityVulkan()->AccessQueue(SubmitOnUnityQueue,event_id,nullptr,true);
 }
-void ShutdownInputColor(){std::lock_guard<std::mutex> lock(mutex);if(!initialized)return;Poll();if(inflight||active){Error("shutdown before GPU retirement");return;}ReturnImage(pending);cache.RemoveAll();cache.Collect();auto d=api.unity.device;if(target_view)api.DestroyImageView(d,target_view,nullptr);if(command_pool)api.DestroyCommandPool(d,command_pool,nullptr);if(fence)api.DestroyFence(d,fence,nullptr);if(wait_semaphore)api.DestroySemaphore(d,wait_semaphore,nullptr);if(release_semaphore)api.DestroySemaphore(d,release_semaphore,nullptr);initialized=false;}
+void ShutdownInputColor(){std::lock_guard<std::mutex> lock(mutex);if(!initialized)return;Poll();if(inflight||active){Error("shutdown before GPU retirement");return;}ReturnImage(pending);ReturnImage(preview_pending);cache.RemoveAll();cache.Collect();auto d=api.unity.device;if(target_view)api.DestroyImageView(d,target_view,nullptr);if(command_pool)api.DestroyCommandPool(d,command_pool,nullptr);if(fence)api.DestroyFence(d,fence,nullptr);if(wait_semaphore)api.DestroySemaphore(d,wait_semaphore,nullptr);if(release_semaphore)api.DestroySemaphore(d,release_semaphore,nullptr);initialized=false;}
 }
 extern "C" {
 __attribute__((visibility("default"))) void HV_Input_EnableColorProbe(){std::lock_guard<std::mutex> lock(hvinput::mutex);hvinput::enabled=true;hvinput::closing=false;hvinput::paused=false;}
@@ -550,7 +613,8 @@ HV_INPUT_API int HV_INPUT_CALL HV_Input_BindGpuTargets(HV_InputHandle h,void* co
  if(hvinput::analysis.generation&&hvinput::analysis.generation!=generation)return HV_INPUT_INVALID;
  for(int i=0;i<3;++i)hvinput::output_textures[i]=textures[i];
  hvinput::preview_width=w;hvinput::preview_height=he;hvinput::target_generation=generation;
- hvinput::rotation=degrees;hvinput::mirror=mirrored!=0;hvinput::closing=hvinput::paused=false;
+ hvinput::rotation=degrees;hvinput::mirror=mirrored!=0;
+ hvinput::paused=hvinput::closing||(hvinput::pending&&hvinput::pending->generation!=generation);
  hvinput::frame_ring.Begin(generation);hvinput::frame_ring.Collect(hvinput::completed_token);hvinput::published_frame={};
  if(hvinput::SplitEnabled()){
   if(hvinput::decoded_sequence<hvinput::token)hvinput::decoded_sequence=hvinput::token;
@@ -595,18 +659,29 @@ HV_INPUT_API int HV_INPUT_CALL HV_Input_ReleaseGpuAnalysisSlot(HV_InputHandle h,
 HV_INPUT_API int HV_INPUT_CALL HV_Input_AcknowledgeGpuAnalysisFrame(HV_InputHandle h,uint64_t generation,uint64_t sequence){
  std::lock_guard<std::mutex> lock(hvinput::mutex);
  if(!h||h!=hvinput::owner)return HV_INPUT_INVALID;
- if(hvinput::closing||!hvinput::HoldingAnalysisImage())return HV_INPUT_NO_FRAME;
- const auto now=hvinput::NowUs();
- const bool first=hvinput::split_schedule.AcknowledgedUs()==0;
- if(!hvinput::split_schedule.Acknowledge(generation,sequence,now))return HV_INPUT_NO_FRAME;
- if(first)++hvinput::split_cadence.acknowledgements;
- return HV_INPUT_OK;
+ if(hvinput::closing||hvinput::paused||!hvinput::SplitEnabled()||generation!=hvinput::target_generation||!sequence)
+  return HV_INPUT_NO_FRAME;
+ for(int i=0;i<3;++i){
+  const auto& slot=hvinput::analysis.ring.Slot(i);
+  if(slot.sequence!=sequence||slot.generation!=generation||!slot.observed)continue;
+  // ACK is retained as telemetry and never schedules or blocks either lane.
+  if(sequence>hvinput::acknowledged_sequence){
+   hvinput::acknowledged_sequence=sequence;
+   hvinput::acknowledged_us=hvinput::NowUs();
+   ++hvinput::split_cadence.acknowledgements;
+   if(hvinput::ShouldLogInputFrame(sequence,false))__android_log_print(ANDROID_LOG_INFO,"HVInputGate",
+    "input_split_frame phase=analysis_ack generation=%llu sequence=%llu monotonic_us=%lld",
+    (unsigned long long)generation,(unsigned long long)sequence,(long long)hvinput::acknowledged_us);
+  }
+  return HV_INPUT_OK;
+ }
+ return HV_INPUT_NO_FRAME;
 }
 HV_INPUT_API int HV_INPUT_CALL HV_Input_GpuRetired(HV_InputHandle h){return hvinput::InputGpuRetired(h)?1:0;}
 HV_INPUT_API int HV_INPUT_CALL HV_Input_GpuCopyActive(HV_InputHandle h){std::lock_guard<std::mutex> lock(hvinput::mutex);return h==hvinput::owner&&hvinput::active&&hvinput::inflight;}
 HV_INPUT_API void HV_INPUT_CALL HV_Input_LogGpuCounters(){HV_Input_LogColorProbeCounters();std::lock_guard<std::mutex> lock(hvinput::mutex);__android_log_print(ANDROID_LOG_INFO,"HVInputGate","input_ring_counters slots_live=%u slot_drops=%llu decoded_drops=%llu old_generation_rejections=%llu",hvinput::frame_ring.Live(),(unsigned long long)hvinput::frame_ring.Drops(),(unsigned long long)hvinput::decoded_drops,(unsigned long long)hvinput::old_generation_rejections);}
 }
-extern "C" HV_INPUT_API void HV_INPUT_CALL HV_Input_RetireGpuTargets(HV_InputHandle h){std::lock_guard<std::mutex> lock(hvinput::mutex);if(h==hvinput::owner){hvinput::paused=true;hvinput::ReturnImage(hvinput::pending);hvinput::CloseOutputRings();hvinput::retire_target=true;}}
+extern "C" HV_INPUT_API void HV_INPUT_CALL HV_Input_RetireGpuTargets(HV_InputHandle h){std::lock_guard<std::mutex> lock(hvinput::mutex);if(h==hvinput::owner){hvinput::PauseOutputBindings();hvinput::retire_target=true;}}
 extern "C" HV_INPUT_API int HV_INPUT_CALL HV_Input_GpuTargetsRetired(HV_InputHandle h){
  std::lock_guard<std::mutex> lock(hvinput::mutex);
  if(h!=hvinput::owner)return 1;
