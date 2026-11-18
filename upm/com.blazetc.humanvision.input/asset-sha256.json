@@ -5,7 +5,7 @@
   "Editor/InputPreviewSceneBuilder.cs": "aca08e31878b22edc376fa19e155aa5ddd94937433d399345fe13f53eecc4dbf",
   "Licenses/FFmpeg-LGPL-2.1.txt": "b634ab5640e258563c536e658cad87080553df6f34f62269a21d554844e58bfe",
   "Licenses/Unity-Plugin-API-LICENSE.md": "dc34d09c3c3a5057244ba4e6cbb871105ec42cd1130617aceeddb9219da922d1",
-  "README.md": "e0953dcbc72dbcc86a52de2e8d1594bc2744d101548d409f6e91252ffd39a11e",
+  "README.md": "3861539b5f0a42d1021cf3110f7440279c9cf009c4ccf14a14e24db66d794fec",
   "Runtime/AndroidRtspGpuSource.cs": "48844476cae7d0bace147ae08406f656014ec7136e645ecd245ad404055bef78",
   "Runtime/ArchiveVideoCache.cs": "1e07f4b999319ed6f893fe1f60f7a7c242b72ebe89bfa0f91ad359c7bd3c1ca6",
   "Runtime/FramePreview.cs": "124aa1c8cefedfaeba9da7446eec15b7ba1bb29558ab163741685d3b125c2ce8",
@@ -59,5 +59,5 @@
   "Tests/PlayMode/RtspPreviewTests.cs": "3b2ad2dd7335bb6b0b6c33980d74e249d1ce7e2b3c0f921d1c65202ec06a3b20",
   "Tests/PlayMode/UnitySourceLifecycleTests.cs": "5873a81d89726f4828e63c76608068dd64249860056ec7dda0267147683b5ca7",
   "native-payload.json": "a2ca27843a2e3ecc97a685c04e76832cd37f5ec07901e7843ca278450c6f9167",
-  "package.json": "3390fae8e8ed679f4e40d3546f7ce3e22ec5d17e71d056c932f486aa557e1433"
+  "package.json": "ba52906ff72ccc3ebed4ee7317ad7a0862af2476a98ce7798369bb0006a3a8b5"
 }

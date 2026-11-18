@@ -1,6 +1,6 @@
-## 2026-11-18 Android RTSP 高清预览候选
+## 2026-11-18 preview.16 发布范围与候选验证
 
-SDK 0.4.0-preview.16-cadence.3 / Input 0.1.0-preview.9-cadence.3 在本工作树作为本地候选。基线是 SDK preview.15、Input preview.8 和提交 10363f95a60018d7078b834140835e98ba1ff6c0。Android 分路在一次 Vulkan 提交转换同一个解码帧的高清与 512×288 两路。高清槽满时独立推进分析，分析槽满时也可独立发高清。实况、高清同帧底图及拍照继续使用相机分路，旧配对随来源、代次和配置变化失效。
+SDK `0.4.0-preview.16` 和 Input `0.1.0-preview.9` 使用同一 Git 标签，功能实现经过本地候选 `2b1d39b` 验证。见[公开验证报告](../upm/com.blazetc.humanvision/Documentation/reports/2026-11-18-preview16-rtsp-hd-preview.md)。基线是 SDK preview.15、Input preview.8 和提交 10363f95a60018d7078b834140835e98ba1ff6c0。Android 分路在一次 Vulkan 提交转换同一个解码帧的高清与 512×288 两路。高清槽满时独立推进分析，分析槽满时也可独立发高清。实况、高清同帧底图及拍照继续使用相机分路，旧配对随来源、代次和配置变化失效。
 
 - pwsh -NoProfile -File tools/package/build_input_native.ps1 -Platform Android -ApiLevel 26 -RunTests 构建并审计通过，Input 回归 56/56。新增调度回归先失败后通过。Android C 导出、动态定义、导入及依赖集合与发布库一致。
 - 当前 Unity 2021.3.45f1 使用 8091 Test Runner 执行 InputAdapterTests 25/25 与单列像素来源回归 1/1。独立团结引擎验证相关 EditMode 93/93、Windows PlayMode 3/3 和相机纹理/已绘制配对时序 1/1。

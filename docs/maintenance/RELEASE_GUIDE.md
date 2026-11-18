@@ -1,3 +1,20 @@
+# v0.4.0-preview.16 Android RTSP 高清预览
+
+SDK `0.4.0-preview.16` 和 Input `0.1.0-preview.9` 使用同一 Git 标签。先安装 Input，再安装 SDK。Android CPU 与 RK3588 NPU 使用匹配的本地资源。Android RTSP 高清与低档分析分路可同批提交，也可按各自槽位独立推进。Runtime Prefab 默认使用相机像素作为同帧底图。
+
+```powershell
+pwsh -NoProfile -File tools/package/build_input_native.ps1 -Platform Android -ApiLevel 26 -RunTests
+py -3.13 tools/package/check_input_package.py --root upm/com.blazetc.humanvision.input
+py -3.13 tools/package/test_package_release_snapshot.py
+py -3.13 tools/maintenance/check_architecture_boundaries.py
+py -3.13 tools/maintenance/generate_component_catalog.py --check
+py -3.13 tools/test/verify_upm_git_newlines.py
+py -3.13 tools/package/package_release_snapshot.py --authority tools/package/release-preview16-authority.json --verify-only
+py -3.13 tools/package/package_release_snapshot.py --authority tools/package/release-preview16-authority.json --output out/releases/v0.4.0-preview.16-final
+```
+
+从最终提交生成八个公共附件。核对远端带注释标签指向最终提交，从草稿下载八个附件并逐个核验 SHA-256，再发布 prerelease。RKNN 资源和设备验收 APK 使用本地交付路径。OnePlus 的结果覆盖共享 Android 输入分路和 NCNN Vulkan 后端，RK3588 NPU 与业务实机验收仍待执行。见[公开验证报告](../../upm/com.blazetc.humanvision/Documentation/reports/2026-11-18-preview16-rtsp-hd-preview.md)。
+
 # v0.4.0-preview.15 RTSP 同帧画面与槽位跟踪
 
 SDK `0.4.0-preview.15` 和 Input `0.1.0-preview.8` 使用同一 Git 标签。先安装 Input，再安装 SDK。Android RK3588 使用匹配的本地资源包。
