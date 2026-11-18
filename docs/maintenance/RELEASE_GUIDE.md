@@ -1,3 +1,20 @@
+# v0.4.0-preview.17 Android RTSP 首帧与独立预览
+
+SDK `0.4.0-preview.17` 和 Input `0.1.0-preview.10` 使用同一 Git 标签。先安装 Input，再安装 SDK。发布包含 HLK-AL00 AVC 首帧修复、Runtime Prefab 实时骨骼预览与精确同帧拍照，以及可用匹配本地资源启用的 Android 超低档。
+
+```powershell
+pwsh -NoProfile -File tools/package/build_input_native.ps1 -Platform Android -ApiLevel 26 -RunTests
+py -3.13 tools/package/check_input_package.py --root upm/com.blazetc.humanvision.input
+py -3.13 tools/package/test_package_release_snapshot.py
+py -3.13 tools/maintenance/check_architecture_boundaries.py
+py -3.13 tools/maintenance/generate_component_catalog.py --check
+py -3.13 tools/test/verify_upm_git_newlines.py
+py -3.13 tools/package/package_release_snapshot.py --authority tools/package/release-preview17-authority.json --verify-only
+py -3.13 tools/package/package_release_snapshot.py --authority tools/package/release-preview17-authority.json --output out/releases/v0.4.0-preview.17-final
+```
+
+从最终提交生成八个附件，核对远端带注释标签与附件 SHA-256。从草稿下载校验后发布 prerelease。Android CPU、RKNN 及超低档使用匹配发布版本的本地模型资源。RK3588 驱动、持续吞吐和业务动作以目标设备验收为准。见[验证报告](../../upm/com.blazetc.humanvision/Documentation/reports/2026-11-19-preview17-hlk-and-live-preview.md)。
+
 # v0.4.0-preview.16 Android RTSP 高清预览
 
 SDK `0.4.0-preview.16` 和 Input `0.1.0-preview.9` 使用同一 Git 标签。先安装 Input，再安装 SDK。Android CPU 与 RK3588 NPU 使用匹配的本地资源。Android RTSP 高清与低档分析分路可同批提交，也可按各自槽位独立推进。Runtime Prefab 默认使用相机像素作为同帧底图。

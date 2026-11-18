@@ -6,6 +6,6 @@
   "distribution_qualified": false,
   "gpu_gate": false,
   "local_evaluation_only": true,
-  "native_sha256": "23ff6808eca5eb9b273b5401339d8b4a8ae1b7b743ceed7b2d09a1e13e076114",
+  "native_sha256": "66e47badc6ded527c7db5e1d4b1245137d31af6dc11f4dc0266a7e1fa82c5b52",
   "ncnn_vulkan_symbols_verified": true
 }

@@ -1,4 +1,4 @@
-# Human Vision Input 0.1.0-preview.9
+# Human Vision Input 0.1.0-preview.10
 
 Independent Camera, Video and H.264/TCP RTSP frame sources and preview. This package
 contains no models and has no SDK inference dependency. Unity 2021.3+, Windows x64
@@ -24,18 +24,18 @@ changing this scheduling does not guarantee a camera or device frame rate.
 Install Input first using:
 
 ```
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.16
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.17
 ```
 
 For body skeletons explicitly add the SDK URL:
 
 ```
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.16
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.17
 ```
 
-For offline preview, import HumanVisionInput-0.1.0-preview.9.unitypackage into a
+For offline preview, import HumanVisionInput-0.1.0-preview.10.unitypackage into a
 clean project. Wait for compilation, then import
-HumanVisionSDK-0.4.0-preview.16.unitypackage if you need body skeletons.
+HumanVisionSDK-0.4.0-preview.17.unitypackage if you need body skeletons.
 Choose Git UPM or the offline unitypackages; do not install both.
 For Git UPM, import the InputPreview sample in Package Manager first,
 then build preview with HumanVision > Input > Create standalone preview. Choose your own

@@ -3,6 +3,7 @@
 在 Unity Package Manager 中打开 **Human Vision SDK → Samples**，导入 **Runtime Prefab Acceptance** 并打开
 `RuntimePrefabAcceptance.unity`。进入 Play Mode，输入可访问的 RTSP 地址并连接。也可在 Inspector 绑定 Startup Preset，或通过项目默认资产配置摄像头、RTSP 或视频。左侧显示最新输入和识别区域，右侧在最新相机画面上独立叠加采样骨骼。同一路输入短时缺少采样时，骨骼最多保留 180 毫秒。识别到无人、切换输入或重连时立即清除。点击「全屏预览」可选择等比显示或填满裁切。
 「拍照（精确同帧）」等待当前输入的一组新鲜精确配对，并将原色帧保存到应用的 `runtime-photos` 目录。离线包的样例位于 `Assets/HumanVision/Samples/RuntimePrefab`。
+可在该场景的 Inspector 填写 RTSP URL 作为启动时预填地址。绑定 Startup Preset 时使用预设输入。
 Android 使用 Vulkan、ARM64、IL2CPP，Player Settings 的 Internet Access 设为 Require。
 RTSP 样例启用 [同通道选流与模型尺寸分路](SDK_CONFIGURATION.md#android-rtsp-低档)。左侧可确认当前码流、解码或探测尺寸和实际预览尺寸。
 

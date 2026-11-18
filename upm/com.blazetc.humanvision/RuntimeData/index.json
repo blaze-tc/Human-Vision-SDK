@@ -3,8 +3,8 @@
     "composition_id": "main-preview7-restored-android-cpu-yolo-v1",
     "distribution_qualified": false,
     "hardware_fps_acceptance": false,
-    "input_native_sha256": "e3599d46d8f09775dc132513cd5e388f4b7fed11a5c54355f69f21dca0032dde",
-    "sdk_native_sha256": "32ce9715ad8a6daae5b47dd5d628e6340f354715eca24c11b84f651407694804",
+    "input_native_sha256": "78e4a938814286105644f516967ec3aef711f6bcb38943d273df62c614ec8149",
+    "sdk_native_sha256": "66e47badc6ded527c7db5e1d4b1245137d31af6dc11f4dc0266a7e1fa82c5b52",
     "windows_default_profile": "windows-yolo-directml-medium",
     "windows_explicit_cpu_profile": "windows-yolo-cpu-medium",
     "windows_native_sha256": "72e2ffdbc1140d7221d8ef46d3c1ef44f87c14c91fb404f740aa2fed8ca80397"

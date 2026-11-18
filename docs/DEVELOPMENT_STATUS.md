@@ -1,3 +1,7 @@
+## 2026-11-19 preview.17 发布范围
+
+SDK `0.4.0-preview.17` / Input `0.1.0-preview.10` 包含 HLK-AL00 AVC 首帧修复、Runtime Prefab 实时预览与精确同帧，以及 Android 超低档可选接入。CPU、RKNN 和 384×224 实验模型使用配套本地资源。YOLO26 对照属于离线模型研究。见[公开验证报告](../upm/com.blazetc.humanvision/Documentation/reports/2026-11-19-preview17-hlk-and-live-preview.md)。
+
 ## 2026-11-18 Android 384×224 超低档实验
 
 CPU、Vulkan GPU、RK3588 NPU 分别有独立超低 profile。原有 512×288 等档位继续使用原模型与默认规则。APK 实验分支保持 512×288 识别传输，三个后端在内部对超低模型做 384×224 等比预处理。报告记录原始 Exercise-11 离线对照和左腕质量门槛，超低档未通过七人左腕门槛。[模型与对照报告](reports/2026-11-18-hlk-ultra-low-384x224.md)

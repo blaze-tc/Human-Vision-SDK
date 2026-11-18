@@ -1,6 +1,6 @@
 # Human Vision SDK 安装与接入
 
-SDK **0.4.0-preview.16** / Input **0.1.0-preview.9**，Unity **2021.3+**，Windows x64 / Android ARM64。
+SDK **0.4.0-preview.17** / Input **0.1.0-preview.10**，Unity **2021.3+**，Windows x64 / Android ARM64。
 官方 Samples 包含 **SDK Settings** 和 **Runtime Prefab Acceptance**。源码和两个 Git UPM 子目录位于同一个 GitHub 仓库。
 
 ## 安装顺序
@@ -8,28 +8,28 @@ SDK **0.4.0-preview.16** / Input **0.1.0-preview.9**，Unity **2021.3+**，Windo
 先安装 Input，等编译完成，再安装 SDK。Input 负责 Camera/Video/RTSP 采集与预览，
 SDK 负责推理、骨骼、跟踪、人数与区域。选择 Git UPM、tgz 或 unitypackage 中的一种方式。
 已有项目先备份配置，更换安装方式时移除原 SDK/Input 副本，避免重复脚本、GUID 与 native 库。
-已有内嵌包的项目在 Unity 关闭后更新 `Packages/com.blazetc.humanvision`，同时更新 Input 到 0.1.0-preview.9，并保留项目配置。重新打开 Unity 后，SDK 自动安装桌面 YOLO 配置和图结构。切换安装方式前先移除旧副本。
+已有内嵌包的项目在 Unity 关闭后更新 `Packages/com.blazetc.humanvision`，同时更新 Input 到 0.1.0-preview.10，并保留项目配置。重新打开 Unity 后，SDK 自动安装桌面 YOLO 配置和图结构。切换安装方式前先移除旧副本。
 
 Git：Window → Package Manager → + → Add package from git URL，依次添加：
 
 ```text
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.16
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.16
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.17
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.17
 ```
 
 必须显式添加两个 Git 子目录；SDK 的版本依赖不能自动发现另一个 Git 包。
-两包使用同一个发布标签；Input 的实际包版本为 0.1.0-preview.9。
+两包使用同一个发布标签；Input 的实际包版本为 0.1.0-preview.10。
 
-离线：先导入 `HumanVisionInput-0.1.0-preview.9.unitypackage`，再导入
-`HumanVisionSDK-0.4.0-preview.16.unitypackage`。每步等待导入与编译完成。
+离线：先导入 `HumanVisionInput-0.1.0-preview.10.unitypackage`，再导入
+`HumanVisionSDK-0.4.0-preview.17.unitypackage`。每步等待导入与编译完成。
 离线包将随附资源导入 `Assets/HumanVision/RuntimeData`。Unity 会自动更新运行目录，保留通过校验的本地 Android 资源及其索引。也可通过 **HumanVision → Install Packaged Models** 手动重试。
-UPM tarball：依次安装 `com.blazetc.humanvision.input-0.1.0-preview.9.tgz` 和
-`com.blazetc.humanvision-0.4.0-preview.16.tgz`。用附件 `SHA256SUMS.txt` 校验下载内容。
+UPM tarball：依次安装 `com.blazetc.humanvision.input-0.1.0-preview.10.tgz` 和
+`com.blazetc.humanvision-0.4.0-preview.17.tgz`。用附件 `SHA256SUMS.txt` 校验下载内容。
 
 ## Android 完整 CPU / NPU 资源
 
-preview.16 的 SDK 支持 RK3588 NPU 低、中、高三档。已安装本地三档资源的项目升级时，备份项目中的资源和构建设置，并核对配套交付的 Input 原生库哈希。
-新接入 Git UPM 项目时，安装上述两个子目录，再导入与 preview.16 及 Input preview.9 匹配的本地 RK3588 NPU 三档资源包，执行 **HumanVision → Enable Local Android NPU Qualities**。
+preview.17 的 SDK 支持 RK3588 NPU 低、中、高三档。已安装本地三档资源的项目升级时，备份项目中的资源和构建设置，并核对配套交付的 Input 原生库哈希。
+新接入 Git UPM 项目时，安装上述两个子目录，再导入与 preview.17 及 Input preview.10 匹配的本地 RK3588 NPU 三档资源包，执行 **HumanVision → Enable Local Android NPU Qualities**。
 使用离线包的项目可使用与主包和安装布局配套的本地资源。若仍在使用 preview.12 的独立 CPU/NPU 补充包，按该版本的配套说明安装。
 详细步骤见[本地 Android 资源部署](user-guide/LOCAL_ANDROID_CPU_YOLO.md)。
 
@@ -59,4 +59,4 @@ Native 后端、SDK 新识别 FPS 和骨骼同帧 FPS。在 Editor 可通过验�
 
 ## 验证记录
 
-一加 9 Pro 已验证 1080p RTSP 高清预览、512×288 识别输入及断流后切换到 720p 的同帧恢复。RK3588 的 NPU 后端、持续识别性能和业务动作响应仍待对应设备验收。见[验证记录](../upm/com.blazetc.humanvision/Documentation/reports/2026-11-18-preview16-rtsp-hd-preview.md)。
+一加 9 Pro 已验证 1080p RTSP 高清预览、512×288 识别输入及断流后切换到 720p 的同帧恢复。RK3588 的 NPU 后端、持续识别性能和业务动作响应仍待对应设备验收。见[验证记录](../upm/com.blazetc.humanvision/Documentation/reports/2026-11-19-preview17-hlk-and-live-preview.md)。

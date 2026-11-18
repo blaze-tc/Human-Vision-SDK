@@ -1,8 +1,8 @@
 # 本地 Android CPU / GPU / NPU 部署
 
-## preview.16 RK3588 NPU 三档本地资源
+## preview.17 RK3588 NPU 三档本地资源
 
-先使用 Git 标签 `v0.4.0-preview.16` 安装 Input `0.1.0-preview.9` 和 SDK `0.4.0-preview.16`。导入与 preview.16 及 Input preview.9 匹配的本地 RK3588 NPU 三档资源包 后，运行 **HumanVision → Enable Local Android NPU Qualities**，核对实际加载的原生库和模型。
+先使用 Git 标签 `v0.4.0-preview.17` 安装 Input `0.1.0-preview.10` 和 SDK `0.4.0-preview.17`。导入与 preview.17 及 Input preview.10 匹配的本地 RK3588 NPU 三档资源包 后，运行 **HumanVision → Enable Local Android NPU Qualities**，核对实际加载的原生库和模型。
 
 ## preview.14 RK3588 NPU 三档本地资源
 

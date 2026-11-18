@@ -4,7 +4,7 @@
   "device_performance_verified": false,
   "distribution_qualified": false,
   "local_evaluation_only": true,
-  "native_sha256": "23ff6808eca5eb9b273b5401339d8b4a8ae1b7b743ceed7b2d09a1e13e076114",
+  "native_sha256": "66e47badc6ded527c7db5e1d4b1245137d31af6dc11f4dc0266a7e1fa82c5b52",
   "ort_api_version": 23,
   "ort_cpu_symbols_verified": true,
   "runtime_sha256": "cd1285f8955f3abcb0127d1ffaf1e5da7893d2547872a831b4717c0bfe388328"

@@ -1,24 +1,24 @@
 # Human Vision SDK
 
-当前版本：SDK **0.4.0-preview.16** / Input **0.1.0-preview.9**，Unity **2021.3+**。
+当前版本：SDK **0.4.0-preview.17** / Input **0.1.0-preview.10**，Unity **2021.3+**。
 这是预发布评估版。Unity 游戏通过稳定 API 使用 Camera、RTSP、Video 图像，读取人体、
 骨骼、人数和区域结果；默认配置使用 ScriptableObject，输入地址可在初始化代码中传入。
 
-[下载 preview.16](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.16) ·
+[下载 preview.17](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.17) ·
 [安装](docs/UPM_INSTALLATION.md) · [配置与 API](docs/user-guide/SDK_CONFIGURATION.md) ·
-[中文文档](docs/user-guide/README.md) · [本次验证](upm/com.blazetc.humanvision/Documentation/reports/2026-11-18-preview16-rtsp-hd-preview.md)
+[中文文档](docs/user-guide/README.md) · [本次验证](upm/com.blazetc.humanvision/Documentation/reports/2026-11-19-preview17-hlk-and-live-preview.md)
 
 ## 安装
 
 先安装 Input，再安装 SDK。Git UPM、tgz 和 unitypackage 选择一种安装方式，避免重复组件和原生库。
 
 ```text
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.16
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.16
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.17
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.17
 ```
 
-离线顺序：`HumanVisionInput-0.1.0-preview.9.unitypackage` →
-`HumanVisionSDK-0.4.0-preview.16.unitypackage`。两个 tgz 为等价的 UPM 安装方式。
+离线顺序：`HumanVisionInput-0.1.0-preview.10.unitypackage` →
+`HumanVisionSDK-0.4.0-preview.17.unitypackage`。两个 tgz 为等价的 UPM 安装方式。
 附件提供 `SHA256SUMS.txt`、资产索引和源提交记录。
 
 **Android YOLO CPU 与 RK3588 NPU 的完整资源仍使用匹配的本地补充包**，安装方法见
@@ -52,7 +52,7 @@ Android CPU 界面“固定模型”表示目前只提供一个模型输入档�
 
 ## 本次验证
 
-Android RTSP 高清预览与低档 `512×288` 识别输入可从同一解码帧同时生成，也可在另一分路无空槽时独立推进。Runtime Prefab 样例用相机图像绘制同帧骨骼。一加 9 Pro 的实测和 Windows 功能回归见[验证报告](upm/com.blazetc.humanvision/Documentation/reports/2026-11-18-preview16-rtsp-hd-preview.md)。RK3588 持续帧率与业务动作响应由实机结果确认。
+Android RTSP 高清预览与低档 `512×288` 识别输入可从同一解码帧同时生成，也可在另一分路无空槽时独立推进。Runtime Prefab 样例用相机图像绘制同帧骨骼。一加 9 Pro 的实测和 Windows 功能回归见[验证报告](upm/com.blazetc.humanvision/Documentation/reports/2026-11-19-preview17-hlk-and-live-preview.md)。RK3588 持续帧率与业务动作响应由实机结果确认。
 
 世界坐标为图像到世界平面的映射；当前随包姿态模型未启用真实手掌/指尖/拇指推理。
 保留模型来源、上游许可证和评估/分发资格标记；本次发布没有授予新的模型商用许可。

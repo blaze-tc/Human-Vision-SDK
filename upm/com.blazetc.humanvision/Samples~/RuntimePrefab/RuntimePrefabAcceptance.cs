@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using HumanVision;
 using HumanVision.Demo;
@@ -43,7 +44,8 @@ namespace HumanVisionAcceptance
         private Font uiFont;
         private GUIStyle heading, title, body, small, field, button, selected, badge;
         private bool paired, hasInput, operating, capacityMenuOpen;
-        private bool ultraLowInstalled;
+        private readonly Dictionary<HumanVisionAccelerationMode, ModelInputQualityChoice[]> androidQualities =
+            new Dictionary<HumanVisionAccelerationMode, ModelInputQualityChoice[]>();
         private bool showSkeleton = true;
         private int visibleJoints, visibleBones;
         private string status = "填入设备可访问的 RTSP 地址，然后点击连接";
@@ -69,6 +71,10 @@ namespace HumanVisionAcceptance
             telemetry.Reset();
             if (redrawRig != null) redrawRig.gameObject.SetActive(false);
             LoadStartup();
+            if (IsAndroid) {
+                Run(PrepareAndroidChoices());
+                return;
+            }
 #if UNITY_EDITOR
             if (!string.IsNullOrWhiteSpace(editorVideoPath)) {
                 startup.SourceKind = InputKind.Video;
@@ -161,13 +167,7 @@ namespace HumanVisionAcceptance
             inputOpened = false;
             try { options.Validate(); }
             catch (ArgumentException error) { status = error.Message; yield break; }
-            if (view == null)
-            {
-                view = HumanVisionRuntimeView.Create();
-                view.FramePresented += CountPresented;
-                previousAnalysisPreview = view.UseAnalysisFrameForMatchedPreview;
-                previousPresentationMode = view.PresentationMode;
-            }
+            EnsureView();
             view.UseAnalysisFrameForMatchedPreview = false;
             view.PresentationMode = HumanVisionRuntimePresentationMode.Disabled;
             diagnostics.BindSdk(view.Sdk);
@@ -188,7 +188,6 @@ namespace HumanVisionAcceptance
                 yield break;
             }
             startup = view.Sdk.Configuration;
-            RefreshUltraLowAvailability(startup);
             recognition = startup.Recognition.Clone();
             maxBodies = recognition.MaxBodies;
             nextBackendAt = 0;
@@ -254,20 +253,54 @@ namespace HumanVisionAcceptance
         }
 
         private static bool IsAndroid => Application.platform == RuntimePlatform.Android;
-        private bool FixedQuality => IsAndroid && startup.AccelerationMode == HumanVisionAccelerationMode.Cpu;
-        private static ModelInputQuality QualityForCompute(bool android, HumanVisionAccelerationMode mode, ModelInputQuality quality) =>
-            android && mode == HumanVisionAccelerationMode.Cpu && quality != ModelInputQuality.UltraLow
-                ? ModelInputQuality.Low : quality;
+        private bool FixedQuality => IsAndroid && (!androidQualities.TryGetValue(startup.AccelerationMode, out var choices) || choices.Length <= 1);
 
-        private void RefreshUltraLowAvailability(HumanVisionSdkOptions options)
+        private void EnsureView()
         {
-            ultraLowInstalled = false;
-            if (!IsAndroid || view == null) return;
-            foreach (var choice in view.Sdk.GetInputQualityCapabilities(options).Choices)
-                if (choice.Quality == ModelInputQuality.UltraLow) {
-                    ultraLowInstalled = true;
-                    break;
-                }
+            if (view != null) return;
+            view = HumanVisionRuntimeView.Create();
+            view.FramePresented += CountPresented;
+            previousAnalysisPreview = view.UseAnalysisFrameForMatchedPreview;
+            previousPresentationMode = view.PresentationMode;
+        }
+
+        private IEnumerator PrepareAndroidChoices()
+        {
+            string root = startup.RuntimeRoot;
+            string error = null;
+            if (string.IsNullOrWhiteSpace(root)) {
+                status = "正在准备模型资源…";
+                yield return HumanVisionRuntimeData.Prepare(value => root = value, failure => error = failure);
+            }
+            if (string.IsNullOrWhiteSpace(root)) {
+                status = diagnostics.Redact(error ?? "模型资源目录不可用");
+                yield break;
+            }
+            startup.RuntimeRoot = root;
+            EnsureView();
+            var candidate = startup.Clone();
+            candidate.InputQuality = ModelInputQuality.Low;
+            candidate.Recognition = recognition.Clone();
+            foreach (var mode in new[] { HumanVisionAccelerationMode.Cpu, HumanVisionAccelerationMode.Graphics,
+                                        HumanVisionAccelerationMode.Neural }) {
+                if (mode == HumanVisionAccelerationMode.Graphics &&
+                    SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Vulkan) continue;
+                candidate.AccelerationMode = mode;
+                candidate.UseWindowsCpu = mode == HumanVisionAccelerationMode.Cpu;
+                var capability = view.Sdk.GetInputQualityCapabilities(candidate);
+                if (string.IsNullOrEmpty(capability.Error)) androidQualities.Add(mode, capability.Choices);
+            }
+            status = "选择分析设备与模型等级，再连接输入";
+            if (autoConnect) yield return Connect();
+        }
+
+        private bool HasQuality(HumanVisionAccelerationMode mode, ModelInputQuality quality)
+        {
+            if (!IsAndroid) return true;
+            if (!androidQualities.TryGetValue(mode, out var choices)) return false;
+            foreach (var choice in choices)
+                if (choice.Quality == quality) return true;
+            return choices.Length == 0 && quality == ModelInputQuality.Low;
         }
 
         private static string ReadActualBackend(string diagnostics)
@@ -309,24 +342,21 @@ namespace HumanVisionAcceptance
             var options = running ? view.Sdk.Configuration : startup.Clone();
             options.AccelerationMode = mode;
             options.UseWindowsCpu = mode == HumanVisionAccelerationMode.Cpu;
-            options.InputQuality = QualityForCompute(IsAndroid, mode, quality);
-            if (startup.AccelerationMode != mode && quality == ModelInputQuality.UltraLow)
-                options.InputQuality = ModelInputQuality.Low;
+            options.InputQuality = HasQuality(mode, quality) ? quality : ModelInputQuality.Low;
             if (running) Run(Initialize(options));
-            else {
-                startup = options;
-                RefreshUltraLowAvailability(startup);
-            }
+            else startup = options;
         }
 
         private void DrawModelButton(Rect rect, ModelInputQuality quality, string label)
         {
+            GUI.enabled = !operating && !FixedQuality && HasQuality(startup.AccelerationMode, quality);
             if (GUI.Button(rect, label, startup.InputQuality == quality ? selected : button))
                 SelectCompute(startup.AccelerationMode, quality);
         }
 
         private void DrawBackendButton(Rect rect, HumanVisionAccelerationMode mode, string label)
         {
+            GUI.enabled = !operating && (IsAndroid ? androidQualities.ContainsKey(mode) : mode != HumanVisionAccelerationMode.Neural);
             if (GUI.Button(rect, label, startup.AccelerationMode == mode ? selected : button))
                 SelectCompute(mode, startup.InputQuality);
         }
@@ -463,14 +493,11 @@ namespace HumanVisionAcceptance
                 GetExpandedCards(scale, out var liveCard, out var poseCard, out var controls);
                 DismissCapacityMenu();
                 GUI.Label(new Rect(28, 12, 900, 52), "Human Vision  /  Runtime Prefab 验收", heading);
-                GUI.Label(new Rect(30, 65, 135, 30), FixedQuality && !ultraLowInstalled ? "固定模型等级" : "模型等级", small);
-                GUI.enabled = !operating && (!FixedQuality || ultraLowInstalled);
+                GUI.Label(new Rect(30, 65, 135, 30), FixedQuality ? "固定模型等级" : "模型等级", small);
                 DrawModelButton(new Rect(177, 64, 60, 32), ModelInputQuality.Low, "低");
-                GUI.enabled = !operating && !FixedQuality;
                 DrawModelButton(new Rect(242, 64, 60, 32), ModelInputQuality.Medium, "中");
                 DrawModelButton(new Rect(307, 64, 60, 32), ModelInputQuality.High, "高");
-                if (ultraLowInstalled) {
-                    GUI.enabled = !operating;
+                if (IsAndroid && HasQuality(startup.AccelerationMode, ModelInputQuality.UltraLow)) {
                     DrawModelButton(new Rect(372, 64, 82, 32), ModelInputQuality.UltraLow, "超低");
                 }
                 GUI.enabled = measuring || !operating;
@@ -483,11 +510,9 @@ namespace HumanVisionAcceptance
                     GUIUtility.systemCopyBuffer = diagnostics.ExportPath;
                     status = diagnostics.Status;
                 }
-                GUI.enabled = !operating;
                 GUI.Label(new Rect(894, 65, 140, 30), "分析设备", small);
                 DrawBackendButton(new Rect(1020, 64, 105, 32), HumanVisionAccelerationMode.Cpu, "CPU");
                 DrawBackendButton(new Rect(1133, 64, 105, 32), HumanVisionAccelerationMode.Graphics, "GPU");
-                GUI.enabled = !operating && IsAndroid;
                 DrawBackendButton(new Rect(1246, 64, 166, 32), HumanVisionAccelerationMode.Neural, "NPU · RK3588");
                 GUI.enabled = true;
                 Box(new Rect(1188, 24, 224, 34), Inset);

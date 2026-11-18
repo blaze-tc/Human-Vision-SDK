@@ -28,4 +28,4 @@ Android 分路模式下，实时预览来自相机分路，最高 `1920×1080`�
 「一键测试」连接当前输入并在首个有效推理结果后记录 180 秒。结果包括独立的解码、识别、有效骨骼和预览统计。
 「导出 JSONL / 复制路径」保存日志路径。Android 分路日志记录可用的 GPU 快照、归还和 CPU 回读数据。
 
-[完整接入说明](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.0-preview.16/docs/user-guide/UNITY_RUNTIME_PREFAB.md)
+[完整接入说明](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.0-preview.17/docs/user-guide/UNITY_RUNTIME_PREFAB.md)
