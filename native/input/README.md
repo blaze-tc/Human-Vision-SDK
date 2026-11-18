@@ -44,6 +44,15 @@ Startup waits boundedly for an actual keyframe before submitting compressed data
 to MediaCodec. Imported images are sampled
 read-only. No decoded plane mapping, CPU conversion or production readback exists.
 
+Production on HLK-AL00 / Android 10 / `OMX.hisi.video.decoder.avc` limits the
+PRIVATE reader to three acquired images. The decoder accepted 13 output buffers
+after reconfiguration in the device probe and rejected 14 or more. MediaCodec
+still writes to the same type of PRIVATE GPU surface; only the reader capacity
+changes. Other devices and diagnostic gates keep the four-image reader.
+`hardware_codec`, `decoder_first_keyframe_submitted`, `decoder_first_output`,
+`decoder_first_image` and `decoder_output_error` in the `HVInputGate` log locate
+startup failures without changing reconnect behavior. See the [device report](../../docs/reports/2026-11-18-hlk-al00-rtsp-first-frame.md).
+
 Android production RTSP now publishes three fixed Unity-owned RGBA output slots.
 `RtspFrameSource` owns native worker, generation and texture lifetimes on the main
 thread. It initializes each Unity target with Unity rendering before native bind.

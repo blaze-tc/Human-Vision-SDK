@@ -1,3 +1,11 @@
+## 2026-11-18 HLK-AL00 Android RTSP 首帧候选
+
+基于 `v0.4.0-preview.16` (`0dead88c`)；原发布标签不动。HLK-AL00 Android 10 原始 `Exercise-11` H.264 Main 1080p30 同机对照显示，普通 SurfaceView 成功；PRIVATE GPU 读者容量为 4 时，OMX 输出重配最低申请 14 个缓冲区，全部被拒。仅改读者容量为 3 后，同一份 SPS/PPS 和访问单元恢复输出与 AImage 取图。候选 Input `0.1.0-preview.10-hlk.1` 将该容量限定于 `HLK-AL00` / API 29 / `OMX.hisi.video.decoder.avc` 的生产会话，仍走既有 Vulkan、帧身份及重连路径。
+
+`pwsh -NoProfile -File tools/package/build_input_native.ps1 -Platform Android -ApiLevel 26 -RunTests` 通过，Input 回归 57/57；新增设备选择测试先失败后通过。Android ARM64 API26 导出与动态依赖集合不变。`py -3.13 tools/maintenance/check_architecture_boundaries.py`、组件目录、UPM 换行及发布快照单元测试 15/15 通过。`py -3.13 tools/package/package_input.py --output out/diagnostics/hlk-rtsp-20261118/delivery` 通过。基线、同机对照、候选哈希与验收范围见[设备报告](reports/2026-11-18-hlk-al00-rtsp-first-frame.md)。
+
+已正式重建跨栏王 AAR 与宿主并在同一 HLK-AL00 跑完原始 1080p 首局，证实首帧、512×288 实际分析、1920×1080 预览/同帧/拍照源、有无人、骨骼开关和断流换代。真实后端 `backend.ncnn.vulkan`，首 30 秒游戏、输入发布、新结果、高清同帧为 12.13、8.31、3.76、3.31 FPS，SDK 推理耗时 284.90 ms。成绩和排行榜流程完成，但未记录到有效起跳，玩法验收未通过。
+
 ## 2026-11-18 preview.16 发布范围与候选验证
 
 SDK `0.4.0-preview.16` 和 Input `0.1.0-preview.9` 使用同一 Git 标签，功能实现经过本地候选 `2b1d39b` 验证。见[公开验证报告](../upm/com.blazetc.humanvision/Documentation/reports/2026-11-18-preview16-rtsp-hd-preview.md)。基线是 SDK preview.15、Input preview.8 和提交 10363f95a60018d7078b834140835e98ba1ff6c0。Android 分路在一次 Vulkan 提交转换同一个解码帧的高清与 512×288 两路。高清槽满时独立推进分析，分析槽满时也可独立发高清。实况、高清同帧底图及拍照继续使用相机分路，旧配对随来源、代次和配置变化失效。
