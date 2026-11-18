@@ -39,6 +39,14 @@ namespace HumanVision
                 try {
                     HumanVisionAndroidCpuModelContract.Validate(root);
                     var contract=HumanVision.Demo.AnalysisContract.Load(root,profile,maxBodies);
+                    if (HumanVisionAndroidCpuModelContract.HasInstalledUltraLow(root)) {
+                        string ultra = HumanVisionAndroidAccelerationSelection.CpuUltraLowProfile;
+                        var ultraContract = AnalysisContract.Load(root, ultra, maxBodies);
+                        return new HumanVisionSdkQualityCapabilities(profile, "选择已安装的 Android CPU 模型。", new[] {
+                            new ModelInputQualityChoice(ModelInputQuality.Low, profile, contract.PoseWidth, contract.PoseHeight),
+                            new ModelInputQualityChoice(ModelInputQuality.UltraLow, ultra, ultraContract.PoseWidth, ultraContract.PoseHeight)
+                        });
+                    }
                     return new HumanVisionSdkQualityCapabilities(profile,"Android CPU 使用固定模型："+contract.ModelPackId+"，骨骼输入 "+contract.PoseWidth+"×"+contract.PoseHeight+
                         "。模型与尺寸读取当前配置；不提供独立手部模型。实际设备速度以运行统计为准。",Array.Empty<ModelInputQualityChoice>());
                 } catch(Exception e) { return Failed(profile,e.Message); }
@@ -47,7 +55,10 @@ namespace HumanVision
                 if (string.IsNullOrEmpty(root)) return new HumanVisionSdkQualityCapabilities(profile, "正在准备 RK3588 NPU 模型资源。", Array.Empty<ModelInputQualityChoice>());
                 try {
                     var choices = HumanVisionNeuralModelContract.LoadInstalled(root, profile);
-                    return new HumanVisionSdkQualityCapabilities(profile, "RK3588 NPU 模型已通过离线数值验证。设备性能以 RK3588 实测为准。", choices);
+                    string detail = Array.Exists(choices, choice => choice.Quality == ModelInputQuality.UltraLow)
+                        ? "超低档为 384×224 实验模型。七人手腕定位测试为 1/7，设备性能待 RK3588 实测。"
+                        : "RK3588 NPU 模型已通过离线数值验证。设备性能以 RK3588 实测为准。";
+                    return new HumanVisionSdkQualityCapabilities(profile, detail, choices);
                 } catch (Exception e) { return Failed(profile, e.Message); }
             }
             if (profile != HumanVisionModelInputQualities.AdmittedRuntimeMode) {

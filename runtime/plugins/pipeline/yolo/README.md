@@ -12,8 +12,10 @@ and profiles. Generic backend performs inference and GPU preprocessing; the
 pipeline validates exact `[anchors,65]` DFL16+person logits and `[anchors,51]`
 COCO17 outputs, finite values, threshold0.25, NMS0.45 and source geometry.
 
-The exact rectangular contracts are512x288,576x352,640x384 and960x576;
-each requires a16:9 landscape source. The fixed960x576 contract resizes to
+The exact rectangular contracts are 384×224, 512×288, 576×352, 640×384 and 960×576;
+each requires a 16:9 landscape source. Only the pinned local
+`android-ncnn-vulkan-quality-ultra-low` profile accepts the 384×224 FP32 pack.
+The fixed 960×576 contract resizes to
 960x540 and pads114 by18 pixels top/bottom, producing11340 rows and exact
 2948400/2313360-byte outputs. Nearby shapes, portrait sources and unqualified
 SGEMM/no-local-memory combinations fail before backend creation. Historical
@@ -60,14 +62,21 @@ initializer before switching Unity sessions. No production/device qualification
 is inferred from the saved PC simulator evidence.
 
 Each complete 16:9 landscape input resizes to the model width using uint8 RGB NHWC.
-Medium and High center-pad RGB 114 above and below the resized image. The RKNN
+Ultra Low, Medium and High center-pad RGB 114 above and below the resized image. The RKNN
 model owns compiled /255 normalization.
 
 | Quality | Tensor H×W | Vertical pad per side | Rows in out0/out1 |
 | --- | --- | --- | --- |
+| Ultra Low (diagnostic) | 224×384 | 4 | 1764 |
 | Low | 288×512 | 0 | 3024 |
 | Medium | 384×640 | 12 | 5040 |
 | High | 576×960 | 18 | 11340 |
+
+The explicitly selected `android-rknn-npu-quality-ultra-low` profile admits only
+the pinned diagnostic ModelPack. Simulator raw parity passes the existing limits
+and the cases return 7, 1 and 0 people, but only 1 of 7 raised-left-wrist checks
+passes. Both qualification and simulator retain `offline_numerical_passed=false`.
+Low, Medium and High continue to require all three offline controls to pass.
 
 Fixed storage and OpenCV INTER_LINEAR-compatible rounding support input-resolution
 changes without frame allocations. The decoder validates finite borrowed FP32
@@ -95,10 +104,11 @@ No host/OnePlus preprocess measurement constitutes RK3588 model throughput.
 ## CPU ONNX entry (ABI1)
 
 `HV_QueryYoloCpuPipelineV1` exports `pipeline.yolo.cpu` with body_pose/multi_person
-and capacity1..8. It accepts only `android-cpu-nohands` or the focused-test
-`comparison-yolo-cpu` profile, with exactly `backend.ort.cpu`, disabled hands and
-no fallback. Windows CPU/DirectML aliases are rejected by this entry. The existing
-Windows default RTMO selection, GPU entry and private RKNN admission are unchanged.
+and capacity1..8. It accepts `android-cpu-nohands` or the focused-test
+`comparison-yolo-cpu` profile for 512×288, and the explicit local
+`android-cpu-nohands-384x224-experimental` profile for 384×224. All require
+exactly `backend.ort.cpu`, disabled hands and no fallback. Windows uses a
+separate pipeline entry.
 
 The schema-1 pack is `yolov8n-pose-512x288-ort`, with one body ONNX pinned to
 `6c3431e00a8dace37c6a6b9546995e8d2a83c15d5fb894cc467e8c5ab5be88b3`.
@@ -107,6 +117,12 @@ Its input contract requires `in0[1,3,288,512]`, FP32 NCHW RGB, zero mean and
 requires `yolov8_pose_dfl17_v1`, FP32 out0[1,3024,65]/out1[1,3024,51], columns
 [65,51] and byte limits786240/616896. Backend overrides are rejected. Runtime
 output names, shapes, bytes and every finite value are checked before publication.
+The 384×224 variant requires the exact experimental ONNX pack and the same
+layout and precision. Its input is `[1,3,224,384]`; its outputs are
+`out0[1,1764,65]` and `out1[1,1764,51]` (458640 and 359856 bytes).
+For a 16:9 source, letterboxing leaves 384×216 content with four pad rows above
+and below. The Android split-frame transport can still supply 512×288 pixels;
+model tensor geometry is independent of the transport and the HD preview.
 
 Stride-aware RGB24/BGR24/RGBA32/BGRA32 inputs retain their source dimensions;
 alpha and row padding are ignored. The fixed model canvas is independent of

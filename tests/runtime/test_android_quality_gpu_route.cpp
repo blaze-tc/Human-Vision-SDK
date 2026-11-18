@@ -115,5 +115,6 @@ TEST_P(AndroidQualityGpuRoute, DoesNotAdmitLookalikeOrOrtProfilesToGpu) {
     }
 }
 INSTANTIATE_TEST_SUITE_P(ExactProfiles, AndroidQualityGpuRoute, testing::Values(
-    "android-ncnn-vulkan", "android-ncnn-vulkan-quality-low", "android-ncnn-vulkan-quality-high"));
+    "android-ncnn-vulkan", "android-ncnn-vulkan-quality-low", "android-ncnn-vulkan-quality-high",
+    "android-ncnn-vulkan-quality-ultra-low"));
 }

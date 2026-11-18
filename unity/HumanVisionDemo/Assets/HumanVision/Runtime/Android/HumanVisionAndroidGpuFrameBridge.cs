@@ -16,12 +16,14 @@ namespace HumanVision
     {
         internal enum FramePath { Gpu, Cpu }
         internal static bool UsesGpu(string profile) => profile == "android-ncnn-vulkan" ||
-            profile == "android-ncnn-vulkan-quality-low" || profile == "android-ncnn-vulkan-quality-high";
+            profile == "android-ncnn-vulkan-quality-low" || profile == "android-ncnn-vulkan-quality-high" ||
+            profile == HumanVisionModelInputQualities.GraphicsUltraLowProfile;
 
         internal static FramePath Select(string profile)
         {
             if (UsesGpu(profile)) return FramePath.Gpu;
-            if (profile == "android-ort-xnnpack" || profile == "android-ort-cpu" || HumanVisionAndroidAccelerationSelection.IsNeuralProfile(profile) || profile == HumanVisionAndroidAccelerationSelection.CpuProfile) return FramePath.Cpu;
+            if (profile == "android-ort-xnnpack" || profile == "android-ort-cpu" || HumanVisionAndroidAccelerationSelection.IsNeuralProfile(profile) ||
+                HumanVisionAndroidAccelerationSelection.IsCpuProfile(profile)) return FramePath.Cpu;
             throw new InvalidOperationException("Unsupported Android runtime profile '" + profile + "'. Select a mode in Project Settings > Human Vision > Android Runtime.");
         }
 

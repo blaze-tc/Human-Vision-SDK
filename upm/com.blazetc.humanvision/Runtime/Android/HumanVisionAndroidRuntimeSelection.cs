@@ -44,6 +44,8 @@ namespace HumanVision
             bool dual = runtimeMode == "android-dual-vulkan-npu";
             var expected = new System.Collections.Generic.HashSet<string>(new[] { mode + "-quality-low", mode, mode + "-quality-high" }, StringComparer.Ordinal);
             var actual = new System.Collections.Generic.HashSet<string>(admittedProfiles, StringComparer.Ordinal);
+            if (actual.Contains(HumanVisionModelInputQualities.GraphicsUltraLowProfile))
+                expected.Add(HumanVisionModelInputQualities.GraphicsUltraLowProfile);
             if (dual) {
                 expected.Add(HumanVisionAndroidAccelerationSelection.NeuralProfile);
                 expected.Add(HumanVisionAndroidAccelerationSelection.CpuProfile);
@@ -51,6 +53,10 @@ namespace HumanVision
                     expected.Add(HumanVisionAndroidAccelerationSelection.NeuralMediumProfile);
                 if (actual.Contains(HumanVisionAndroidAccelerationSelection.NeuralHighProfile))
                     expected.Add(HumanVisionAndroidAccelerationSelection.NeuralHighProfile);
+                if (actual.Contains(HumanVisionAndroidAccelerationSelection.NeuralUltraLowProfile))
+                    expected.Add(HumanVisionAndroidAccelerationSelection.NeuralUltraLowProfile);
+                if (actual.Contains(HumanVisionAndroidAccelerationSelection.CpuUltraLowProfile))
+                    expected.Add(HumanVisionAndroidAccelerationSelection.CpuUltraLowProfile);
             }
             if ((!dual && runtimeMode != mode) || bakedProfile != mode || admittedProfiles.Length != expected.Count || actual.Count != expected.Count || !actual.SetEquals(expected))
                 throw new InvalidOperationException("HumanVision Android baked quality profile allowlist does not match the selected runtime mode.");

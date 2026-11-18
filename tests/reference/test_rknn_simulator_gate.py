@@ -42,7 +42,7 @@ class RknnSimulatorGateTests(unittest.TestCase):
         tool = self.tool()
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder)
-            for width, height, rows, top in ((640, 384, 5040, 12), (960, 576, 11340, 18)):
+            for width, height, rows, top in ((384, 224, 1764, 4), (640, 384, 5040, 12), (960, 576, 11340, 18)):
                 with self.subTest(width=width):
                     tensor = np.zeros((3, height, width), np.float32)
                     raw = [np.full((rows, columns), -10, np.float32) for columns in (65, 51)]
@@ -52,7 +52,8 @@ class RknnSimulatorGateTests(unittest.TestCase):
                     bank = [('empty', metadata, tensor, raw)]
                     self.assertTrue(tool.evaluate(bank, lambda _: raw, output / str(width), 'unit', {})['offline_numerical_passed'])
                     with self.assertRaisesRegex(ValueError, 'shape mismatch'):
-                        tool.evaluate(bank, lambda _: [value[:3024] for value in raw], output / f'wrong-{width}', 'unit', {})
+                        baseline_outputs = [np.full((3024, columns), -10, np.float32) for columns in (65, 51)]
+                        tool.evaluate(bank, lambda _: baseline_outputs, output / f'wrong-{width}', 'unit', {})
 
 
 if __name__ == '__main__':

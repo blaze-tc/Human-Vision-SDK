@@ -369,6 +369,39 @@ TEST(YoloGpuPipeline, Rectangle512TransformAndBoundedContractRejectBeforeBackend
         EXPECT_EQ(api.gpu_pipeline->create(&config,&host,&rejected,nullptr),HV_ERR_MODEL_LOAD);EXPECT_EQ(rejected,nullptr);
     }
 }
+TEST(YoloGpuPipeline, UltraLowExperimentalRectanglePadsFourRowsAndBoundsOutputs) {
+    const auto runtime=std::filesystem::path(HV_TEST_PROJECT_ROOT)/"out/hlk-cpu-384x224/model";
+    const auto pack=runtime/"modelpacks/yolov8n-pose-rectangle384x224-fp32-quality-ultra-low-local";
+    if(!std::filesystem::is_regular_file(pack/"modelpack.json"))GTEST_SKIP()<<"Prepare the local 384x224 Vulkan pack";
+    auto manifest=Load(pack/"modelpack.json");
+    const auto profile=Load(runtime/"profiles/android-ncnn-vulkan-quality-ultra-low.json").dump();
+    auto api=Query();
+    Fake fake;fake.detection.assign(1764*65,-80);fake.points.assign(1764*51,0);
+    HV_HostServicesV3 host{};host.v2.v1.struct_size=sizeof(host);
+    host.v2.v1.api_version=HV_PLUGIN_API_V1;host.v2.v1.context=&fake;
+    host.create_gpu_backend_v3=Create;host.release_gpu_backend_v3=Release;
+    const auto manifest_text=manifest.dump();
+    HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,8,0,manifest_text.c_str(),"fixture",profile.c_str()};
+    void* instance=nullptr;
+    ASSERT_EQ(api.gpu_pipeline->create(&config,&host,&instance,nullptr),HV_OK);
+    struct Cleanup{const HV_GpuPipelineApiV2* api;void* instance;~Cleanup(){api->destroy(instance);}}cleanup{api.gpu_pipeline,instance};
+    humanvision::gpu::ConsumerFrame lease{};
+    HV_GpuFrameRefV1 frame{sizeof(frame),HV_GPU_FRAME_API_V1,&lease,512,288,10,10000,1,HV_GPU_IMAGE_RGBA8_UNORM,0};
+    HV_GpuObservationFrameV3 out{};out.v1.struct_size=sizeof(out);out.v1.api_version=HV_PLUGIN_API_V1;
+    ASSERT_EQ(api.gpu_pipeline->process_gpu(instance,&frame,&out.v1,nullptr),HV_OK);
+    EXPECT_EQ(fake.transform.output_width,384u);
+    EXPECT_EQ(fake.transform.output_height,224u);
+    EXPECT_FLOAT_EQ(fake.transform.source_rect_px.y,-4.f/.75f);
+    EXPECT_FLOAT_EQ(fake.transform.source_rect_px.height,224.f/.75f);
+    EXPECT_EQ(out.v1.source_frame_id,10);
+    EXPECT_EQ(out.v1.body_count,0u);
+    manifest["models"][0]["output_contract"]["max_output_bytes"]["out0"]=458636;
+    const auto invalid=manifest.dump();config.model_manifest_utf8=invalid.c_str();
+    void* rejected=nullptr;
+    EXPECT_EQ(api.gpu_pipeline->create(&config,&host,&rejected,nullptr),HV_ERR_MODEL_LOAD);
+    EXPECT_EQ(rejected,nullptr);
+}
+
 TEST(YoloGpuPipeline, Rectangle576TransformAndBoundedContractRejectBeforeBackend) {
     auto manifest=Load(Root()/"modelpacks/yolov8n-pose-square320-fp32-local/modelpack.json");
     const auto profile=Load(Root()/"profiles/android-ncnn-vulkan.json").dump();

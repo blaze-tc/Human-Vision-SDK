@@ -43,6 +43,7 @@ namespace HumanVisionAcceptance
         private Font uiFont;
         private GUIStyle heading, title, body, small, field, button, selected, badge;
         private bool paired, hasInput, operating, capacityMenuOpen;
+        private bool ultraLowInstalled;
         private bool showSkeleton = true;
         private int visibleJoints, visibleBones;
         private string status = "填入设备可访问的 RTSP 地址，然后点击连接";
@@ -187,6 +188,7 @@ namespace HumanVisionAcceptance
                 yield break;
             }
             startup = view.Sdk.Configuration;
+            RefreshUltraLowAvailability(startup);
             recognition = startup.Recognition.Clone();
             maxBodies = recognition.MaxBodies;
             nextBackendAt = 0;
@@ -254,7 +256,19 @@ namespace HumanVisionAcceptance
         private static bool IsAndroid => Application.platform == RuntimePlatform.Android;
         private bool FixedQuality => IsAndroid && startup.AccelerationMode == HumanVisionAccelerationMode.Cpu;
         private static ModelInputQuality QualityForCompute(bool android, HumanVisionAccelerationMode mode, ModelInputQuality quality) =>
-            android && mode == HumanVisionAccelerationMode.Cpu ? ModelInputQuality.Low : quality;
+            android && mode == HumanVisionAccelerationMode.Cpu && quality != ModelInputQuality.UltraLow
+                ? ModelInputQuality.Low : quality;
+
+        private void RefreshUltraLowAvailability(HumanVisionSdkOptions options)
+        {
+            ultraLowInstalled = false;
+            if (!IsAndroid || view == null) return;
+            foreach (var choice in view.Sdk.GetInputQualityCapabilities(options).Choices)
+                if (choice.Quality == ModelInputQuality.UltraLow) {
+                    ultraLowInstalled = true;
+                    break;
+                }
+        }
 
         private static string ReadActualBackend(string diagnostics)
         {
@@ -268,7 +282,8 @@ namespace HumanVisionAcceptance
         }
 
         internal static string NormalizeBackend(string value, string profile) =>
-            value == "CPU" && (profile == "windows-yolo-cpu-low" || profile == "android-cpu-nohands") ? "backend.ort.cpu" : value;
+            value == "CPU" && (profile == "windows-yolo-cpu-low" || profile == "android-cpu-nohands" ||
+                               profile == "android-cpu-nohands-384x224-experimental") ? "backend.ort.cpu" : value;
 
         private void UpdateActualBackend(HumanVisionSdk sdk)
         {
@@ -295,8 +310,13 @@ namespace HumanVisionAcceptance
             options.AccelerationMode = mode;
             options.UseWindowsCpu = mode == HumanVisionAccelerationMode.Cpu;
             options.InputQuality = QualityForCompute(IsAndroid, mode, quality);
+            if (startup.AccelerationMode != mode && quality == ModelInputQuality.UltraLow)
+                options.InputQuality = ModelInputQuality.Low;
             if (running) Run(Initialize(options));
-            else startup = options;
+            else {
+                startup = options;
+                RefreshUltraLowAvailability(startup);
+            }
         }
 
         private void DrawModelButton(Rect rect, ModelInputQuality quality, string label)
@@ -443,11 +463,16 @@ namespace HumanVisionAcceptance
                 GetExpandedCards(scale, out var liveCard, out var poseCard, out var controls);
                 DismissCapacityMenu();
                 GUI.Label(new Rect(28, 12, 900, 52), "Human Vision  /  Runtime Prefab 验收", heading);
-                GUI.Label(new Rect(30, 65, 135, 30), FixedQuality ? "固定模型等级" : "模型等级", small);
+                GUI.Label(new Rect(30, 65, 135, 30), FixedQuality && !ultraLowInstalled ? "固定模型等级" : "模型等级", small);
+                GUI.enabled = !operating && (!FixedQuality || ultraLowInstalled);
+                DrawModelButton(new Rect(177, 64, 60, 32), ModelInputQuality.Low, "低");
                 GUI.enabled = !operating && !FixedQuality;
-                DrawModelButton(new Rect(177, 64, 80, 32), ModelInputQuality.Low, "低");
-                DrawModelButton(new Rect(265, 64, 80, 32), ModelInputQuality.Medium, "中");
-                DrawModelButton(new Rect(353, 64, 80, 32), ModelInputQuality.High, "高");
+                DrawModelButton(new Rect(242, 64, 60, 32), ModelInputQuality.Medium, "中");
+                DrawModelButton(new Rect(307, 64, 60, 32), ModelInputQuality.High, "高");
+                if (ultraLowInstalled) {
+                    GUI.enabled = !operating;
+                    DrawModelButton(new Rect(372, 64, 82, 32), ModelInputQuality.UltraLow, "超低");
+                }
                 GUI.enabled = measuring || !operating;
                 if (GUI.Button(new Rect(458, 64, 165, 32), measuring ? "取消一键测试" : "一键测试", button)) {
                     if (measuring) cancelMeasurement = true;

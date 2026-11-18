@@ -225,7 +225,8 @@ namespace HumanVision
         internal HumanVisionRuntimeSession DetachNeuralRuntimeSession()
         {
             var runtime = _session as HumanVisionRuntimeSession;
-            if (runtime == null || (!HumanVisionAndroidAccelerationSelection.IsNeuralProfile(runtime.ProfileId) && runtime.ProfileId != HumanVisionAndroidAccelerationSelection.CpuProfile) || runtime.UsesGpuFrames) return null;
+            if (runtime == null || (!HumanVisionAndroidAccelerationSelection.IsNeuralProfile(runtime.ProfileId) &&
+                !HumanVisionAndroidAccelerationSelection.IsCpuProfile(runtime.ProfileId)) || runtime.UsesGpuFrames) return null;
             _session = null;
             return runtime;
         }

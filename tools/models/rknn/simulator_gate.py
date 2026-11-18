@@ -15,9 +15,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'ncnn'))
 from yolo_pose_gate import compare, associate_annotations, LIMITS, MODEL_HASHES
 
 
+SUPPORTED_GEOMETRIES = ((384, 224), (512, 288), (640, 384), (960, 576))
+
+
 def output_rows(width, height):
-    if (width, height) not in ((512, 288), (640, 384), (960, 576)):
-        raise ValueError('validation bank requires 512x288, 640x384 or 960x576 input')
+    if (width, height) not in SUPPORTED_GEOMETRIES:
+        raise ValueError('validation bank requires 384x224, 512x288, 640x384 or 960x576 input')
     return sum((width // stride) * (height // stride) for stride in (8, 16, 32))
 
 
@@ -68,7 +71,7 @@ def read_bank(index_path, index_sha, input_shape=None):
     if index.get('schema_version') != 1 or index.get('source_model') != expected_source:
         raise ValueError('validation source model mismatch')
     shape = index.get('input_shape')
-    if shape not in ([1, 3, 288, 512], [1, 3, 384, 640], [1, 3, 576, 960]) or (input_shape is not None and shape != input_shape):
+    if shape not in [[1, 3, h, w] for w, h in SUPPORTED_GEOMETRIES] or (input_shape is not None and shape != input_shape):
         raise ValueError('validation bank and ONNX input tensor shapes must match')
     _, _, height, width = shape
     rows = output_rows(width, height)

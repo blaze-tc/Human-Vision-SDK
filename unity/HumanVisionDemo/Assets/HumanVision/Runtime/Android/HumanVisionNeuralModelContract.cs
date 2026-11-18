@@ -29,6 +29,13 @@ namespace HumanVision
             }
         }
         private static readonly Candidate[] Candidates = {
+            new Candidate(ModelInputQuality.UltraLow, HumanVisionAndroidAccelerationSelection.NeuralUltraLowProfile, 384, 224,
+                "yolov8n-pose-rectangle384x224-rknn-nonquantized-experimental",
+                "9ff05e4d8f84045fc052e36ff09ead89936dd26b56046d0aefb65ce7c7f59b30",
+                "faf6e723fc2813a6ff0a019392b97c670f9e6e6b313611a8bba17175befe16c3",
+                "69574f3ebdc80a0975bd30ef172b6d22e08d980a4865ca02a2f3cf2d1fe25380",
+                "8f109404ad2c076c36caa638a82d47fcedaa487c92b72fa8a442471cf9a46112",
+                "adbf2ff7e82540ca91433f57126b5a5cb521187ed76a3e9e3989cfe8eec6301c"),
             new Candidate(ModelInputQuality.Low, HumanVisionAndroidAccelerationSelection.NeuralProfile, 512, 288,
                 "yolov8n-pose-rectangle512x288-rknn-nonquantized-experimental",
                 "1b3ba8dd5bb81e3d968cfeef019c42b1aa3bffca6f0ec1c9f89f257fe0c08030",
@@ -145,10 +152,15 @@ namespace HumanVision
             Dictionary<string,object> manifest, Dictionary<string,object> model, Candidate candidate)
         {
             var qualification = J.Object(J.Field(manifest,"qualification"));
-            if (!J.Boolean(qualification,"offline_numerical_passed") || J.Boolean(qualification,"deployment_ready") ||
+            bool ultraLow = candidate.Choice.Quality == ModelInputQuality.UltraLow;
+            if (J.Boolean(qualification,"offline_numerical_passed") == ultraLow || J.Boolean(qualification,"deployment_ready") ||
                 J.Boolean(qualification,"device_performance_verified") || J.Text(qualification,"source_onnx_sha256") != candidate.SourceHash ||
                 J.Text(qualification,"validation_index_sha256") != candidate.ValidationHash)
                 throw new InvalidDataException("Neural qualification must remain the pinned offline experiment.");
+            if (ultraLow && (!J.Boolean(qualification, "offline_raw_numerical_parity_passed") ||
+                J.Integer(qualification, "raised_left_wrist_checks_passed") != 1 ||
+                J.Integer(qualification, "raised_left_wrist_checks_total") != 7))
+                throw new InvalidDataException("Ultra-low qualification must report the failed seven-person wrist gate.");
             var evidence = J.Array(J.Field(model,"evidence"));
             if (evidence.Count != 2) throw new InvalidDataException("Both saved neural offline receipts are required.");
             foreach (var expected in new[] { new { File="conversion-receipt.json", Field="conversion_receipt_sha256", Hash=candidate.ConversionHash },
@@ -170,13 +182,34 @@ namespace HumanVision
             var simulator = Read(root,files,prefix+"simulator-comparison.json");
             var identity = J.Object(J.Field(simulator,"identity"));
             var fixtures = J.Array(J.Field(simulator,"fixtures")).Select(J.Object).ToArray();
-            if (!J.Boolean(simulator,"offline_numerical_passed") || J.Boolean(simulator,"deployment_ready") ||
+            if (J.Boolean(simulator,"offline_numerical_passed") == ultraLow || J.Boolean(simulator,"deployment_ready") ||
                 J.Boolean(simulator,"device_performance_verified") || J.Text(identity,"rknn_sha256") != candidate.ModelHash ||
                 J.Text(identity,"validation_index_sha256") != candidate.ValidationHash || fixtures.Length != 3 ||
-                !fixtures.Select(row => J.Integer(row,"expected_people")).OrderBy(value => value).SequenceEqual(new long[] {0,1,7}) ||
-                fixtures.Any(row => !J.Boolean(row,"passed")))
+                !fixtures.Select(row => J.Integer(row,"expected_people")).OrderBy(value => value).SequenceEqual(new long[] {0,1,7}))
                 throw new InvalidDataException("Neural simulator receipt requires all unchanged seven/one/empty offline controls.");
+            if (ultraLow) ValidateUltraLowParity(fixtures);
+            else if (fixtures.Any(row => !J.Boolean(row,"passed")))
+                throw new InvalidDataException("Neural simulator receipt must pass all offline controls.");
         }
+
+        private static void ValidateUltraLowParity(Dictionary<string,object>[] fixtures)
+        {
+            // The local 384×224 trial preserves the failed raised-wrist result in its pinned receipt.
+            foreach (var row in fixtures) {
+                long people = J.Integer(row, "expected_people");
+                if (J.Boolean(row, "passed") != (people != 7) ||
+                    J.Array(J.Field(row, "reference")).Count != people || J.Array(J.Field(row, "actual")).Count != people)
+                    throw new InvalidDataException("Ultra-low simulator must preserve the observed people and pose-gate outcome.");
+                var raw = J.Object(J.Field(row, "raw"));
+                foreach (var blob in new[] { "out0", "out1" }) {
+                    var errors = J.Object(J.Field(raw, blob));
+                    if (!Within(J.Field(errors, "max_abs"), .2) || !Within(J.Field(errors, "mean_abs"), .01))
+                        throw new InvalidDataException("Ultra-low simulator tensor error exceeds the existing parity bounds.");
+                }
+            }
+        }
+        private static bool Within(object value, double limit) =>
+            (value is long || value is double) && Convert.ToDouble(value) >= 0 && Convert.ToDouble(value) <= limit;
         private static bool Exactly(object value, params string[] expected) {
             var rows = Strings(value); return rows.Length == expected.Length && new HashSet<string>(rows,StringComparer.Ordinal).SetEquals(expected);
         }

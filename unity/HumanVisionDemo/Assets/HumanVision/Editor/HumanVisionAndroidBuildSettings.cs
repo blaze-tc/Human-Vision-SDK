@@ -76,10 +76,12 @@ namespace HumanVision.Editor
                 var profiles = catalog.ProfilesForMode(dual ? descriptor.ProfileId : descriptor.Id);
                 foreach (string profile in profiles) ValidateNcnnModelPack(runtimeRoot, profile);
                 if (dual) {
-                    if (profiles.Length != 3) throw new InvalidDataException("The dual build requires all three validated graphics qualities.");
+                    if (profiles.Length < 3) throw new InvalidDataException("The dual build requires all three validated base graphics qualities.");
                     ValidateCpuModelPack(runtimeRoot);
                     profiles = profiles.Concat(HumanVisionNeuralModelContract.LoadInstalled(runtimeRoot).Select(model => model.ProfileId))
                         .Concat(new[] { HumanVisionAndroidAccelerationSelection.CpuProfile }).ToArray();
+                    if (HumanVisionAndroidCpuModelContract.HasInstalledUltraLow(runtimeRoot))
+                        profiles = profiles.Concat(new[] { HumanVisionAndroidAccelerationSelection.CpuUltraLowProfile }).ToArray();
                 }
                 return profiles;
             }

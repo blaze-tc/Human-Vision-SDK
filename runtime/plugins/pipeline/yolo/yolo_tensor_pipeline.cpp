@@ -16,7 +16,7 @@ namespace {
 using namespace humanvision::runtime;
 using Json=nlohmann::json;
 using Clock=std::chrono::steady_clock;
-constexpr int width=512,height=288,rows=3024;
+constexpr int width=512,height=288;
 constexpr char pack_id[]="yolov8n-pose-rectangle512x288-rknn-nonquantized-experimental";
 constexpr char profile_id[]="android-rknn-npu-quality-low";
 constexpr char contract_id[]="raw_tensor_rknn_nonquantized_v1";
@@ -26,6 +26,7 @@ constexpr char bank_sha[]="5ab8bb97034e957f3176162a63b471790b64514c7ba5a34d17622
 constexpr char conversion_sha[]="244a28f1bc9e0b1665fe27a3b35e774a732f9f62f752b5f6faed376e28bef4bb";
 constexpr char simulator_sha[]="fe29f669bd5fafecba7a21797cad35f99b9f21b540c419a5f479d98cd03687f9";
 constexpr char profile_sha[]="c7ef0f46de1b8e8175db3e5ae4fa7c89a93c07931f62849fc81da3f79d6628bd";
+constexpr char rknn_ultra_low_profile[]="android-rknn-npu-quality-ultra-low";
 
 struct RknnModel {
     const char *profile, *pack;
@@ -34,6 +35,13 @@ struct RknnModel {
 };
 constexpr RknnModel rknn_models[] = {
     {profile_id,pack_id,width,height,model_sha,onnx_sha,bank_sha,conversion_sha,simulator_sha,profile_sha},
+    {rknn_ultra_low_profile,"yolov8n-pose-rectangle384x224-rknn-nonquantized-experimental",384,224,
+     "9ff05e4d8f84045fc052e36ff09ead89936dd26b56046d0aefb65ce7c7f59b30",
+     "faf6e723fc2813a6ff0a019392b97c670f9e6e6b313611a8bba17175befe16c3",
+     "69574f3ebdc80a0975bd30ef172b6d22e08d980a4865ca02a2f3cf2d1fe25380",
+     "8f109404ad2c076c36caa638a82d47fcedaa487c92b72fa8a442471cf9a46112",
+     "adbf2ff7e82540ca91433f57126b5a5cb521187ed76a3e9e3989cfe8eec6301c",
+     "4037fbf3c6cd43ce25f0b19eb4d14d96b29d0dee2245dcc9d3ccff4b2ee49a0c"},
     {"android-rknn-npu-quality-medium","yolov8n-pose-rectangle640x384-rknn-nonquantized-experimental",640,384,
      "d2c1d88ed6402ac250cf0f5f1372d7493c25e191f9eb4f655cea27d423f4e0fb",
      "7e94dece2faf25127481ac010b0d863dabec316cb8116e14cf342ebd92e5d23c",
@@ -88,9 +96,45 @@ Json ReadEvidence(const std::filesystem::path& root,const Json& evidence,const c
     CheckHash(path,expected);
     return ReadConfig(path);
 }
+bool RecordsUltraLowRknnDiagnostic(const Json& evidence) {
+    return evidence.at("offline_raw_numerical_parity_passed")==true&&
+        evidence.at("raised_left_wrist_checks_passed")==1&&evidence.at("raised_left_wrist_checks_total")==7;
+}
+void ValidateUltraLowRknnDiagnostic(const Json& conversion,const Json& simulator,int rows,const char* simulator_sha) {
+    const auto source_outputs=Json::array({
+        {{"name","out0"},{"shape",{1,rows,65}}},{{"name","out1"},{"shape",{1,rows,51}}}});
+    Require(RecordsUltraLowRknnDiagnostic(conversion)&&conversion.at("source_outputs")==source_outputs&&
+        conversion.at("simulator_evidence_sha256")==simulator_sha,
+        "Ultra Low RKNN conversion must record exact source tensors and the diagnostic simulator receipt");
+    constexpr double raw_max=.2,raw_mean=.01;
+    Require(simulator.at("limits").at("raw_max")==raw_max&&simulator.at("limits").at("raw_mean")==raw_mean,
+        "Ultra Low RKNN simulator requires the unchanged raw parity limits");
+    constexpr const char* fixtures[]={"seven","one","empty"};
+    constexpr size_t people[]={7,1,0};
+    for(int i=0;i<3;++i){
+        const auto& fixture=simulator.at("fixtures").at(i);
+        const auto& reference=fixture.at("reference");
+        const auto& actual=fixture.at("actual");
+        Require(fixture.at("fixture")==fixtures[i]&&fixture.at("expected_people")==people[i]&&
+            fixture.at("passed")== (i!=0)&&reference.is_array()&&reference.size()==people[i]&&
+            actual.is_array()&&actual.size()==people[i],"Ultra Low RKNN simulator control outcome differs from the diagnostic");
+        for(const char* name:{"out0","out1"}){
+            const auto& raw=fixture.at("raw").at(name);
+            const double max=raw.at("max_abs").get<double>(),mean=raw.at("mean_abs").get<double>();
+            Require(max>=0.&&max<=raw_max&&mean>=0.&&mean<=raw_mean,
+                "Ultra Low RKNN simulator tensors exceed raw parity limits");
+        }
+    }
+    const auto& wrists=simulator.at("fixtures").at(0).at("raised_arm_checks");
+    Require(wrists.is_array()&&wrists.size()==people[0]&&
+        std::all_of(wrists.begin(),wrists.end(),[](const Json& check){return check.is_boolean();})&&
+        std::count(wrists.begin(),wrists.end(),Json(true))==1,
+        "Ultra Low RKNN simulator must retain the failed seven-person wrist criterion (1/7)");
+}
 std::filesystem::path ValidateRknn(const Json& manifest,const Json& profile,const std::filesystem::path& root,
     const RknnModel& pinned) {
     const auto [profile_id,pack_id,width,height,model_sha,onnx_sha,bank_sha,conversion_sha,simulator_sha,profile_sha]=pinned;
+    const bool diagnostic=std::strcmp(profile_id,rknn_ultra_low_profile)==0;
     const int rows=yolo::AnchorCount(width,height);
     Require(manifest.at("schema_version")==1&&manifest.at("pack_id")==pack_id&&
         manifest.at("pipeline_id")=="pipeline.yolo.tensor"&&manifest.at("profile_id")==profile_id&&
@@ -110,11 +154,13 @@ std::filesystem::path ValidateRknn(const Json& manifest,const Json& profile,cons
         profile.at("backend")==Json({{"preference",Json::array({"backend.rknn"})},{"allow_fallback",false}}),
         "YOLO tensor requires the matching private RKNN-only profile without fallback");
     const auto& qualification=manifest.at("qualification");
-    Require(qualification.at("offline_numerical_passed")==true&&qualification.at("deployment_ready")==false&&
+    Require(qualification.at("offline_numerical_passed")==!diagnostic&&qualification.at("deployment_ready")==false&&
         qualification.at("device_performance_verified")==false&&qualification.at("validation_index_sha256")==bank_sha&&
         qualification.at("source_onnx_sha256")==onnx_sha&&qualification.at("conversion_receipt_sha256")==conversion_sha&&
         qualification.at("simulator_comparison_sha256")==simulator_sha,
         "YOLO tensor accepts offline numerical evidence only; physical RK3588 acceptance remains open");
+    if(diagnostic)Require(RecordsUltraLowRknnDiagnostic(qualification),
+        "Ultra Low RKNN requires raw parity and records the unpassed seven-person wrist criterion");
     const auto& model=manifest.at("models").at(0);
     Require(model.at("role")=="body"&&model.at("format")=="rknn"&&model.at("decoder_id")=="yolov8_pose_dfl17_v1"&&
         model.at("sha256")==model_sha,"YOLO tensor body model identity or precision mismatch");
@@ -144,15 +190,18 @@ std::filesystem::path ValidateRknn(const Json& manifest,const Json& profile,cons
         conversion.at("input").at("std")==Json::array({255,255,255})&&conversion.at("calibration").empty(),
         "YOLO tensor conversion receipt is incompatible with the pinned non-quantized contract");
     const auto simulator=ReadEvidence(root,evidence.at(1),simulator_sha);
-    Require(simulator.at("offline_numerical_passed")==true&&simulator.at("deployment_ready")==false&&
+    Require(simulator.at("offline_numerical_passed")==!diagnostic&&simulator.at("deployment_ready")==false&&
         simulator.at("device_performance_verified")==false&&simulator.at("identity").at("rknn_sha256")==model_sha&&
         simulator.at("identity").at("validation_index_sha256")==bank_sha&&
         simulator.at("fixtures").is_array()&&simulator.at("fixtures").size()==3,
         "YOLO tensor simulator receipt does not prove the pinned three-control offline gate");
-    constexpr int people[]={7,1,0};
-    for(int i=0;i<3;++i)Require(simulator.at("fixtures").at(i).at("passed")==true&&
-        simulator.at("fixtures").at(i).at("expected_people")==people[i],
-        "YOLO tensor seven/one/empty offline numerical controls must all pass");
+    if(diagnostic)ValidateUltraLowRknnDiagnostic(conversion,simulator,rows,simulator_sha);
+    else {
+        constexpr int people[]={7,1,0};
+        for(int i=0;i<3;++i)Require(simulator.at("fixtures").at(i).at("passed")==true&&
+            simulator.at("fixtures").at(i).at("expected_people")==people[i],
+            "YOLO tensor seven/one/empty offline numerical controls must all pass");
+    }
     const auto path=Asset(root,model.at("asset_path"));
     CheckHash(path,model_sha);
     if(!profile.contains("private_graph_candidate"))return path;
@@ -296,36 +345,43 @@ struct Instance {
     }
 };
 
-std::filesystem::path ValidateCpu(const Json& manifest,const Json& profile,const std::filesystem::path& root) {
-    Require(manifest.at("schema_version")==1&&manifest.at("pack_id")=="yolov8n-pose-512x288-ort"&&
+std::filesystem::path ValidateCpu(const Json& manifest,const Json& profile,const std::filesystem::path& root,
+    int& model_width,int& model_height) {
+    const auto& name=profile.at("profile");
+    const bool ultra_low=name=="android-cpu-nohands-384x224-experimental";
+    const char* pack=ultra_low?"yolov8n-pose-384x224-ort-experimental":"yolov8n-pose-512x288-ort";
+    const char* sha=ultra_low?"faf6e723fc2813a6ff0a019392b97c670f9e6e6b313611a8bba17175befe16c3":onnx_sha;
+    model_width=ultra_low?384:512;
+    model_height=ultra_low?224:288;
+    const int model_rows=yolo::AnchorCount(model_width,model_height);
+    Require(manifest.at("schema_version")==1&&manifest.at("pack_id")==pack&&
         manifest.at("pipeline_id")=="pipeline.yolo.cpu"&&manifest.at("max_people")==8&&
         manifest.at("capabilities")==Json::array({"body_pose","multi_person"})&&
         manifest.at("models").is_array()&&manifest.at("models").size()==1,
-        "YOLO CPU requires the pinned schema-1 512x288 ONNX ModelPack");
-    const auto name=profile.at("profile").get<std::string>();
-    Require(profile.at("schema_version")==1&&(name=="android-cpu-nohands"||name=="comparison-yolo-cpu")&&
-        profile.at("body")==Json({{"pipeline","pipeline.yolo.cpu"},{"modelPack","yolov8n-pose-512x288-ort"}})&&
+        "YOLO CPU requires the pinned schema-1 ONNX ModelPack for the selected profile");
+    Require(profile.at("schema_version")==1&&(ultra_low||name=="android-cpu-nohands"||name=="comparison-yolo-cpu")&&
+        profile.at("body")==Json({{"pipeline","pipeline.yolo.cpu"},{"modelPack",pack}})&&
         profile.at("hands").at("enabled")==false&&
         profile.at("backend")==Json({{"preference",Json::array({"backend.ort.cpu"})},{"allow_fallback",false}}),
         "YOLO CPU requires an explicit Android/comparison CPU-only profile, disabled hands and no fallback");
     const auto& model=manifest.at("models").at(0);
-    Require(model.at("role")=="body"&&model.at("format")=="onnx"&&model.at("sha256")==onnx_sha&&
+    Require(model.at("role")=="body"&&model.at("format")=="onnx"&&model.at("sha256")==sha&&
         model.at("decoder_id")=="yolov8_pose_dfl17_v1",
         "YOLO CPU weights or decoder differ from the qualified source ONNX");
     const auto& input=model.at("input_contract");
-    Require(input.at("width")==width&&input.at("height")==height&&input.at("tensor_layout")=="NCHW"&&
+    Require(input.at("width")==model_width&&input.at("height")==model_height&&input.at("tensor_layout")=="NCHW"&&
         input.at("tensor_dtype")=="fp32"&&input.at("color_order")=="RGB"&&input.at("input_blob")=="in0"&&
         input.at("crop_mode")=="letterbox"&&input.at("pad_rgb")==Json::array({114,114,114})&&
         input.at("normalization")==Json({{"mean",{0,0,0}},{"norm",{1./255.,1./255.,1./255.}}}),
-        "YOLO CPU requires RGB FP32 NCHW in0[1,3,288,512], centered pad114 and exactly one /255 normalization");
+        "YOLO CPU requires the profile's RGB FP32 NCHW in0, centered pad114 and exactly one /255 normalization");
     const auto& output=model.at("output_contract");
     Require(output.at("decoder")=="yolov8_pose_dfl17_v1"&&output.at("output_blobs")==Json::array({"out0","out1"})&&
-        output.at("tensor_dtype")=="fp32"&&output.at("rows")==rows&&output.at("columns")==Json::array({65,51})&&
-        output.at("max_output_bytes")==Json({{"out0",rows*65*4},{"out1",rows*51*4}}),
-        "YOLO CPU requires exact bounded FP32 out0[1,3024,65] and out1[1,3024,51]");
+        output.at("tensor_dtype")=="fp32"&&output.at("rows")==model_rows&&output.at("columns")==Json::array({65,51})&&
+        output.at("max_output_bytes")==Json({{"out0",model_rows*65*4},{"out1",model_rows*51*4}}),
+        "YOLO CPU requires the profile's exact bounded FP32 out0 and out1 tensors");
     Require(!model.contains("backend_options")||model.at("backend_options")==Json::object(),
         "YOLO CPU does not accept backend overrides or backend-side normalization");
-    const auto path=Asset(root,model.at("asset_path"));CheckHash(path,onnx_sha);return path;
+    const auto path=Asset(root,model.at("asset_path"));CheckHash(path,sha);return path;
 }
 enum class Route { Rknn, AndroidCpu, Desktop };
 struct DesktopModel {
@@ -397,7 +453,7 @@ HV_Result CreateImpl(const HV_PipelineConfigV1* config,const HV_HostServicesV1* 
             path=graph.u8string();
             backend_options["external_initializers"]=weights.u8string();
         } else if(cpu) {
-            path=ValidateCpu(manifest,profile,root).u8string();
+            path=ValidateCpu(manifest,profile,root,model_width,model_height).u8string();
         } else {
             const auto& profile_name=profile.at("profile");
             const auto pinned=std::find_if(std::begin(rknn_models),std::end(rknn_models),

@@ -9,7 +9,7 @@ using J = HumanVision.HumanVisionConfigurationJson;
 namespace HumanVision
 {
     // Medium is zero so older persisted settings migrate to the actual existing shape.
-    public enum ModelInputQuality { Medium = 0, High = 1, Low = 2 }
+    public enum ModelInputQuality { Medium = 0, High = 1, Low = 2, UltraLow = 3 }
 
     public sealed class ModelInputQualityChoice
     {
@@ -26,6 +26,7 @@ namespace HumanVision
     {
         public const string CatalogFilename = "model-input-qualities.json";
         public const string AdmittedRuntimeMode = "android-ncnn-vulkan";
+        internal const string GraphicsUltraLowProfile = AdmittedRuntimeMode + "-quality-ultra-low";
         private const string Pipeline = "pipeline.yolo.pose";
         private const string Execution = "raw_tensor_fp32_v1";
         private const string Decoder = "yolov8_pose_dfl17_v1";
@@ -46,7 +47,7 @@ namespace HumanVision
         public string ResolveQuality(string mode, string quality)
         {
             ModelInputQuality value;
-            switch (quality) { case "medium": value = ModelInputQuality.Medium; break; case "low": value = ModelInputQuality.Low; break; case "high": value = ModelInputQuality.High; break; default: throw new InvalidOperationException("Unknown model input quality: " + quality); }
+            switch (quality) { case "medium": value = ModelInputQuality.Medium; break; case "low": value = ModelInputQuality.Low; break; case "high": value = ModelInputQuality.High; break; case "ultra-low": value = ModelInputQuality.UltraLow; break; default: throw new InvalidOperationException("Unknown model input quality: " + quality); }
             return ResolveQuality(mode, value);
         }
         public static HumanVisionModelInputQualities Load(string runtimeRoot)
@@ -73,12 +74,12 @@ namespace HumanVision
             var family = J.Object(families[0]); J.Keys(family, "runtime_mode", "base_profile", "default_quality", "qualities");
             if (J.Text(family, "runtime_mode") != AdmittedRuntimeMode || J.Text(family, "base_profile") != AdmittedRuntimeMode || J.Text(family, "default_quality") != "medium") throw new InvalidDataException("Unsupported quality family/default.");
             var entries = J.Array(J.Field(family, "qualities"));
-            if (entries.Count != 3) throw new InvalidDataException("Exactly low, medium and high qualities are required.");
+            if (entries.Count < 3 || entries.Count > 4) throw new InvalidDataException("Low, medium and high qualities are required. Ultra-low is optional.");
             var rows = new Dictionary<string, Dictionary<string, object>>(StringComparer.Ordinal);
             foreach (var entry in entries)
             {
                 var row = J.Object(entry); J.Keys(row, "id", "profile", "width", "height"); string id = J.Text(row, "id");
-                if (rows.ContainsKey(id) || (id != "low" && id != "medium" && id != "high")) throw new InvalidDataException("Unexpected/duplicate quality ID.");
+                if (rows.ContainsKey(id) || (id != "low" && id != "medium" && id != "high" && id != "ultra-low")) throw new InvalidDataException("Unexpected/duplicate quality ID.");
                 rows.Add(id, row);
             }
             var result = new List<ModelInputQualityChoice>();
@@ -86,10 +87,16 @@ namespace HumanVision
             {
                 int width = id == "low" ? 512 : id == "high" ? 960 : 640, height = id == "low" ? 288 : id == "high" ? 576 : 384;
                 string profile = id == "medium" ? AdmittedRuntimeMode : AdmittedRuntimeMode + "-quality-" + id;
-                var row = rows[id];
+                if (!rows.TryGetValue(id, out var row)) throw new InvalidDataException("Missing required quality ID: " + id);
                 if (J.Text(row, "profile") != profile || J.Integer(row, "width") != width || J.Integer(row, "height") != height) throw new InvalidDataException("Quality profile/shape does not match the admitted contract.");
                 ValidateProfile(runtimeRoot, files, profile, width, height);
                 result.Add(new ModelInputQualityChoice(id == "low" ? ModelInputQuality.Low : id == "high" ? ModelInputQuality.High : ModelInputQuality.Medium, profile, width, height));
+            }
+            if (rows.TryGetValue("ultra-low", out var ultra)) {
+                if (J.Text(ultra, "profile") != GraphicsUltraLowProfile || J.Integer(ultra, "width") != 384 || J.Integer(ultra, "height") != 224)
+                    throw new InvalidDataException("Ultra-low profile/shape does not match the admitted contract.");
+                ValidateProfile(runtimeRoot, files, GraphicsUltraLowProfile, 384, 224);
+                result.Insert(0, new ModelInputQualityChoice(ModelInputQuality.UltraLow, GraphicsUltraLowProfile, 384, 224));
             }
             return new HumanVisionModelInputQualities(result.ToArray());
         }
@@ -115,7 +122,9 @@ namespace HumanVision
             if (capabilities.Distinct().Count() != capabilities.Length || !requiredCapabilities.SetEquals(capabilities)) throw new InvalidDataException("Quality model-pack capabilities mismatch.");
             var models = J.Array(J.Field(pack, "models")); if (models.Count != 1) throw new InvalidDataException("Quality pack requires one body model.");
             var model = J.Object(models[0]);
-            string recipe = width == 640 ? "Pinned upstream ncnn graph; M1 FP32 rectangle640x384 input eligibility" : "Pinned upstream ncnn graph; reviewed FP32 rectangle" + width + "x" + height + " offline numerical and raised-left-arm eligibility; local evaluation only";
+            string recipe = width == 384 ? "Pinned upstream ncnn graph; FP32 rectangle384x224 ultra-low shape validation; local evaluation only" :
+                width == 640 ? "Pinned upstream ncnn graph; M1 FP32 rectangle640x384 input eligibility" :
+                "Pinned upstream ncnn graph; reviewed FP32 rectangle" + width + "x" + height + " offline numerical and raised-left-arm eligibility; local evaluation only";
             if (J.Text(model, "source") != ModelSource || J.Text(model, "license") != ModelLicense || J.Text(model, "conversion_recipe") != recipe) throw new InvalidDataException("Quality model pinned provenance metadata mismatch.");
             if (J.Text(model, "role") != "body" || J.Text(model, "format") != "ncnn" || J.Text(model, "decoder_id") != Decoder || J.Text(model, "execution_contract") != Execution) throw new InvalidDataException("Quality model decoder/role mismatch.");
             var options = J.Object(J.Field(model, "backend_options"));

@@ -30,6 +30,22 @@ namespace HumanVision.Tests
             Assert.That(Resolve(Low, Base, Base, new[] { Low, Base, High }), Is.EqualTo(Low));
             Assert.That(Resolve("auto", Base, Base, new[] { Low, Base, High }), Is.EqualTo(Base));
         }
+
+        [Test] public void DualBuildResolvesEachInstalledUltraLowBackendWithoutChangingDefaults()
+        {
+            const string dual = "android-dual-vulkan-npu";
+            const string cpu = "android-cpu-nohands";
+            const string npu = "android-rknn-npu-quality-low";
+            string[] ultra = { Base + "-quality-ultra-low", "android-cpu-nohands-384x224-experimental", "android-rknn-npu-quality-ultra-low" };
+            var existing = new[] { Low, Base, High, cpu, npu };
+            var admitted = existing.Concat(ultra).ToArray();
+            foreach (var profile in ultra) {
+                Assert.That(Resolve(profile, Base, dual, admitted), Is.EqualTo(profile));
+                Assert.Throws<InvalidOperationException>(() => HumanVisionAndroidRuntimeSelection.ResolveConfiguredProfile(profile, Base, dual, existing));
+            }
+            Assert.That(Resolve("auto", Base, dual, admitted), Is.EqualTo(Base));
+            Assert.That(Resolve(cpu, Base, dual, admitted), Is.EqualTo(cpu));
+        }
         [TestCase("windows-pc-cpu")]
         [TestCase("android-ort-cpu")]
         [TestCase("android-ncnn-vulkan-quality-ultra")]

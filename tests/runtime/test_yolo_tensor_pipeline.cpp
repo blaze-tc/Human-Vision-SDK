@@ -133,7 +133,7 @@ void HV_CALL ReleaseRealCpu(void* p,const HV_BackendApiV1*,void*) {
     auto& s=*static_cast<RealCpuBackend*>(p);++s.releases;s.plugin.backend->destroy(s.session);s.session=nullptr;
 }
 HV_Result CreateReal(Pipeline& p,RealCpuBackend& real,int capacity=8) {
-    const auto m=p.manifest.dump(),profile=p.profile.dump(),r=root.u8string();
+    const auto m=p.manifest.dump(),profile=p.profile.dump(),r=p.assets.u8string();
     HV_PipelineConfigV1 config{sizeof(config),1,capacity,0,m.c_str(),r.c_str(),profile.c_str()};
     HV_HostServicesV1 host{sizeof(host),1,&real,CreateRealCpu,ReleaseRealCpu};
     return p.api.pipeline->create(&config,&host,&p.instance,&p.error);
@@ -184,6 +184,43 @@ TEST(YoloTensorPipeline, MediumPrivatePackLetterboxesAndDecodesRecordedRknnOutpu
 }
 TEST(YoloTensorPipeline, HighPrivatePackLetterboxesAndDecodesRecordedRknnOutput) {
     CheckRknnLetterbox(project/"out/rknn-960x576-20261111","high","960x576","bank-fixed",960,576);
+}
+TEST(YoloTensorPipeline, UltraLowExperimentalPackAdmitsRecordedTensorsWithoutClaimingPoseGate) {
+    const auto runtime=project/"out/hlk-cpu-384x224/model";
+    const auto pack=runtime/"modelpacks/yolov8n-pose-rectangle384x224-rknn-nonquantized-experimental";
+    const auto simulator=runtime/"../rknn/simulator-rebuild/simulator";
+    if(!std::filesystem::is_regular_file(pack/"manifest.json")||
+        !std::filesystem::is_regular_file(simulator/"seven-out0.fp32")||
+        !std::filesystem::is_regular_file(root/"seven/source.rgb"))
+        GTEST_SKIP()<<"Private 384x224 RKNN pack and real simulator tensors are not installed";
+    const auto profile=ReadJson(runtime/"profiles/android-rknn-npu-quality-ultra-low.json");
+    const auto manifest=ReadJson(pack/"manifest.json");
+    Pipeline rejected(manifest,profile,pack);
+    rejected.manifest["qualification"]["offline_numerical_passed"]=true;
+    rejected.manifest["qualification"]["raised_left_wrist_checks_passed"]=7;
+    EXPECT_EQ(rejected.Create(),HV_ERR_MODEL_LOAD);
+    EXPECT_EQ(rejected.recorded.creates,0);
+
+    Pipeline p(manifest,profile,pack);
+    p.recorded.captured.resize(384*224*3);
+    p.recorded.det=Read<float>(simulator/"seven-out0.fp32");
+    p.recorded.points=Read<float>(simulator/"seven-out1.fp32");
+    const auto pixels=Read<uint8_t>(root/"seven/source.rgb");
+    ASSERT_EQ(p.Create(),HV_OK)<<p.message;
+    EXPECT_EQ(p.recorded.provider,"backend.rknn");
+    ASSERT_EQ(p.Process(pixels),HV_OK)<<p.message;
+    EXPECT_EQ(p.recorded.input.dimensions[1],224);
+    EXPECT_EQ(p.recorded.input.dimensions[2],384);
+    EXPECT_EQ(p.recorded.input.dimensions[3],3);
+    for(size_t i=0;i<4*384*3;++i){
+        ASSERT_EQ(p.recorded.captured[i],114);
+        ASSERT_EQ(p.recorded.captured[220*384*3+i],114);
+    }
+    EXPECT_EQ(p.output.body_count,7u);
+    EXPECT_EQ(p.output.hand_count,0u);
+    p.recorded.det.resize(3024*65);
+    EXPECT_EQ(p.Process(pixels),HV_ERR_INTERNAL);
+    EXPECT_EQ(p.output.body_count,0u);
 }
 
 TEST(YoloCpuPipeline, RuntimeCompositionRegistersExplicitCpuEntry) {
@@ -348,6 +385,37 @@ TEST(YoloCpuPipeline, ActualPinnedOnnxCpuOutputsAndCanonicalDecodingSevenOneEmpt
             EXPECT_EQ(actual.joints[HV_CANONICAL_HAND_LEFT].valid,0);EXPECT_EQ(actual.joints[HV_CANONICAL_HANDTIP_RIGHT].valid,0);EXPECT_EQ(actual.joints[HV_CANONICAL_THUMB_RIGHT].valid,0);}
     }
     p.api.pipeline->destroy(p.instance);p.instance=nullptr;EXPECT_EQ(real.creates,1);EXPECT_EQ(real.runs,3);EXPECT_EQ(real.releases,1);
+}
+TEST(YoloCpuPipeline, UltraLowExperimentalProfileRunsPinnedOnnxFromLandscapeTransport) {
+    const auto runtime=project/"out/hlk-cpu-384x224/model";
+    const auto assets=runtime/"modelpacks/yolov8n-pose-384x224-ort-experimental";
+    if(!std::filesystem::is_regular_file(assets/"body.onnx")||!std::filesystem::is_regular_file(root/"seven/source.rgb"))
+        GTEST_SKIP()<<"Generate the local 384x224 model and prepare the seven-person source fixture";
+    RealCpuBackend real;real.input.resize(384*224*3);
+    Pipeline p(ReadJson(assets/"manifest.json"),
+        ReadJson(runtime/"profiles/android-cpu-nohands-384x224-experimental.json"),assets);
+    ASSERT_EQ(HV_QueryYoloCpuPipelineV1(1,&p.api),HV_OK);
+    auto invalid=p.manifest;
+    invalid["models"][0]["output_contract"]["rows"]=3024;
+    Pipeline rejected(std::move(invalid),p.profile,assets);
+    ASSERT_EQ(HV_QueryYoloCpuPipelineV1(1,&rejected.api),HV_OK);
+    EXPECT_EQ(rejected.Create(),HV_ERR_MODEL_LOAD);
+    EXPECT_EQ(rejected.recorded.creates,0);
+
+    ASSERT_EQ(CreateReal(p,real),HV_OK)<<p.message;
+    const std::vector<uint8_t> pixels(512*288*3,37);
+    ASSERT_EQ(p.Process(pixels,512,288),HV_OK)<<p.message;
+    ASSERT_EQ(real.count,2u);
+    EXPECT_EQ(real.outputs[0].byte_count,458640u);
+    EXPECT_EQ(real.outputs[1].byte_count,359856u);
+    for(int channel=0;channel<3;++channel)for(int y=0;y<224;++y)for(int x=0;x<384;++x)
+        ASSERT_FLOAT_EQ(real.input[(channel*224+y)*384+x],(y<4||y>=220?114:37)/255.f);
+    EXPECT_EQ(p.output.body_count,0u);
+    const auto people=Read<uint8_t>(root/"seven/source.rgb");
+    ASSERT_EQ(p.Process(people),HV_OK)<<p.message;
+    EXPECT_GT(p.output.body_count,0u);
+    EXPECT_EQ(p.output.hand_count,0u);
+    p.api.pipeline->destroy(p.instance);p.instance=nullptr;EXPECT_EQ(real.releases,1);
 }
 TEST(YoloCpuPipeline, LetterboxesNonLandscapeSourceWithoutChangingNpuAdmission) {
     Pipeline cpu;CpuVariant(cpu,"empty");ASSERT_EQ(cpu.Create(),HV_OK)<<cpu.message;

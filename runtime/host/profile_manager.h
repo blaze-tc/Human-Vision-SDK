@@ -8,7 +8,7 @@ namespace humanvision::runtime {
 namespace detail {
 inline bool IsAndroidGpuProfile(std::string_view id) noexcept {
     return id == "android-ncnn-vulkan" || id == "android-ncnn-vulkan-quality-low" ||
-           id == "android-ncnn-vulkan-quality-high";
+           id == "android-ncnn-vulkan-quality-high" || id == "android-ncnn-vulkan-quality-ultra-low";
 }
 }
 struct PipelineSelection {

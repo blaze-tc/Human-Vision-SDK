@@ -162,7 +162,8 @@ namespace HumanVision.Demo
         {
             qualities = choices ?? Array.Empty<ModelInputQualityChoice>(); qualityChoice.ClearOptions();
             qualityChoice.AddOptions(qualities.Length == 0 ? new List<string> { "固定模型" } : qualities.Select(v =>
-                (v.Quality == ModelInputQuality.Low ? "低" : v.Quality == ModelInputQuality.High ? "高" : "中") + "（" + v.Width + "×" + v.Height + "）").ToList());
+                (v.Quality == ModelInputQuality.UltraLow ? "超低" : v.Quality == ModelInputQuality.Low ? "低" :
+                 v.Quality == ModelInputQuality.High ? "高" : "中") + "（" + v.Width + "×" + v.Height + "）").ToList());
             qualityChoice.interactable = qualities.Length > 1;
             int index = draft == null ? -1 : Array.FindIndex(qualities, v => v.Quality == draft.InputQuality);
             qualityChoice.SetValueWithoutNotify(Mathf.Max(0, index));

@@ -31,7 +31,7 @@ namespace HumanVision.Demo
         {
             Validate();
             string profile = baseProfile;
-            if (baseProfile == HumanVisionAndroidAccelerationSelection.CpuProfile) HumanVisionAndroidCpuModelContract.Validate(root);
+            if (HumanVisionAndroidAccelerationSelection.IsCpuProfile(baseProfile)) HumanVisionAndroidCpuModelContract.Validate(root, baseProfile);
             if (HumanVisionAndroidAccelerationSelection.IsNeuralProfile(baseProfile)) {
                 var model = HumanVisionNeuralModelContract.Validate(root, baseProfile);
                 if (InputQuality != model.Quality) throw new InvalidOperationException("RK3588 NPU model quality must match its profile.");

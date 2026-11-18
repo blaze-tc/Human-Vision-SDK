@@ -127,7 +127,7 @@ namespace HumanVision
         /// <summary>实际成功应用的语义加速器；请求失败时保持旧值。</summary>
         public HumanVisionAccelerationMode ActiveAccelerationMode => IsInitialized
             ? HumanVisionAndroidAccelerationSelection.IsNeuralProfile(RuntimeProfile) ? HumanVisionAccelerationMode.Neural
-                : RuntimeProfile == HumanVisionAndroidAccelerationSelection.CpuProfile || SharedRecognitionSettings.IsDesktopCpu(RuntimeProfile) ? HumanVisionAccelerationMode.Cpu : HumanVisionAccelerationMode.Graphics
+                : HumanVisionAndroidAccelerationSelection.IsCpuProfile(RuntimeProfile) || SharedRecognitionSettings.IsDesktopCpu(RuntimeProfile) ? HumanVisionAccelerationMode.Cpu : HumanVisionAccelerationMode.Graphics
             : active?.AccelerationMode ?? HumanVisionAccelerationMode.Graphics;
         /// <summary>当前使用的资源目录与实际模型包；输入采集尺寸与模型尺寸分别记录。</summary>
         public string RuntimeRootPath => preparedRoot ?? "";
@@ -318,10 +318,14 @@ namespace HumanVision
                     case InputKind.Rtsp: source = go.AddComponent<RtspFrameSource>(); break;
                 }
                 Vector2Int splitSize = Vector2Int.zero;
+                bool ultraLow = candidate.InputQuality == ModelInputQuality.UltraLow &&
+                    AnalysisInputSize == new Vector2Int(384, 224);
+                bool useSplit = candidate.AccelerationMode != HumanVisionAccelerationMode.Cpu || ultraLow;
                 if (candidate.UseModelSizedAnalysisInput && Application.platform == RuntimePlatform.Android &&
-                    candidate.AccelerationMode != HumanVisionAccelerationMode.Cpu && source is RtspFrameSource rtsp &&
-                    AnalysisInputSize == new Vector2Int(512, 288)) {
-                    splitSize = AnalysisInputSize;
+                    useSplit && source is RtspFrameSource rtsp &&
+                    (AnalysisInputSize == new Vector2Int(512, 288) || ultraLow)) {
+                    // The Android split transport is 512×288; the experimental model letterboxes that frame internally.
+                    splitSize = new Vector2Int(512, 288);
                     rtsp.ConfigureAnalysisOutput(splitSize);
                 }
                 var sourceSettings = candidate.ToSourceSettings();
@@ -381,7 +385,7 @@ namespace HumanVision
                 }
                 AnalysisContract capacityContract = null;
                 if (IsInitialized && manager.MaxBodies != candidate.MaxBodies &&
-                    (RuntimeProfile == HumanVisionAndroidAccelerationSelection.CpuProfile || SharedRecognitionSettings.IsDesktopCpu(RuntimeProfile))) {
+                    (HumanVisionAndroidAccelerationSelection.IsCpuProfile(RuntimeProfile) || SharedRecognitionSettings.IsDesktopCpu(RuntimeProfile))) {
                     capacityContract = new SharedRecognitionSettings { MaxBodies = candidate.MaxBodies }.ResolveContract(preparedRoot, RuntimeProfile);
                 }
                 if (IsInitialized && !ApplyRecognition(candidate)) return false;
@@ -679,7 +683,7 @@ namespace HumanVision
             if (!string.IsNullOrEmpty(root) && string.IsNullOrEmpty(qualityCapabilities.Error)) preparedRoot = root;
         }
         private static string QualityProfile(HumanVisionSdkOptions candidate) => Application.platform == RuntimePlatform.Android
-            ? HumanVisionAndroidAccelerationSelection.ResolveInstalled(candidate.AccelerationMode, candidate.AccelerationMode == HumanVisionAccelerationMode.Neural ? ModelInputQuality.Low : candidate.InputQuality, false)
+            ? HumanVisionAndroidAccelerationSelection.ResolveInstalled(candidate.AccelerationMode, ModelInputQuality.Low, false)
             : new SharedRecognitionSettings { UseWindowsCpu = candidate.UseWindowsCpu, AccelerationMode = candidate.AccelerationMode,
                 InputQuality = candidate.InputQuality }.RuntimeProfileFor(Application.platform);
         private static bool SupportsQualityPreparation(string profile) => SharedRecognitionSettings.IsDesktopYolo(profile) ||

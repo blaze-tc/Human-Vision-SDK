@@ -10,9 +10,12 @@ namespace HumanVision
         internal const string NeuralProfile = "android-rknn-npu-quality-low";
         internal const string NeuralMediumProfile = "android-rknn-npu-quality-medium";
         internal const string NeuralHighProfile = "android-rknn-npu-quality-high";
+        internal const string NeuralUltraLowProfile = "android-rknn-npu-quality-ultra-low";
         internal const string CpuProfile = "android-cpu-nohands";
+        internal const string CpuUltraLowProfile = "android-cpu-nohands-384x224-experimental";
+        internal static bool IsCpuProfile(string profile) => profile == CpuProfile || profile == CpuUltraLowProfile;
         internal static bool IsNeuralProfile(string profile) =>
-            profile == NeuralProfile || profile == NeuralMediumProfile || profile == NeuralHighProfile;
+            profile == NeuralProfile || profile == NeuralMediumProfile || profile == NeuralHighProfile || profile == NeuralUltraLowProfile;
         internal static bool SupportsNeuralDevice(string soc, string hardware)
         {
             return IsSupportedSoc(soc) || IsSupportedSoc(hardware);
@@ -29,16 +32,20 @@ namespace HumanVision
         {
             if (!Enum.IsDefined(typeof(HumanVisionAccelerationMode), mode)) throw new ArgumentException("Invalid acceleration preference.");
             if (!Enum.IsDefined(typeof(ModelInputQuality), quality)) throw new ArgumentException("Invalid model quality.");
-            if (mode == HumanVisionAccelerationMode.Graphics)
+            if (mode == HumanVisionAccelerationMode.Graphics) {
+                if (quality == ModelInputQuality.UltraLow)
+                    HumanVisionAndroidRuntimeSelection.ResolveConfiguredProfile(HumanVisionModelInputQualities.GraphicsUltraLowProfile, bakedProfile, bakedMode, admitted);
                 return HumanVisionAndroidRuntimeSelection.ResolveConfiguredProfile("auto", bakedProfile, bakedMode, admitted);
+            }
             if (mode == HumanVisionAccelerationMode.Cpu)
-                return HumanVisionAndroidRuntimeSelection.ResolveConfiguredProfile(CpuProfile, bakedProfile, bakedMode, admitted);
+                return HumanVisionAndroidRuntimeSelection.ResolveConfiguredProfile(
+                    quality == ModelInputQuality.UltraLow ? CpuUltraLowProfile : CpuProfile, bakedProfile, bakedMode, admitted);
             // Validate the exact baked map even if the requested profile occurs in a forged partial map.
             HumanVisionAndroidRuntimeSelection.ResolveConfiguredProfile(NeuralProfile, bakedProfile, bakedMode, admitted);
             if (bakedMode != DualMode) throw new InvalidOperationException("RK3588 NPU is not installed in this APK. Build android-dual-vulkan-npu.");
             if (!SupportsNeuralDevice(soc, hardware))
                 throw new InvalidOperationException("RK3588 NPU requires RK3588 / RK3588S / RK3588_T; this device reports ro.soc.model='" + soc + "', ro.hardware='" + hardware + "'. Current session is retained.");
-            string requested = quality == ModelInputQuality.Low ? NeuralProfile :
+            string requested = quality == ModelInputQuality.UltraLow ? NeuralUltraLowProfile : quality == ModelInputQuality.Low ? NeuralProfile :
                 quality == ModelInputQuality.Medium ? NeuralMediumProfile : NeuralHighProfile;
             return HumanVisionAndroidRuntimeSelection.ResolveConfiguredProfile(requested, bakedProfile, bakedMode, admitted);
         }
