@@ -1,9 +1,8 @@
-# 常驻 SDK Prefab 同帧图像与骨骼
+# 常驻 SDK Prefab 实时预览与精确同帧
 
 在 Unity Package Manager 中打开 **Human Vision SDK → Samples**，导入 **Runtime Prefab Acceptance** 并打开
-`RuntimePrefabAcceptance.unity`。进入 Play Mode，输入可访问的 RTSP 地址并连接。也可在 Inspector 绑定 Startup Preset，或通过项目默认资产配置摄像头、RTSP 或视频。左侧是实时输入和识别区域预览，连接前也能核对编号及布局。右侧可以
-切换游戏端重绘与 SDK 合成。离线包的样例位于 `Assets/HumanVision/Samples/RuntimePrefab`。
-运行时展开 Hierarchy 的 `API Redraw - Scene Rig → Skeleton Objects` 可选中 Mesh 关节点与 LineRenderer。
+`RuntimePrefabAcceptance.unity`。进入 Play Mode，输入可访问的 RTSP 地址并连接。也可在 Inspector 绑定 Startup Preset，或通过项目默认资产配置摄像头、RTSP 或视频。左侧显示最新输入和识别区域，右侧在最新相机画面上独立叠加采样骨骼。同一路输入短时缺少采样时，骨骼最多保留 180 毫秒。识别到无人、切换输入或重连时立即清除。点击「全屏预览」可选择等比显示或填满裁切。
+「拍照（精确同帧）」等待当前输入的一组新鲜精确配对，并将原色帧保存到应用的 `runtime-photos` 目录。离线包的样例位于 `Assets/HumanVision/Samples/RuntimePrefab`。
 Android 使用 Vulkan、ARM64、IL2CPP，Player Settings 的 Internet Access 设为 Require。
 RTSP 样例启用 [同通道选流与模型尺寸分路](SDK_CONFIGURATION.md#android-rtsp-低档)。左侧可确认当前码流、解码或探测尺寸和实际预览尺寸。
 
@@ -27,6 +26,7 @@ public sealed class VisionGameInput : MonoBehaviour
     private IEnumerator Start()
     {
         view = HumanVisionRuntimeView.Create();
+        view.PresentationMode = HumanVisionRuntimePresentationMode.Disabled;
         if (!view.Sdk.IsRunning && !view.Sdk.Busy)
             yield return view.Sdk.InitializeFromPreset(preset, InputKind.Rtsp, rtspUrl);
         if (!view.Sdk.IsRunning)
@@ -35,32 +35,37 @@ public sealed class VisionGameInput : MonoBehaviour
 
     private void Update()
     {
-        if (view == null || !view.TryGetFrame(out var frame)) {
+        var sdk = view != null ? view.Sdk : null;
+        if (sdk == null || sdk.InputState != InputSourceState.Streaming ||
+            !sdk.TryGetInputFrame(-1, out var frame)) {
             preview.texture = null;
             return;
         }
-        preview.texture = frame.OverlayTexture;
-        for (int slot = 0; slot < view.Sdk.GetMaxBodies(); slot++) {
-            if (view.TryGetBodyId(slot, out long playerId) &&
-                view.TryGetJointPosition(slot, HumanVisionCanonicalJointId.Nose, out Vector3 nose))
-                UseJoint(playerId, nose);
+        preview.texture = frame.Texture;
+        if (!sdk.HasFreshResult || !sdk.TryGetAnalysisInputFrame(-1, out var analysis) ||
+            analysis.SourceId != frame.SourceId || analysis.Generation != frame.Generation) return;
+        for (int slot = 0; slot < sdk.GetMaxBodies(); slot++) {
+            if (!sdk.TryGetSampledBodyByIndex(slot, out var sample)) continue;
+            var nose = sample.CanonicalJoints[(int)HumanVisionCanonicalJointId.Nose].Position;
+            if (nose.Valid) DrawPreviewPoint(sample.StableTrackId, nose.Normalized);
         }
     }
 
-    private void UseJoint(long playerId, Vector3 nose) { /* 游戏使用此位置 */ }
+    private void DrawPreviewPoint(long playerId, Vector2 normalized) { /* 绘制位置已归一化 */ }
 }
 ```
 
+设置 `PresentationMode` 为 `Disabled` 可停止精确配对纹理捕获和合成，实时输入及识别回调继续运行。拍照时临时改为 `MatchedColor`，在当前来源代次的 `TryGetFrame` 成功后复制原色纹理，再恢复原模式。需要持续精确叠画时使用 SDK 默认的 `MatchedOverlay`。
 叠画和拍照可订阅 `FramePresented`，事件在 SDK 主线程提交配对后触发。`TryGetFrame` 在相邻两次发布之间可以返回同一序号。配对结果带 `SourceId`、`SourceGeneration`、`SourceFrameId` 与 `ResultSequence`。
 跑跳等只依赖骨骼数据的动作应订阅 `Sdk.ResultUpdated`，用 `CopySkeletonByIndex` 读取新骨骼并复用缓冲区。用源帧时间驱动动作时间窗，按结果序号去重，重新打开输入或切换来源时清理历史。结果回调不依赖预览纹理是否完成配对。
 
 | 入口 | 用途 |
 | --- | --- |
 | `view.Sdk` | 现有 SDK API：`Initialize`、`InitializeFromPreset`、`RestartSdk`、`StopSdk`、`GetMaxBodies`、`TrySetMaxBodies`，并读取 `State` / `LastError`。开启区域时必须同时匹配区域数量，详见[配置](SDK_CONFIGURATION.md)。 |
-| `TryGetFrame` | 返回同一组 `ColorTexture`（原色画面）、`OverlayTexture`（同一画面加骨骼）、`BodyCount`、原输入 ID、提交 ID、结果序号、来源及代次。已确认无人是有效画面，`BodyCount == 0`。 |
+| `TryGetFrame` | 返回精确配对的 `ColorTexture`、`BodyCount` 和帧身份。`MatchedOverlay` 同时提供 `OverlayTexture`。`MatchedColor` 的 `OverlayTexture` 为空。已确认无人时 `BodyCount == 0`。 |
 | `TryGetBodyId` | 按槽位读取稳定人体 ID。槽位可不连续，遍历上限使用 `Sdk.GetMaxBodies()`。 |
 | `TryGetJointPosition` / `TryGetJointTransform` | 读取实际参与绘制的关节点对象及其 Unity 世界位置。返回 false 表示没有有效点。 |
-| `GetLiveTexture` | 最新原色预览，可在首个识别结果前使用，也可能比骨骼更新。 |
+| `GetLiveTexture` / `Sdk.TryGetInputFrame` | 借用最新原色预览，可在首个识别结果前使用。后者还返回来源、代次、帧号和尺寸。 |
 | `yield return view.Unload()` | 等待输入和 native 会话释放，再销毁常驻 Prefab。正常场景切换不调用；应用明确退出识别时调用。 |
 
 正交相机与关节根共用一个 XY 平面：中心为原点，高度为 1 个 Unity 单位，宽度等于画面宽高比。Y 轴向上。位置是二维投影；不会因为有 Unity `Vector3` 而获得深度。镜像和旋转由输入处理一次。相机默认禁用常规渲染、剔除层为零；SDK 用相机的投影把画面和池化点线批量写到独立 RenderTexture。游戏只有在把纹理接给 `RawImage` 等对象后才显示。不要改动相机、池化关节点或骨线对象。
@@ -94,10 +99,8 @@ if (reader.TryRead(view, out var frame))
 
 ## 观察骨骼跟随
 
-对照 HUD 的输入发布 FPS 和新识别 FPS，差值为输入发布减新识别。持续的正差表示有更多输入发布帧
-未得到新识别，短时间窗口可因流水线跨窗出现负值。即使平均差接近零，低采样频率、最长配对间隔偏大、
-结果偏旧或关节短暂失效也会影响动作观感。样例显示最长配对间隔和 Update 取数统计，配合右侧同帧画面观察。
-左侧最新输入可比右侧更新。结果序号可用于识别每次新的原始观察，Unity 重读频率反映游戏能取到数据的频率。
+对照 HUD 的输入发布 FPS 和新识别 FPS。两张预览卡都更新到同一份最新输入，右侧骨骼按新鲜的采样结果单独绘制。
+有动作的短时窗口内，相机与推理更新速率可能不同。结果序号可区分新的原始观察，Unity 重读频率反映游戏使用采样结果的频率。
 
 OnePlus 9 Pro 的 Exercise2 RTSP 短测中，输入发布和新识别平均均为 14.49 FPS，游戏更新平均 54.33 FPS。
 33 个采样窗口内，游戏 1,826 次 Update 均取得纹理与有效关节，得到 486 组不同配对。

@@ -28,6 +28,7 @@ namespace HumanVision.Tests
                 Assert.NotNull(sdk);
                 Assert.False(sdk.InitializeOnStart);
                 Assert.False(sdk.IsInitialized);
+                Assert.That(view.PresentationMode, Is.EqualTo(HumanVisionRuntimePresentationMode.MatchedOverlay));
                 Assert.AreNotEqual(scene, owner.scene);
                 var cameras = owner.GetComponentsInChildren<Camera>(true);
                 Assert.That(cameras.Length, Is.EqualTo(1));
@@ -68,7 +69,7 @@ namespace HumanVision.Tests
                 options.RuntimeRoot = System.Environment.GetEnvironmentVariable("HV_RUNTIME_VIEW_DATA") ?? "";
                 Assert.True(string.IsNullOrEmpty(options.RuntimeRoot) || Directory.Exists(options.RuntimeRoot));
                 sdk.ResultUpdated += _ => accepted++;
-                view.FramePresented += pair => {
+                System.Action<HumanVisionPresentedFrame> checkOverlay = pair => {
                     Assert.True(view.TryGetFrame(out var fromQuery));
                     Assert.That(fromQuery.SourceFrameId, Is.EqualTo(sdk.SourceFrameId));
                     Assert.That(fromQuery.ResultSequence, Is.EqualTo(sdk.ResultSequence));
@@ -103,6 +104,7 @@ namespace HumanVision.Tests
                         if (!string.IsNullOrEmpty(screenshot)) SaveOverlay(pair.OverlayTexture, screenshot);
                     }
                 };
+                view.FramePresented += checkOverlay;
                 yield return sdk.Initialize(options);
                 Assert.True(sdk.IsRunning, sdk.LastError);
                 Assert.That(sdk.RuntimeProfile, Is.EqualTo("windows-yolo-cpu-medium"));
@@ -114,6 +116,10 @@ namespace HumanVision.Tests
                 Debug.Log($"HV_RUNTIME_VIEW_RTSP verified {pairs}/{accepted} matched/accepted results; resolution={beforeRestart.ColorTexture.width}x{beforeRestart.ColorTexture.height}, last input={beforeRestart.InputFrameId}, native={beforeRestart.SourceFrameId}.");
                 yield return VerifySettingsOverlay(view);
                 yield return VerifyOverlayRetention(view, probe);
+                view.FramePresented -= checkOverlay;
+                yield return VerifyPresentationModes(view);
+                view.PresentationMode = HumanVisionRuntimePresentationMode.MatchedOverlay;
+                view.FramePresented += checkOverlay;
 
                 yield return sdk.StopSdk();
                 Assert.False(view.TryGetFrame(out _));
@@ -135,6 +141,54 @@ namespace HumanVision.Tests
                 Object.Destroy(probe);
                 if (view != null) Object.Destroy(view.gameObject);
             }
+        }
+
+        private static IEnumerator VerifyPresentationModes(HumanVisionRuntimeView view)
+        {
+            var sdk = view.Sdk;
+            Assert.True(sdk.TryGetInputFrame(-1, out var initial));
+            long sequence = sdk.ResultSequence;
+            const BindingFlags members = BindingFlags.Instance | BindingFlags.NonPublic;
+            var bridge = typeof(HumanVisionSdk).GetProperty("FrameBridge", members).GetValue(sdk);
+            var exactHistory = bridge.GetType().GetField("_runtimeViewHistory", members);
+            var delayedHistory = bridge.GetType().GetField("_displayHistory", members);
+
+            view.PresentationMode = HumanVisionRuntimePresentationMode.Disabled;
+            Assert.IsNull(view.OffscreenCamera.targetTexture);
+            Assert.False(view.TryGetFrame(out _));
+            double deadline = Time.realtimeSinceStartupAsDouble + 8;
+            while (sdk.ResultSequence <= sequence && Time.realtimeSinceStartupAsDouble < deadline) yield return null;
+            Assert.That(sdk.ResultSequence, Is.GreaterThan(sequence), "Live-only mode must keep inference running.");
+            Assert.True(sdk.TryGetInputFrame(initial.FrameId, out var live));
+            Assert.AreSame(live.Texture, view.GetLiveTexture());
+            Assert.IsNull(exactHistory.GetValue(bridge), "Live-only mode must not retain exact snapshots.");
+            Assert.IsNull(delayedHistory.GetValue(bridge), "Live-only mode must not switch to delayed presentation.");
+            Assert.IsNull(view.OffscreenCamera.targetTexture);
+            Assert.False(view.TryGetFrame(out _));
+            Assert.False(view.TryGetDisplayedFrame(out _));
+
+            view.PresentationMode = HumanVisionRuntimePresentationMode.MatchedColor;
+            deadline = Time.realtimeSinceStartupAsDouble + 12;
+            HumanVisionPresentedFrame color = default;
+            while ((!view.TryGetFrame(out color) || color.BodyCount == 0) && Time.realtimeSinceStartupAsDouble < deadline)
+                yield return null;
+            Assert.That(color.BodyCount, Is.GreaterThan(0), "Color-only mode must restore exact camera pairs with a detected person.");
+            Assert.AreEqual(sdk.SourceFrameId, color.SourceFrameId);
+            Assert.AreEqual(sdk.ResultSequence, color.ResultSequence);
+            Assert.AreEqual(live.Width, color.ColorTexture.width);
+            Assert.AreEqual(live.Height, color.ColorTexture.height);
+            Assert.IsNull(color.OverlayTexture);
+            Assert.IsNull(view.OffscreenCamera.targetTexture);
+            Assert.False(view.TryGetDisplayedFrame(out _));
+            for (int slot = 0; slot < sdk.GetMaxBodies(); ++slot) {
+                if (!view.TryGetJointPosition(slot, HumanVisionCanonicalJointId.Nose, out var joint)) continue;
+                Assert.True(sdk.TryGetJointNormalizedPosition(slot, HumanVisionCanonicalJointId.Nose, out var normalized));
+                var viewport = view.OffscreenCamera.WorldToViewportPoint(joint);
+                Assert.That(viewport.x, Is.EqualTo(normalized.x).Within(.001f));
+                Assert.That(viewport.y, Is.EqualTo(1 - normalized.y).Within(.001f));
+                yield break;
+            }
+            Assert.Fail("Color-only mode must expose matched joint geometry.");
         }
 
         private static IEnumerator VerifyOverlayRetention(HumanVisionRuntimeView view, Texture2D probe)

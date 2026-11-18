@@ -64,11 +64,17 @@ namespace HumanVision
             return child.transform;
         }
 
-        internal bool SetSize(int width, int height)
+        internal bool SetSize(int width, int height, bool composeOverlay)
         {
-            if (Target != null && Target.IsCreated() && Target.width == width && Target.height == height) return false;
+            float nextAspect = (float)width / height;
+            bool projectionChanged = aspect != nextAspect;
+            if (projectionChanged) {
+                aspect = nextAspect;
+                camera.aspect = aspect;
+            }
+            if (!composeOverlay || Target != null && Target.IsCreated() && Target.width == width && Target.height == height)
+                return projectionChanged;
             ReleaseTarget();
-            aspect = (float)width / height;
             Target = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32) {
                 name = "HumanVision offscreen color and skeleton", useMipMap = false, autoGenerateMips = false
             };

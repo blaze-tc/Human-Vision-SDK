@@ -9,7 +9,7 @@ namespace HumanVisionAcceptance
     internal sealed class RuntimeAcceptanceTelemetry
     {
         private double windowStart;
-        private int updates, pairedUpdates, poseUpdates, newPairs, newSkeletonPairs;
+        private int updates, liveUpdates, pairedUpdates, poseUpdates, newPairs, newSkeletonPairs;
         private long lastSequence, lastNative;
         private ulong lastSource, lastGeneration;
         private double updateTicks, maxFrameSeconds, lastPairAt, maxPairInterval;
@@ -20,7 +20,7 @@ namespace HumanVisionAcceptance
         internal void Reset()
         {
             windowStart = Time.realtimeSinceStartupAsDouble;
-            updates = pairedUpdates = poseUpdates = newPairs = newSkeletonPairs = 0;
+            updates = liveUpdates = pairedUpdates = poseUpdates = newPairs = newSkeletonPairs = 0;
             updateTicks = maxFrameSeconds = lastPairAt = maxPairInterval = 0;
             lastSequence = lastNative = -1;
             lastSource = lastGeneration = 0;
@@ -41,18 +41,17 @@ namespace HumanVisionAcceptance
             lastNative = frame.SourceFrameId;
         }
 
-        internal void Observe(long startTicks, HumanVisionSdk sdk, string backend, bool paired, HumanVisionPresentedFrame frame,
+        internal void Observe(long startTicks, HumanVisionSdk sdk, string backend, bool live, bool paired, HumanVisionPresentedFrame frame,
             int joints, int bones, double validSkeletonFps)
         {
             double now = Time.realtimeSinceStartupAsDouble;
             ++updates;
             updateTicks += Stopwatch.GetTimestamp() - startTicks;
             maxFrameSeconds = Math.Max(maxFrameSeconds, Time.unscaledDeltaTime);
-            bool validTextures = paired && frame.ColorTexture != null && frame.OverlayTexture != null;
-            if (validTextures) {
-                ++pairedUpdates;
-                if (joints > 0) ++poseUpdates;
-            }
+            bool validPair = paired && frame.ColorTexture != null;
+            if (live) ++liveUpdates;
+            if (validPair) ++pairedUpdates;
+            if (joints > 0) ++poseUpdates;
             if (sdk == null || !sdk.IsRunning) {
                 lastPairAt = 0;
                 maxPairInterval = 0;
@@ -73,7 +72,7 @@ namespace HumanVisionAcceptance
             string pairInterval = maxPairInterval > 0 ? $"{maxPairInterval * 1000:F0} ms" : "—";
             string validRate = validSkeletonFps >= 0 ? $"  |  有效骨骼 {validSkeletonFps:F1} FPS" : "";
             PerformanceLine = $"游戏 {fps:F1} FPS / {averageFrame:F1} ms  |  预览 {inputFps:F1}  |  新识别 {freshFps:F1} FPS{validRate}  |  同帧骨骼 {skeletonFps:F1} FPS  |  配对 {pairedFps:F1} FPS";
-            ReadLine = $"Update 取帧 {pairedUpdates}/{updates} · 取点 {poseUpdates}/{updates} · 新配对 {newPairs}  |  最长配对间隔 {pairInterval}  |  取数 + 提交绘制 {updateMs:F2} ms";
+            ReadLine = $"Update 取帧 {liveUpdates}/{updates} · 取点 {poseUpdates}/{updates} · 新配对 {newPairs}  |  最长配对间隔 {pairInterval}  |  取数 + 提交绘制 {updateMs:F2} ms";
             StageLine = $"SDK 预处理 {stats.DetectionMs:F1} ms  ·  推理 {stats.PoseMs:F1} ms  ·  后处理 {stats.TrackingMs:F1} ms  ·  结果年龄 {(ageMs >= 0 ? ageMs.ToString("F1") + " ms" : "—")}";
             if (Application.platform == RuntimePlatform.Android) {
                 var device = SystemInfo.graphicsDeviceType;
@@ -82,12 +81,12 @@ namespace HumanVisionAcceptance
                 var analysis = sdk?.AnalysisInputSize ?? Vector2Int.zero;
                 long input = paired ? frame.InputFrameId : -1, native = paired ? frame.SourceFrameId : -1;
                 long seq = paired ? frame.ResultSequence : -1;
-                int width = validTextures ? frame.ColorTexture.width : 0, height = validTextures ? frame.ColorTexture.height : 0;
+                int width = validPair ? frame.ColorTexture.width : 0, height = validPair ? frame.ColorTexture.height : 0;
                 int bodies = paired ? frame.BodyCount : 0;
-                UnityEngine.Debug.Log(FormattableString.Invariant($"HV_RT_SAMPLE state={state} profile={profile} backend={backend} model_size={analysis.x}x{analysis.y} gfx={device} game_fps={fps:F2} frame_ms={averageFrame:F2} max_frame_ms={maxFrameSeconds*1000:F2} input_fps={inputFps:F2} fresh_fps={freshFps:F2} skeleton_fps={skeletonFps:F2} fps_gap={fpsGap:F2} paired_fps={pairedFps:F2} max_pair_gap_ms={maxPairInterval*1000:F2} sdk_ms={stats.TotalMs:F2} age_ms={ageMs:F2} update_ms={updateMs:F3} mem_mib={memoryMiB} updates={updates} paired_updates={pairedUpdates} joint_updates={poseUpdates} new_pairs={newPairs} bodies={bodies} joints={joints} bones={bones} size={width}x{height} input={input} native={native} seq={seq} dropped={stats.DroppedFrames}"));
+                UnityEngine.Debug.Log(FormattableString.Invariant($"HV_RT_SAMPLE state={state} profile={profile} backend={backend} model_size={analysis.x}x{analysis.y} gfx={device} game_fps={fps:F2} frame_ms={averageFrame:F2} max_frame_ms={maxFrameSeconds*1000:F2} input_fps={inputFps:F2} fresh_fps={freshFps:F2} skeleton_fps={skeletonFps:F2} fps_gap={fpsGap:F2} paired_fps={pairedFps:F2} max_pair_gap_ms={maxPairInterval*1000:F2} sdk_ms={stats.TotalMs:F2} age_ms={ageMs:F2} update_ms={updateMs:F3} mem_mib={memoryMiB} updates={updates} live_updates={liveUpdates} paired_updates={pairedUpdates} joint_updates={poseUpdates} new_pairs={newPairs} bodies={bodies} joints={joints} bones={bones} size={width}x{height} input={input} native={native} seq={seq} dropped={stats.DroppedFrames}"));
             }
 
-            updates = pairedUpdates = poseUpdates = newPairs = newSkeletonPairs = 0;
+            updates = liveUpdates = pairedUpdates = poseUpdates = newPairs = newSkeletonPairs = 0;
             updateTicks = maxFrameSeconds = maxPairInterval = 0;
             windowStart = now;
         }

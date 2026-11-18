@@ -1,3 +1,13 @@
+## 2026-11-18 Runtime Prefab 实时预览与同帧拍照候选
+
+Runtime Prefab Acceptance 的两路预览直接取当前相机纹理。骨骼按已接受结果采样，透明绘制在视频上，同一输入绑定的短时取数间隙最多保留 180 ms。新结果确认无人或输入来源、代次、方向变化时清除旧骨骼。SDK 的 `HumanVisionRuntimeView.PresentationMode` 默认保留原有同帧合成接口。样例平时关闭配对历史和离屏合成，拍照时临时等待新鲜同帧原色图并异步回读。
+
+样例在 Android 线性色彩项目中以原始 SDR 采样值校正 RTSP 预览，保持相机纹理和识别输入像素。整体背景适配屏幕，全屏可在等比与裁切铺满间切换。独立 `Human-Vision-SDK-Test` 验收工程允许左右横屏旋转。
+
+Unity 2021.3.45f1 相同 SDK 的 Windows RTSP PlayMode 两例通过，覆盖关闭配对后持续识别、按需同帧原色和默认同帧合成。SDK UPM Editor、Android 条件编译、架构边界、组件目录和变更资产哈希核对通过。
+
+HLK-AL00 使用原始 Exercise-11 1080p RTSP 验证解码后预览与识别解耦、1920×1080 精确同帧拍照和输入恢复后换代。首 30 秒对照、颜色复测和限制见[验收报告](reports/2026-11-18-hlk-runtime-prefab-live-preview.md)。
+
 ## 2026-11-18 HLK-AL00 Android RTSP 首帧候选
 
 基于 `v0.4.0-preview.16` (`0dead88c`)；原发布标签不动。HLK-AL00 Android 10 原始 `Exercise-11` H.264 Main 1080p30 同机对照显示，普通 SurfaceView 成功；PRIVATE GPU 读者容量为 4 时，OMX 输出重配最低申请 14 个缓冲区，全部被拒。仅改读者容量为 3 后，同一份 SPS/PPS 和访问单元恢复输出与 AImage 取图。候选 Input `0.1.0-preview.10-hlk.1` 将该容量限定于 `HLK-AL00` / API 29 / `OMX.hisi.video.decoder.avc` 的生产会话，仍走既有 Vulkan、帧身份及重连路径。

@@ -6,6 +6,16 @@ using UnityEngine;
 
 namespace HumanVision
 {
+    public enum HumanVisionRuntimePresentationMode
+    {
+        /// <summary>Publish exactly matched camera color, joint geometry and a composed overlay.</summary>
+        MatchedOverlay,
+        /// <summary>Publish exactly matched camera color and joint geometry.</summary>
+        MatchedColor,
+        /// <summary>Suspend exact presentation while live input and recognition continue.</summary>
+        Disabled
+    }
+
     /// <summary>A borrowed image and pose publication. Read or copy it on the Unity main thread.</summary>
     public readonly struct HumanVisionPresentedFrame
     {
@@ -44,11 +54,27 @@ namespace HumanVision
         private double lastComposedAt;
         private int currentWidth, currentHeight;
         private bool published, pairAvailable, unloading;
+        private HumanVisionRuntimePresentationMode presentationMode;
         private readonly HumanVisionCanonicalJoint[] joints = new HumanVisionCanonicalJoint[SkeletonImagePlane.JointCount];
 
         public static HumanVisionRuntimeView Instance { get; private set; }
         public HumanVisionSdk Sdk { get; private set; }
         public Camera OffscreenCamera => offscreenCamera;
+        /// <summary>Sets exact presentation demand on the Unity main thread. The default publishes a composed overlay.</summary>
+        public HumanVisionRuntimePresentationMode PresentationMode
+        {
+            get => presentationMode;
+            set {
+                if (value != HumanVisionRuntimePresentationMode.MatchedOverlay &&
+                    value != HumanVisionRuntimePresentationMode.MatchedColor &&
+                    value != HumanVisionRuntimePresentationMode.Disabled)
+                    throw new ArgumentOutOfRangeException(nameof(value));
+                if (presentationMode == value) return;
+                presentationMode = value;
+                if (Sdk != null) Sdk.RuntimeViewCaptureEnabled = value != HumanVisionRuntimePresentationMode.Disabled;
+                ClearFrame(true);
+            }
+        }
         /// <summary>Keep the last composed overlay visible while this input waits for another matched result.</summary>
         public bool RetainLastOverlayDuringPairGaps { get; set; }
         /// <summary>Use the model-sized image for split RTSP pairs. Changing the mode clears the previously composed image.</summary>
@@ -66,7 +92,7 @@ namespace HumanVision
             Sdk.TryGetInputFrame(-1, out var input) && CanDisplay(in input);
         /// <summary>Exact texture retention requires a graphics fence. Live preview remains available without it.</summary>
         public bool SupportsMatchedFrames => SystemInfo.supportsGraphicsFence;
-        /// <summary>Invoked on the main thread after a new matched result and its drawing have been submitted.</summary>
+        /// <summary>Invoked on the main thread when a new matched frame is presented in the selected mode.</summary>
         public event Action<HumanVisionPresentedFrame> FramePresented;
 
         /// <summary>Create or reuse the package prefab. Start input explicitly via the returned Sdk.</summary>
@@ -91,6 +117,7 @@ namespace HumanVision
             DontDestroyOnLoad(gameObject);
             Instance = this;
             Sdk.CaptureRuntimeViewFrames = true;
+            Sdk.RuntimeViewCaptureEnabled = presentationMode != HumanVisionRuntimePresentationMode.Disabled;
             if (offscreenCamera == null) {
                 var cameraOwner = new GameObject("Offscreen Camera");
                 cameraOwner.transform.SetParent(transform, false);
@@ -114,7 +141,7 @@ namespace HumanVision
         /// <summary>Borrow the newest camera image independently of pose latency.</summary>
         public Texture GetLiveTexture() => Sdk != null ? Sdk.GetColorImageTex() : null;
 
-        /// <summary>Get the currently drawn pair. False means no matched and fresh result. Do not release its textures.</summary>
+        /// <summary>Get the current fresh pair. In MatchedColor mode, OverlayTexture is null. Do not release its textures.</summary>
         public bool TryGetFrame(out HumanVisionPresentedFrame frame)
         {
             frame = default;
@@ -130,7 +157,7 @@ namespace HumanVision
             frame = default;
             if (!published || HasRetainedPreviewTimedOut || (!pairAvailable && !RetainLastOverlayDuringPairGaps) ||
                 !Sdk.TryGetInputFrame(-1, out var input) || !CanDisplay(in input) ||
-                !current.OverlayTexture.IsCreated()) return false;
+                current.OverlayTexture == null || !current.OverlayTexture.IsCreated()) return false;
             frame = DisplayOnlyFrame();
             return true;
         }
@@ -146,7 +173,7 @@ namespace HumanVision
         private bool CanDisplay(in HumanVisionTextureFrame input) =>
             published && isActiveAndEnabled && !unloading && currentBridge == Sdk.FrameBridge &&
             currentRevision == Sdk.RecognitionRevision && input.SourceId == current.SourceId &&
-            input.Generation == current.SourceGeneration && current.OverlayTexture != null &&
+            input.Generation == current.SourceGeneration && (current.ColorTexture != null || current.OverlayTexture != null) &&
             input.Width == currentWidth && input.Height == currentHeight &&
             !Sdk.HasNewEmptySplitPreviewResult(current.ResultSequence);
 
@@ -175,9 +202,9 @@ namespace HumanVision
 
         private void LateUpdate()
         {
-            if (drawing == null || unloading) return;
+            if (drawing == null || unloading || presentationMode == HumanVisionRuntimePresentationMode.Disabled) return;
             if (!Sdk.TryGetRuntimeViewResult(out var input, out var color, out long inputFrameId)) {
-                if (RetainLastOverlayDuringPairGaps && CanDisplay(in input)) {
+                if (RetainLastOverlayDuringPairGaps && current.OverlayTexture != null && CanDisplay(in input)) {
                     if (pairAvailable) current = DisplayOnlyFrame();
                     pairAvailable = false;
                     return;
@@ -190,7 +217,8 @@ namespace HumanVision
             long frameId = Sdk.SourceFrameId;
             bool isNew = !published || currentBridge != Sdk.FrameBridge || currentRevision != Sdk.RecognitionRevision ||
                 sequence != current.ResultSequence || input.SourceId != current.SourceId || input.Generation != current.SourceGeneration;
-            bool changed = drawing.SetSize(color.width, color.height);
+            bool composeOverlay = presentationMode == HumanVisionRuntimePresentationMode.MatchedOverlay;
+            bool changed = drawing.SetSize(color.width, color.height, composeOverlay);
             int count = 0;
             int capacity = Sdk.GetMaxBodies();
             for (int slot = 0; slot < HumanVisionRuntimeDrawing.Capacity; slot++) {
@@ -201,7 +229,7 @@ namespace HumanVision
                 } else changed |= drawing.HideBody(slot);
             }
 
-            if (isNew || changed) drawing.Draw(color);
+            if (composeOverlay && (isNew || changed)) drawing.Draw(color);
             current = new HumanVisionPresentedFrame(input.SourceId, input.Generation, frameId, inputFrameId,
                 sequence, Sdk.SourceTimestampUs, count, color, drawing.Target);
             currentBridge = Sdk.FrameBridge;

@@ -223,11 +223,24 @@ namespace HumanVision.Demo
             if(manager==null)manager=GetComponent<HumanVisionManager>();
             if(_inputAdapter==null){_inputAdapter=GetComponent<HumanVisionInputAdapter>();if(_inputAdapter==null)_inputAdapter=gameObject.AddComponent<HumanVisionInputAdapter>();}
             _inputAdapter.manager=manager;_unifiedPreviewLastId = -1; _unifiedPreviewCount = 0; _unifiedPreviewFps = 0; _unifiedPreviewStart = Time.unscaledTime;
-            _inputAdapter.presentationBridge=CaptureRuntimeViewFrames?this:null;
+            _inputAdapter.presentationBridge=CaptureRuntimeViewFrames&&RuntimeViewCaptureEnabled?this:null;
             _inputAdapter.Bind(source,analysisLimit);_livePreview=true;
         }
         public void DetachUnifiedSource(){if(_inputAdapter!=null)_inputAdapter.Detach();_unifiedSource=null;ResetPresentation();if(CaptureRuntimeViewFrames)PresentMatchedOverlay(null);ResetRuntimeViewHistory();}
         internal bool CaptureRuntimeViewFrames { get; set; }
+        private bool _runtimeViewCaptureEnabled = true;
+        internal bool RuntimeViewCaptureEnabled {
+            get => _runtimeViewCaptureEnabled;
+            set {
+                if (_runtimeViewCaptureEnabled == value) return;
+                _runtimeViewCaptureEnabled = value;
+                if (_inputAdapter != null) {
+                    _inputAdapter.presentationBridge = CaptureRuntimeViewFrames && value ? this : null;
+                    _inputAdapter.ResetSplitPreviewCapture();
+                }
+                InvalidateRuntimeViewHistory();
+            }
+        }
         private bool _captureAnalysisRuntimeViewFrames;
         internal bool CaptureAnalysisRuntimeViewFrames {
             get => _captureAnalysisRuntimeViewFrames;
@@ -245,6 +258,7 @@ namespace HumanVision.Demo
         private int _runtimeViewWidth, _runtimeViewHeight;
         private bool _runtimeViewUsesAnalysis;
         internal bool CaptureRuntimeViewFrame(in HumanVisionTextureFrame frame,long resultFrameId,bool analysisFrame=false) {
+            if (!RuntimeViewCaptureEnabled) return false;
             if(_unifiedSource==null||!SystemInfo.supportsGraphicsFence)return false;
             if(_runtimeViewHistory==null||_runtimeViewSource!=frame.SourceId||_runtimeViewGeneration!=frame.Generation||
                 _runtimeViewWidth!=frame.Width||_runtimeViewHeight!=frame.Height||_runtimeViewUsesAnalysis!=analysisFrame) {
@@ -296,7 +310,7 @@ namespace HumanVision.Demo
                 return owner != null && owner.FrameBridge == this ? owner : null;
             }
         }
-        private bool RequiresMatchedOverlay => CaptureRuntimeViewFrames && targetDisplay != null &&
+        private bool RequiresMatchedOverlay => CaptureRuntimeViewFrames && RuntimeViewCaptureEnabled && targetDisplay != null &&
             _previewOverlay != null && _previewOverlay.isActiveAndEnabled;
 
         internal void RegisterPreviewOverlay(HumanVisionOverlay overlay) {

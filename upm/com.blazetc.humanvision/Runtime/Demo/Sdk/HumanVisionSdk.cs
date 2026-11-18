@@ -154,6 +154,14 @@ namespace HumanVision
         internal HumanVisionManager RuntimeManager => manager;
         internal VideoPlayerFrameSource FrameBridge => bridge;
         internal bool CaptureRuntimeViewFrames { get; set; }
+        private bool runtimeViewCaptureEnabled = true;
+        internal bool RuntimeViewCaptureEnabled {
+            get => runtimeViewCaptureEnabled;
+            set {
+                runtimeViewCaptureEnabled = value;
+                if (bridge != null) bridge.RuntimeViewCaptureEnabled = value;
+            }
+        }
         private bool captureAnalysisRuntimeViewFrames;
         internal bool CaptureAnalysisRuntimeViewFrames {
             get => captureAnalysisRuntimeViewFrames;
@@ -280,6 +288,7 @@ namespace HumanVision
             manager = go.AddComponent<HumanVisionManager>();
             bridge = go.AddComponent<VideoPlayerFrameSource>(); bridge.Configure(manager, null, null);
             bridge.CaptureRuntimeViewFrames = CaptureRuntimeViewFrames;
+            bridge.RuntimeViewCaptureEnabled = RuntimeViewCaptureEnabled;
             bridge.CaptureAnalysisRuntimeViewFrames = CaptureAnalysisRuntimeViewFrames;
             bool initialized;
             if (pending != null) {

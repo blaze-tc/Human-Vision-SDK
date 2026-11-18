@@ -9,7 +9,7 @@ using UnityEngine;
 namespace HumanVisionAcceptance
 {
     [DefaultExecutionOrder(300)]
-    public sealed class RuntimePrefabAcceptance : MonoBehaviour
+    public sealed partial class RuntimePrefabAcceptance : MonoBehaviour
     {
         [SerializeField] private string rtspUrl = "";
         [SerializeField, Range(1, 8)] private int maxBodies = 4;
@@ -34,10 +34,6 @@ namespace HumanVisionAcceptance
         private static readonly Rect LiveCard = new Rect(28, 152, 680, 460);
         private static readonly Rect PoseCard = new Rect(732, 152, 680, 460);
 
-        private readonly RuntimeSkeletonReader skeletonReader = new RuntimeSkeletonReader();
-        private readonly Vector2[,] viewportJoints = new Vector2[8, 32];
-        private readonly bool[,] valid = new bool[8, 32];
-        private readonly long[] ids = new long[8];
         private HumanVisionRuntimeView view;
         private HumanVisionSdkOptions startup;
         private HumanVisionSdkConfiguration recognition;
@@ -46,11 +42,12 @@ namespace HumanVisionAcceptance
         private Texture live;
         private Font uiFont;
         private GUIStyle heading, title, body, small, field, button, selected, badge;
-        private bool paired, hasInput, showSdkTexture, operating, capacityMenuOpen;
-        private int presented, visibleJoints, visibleBones;
+        private bool paired, hasInput, operating, capacityMenuOpen;
+        private bool showSkeleton = true;
+        private int visibleJoints, visibleBones;
         private string status = "填入设备可访问的 RTSP 地址，然后点击连接";
         private string sdkLine = "SDK 未创建";
-        private string poseLine = "等待同帧结果";
+        private string poseLine = "等待识别结果";
         private string inputLine = "等待实机图像";
         private float nextStatusAt;
         private float nextBackendAt;
@@ -62,13 +59,14 @@ namespace HumanVisionAcceptance
         private long loggedInputFrame = -1;
         private ulong loggedSource, loggedGeneration;
         private bool measuring, cancelMeasurement, inputOpened;
-        private bool previousRetain, previousAnalysisPreview;
+        private bool previousAnalysisPreview;
+        private HumanVisionRuntimePresentationMode previousPresentationMode;
 
         private void Start()
         {
             Application.targetFrameRate = 60;
             telemetry.Reset();
-            showSdkTexture = true;
+            if (redrawRig != null) redrawRig.gameObject.SetActive(false);
             LoadStartup();
 #if UNITY_EDITOR
             if (!string.IsNullOrWhiteSpace(editorVideoPath)) {
@@ -84,10 +82,11 @@ namespace HumanVisionAcceptance
 
         private void OnDestroy()
         {
+            if (previewColorMaterial != null) Destroy(previewColorMaterial);
             if (view != null) {
                 view.FramePresented -= CountPresented;
-                view.RetainLastOverlayDuringPairGaps = previousRetain;
                 view.UseAnalysisFrameForMatchedPreview = previousAnalysisPreview;
+                view.PresentationMode = previousPresentationMode;
             }
             diagnostics.Dispose();
             if (uiFont != null) Destroy(uiFont);
@@ -133,7 +132,6 @@ namespace HumanVisionAcceptance
 
         private void CountPresented(HumanVisionPresentedFrame frame)
         {
-            presented++;
             telemetry.ObservePresented(in frame, diagnostics.ObservePresented(in frame));
         }
 
@@ -166,11 +164,11 @@ namespace HumanVisionAcceptance
             {
                 view = HumanVisionRuntimeView.Create();
                 view.FramePresented += CountPresented;
-                previousRetain = view.RetainLastOverlayDuringPairGaps;
                 previousAnalysisPreview = view.UseAnalysisFrameForMatchedPreview;
+                previousPresentationMode = view.PresentationMode;
             }
-            view.RetainLastOverlayDuringPairGaps = true;
             view.UseAnalysisFrameForMatchedPreview = false;
+            view.PresentationMode = HumanVisionRuntimePresentationMode.Disabled;
             diagnostics.BindSdk(view.Sdk);
             loggedInputFrame = -1;
             diagnostics.SetInputAddress(options.SourceKind == InputKind.Rtsp ? options.Input.RtspUrl : null);
@@ -182,7 +180,6 @@ namespace HumanVisionAcceptance
                 if (File.Exists(Path.Combine(staged, "index.json"))) options.RuntimeRoot = staged;
             }
             status = "正在启动 SDK…";
-            presented = 0;
             yield return view.Sdk.Initialize(options);
             if (!view.Sdk.IsRunning || !string.IsNullOrEmpty(view.Sdk.LastError)) {
                 status = diagnostics.Redact(view.Sdk.LastError);
@@ -194,7 +191,7 @@ namespace HumanVisionAcceptance
             maxBodies = recognition.MaxBodies;
             nextBackendAt = 0;
             telemetry.Reset();
-            status = "输入已连接，等待 / 接收同帧结果";
+            status = "输入已连接";
             inputOpened = true;
             if (options.SourceKind == InputKind.Rtsp) {
                 diagnostics.RecordStreamSelection(diagnosticsPhase, view.Sdk.SelectedRtspStreamLabel,
@@ -229,7 +226,7 @@ namespace HumanVisionAcceptance
                 double until = Time.realtimeSinceStartupAsDouble + duration;
                 double lastResultAt = Time.realtimeSinceStartupAsDouble;
                 long latest = diagnostics.AcceptedResults;
-                long initial = latest, valid = diagnostics.ValidSkeletonResults, pairedValid = diagnostics.ValidSkeletonPresented;
+                long initial = latest, valid = diagnostics.ValidSkeletonResults;
                 diagnostics.Mark(diagnosticsPhase, "ready", bounds, sdk: sdk);
                 while (!cancelMeasurement && sdk.IsRunning && Time.realtimeSinceStartupAsDouble < until) {
                     double now = Time.realtimeSinceStartupAsDouble;
@@ -242,11 +239,11 @@ namespace HumanVisionAcceptance
                     yield return null;
                 }
                 bool complete = !cancelMeasurement && sdk.IsRunning && Time.realtimeSinceStartupAsDouble >= until;
-                bool hasSkeleton = diagnostics.ValidSkeletonResults > valid && diagnostics.ValidSkeletonPresented > pairedValid;
+                bool hasSkeleton = diagnostics.ValidSkeletonResults > valid;
                 string outcome = cancelMeasurement ? "cancelled" : complete ? hasSkeleton ? "complete" : "partial" : "failed";
-                diagnostics.Mark("campaign", outcome, bounds, $"accepted={latest-initial} valid={diagnostics.ValidSkeletonResults-valid} paired={diagnostics.ValidSkeletonPresented-pairedValid}", sdk);
+                diagnostics.Mark("campaign", outcome, bounds, $"accepted={latest-initial} valid={diagnostics.ValidSkeletonResults-valid}", sdk);
                 status = cancelMeasurement ? "已取消测试" : complete
-                    ? hasSkeleton ? "测试已完成，可以导出 JSONL" : "测试已结束，有效同帧骨骼证据不足"
+                    ? hasSkeleton ? "测试已完成，可以导出 JSONL" : "测试已结束，有效骨骼证据不足"
                     : "测试已结束，结果更新中断";
             } finally {
                 measuring = false;
@@ -317,7 +314,6 @@ namespace HumanVisionAcceptance
         private IEnumerator Restart()
         {
             status = "正在重启 SDK…";
-            presented = 0;
             yield return view.Sdk.RestartSdk();
             status = view.Sdk.IsRunning ? "SDK 已重启" : view.Sdk.LastError;
         }
@@ -377,37 +373,14 @@ namespace HumanVisionAcceptance
         private void Update()
         {
             long updateStart = System.Diagnostics.Stopwatch.GetTimestamp();
-            // Typical gameplay loop: acquire the public frame, then consume
-            // world-space joint positions from the same published observation.
-            live = view != null ? view.GetLiveTexture() : null;
-            hasInput = view != null && view.Sdk.TryGetInputFrame(-1, out input);
-            paired = skeletonReader.TryRead(view, out pair);
-            visibleJoints = visibleBones = 0;
-            int capacity = skeletonReader.RegionCount;
-            int jointCount = skeletonReader.GetJointCount();
-            for (int regionIndex = 0; regionIndex < ids.Length; regionIndex++)
-            {
-                ids[regionIndex] = 0;
-                if (!paired || regionIndex >= capacity) continue;
-                long userId = skeletonReader.GetUserIdByRegionIndex(regionIndex);
-                if (userId == 0) continue;
-                ids[regionIndex] = userId;
-                for (int j = 0; j < jointCount; j++)
-                {
-                    valid[regionIndex,j] = skeletonReader.TryGetJointPositionByRegionIndex(regionIndex, (HumanVisionCanonicalJointId)j, out var position);
-                    if (!valid[regionIndex,j]) continue;
-                    var viewport = view.OffscreenCamera.WorldToViewportPoint(position);
-                    viewportJoints[regionIndex,j] = new Vector2(viewport.x, viewport.y);
-                    visibleJoints++;
-                }
-            }
-
-            if (redrawRig != null) {
-                redrawRig.Draw(paired ? pair.ColorTexture : null, ids, viewportJoints, valid);
-                visibleBones = redrawRig.VisibleLines;
-            }
-
             var activeSdk = view != null ? view.Sdk : null;
+            RefreshLivePreview(activeSdk);
+            pair = default;
+            paired = view != null && view.PresentationMode == HumanVisionRuntimePresentationMode.MatchedColor &&
+                view.TryGetFrame(out pair);
+            int capacity = activeSdk != null ? activeSdk.GetMaxBodies() : maxBodies;
+            visibleJoints = liveSkeleton.VisibleJoints;
+            visibleBones = liveSkeleton.VisibleBones;
             UpdateActualBackend(activeSdk);
             if (hasInput) {
                 diagnostics.ObservePreview(in input);
@@ -421,7 +394,8 @@ namespace HumanVisionAcceptance
                 }
             }
             if (activeSdk != null) diagnostics.Sample(activeSdk, diagnosticsPhase);
-            telemetry.Observe(updateStart, activeSdk, actualBackend, paired, pair, visibleJoints, visibleBones, diagnostics.ValidSkeletonFps);
+            telemetry.Observe(updateStart, activeSdk, actualBackend, hasInput, paired, pair,
+                visibleJoints, visibleBones, diagnostics.ValidSkeletonFps);
             if (Time.unscaledTime < nextStatusAt) return;
             nextStatusAt = Time.unscaledTime + .15f;
             if (view == null) {
@@ -444,23 +418,30 @@ namespace HumanVisionAcceptance
                     probed.x > 0 ? $" 探测 {probed.x}×{probed.y}" : "";
                 inputLine = $"{view.Sdk.SelectedRtspStreamLabel}{detected}  ·  预览 {live.width}×{live.height}";
             }
-            poseLine = paired
-                ? $"输入 #{pair.InputFrameId}  ·  提交 #{pair.SourceFrameId}  ·  结果 #{pair.ResultSequence}  ·  已配对 {presented}"
-                : "等待同帧结果";
+            poseLine = !showSkeleton ? "骨骼关闭"
+                : activeSdk != null && activeSdk.HasFreshResult
+                    ? $"采样骨骼 · 结果 #{activeSdk.ResultSequence} · 年龄 {activeSdk.ResultAgeMilliseconds:F0} ms"
+                    : "等待新识别";
         }
 
         private void OnGUI()
         {
             if (startup == null) return;
             InitStyles();
+            if (fullscreenPreview) {
+                DrawFullscreenPreview();
+                return;
+            }
             var previousMatrix = GUI.matrix;
             float scale = Mathf.Min(Screen.width / 1440f, Screen.height / 866f);
             if (scale <= 0) return;
+            GUI.matrix = Matrix4x4.identity;
+            Box(new Rect(0, 0, Screen.width, Screen.height), Background);
             GUI.matrix = Matrix4x4.TRS(new Vector3((Screen.width - 1440f * scale) / 2f, (Screen.height - 866f * scale) / 2f, 0),
                 Quaternion.identity, Vector3.one * scale);
             try {
+                GetExpandedCards(scale, out var liveCard, out var poseCard, out var controls);
                 DismissCapacityMenu();
-                Box(new Rect(0,0,1440,866), Background);
                 GUI.Label(new Rect(28, 12, 900, 52), "Human Vision  /  Runtime Prefab 验收", heading);
                 GUI.Label(new Rect(30, 65, 135, 30), FixedQuality ? "固定模型等级" : "模型等级", small);
                 GUI.enabled = !operating && !FixedQuality;
@@ -495,19 +476,15 @@ namespace HumanVisionAcceptance
                 if (GUI.Button(new Rect(1224, 104, 188, 34), "连接 / 应用地址", selected)) Run(Connect());
                 GUI.enabled = true;
 
-                DrawCard(LiveCard, "实时输入 · 识别区域", live, inputLine, showRegions: true);
-                Texture right = null;
-                if (showSdkTexture && view != null && view.TryGetDisplayedFrame(out var displayed))
-                    right = displayed.OverlayTexture;
-                else if (!showSdkTexture && paired)
-                    right = redrawRig?.Output;
-                DrawCard(PoseCard, showSdkTexture ? "Prefab 合成画面" : "公共接口重绘 · Update()",
-                    right, poseLine);
+                DrawCard(liveCard, "实时输入 · 识别区域", live, inputLine, showRegions: true);
+                DrawCard(poseCard, "实时预览 · 骨骼叠加", live, poseLine, drawSkeleton: showSkeleton);
+                DrawFullscreenButton(poseCard);
 
-                Box(new Rect(28, 624, 1384, 205), Panel);
+                Box(controls, Panel);
                 GUI.Label(new Rect(45, 633, 870, 32), sdkLine, body);
                 GUI.Label(new Rect(930, 633, 466, 32),
-                    paired ? $"{pair.BodyCount} 人  ·  {visibleJoints} 个点  ·  {visibleBones} 条线" : "没有可绘制的同帧骨骼", small);
+                    showSkeleton
+                    ? $"{liveSkeleton.VisibleBodies} 人  ·  {visibleJoints} 个点  ·  {visibleBones} 条线" : "", small);
                 GUI.Label(new Rect(45, 674, 145, 33), "区域数量", body);
                 GUI.enabled = !operating;
                 if (GUI.Button(CapacityButton, $"{maxBodies} 人  ▾", capacityMenuOpen ? selected : button))
@@ -516,9 +493,12 @@ namespace HumanVisionAcceptance
                 if (GUI.Button(new Rect(437, 674, 128, 33), "重启 SDK", button)) Run(Restart());
                 if (GUI.Button(new Rect(578, 674, 128, 33), "停止 SDK", button)) Run(StopRuntime());
                 if (GUI.Button(new Rect(719, 674, 128, 33), "卸载 Prefab", button)) Run(Unload());
+                GUI.enabled = !operating;
+                if (GUI.Button(new Rect(935, 674, 205, 33), showSkeleton ? "关闭骨骼" : "开启骨骼", button))
+                    showSkeleton = !showSkeleton;
+                GUI.enabled = !operating && CanTakePhoto;
+                if (GUI.Button(new Rect(1153, 674, 243, 33), "拍照（精确同帧）", button)) Run(TakeExactPhoto());
                 GUI.enabled = true;
-                if (GUI.Button(new Rect(935, 674, 205, 33), "公共接口重绘", !showSdkTexture ? selected : button)) showSdkTexture = false;
-                if (GUI.Button(new Rect(1153, 674, 243, 33), "Prefab 合成", showSdkTexture ? selected : button)) showSdkTexture = true;
                 GUI.Label(new Rect(45, 720, 1349, 32), status ?? "", small);
                 GUI.Label(new Rect(45, 754, 1349, 31), telemetry.PerformanceLine, small);
                 GUI.Label(new Rect(45, 785, 1349, 31), telemetry.ReadLine, small);
@@ -560,20 +540,19 @@ namespace HumanVisionAcceptance
             }
         }
 
-        private void DrawCard(Rect card, string label, Texture texture, string detail, bool showRegions = false)
+        private void DrawCard(Rect card, string label, Texture texture, string detail, bool showRegions = false,
+            bool drawSkeleton = false)
         {
             Box(card, Panel);
             GUI.Label(new Rect(card.x + 17, card.y + 4, card.width - 34, 44), label, title);
-            Rect window = new Rect(card.x + 16, card.y + 49, card.width - 32, 365);
+            Rect window = CardImageWindow(card);
             Box(window, Inset);
             bool hasTexture = texture != null && texture.width > 0 && texture.height > 0;
             if (hasTexture || showRegions) {
                 int width = hasTexture ? texture.width : 1280;
                 int height = hasTexture ? texture.height : 720;
-                float scale = Mathf.Min(window.width / width, window.height / height);
-                var image = new Rect(window.center.x - width * scale / 2, window.center.y - height * scale / 2,
-                    width * scale, height * scale);
-                if (hasTexture) GUI.DrawTexture(image, texture, ScaleMode.StretchToFill, false);
+                var image = RuntimePrefabLiveSkeleton.Fit(window, width, height);
+                if (hasTexture) DrawCameraImage(image, texture, drawSkeleton);
                 if (showRegions && recognition != null) DrawRegions(image);
             }
             if (!hasTexture) GUI.Label(window, "等待输入 / 结果", badge);
