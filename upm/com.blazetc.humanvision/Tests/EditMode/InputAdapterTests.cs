@@ -285,6 +285,66 @@ public sealed class InputAdapterTests {
         Assert.That(fence.IsComplete,Is.False,"An errored readback does not establish GPU copy completion.");
         Assert.That(fence.ReadbackError,Is.True);
     }
+    [Test] public void SplitModelInputCannotReplaceTheCameraPreviewDuringAdmission() {
+        var go=new GameObject("split preview bridge");
+        var displayGo=new GameObject("camera preview",typeof(RectTransform),typeof(UnityEngine.UI.RawImage));
+        var preview=new Texture2D(1920,1080,TextureFormat.RGBA32,false,true);
+        var analysis=new Source(512,288);
+        try {
+            var bridge=CpuBridge(go);
+            var display=displayGo.GetComponent<UnityEngine.UI.RawImage>();
+            bridge.Configure(null,display,null);
+            Set(bridge,"_livePreview",true);
+            Set(bridge,"_rowOrderReady",false);
+            display.texture=preview;
+            var splitSource=go.AddComponent<RtspFrameSource>();
+            Assert.That(analysis.TryGetLatestFrame(-1,out var frame),Is.True);
+            var sourceCopy=new HumanVisionInputAdapter.CpuFence();
+            var trace=new HumanVisionInputAdapter.AnalysisCopyTrace(splitSource,in frame);
+            sourceCopy.Begin(in trace);
+
+            Assert.That(bridge.TrySubmitUnifiedCpuFrame(frame.Texture,frame.PublishedTimestampUs,sourceCopy),Is.False);
+            Assert.That(display.texture,Is.SameAs(preview),"Even a rejected model frame must leave the camera pixels bound.");
+            Assert.That(display.texture.width,Is.EqualTo(1920));
+        } finally {
+            DestroyCpuTestObject(go,analysis);
+            UnityEngine.Object.DestroyImmediate(displayGo);
+            UnityEngine.Object.DestroyImmediate(preview);
+            UnityEngine.Object.DestroyImmediate(analysis.Texture);
+        }
+    }
+    [Test] public void SwitchingToCameraPairsReleasesThePreviouslyDisplayedModelFrame() {
+        var go=new GameObject("split presentation mode");
+        var displayGo=new GameObject("camera preview",typeof(RectTransform),typeof(UnityEngine.UI.RawImage));
+        var preview=new Source(1920,1080);
+        var model=new Texture2D(512,288,TextureFormat.RGBA32,false,true);
+        try {
+            var bridge=CpuBridge(go);
+            var sdk=go.AddComponent<HumanVisionSdk>();
+            var display=displayGo.GetComponent<UnityEngine.UI.RawImage>();
+            bridge.Configure(null,display,null);
+            bridge.CaptureRuntimeViewFrames=true;
+            bridge.BindUnifiedSource(preview);
+            Set(sdk,"bridge",bridge);
+            sdk.CaptureAnalysisRuntimeViewFrames=true;
+            bridge.CaptureAnalysisRuntimeViewFrames=true;
+            // Seed the displayed output of an earlier model-sized match.
+            Set(bridge,"_runtimeViewUsesAnalysis",true);
+            Set(bridge,"_matchedPreviewTexture",model);
+            display.texture=model;
+
+            sdk.CaptureAnalysisRuntimeViewFrames=false;
+
+            Assert.That(bridge.PresentationTexture,Is.SameAs(preview.Texture));
+            Assert.That(display.texture,Is.SameAs(preview.Texture));
+        } finally {
+            Set(go.GetComponent<HumanVisionSdk>(),"bridge",null);
+            DestroyCpuTestObject(go,preview);
+            UnityEngine.Object.DestroyImmediate(displayGo);
+            UnityEngine.Object.DestroyImmediate(preview.Texture);
+            UnityEngine.Object.DestroyImmediate(model);
+        }
+    }
     [Test] public void ResolutionChangeHidesPreviousGeometryUntilANewAcceptedResult() {
         var source=new Source(640,360);var larger=new Texture2D(1920,1080,TextureFormat.RGBA32,false,true);var go=new GameObject("geometry fence");
         try {

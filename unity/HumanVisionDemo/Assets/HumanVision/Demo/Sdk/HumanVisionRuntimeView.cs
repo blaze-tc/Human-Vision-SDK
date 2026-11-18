@@ -51,11 +51,15 @@ namespace HumanVision
         public Camera OffscreenCamera => offscreenCamera;
         /// <summary>Keep the last composed overlay visible while this input waits for another matched result.</summary>
         public bool RetainLastOverlayDuringPairGaps { get; set; }
-        /// <summary>Use the model-sized image for split RTSP pairs. Set before initializing the SDK.</summary>
+        /// <summary>Use the model-sized image for split RTSP pairs. Changing the mode clears the previously composed image.</summary>
         public bool UseAnalysisFrameForMatchedPreview
         {
             get => Sdk.CaptureAnalysisRuntimeViewFrames;
-            set => Sdk.CaptureAnalysisRuntimeViewFrames = value;
+            set {
+                if (Sdk.CaptureAnalysisRuntimeViewFrames == value) return;
+                Sdk.CaptureAnalysisRuntimeViewFrames = value;
+                ClearFrame(false);
+            }
         }
         /// <summary>Whether a composed image for the current binding stopped advancing for the preview timeout.</summary>
         public bool DisplayedFrameExpired => HasRetainedPreviewTimedOut &&
@@ -143,7 +147,8 @@ namespace HumanVision
             published && isActiveAndEnabled && !unloading && currentBridge == Sdk.FrameBridge &&
             currentRevision == Sdk.RecognitionRevision && input.SourceId == current.SourceId &&
             input.Generation == current.SourceGeneration && current.OverlayTexture != null &&
-            input.Width == currentWidth && input.Height == currentHeight;
+            input.Width == currentWidth && input.Height == currentHeight &&
+            !Sdk.HasNewEmptySplitPreviewResult(current.ResultSequence);
 
         /// <summary>Get the stable ID in a drawn slot. Slots can have gaps; use Sdk.GetMaxBodies() as the traversal limit.</summary>
         public bool TryGetBodyId(int index, out long id)

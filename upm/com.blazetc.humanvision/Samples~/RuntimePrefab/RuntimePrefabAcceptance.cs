@@ -170,7 +170,7 @@ namespace HumanVisionAcceptance
                 previousAnalysisPreview = view.UseAnalysisFrameForMatchedPreview;
             }
             view.RetainLastOverlayDuringPairGaps = true;
-            view.UseAnalysisFrameForMatchedPreview = true;
+            view.UseAnalysisFrameForMatchedPreview = false;
             diagnostics.BindSdk(view.Sdk);
             loggedInputFrame = -1;
             diagnostics.SetInputAddress(options.SourceKind == InputKind.Rtsp ? options.Input.RtspUrl : null);

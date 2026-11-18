@@ -16,7 +16,7 @@ namespace HumanVision
     public sealed class HumanVisionSdk : MonoBehaviour
     {
         /// <summary>托管 SDK 版本，便于区分实机日志对应的发布包。</summary>
-        public const string Version = "0.4.0-preview.15";
+        public const string Version = "0.4.0-preview.16-cadence.3";
         [SerializeField, Tooltip("场景配置资产。留空使用项目默认资产，没有项目默认资产时使用内嵌参数。")]
         private HumanVisionSdkPreset configurationAsset;
         private bool configurationLoaded;
@@ -154,8 +154,18 @@ namespace HumanVision
         internal HumanVisionManager RuntimeManager => manager;
         internal VideoPlayerFrameSource FrameBridge => bridge;
         internal bool CaptureRuntimeViewFrames { get; set; }
-        internal bool CaptureAnalysisRuntimeViewFrames { get; set; }
+        private bool captureAnalysisRuntimeViewFrames;
+        internal bool CaptureAnalysisRuntimeViewFrames {
+            get => captureAnalysisRuntimeViewFrames;
+            set {
+                captureAnalysisRuntimeViewFrames = value;
+                if (bridge != null) bridge.CaptureAnalysisRuntimeViewFrames = value;
+            }
+        }
         internal long RecognitionRevision => revision;
+        internal bool HasNewEmptySplitPreviewResult(long sequence) =>
+            acceptedSequence > sequence && !CaptureAnalysisRuntimeViewFrames && SeparateAnalysisSource != null &&
+            manager != null && acceptedSequence == manager.ResultSequence && manager.BodyCount == 0 && HasFreshResult;
         internal bool TryGetRuntimeViewResult(out HumanVisionTextureFrame input, out Texture color, out long inputFrameId)
         {
             color = null; inputFrameId = -1;
@@ -386,6 +396,7 @@ namespace HumanVision
             revision = nextRevision; minimumSequence = manager.ResultSequence;
             raw = new HumanVisionSkeletonQueries(candidate); sampled = new HumanVisionSkeletonQueries(candidate);
             regionIndices = new int[candidate.MaxBodies];
+            bridge?.ResetSplitRuntimeViewBinding();
             sourceFresh = false; RefreshIdentityEvents(); return true;
         }
         /// <summary>安全关闭；可重复调用。场景切换前 yield return sdk.StopSdk();</summary>

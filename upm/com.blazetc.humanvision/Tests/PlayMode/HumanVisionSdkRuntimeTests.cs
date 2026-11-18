@@ -246,6 +246,68 @@ namespace HumanVision.Tests
             Assert.That((ulong)stats.GetType().GetField("FreshObservationFrames").GetValue(stats), Is.GreaterThan(0));
             Assert.That((long)stats.GetType().GetField("CaptureTimestampUs").GetValue(stats), Is.EqualTo(manager.SourceTimestampUs));
         }
+        [UnityTest] public IEnumerator DrawnPairRemainsConsistentUntilNewComposition()
+        {
+            var view = owner.AddComponent<HumanVisionRuntimeView>();
+            Assert.True(view.SupportsMatchedFrames, "The test requires graphics fences.");
+            var options = Options();
+            options.Recognition.MaximumResultAgeMilliseconds = 5000;
+            yield return sdk.Initialize(options);
+            Assert.True(sdk.IsInitialized, sdk.LastError);
+
+            var manager = Manager();
+            var bridge = manager.GetComponent<VideoPlayerFrameSource>();
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            bridge.ConfigureLiveInput(true);
+            var rowOrder = typeof(VideoPlayerFrameSource).GetField("_rowOrderReady", flags);
+            double deadline = Time.realtimeSinceStartupAsDouble + 5;
+            while (!(bool)rowOrder.GetValue(bridge) && Time.realtimeSinceStartupAsDouble < deadline) yield return null;
+            Assert.True((bool)rowOrder.GetValue(bridge), "The source row-order probe must complete.");
+            string fixture = Path.Combine(System.Environment.GetEnvironmentVariable("HV_TEST_RUNTIME_ROOT"), "tests/testdata/d0_1_human_pose.bgr");
+            capturedSource = new CapturedSource(File.ReadAllBytes(fixture), 0);
+            bridge.BindUnifiedSource(capturedSource);
+            typeof(HumanVisionSdk).GetField("source", flags).SetValue(sdk, capturedSource);
+            typeof(HumanVisionSdk).GetField("acceptResults", flags).SetValue(sdk, true);
+            typeof(HumanVisionSdk).GetProperty("State").SetValue(sdk, HumanVisionSdkState.Running);
+            view.RetainLastOverlayDuringPairGaps = true;
+
+            deadline = Time.realtimeSinceStartupAsDouble + 20;
+            while (!view.TryGetFrame(out _) && Time.realtimeSinceStartupAsDouble < deadline) {
+                capturedSource.Retirement.Poll(); yield return null;
+            }
+            Assert.True(view.TryGetFrame(out var original), "The real CPU result must have a matched image.");
+            Assert.That(original.BodyCount, Is.EqualTo(1), "The real CPU result must contain the fixture person.");
+
+            Assert.True(view.TryGetBodyId(0, out long originalTrack));
+            Assert.True(view.TryGetJointPosition(0, HumanVisionCanonicalJointId.Nose, out var originalNose));
+            bool queriedDuringResult = false, originalPairIntact = false, oldOverlayHeld = false, exactAfterDraw = false;
+            sdk.ResultUpdated += sequence => {
+                if (sequence <= original.ResultSequence) return;
+                queriedDuringResult = true;
+                originalPairIntact = view.TryGetFrame(out var drawn) && drawn.ResultSequence == original.ResultSequence &&
+                    drawn.SourceFrameId == original.SourceFrameId && drawn.InputFrameId == original.InputFrameId &&
+                    drawn.ColorTexture == original.ColorTexture && drawn.ColorTexture is RenderTexture color && color.IsCreated() &&
+                    drawn.OverlayTexture == original.OverlayTexture &&
+                    view.TryGetBodyId(0, out long track) && track == originalTrack &&
+                    view.TryGetJointPosition(0, HumanVisionCanonicalJointId.Nose, out var nose) && nose == originalNose;
+                oldOverlayHeld = view.TryGetDisplayedFrame(out var held) && held.ResultSequence == original.ResultSequence &&
+                    held.InputFrameId == original.InputFrameId && held.ColorTexture == null;
+            };
+            view.FramePresented += pair => {
+                if (pair.ResultSequence <= original.ResultSequence) return;
+                exactAfterDraw = view.TryGetFrame(out var exact) && exact.ResultSequence == pair.ResultSequence &&
+                    exact.SourceFrameId == pair.SourceFrameId && exact.InputFrameId == 2 && exact.ColorTexture != null;
+            };
+            capturedSource.Publish(2, 0);
+            deadline = Time.realtimeSinceStartupAsDouble + 20;
+            while (!exactAfterDraw && Time.realtimeSinceStartupAsDouble < deadline) {
+                capturedSource.Retirement.Poll(); yield return null;
+            }
+            Assert.True(queriedDuringResult, "The test must observe the new SDK result before the composition.");
+            Assert.True(originalPairIntact, "Update consumers must still see the same pixels, graph and IDs before composition changes.");
+            Assert.True(oldOverlayHeld, "The displayed composition retains its previous frame identity during the gap.");
+            Assert.True(exactAfterDraw, "The FramePresented callback must be able to borrow the newly composed exact pair.");
+        }
         [UnityTest] public IEnumerator SynchronousNeuralCapacityRequestRetainsLiveNativeHostAndInput()
         {
             yield return sdk.Initialize(Options()); Assert.True(sdk.IsInitialized, sdk.LastError);

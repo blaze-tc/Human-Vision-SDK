@@ -228,7 +228,18 @@ namespace HumanVision.Demo
         }
         public void DetachUnifiedSource(){if(_inputAdapter!=null)_inputAdapter.Detach();_unifiedSource=null;ResetPresentation();if(CaptureRuntimeViewFrames)PresentMatchedOverlay(null);ResetRuntimeViewHistory();}
         internal bool CaptureRuntimeViewFrames { get; set; }
-        internal bool CaptureAnalysisRuntimeViewFrames { get; set; }
+        private bool _captureAnalysisRuntimeViewFrames;
+        internal bool CaptureAnalysisRuntimeViewFrames {
+            get => _captureAnalysisRuntimeViewFrames;
+            set {
+                if (_captureAnalysisRuntimeViewFrames==value) return;
+                _captureAnalysisRuntimeViewFrames=value;
+                if (!_runtimeViewUsesAnalysis && !HasSplitInput) return;
+                _inputAdapter?.ResetSplitPreviewCapture();
+                InvalidateRuntimeViewHistory();
+            }
+        }
+        private bool HasSplitInput => _unifiedSource is RtspFrameSource rtsp && rtsp.HasSeparateAnalysis;
         private PresentationTextureHistory _runtimeViewHistory;
         private ulong _runtimeViewSource, _runtimeViewGeneration;
         private int _runtimeViewWidth, _runtimeViewHeight;
@@ -264,6 +275,16 @@ namespace HumanVision.Demo
         }
         private void ResetRuntimeViewHistory() {
             _runtimeViewHistory?.Dispose();_runtimeViewHistory=null;
+            _runtimeViewUsesAnalysis=false;
+        }
+        internal void InvalidateRuntimeViewHistory() {
+            ResetRuntimeViewHistory();
+            PresentMatchedOverlay(_unifiedSource?.CurrentTexture);
+        }
+        internal void ResetSplitRuntimeViewBinding() {
+            if (!HasSplitInput) return;
+            _inputAdapter?.ResetSplitMatching();
+            InvalidateRuntimeViewHistory();
         }
         private HumanVisionOverlay _previewOverlay;
         private Texture _matchedPreviewTexture;
@@ -607,7 +628,8 @@ namespace HumanVision.Demo
             HumanVisionInputAdapter.CpuFence sourceCopy = null)
         {
             independentSnapshot&=!_legacySourceCopy;
-            if (_livePreview) PresentLiveTexture(texture);
+            bool showInputTexture = _livePreview && (sourceCopy == null || !sourceCopy.Trace.IsSplitAnalysis);
+            if (showInputTexture) PresentLiveTexture(texture);
             if (!SystemInfo.supportsAsyncGPUReadback) { SetError("Async GPU readback is unavailable."); return false; }
             if (!_rowOrderReady) return false;
             ReapFailedSlots();
@@ -685,7 +707,7 @@ namespace HumanVision.Demo
             slot.FrameId = _nextSubmissionFrameId++;
             slot.TimestampUs = timestampUs;
             if (_livePreview) {
-                PresentLiveTexture(texture);
+                if (showInputTexture) PresentLiveTexture(texture);
                 _presentationFrameId = slot.FrameId;
                 _livePendingFrameId = slot.FrameId; _livePendingTime = Time.realtimeSinceStartupAsDouble;
                 _nextLiveSubmitTime = _livePendingTime + 1.0 / 30.0;

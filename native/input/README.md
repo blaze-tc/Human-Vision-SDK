@@ -4,18 +4,23 @@
 
 An Android Vulkan source can bind an optional three-texture `512×288` analysis
 output before binding its preview textures. Both outputs use the decoder frame's
-sequence, generation and timestamps. The analysis conversion runs first and
-publishes after its GPU fence completes. The converter can then retain that
-decoded image as one pending preview with an independent fence and slot lease.
-A ready analysis frame takes priority over pending preview. When analysis
-cannot run, a pending preview can use a free preview slot during the first
-120 ms after analysis completion. The acknowledgement records that an observed
-analysis frame was offered to the consumer. Preview-only clients keep using
-the existing binding and poll API.
-The native `input_analysis_cadence` record reports completed analysis output,
-acknowledgements, decoded-frame replacement and preview pressure once per
-interval. When a decoder changes geometry on the same connection, a new
-generation pauses both output rings until managed textures match the new crop.
+sequence, generation and timestamps. With both slots free, two dispatches
+read the same decoded image within one queue submission. They write separate
+Unity textures through separate descriptor sets. Both slots publish after the
+shared fence signals. With no free preview slot, analysis can submit on its
+own. Its decoded image can then supply one fallback preview if a slot opens
+and no new analysis is ready. A new paired submission replaces the fallback.
+The scheduler caps preview dispatch age at 120 ms from local decode. The
+acknowledgement records that an observed analysis frame was offered to the
+consumer. Preview-only clients keep using the existing binding and poll API.
+
+The native `input_analysis_cadence` record includes batch starts, replaced
+fallbacks, completed analysis output, acknowledgements and preview discard
+reasons. `input_gpu_cadence` reports preview publications and callbacks where
+the conversion fence was still pending in the same interval. A shared fence
+includes both dispatches in each branch's submit-to-observation time. When a
+decoder changes geometry on the same connection, a new generation clears the
+fallback and pauses both output rings until managed textures match the new crop.
 
 The internal `HV_Input_ProbeRtsp` binding on Android and Windows checks H.264
 dimensions over RTSP TCP. It inspects codec parameters or SPS data and uses a

@@ -20,7 +20,7 @@ RTSP 连接启用同通道宇视码流探测，优先用 `1920×1080` 以内分�
 仅有 4K 时仍可连接，Unity 预览等比限制在 `1920×1080` 以内。Android GPU/NPU 低档通过独立分路送入 `512×288`。
 左侧预览下方显示所选码流与解码或探测尺寸，状态行单独显示识别输入帧率。无预设时，Android 样例以 GPU 低档启动，安装匹配本地资源后可切换 RK3588 NPU。
 
-Android 分路模式下，右侧使用本次识别的 `512×288` 图像作为同帧底图，左侧继续显示最高 `1920×1080` 的预览。
+Android 分路模式下，左侧实时预览和右侧同帧底图均使用相机预览分路的像素，最高 `1920×1080`。低档识别继续使用独立的 `512×288` 输入。
 自定义界面可在初始化 SDK 前设置 `HumanVisionRuntimeView.UseAnalysisFrameForMatchedPreview`。
 需要容忍短暂配对间隔时，使用 `RetainLastOverlayDuringPairGaps` 和 `TryGetDisplayedFrame` 绘制最近合成的纹理。业务动作仍应消费新结果。
 

@@ -32,6 +32,7 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
     private long nextSplitFeedLogUs;
     internal readonly struct AnalysisCopyTrace {
         private readonly RtspFrameSource source;
+        internal bool IsSplitAnalysis => source != null;
         internal readonly ulong SourceId, Generation;
         private readonly long frameId;
         internal AnalysisCopyTrace(RtspFrameSource source,in HumanVisionTextureFrame frame) {
@@ -179,6 +180,7 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
             if(cpuBridge!=null)cpuBridge.InvalidateCpuInputGeneration();
             SubmittedGpuAnalysisSize=Vector2Int.zero;
             ResetSplitMatching();
+            presentationBridge?.InvalidateRuntimeViewHistory();
             closing=gpuActive||AnyActive();minimumSequence=manager.ResultSequence;firstSubmitted=submitted=-1;
             sourceId=generation=0;
             if(closing){RetirementPump.Watch(this);return;}
@@ -268,11 +270,12 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
             // acceptance retires it exactly once without creating a frame queue.
         } catch(Exception error){LastError=error.Message;latest=frame.FrameId;}
     }
-    private void ResetSplitMatching() {
-        if(acceptedAnalysisFrames!=null)Array.Clear(acceptedAnalysisFrames,0,acceptedAnalysisFrames.Length);
-        lastMatchedInputId=-1;
+    internal void ResetSplitMatching() {
+        acceptedAnalysisFrames=null;
+        ResetSplitPreviewCapture();
         nextSplitFeedLogUs=0;
     }
+    internal void ResetSplitPreviewCapture() => lastMatchedInputId=-1;
     private void RememberAcceptedAnalysis(in HumanVisionTextureFrame frame,long acceptedUs,bool acknowledged) {
         if(acceptedAnalysisFrames==null)acceptedAnalysisFrames=new AcceptedAnalysisFrame[32];
         acceptedAnalysisFrames[(int)(frame.FrameId%acceptedAnalysisFrames.Length)]=new AcceptedAnalysisFrame {
@@ -290,6 +293,10 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
     private void UpdateSplitPreview() {
         if(!source.TryGetLatestFrame(-1,out var frame)) {
             PreviewTexture=null;LatestPreviewFrameId=-1;
+            if(source.State!=InputSourceState.Streaming&&acceptedAnalysisFrames!=null) {
+                ResetSplitMatching();
+                presentationBridge?.InvalidateRuntimeViewHistory();
+            }
             return;
         }
         PreviewTexture=frame.Texture;LatestPreviewFrameId=frame.FrameId;

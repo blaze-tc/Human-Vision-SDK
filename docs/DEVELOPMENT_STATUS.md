@@ -1,3 +1,13 @@
+## 2026-11-18 Android RTSP 高清预览候选
+
+SDK 0.4.0-preview.16-cadence.3 / Input 0.1.0-preview.9-cadence.3 在本工作树作为本地候选。基线是 SDK preview.15、Input preview.8 和提交 10363f95a60018d7078b834140835e98ba1ff6c0。Android 分路在一次 Vulkan 提交转换同一个解码帧的高清与 512×288 两路。高清槽满时独立推进分析，分析槽满时也可独立发高清。实况、高清同帧底图及拍照继续使用相机分路，旧配对随来源、代次和配置变化失效。
+
+- pwsh -NoProfile -File tools/package/build_input_native.ps1 -Platform Android -ApiLevel 26 -RunTests 构建并审计通过，Input 回归 56/56。新增调度回归先失败后通过。Android C 导出、动态定义、导入及依赖集合与发布库一致。
+- 当前 Unity 2021.3.45f1 使用 8091 Test Runner 执行 InputAdapterTests 25/25 与单列像素来源回归 1/1。独立团结引擎验证相关 EditMode 93/93、Windows PlayMode 3/3 和相机纹理/已绘制配对时序 1/1。
+- 一加 9 Pro NCNN Vulkan 低档运行 Exercise-11。发布版 → 最终候选的 Unity 高清观察为 18.35 → 26.32 FPS，高清配对为 17.09 → 23.23 FPS，512×288 新结果为 23.89 → 23.34 FPS。最终候选的 670 个稳态配对身份检查无误，1080p 断流后重连为 720p 时保留输出原尺寸。
+- 一加另覆盖专用 512×288 identity-model-size-rgb 回读路径。两个起始电池温度相差 0.2°C 的 ORT CPU 对照在无系统热限频的 30 秒窗口中，新结果 18.23 → 17.66 FPS，高清配对 16.76 → 17.66 FPS。最终 60 秒窗口中 1532 个观测到的槽在 snapshot fence 后成功归还。
+- py -3.13 tools/maintenance/check_architecture_boundaries.py、py -3.13 tools/maintenance/generate_component_catalog.py --check、py -3.13 tools/package/test_package_release_snapshot.py（15/15）和候选 692 文件/374 GUID 闭包通过。构建命令、A/B 指标、温度边界及日志见[本轮报告](reports/2026-11-18-android-rtsp-hd-preview.md)。RK3588 实机后端和热机性能未测。
+
 ## 2026-11-17 preview.15 发布范围
 
 SDK `0.4.0-preview.15` 和 Input `0.1.0-preview.8` 使用同一 Git 标签。发布内容包括 Android RTSP 快照租约和槽位追踪、低档模型图片同帧合成，以及 Runtime Prefab 的验收与 JSONL 导出。4K 和 1080p 同素材对照与验证边界见[验收报告](reports/2026-11-17-rtsp-preview-cadence.md)。

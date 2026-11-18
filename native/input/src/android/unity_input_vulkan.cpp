@@ -53,7 +53,8 @@ struct Imported {
  const void* reader=nullptr;
  VkImage image=VK_NULL_HANDLE;VkDeviceMemory memory=VK_NULL_HANDLE;
  VkSamplerYcbcrConversion conversion=VK_NULL_HANDLE;VkSampler sampler=VK_NULL_HANDLE;VkImageView view=VK_NULL_HANDLE;
- VkDescriptorSetLayout set_layout=VK_NULL_HANDLE;VkDescriptorPool descriptor_pool=VK_NULL_HANDLE;VkDescriptorSet descriptor=VK_NULL_HANDLE;
+ VkDescriptorSetLayout set_layout=VK_NULL_HANDLE;VkDescriptorPool descriptor_pool=VK_NULL_HANDLE;
+ std::array<VkDescriptorSet,2> descriptors{};
  VkPipelineLayout layout=VK_NULL_HANDLE;VkPipeline pipeline=VK_NULL_HANDLE;
  bool reference=false;
 };
@@ -120,11 +121,12 @@ struct Importer:ImageImporter {
    // deliberately overprovisioned; successful allocation qualifies this device.
    // This is resource capacity, not an assertion about the external plane count.
    constexpr uint32_t descriptor_budget=16;
-   VkDescriptorPoolSize sizes[]={{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,descriptor_budget},{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,1}};
-   VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,nullptr,0,1,2,sizes};
+   VkDescriptorPoolSize sizes[]={{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,2*descriptor_budget},{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,2}};
+   VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,nullptr,0,2,2,sizes};
    if(!check(api.CreateDescriptorPool(d,&pool,nullptr,&resource->descriptor_pool),"create descriptor pool"))return false;++counters.descriptor_pools_created;
-   VkDescriptorSetAllocateInfo descriptors{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,nullptr,resource->descriptor_pool,1,&resource->set_layout};
-   if(!check(api.AllocateDescriptorSets(d,&descriptors,&resource->descriptor),"allocate converted descriptors"))return false;
+   const VkDescriptorSetLayout layouts[]={resource->set_layout,resource->set_layout};
+   VkDescriptorSetAllocateInfo descriptors{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,nullptr,resource->descriptor_pool,2,layouts};
+   if(!check(api.AllocateDescriptorSets(d,&descriptors,resource->descriptors.data()),"allocate converted descriptors"))return false;
    VkPushConstantRange push{VK_SHADER_STAGE_COMPUTE_BIT,0,32};VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,nullptr,0,1,&resource->set_layout,1,&push};
    if(!check(api.CreatePipelineLayout(d,&layout,nullptr,&resource->layout),"create conversion pipeline layout"))return false;
    VkShaderModule module=VK_NULL_HANDLE;VkShaderModuleCreateInfo shader{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,nullptr,0,sizeof(input_yuv_shader),input_yuv_shader};
@@ -144,7 +146,7 @@ std::mutex mutex;std::condition_variable retired;
 Counters session_baseline{};BufferRegistryStats registry_baseline{};bool terminal_reported=false;
 AndroidDecodedImage image_storage, active_storage, preview_storage;
 InputFrameRing frame_ring;
-bool production=false;int output_slot=-1;
+bool production=false;int output_slot=-1,paired_preview_slot=-1;
 std::array<void*,3> output_textures{};
 std::array<VkImageView,3> output_views{};
 std::array<VkImage,3> output_images{};
@@ -158,7 +160,7 @@ struct AnalysisOutput {
  uint32_t width=0,height=0;
  uint64_t generation=0;
 } analysis;
-enum class Conversion { Legacy, Analysis, Preview };
+enum class Conversion { Legacy, Analysis, Preview, PreviewOnly };
 Conversion conversion=Conversion::Legacy;
 uint32_t preview_width=0,preview_height=0;
 uint64_t decoded_sequence=0,active_sequence=0;
@@ -174,7 +176,11 @@ void ReturnImage(AndroidDecodedImage*& p){if(p){
  // Only the active image owns an acquired output slot. Replacing either
  // mailbox must leave an already scheduled AccessQueue callback untouched.
  if(p==active){
-  if(production&&!inflight)ConversionRing().Cancel(output_slot);
+  if(production&&!inflight){
+   ConversionRing().Cancel(output_slot);
+   frame_ring.Cancel(paired_preview_slot);
+  }
+  paired_preview_slot=-1;
   active_sequence=0;
   active_analysis_completed_us=0;
  }
@@ -190,18 +196,21 @@ int rotation=0;bool mirror=false;uint64_t token=0;
 VkCommandPool command_pool=VK_NULL_HANDLE;VkCommandBuffer command=VK_NULL_HANDLE;VkFence fence=VK_NULL_HANDLE;
 VkSemaphore wait_semaphore=VK_NULL_HANDLE,release_semaphore=VK_NULL_HANDLE;
 VkImageView target_view=VK_NULL_HANDLE;VkImage last_target=VK_NULL_HANDLE;
-UnityVulkanImage target{};CacheEntry* source_entry=nullptr;bool target_dirty=false,retire_target=false;int fail_target_view=0;
+UnityVulkanImage target{},paired_preview_target{};CacheEntry* source_entry=nullptr;bool target_dirty=false,retire_target=false;int fail_target_view=0;
 // One bounded log per second, outside per-pixel work. These are host observation
 // intervals (including queue/fence polling), not GPU execution timestamps.
 struct InputCadence {
  int64_t report_us=0,submitted_us=0,decode_wait_us=0,completion_wait_us=0;
  uint64_t events=0,busy=0,empty=0,complete=0,no_free_slot=0,start_unobserved=0;
+ uint64_t fence_pending_events=0, preview_published=0;
  uint64_t last_drops=0,last_overwrites=0,last_superseded_unobserved=0;
 } cadence;
 struct SplitCadence {
  uint64_t analysis_completed=0, acknowledgements=0, preview_started_after_ack=0;
  uint64_t preview_without_ack=0, preview_expired=0, preview_skipped_no_slot=0, analysis_no_slot=0;
- uint64_t preview_yield_to_analysis=0;
+ uint64_t preview_yield_to_analysis=0, preview_batched=0, preview_replaced_by_batch=0;
+ uint64_t preview_only_submitted=0, preview_only_published=0;
+ uint64_t preview_target_prepare_failures=0;
  uint64_t decoded=0, decoded_replaced=0, analysis_published=0;
  int64_t analysis_decode_wait_us=0, analysis_fence_wait_us=0;
 } split_cadence;
@@ -219,7 +228,7 @@ void ReportInputCadence(){
  if(!cadence.report_us){cadence.report_us=now;cadence.last_drops=frame_ring.Drops();cadence.last_overwrites=decoded_pending_replaced;cadence.last_superseded_unobserved=frame_ring.SupersededUnobserved();return;}
  const auto elapsed=now-cadence.report_us;if(elapsed<1000000)return;
  __android_log_print(ANDROID_LOG_INFO,"HVInputGate",
-  "input_gpu_cadence generation=%llu interval_ms=%.3f render_events=%llu busy_events=%llu no_image_events=%llu completed=%llu converted_fps=%.3f slot_drops=%llu pending_replaced=%llu decoded_to_submit_mean_ms=%.3f submit_to_observed_fence_mean_ms=%.3f host_observation_not_gpu_execution=1 no_free_slot_events=%llu start_unobserved_events=%llu superseded_unobserved=%llu",
+  "input_gpu_cadence generation=%llu interval_ms=%.3f render_events=%llu busy_events=%llu no_image_events=%llu completed=%llu converted_fps=%.3f slot_drops=%llu pending_replaced=%llu decoded_to_submit_mean_ms=%.3f submit_to_observed_fence_mean_ms=%.3f host_observation_not_gpu_execution=1 no_free_slot_events=%llu start_unobserved_events=%llu superseded_unobserved=%llu fence_pending_events=%llu preview_published=%llu",
   (unsigned long long)target_generation,elapsed/1000.0,(unsigned long long)cadence.events,
   (unsigned long long)cadence.busy,(unsigned long long)cadence.empty,(unsigned long long)cadence.complete,
   cadence.complete*1000000.0/elapsed,(unsigned long long)(frame_ring.Drops()-cadence.last_drops),
@@ -227,11 +236,12 @@ void ReportInputCadence(){
   cadence.complete?cadence.decode_wait_us/1000.0/cadence.complete:0,
   cadence.complete?cadence.completion_wait_us/1000.0/cadence.complete:0,
   (unsigned long long)cadence.no_free_slot,(unsigned long long)cadence.start_unobserved,
-  (unsigned long long)(frame_ring.SupersededUnobserved()-cadence.last_superseded_unobserved));
+  (unsigned long long)(frame_ring.SupersededUnobserved()-cadence.last_superseded_unobserved),
+  (unsigned long long)cadence.fence_pending_events,(unsigned long long)cadence.preview_published);
  if(SplitEnabled()){
   const auto& s=split_cadence;
   __android_log_print(ANDROID_LOG_INFO,"HVInputGate",
-   "input_analysis_cadence generation=%llu interval_ms=%.3f completed=%llu analysis_fps=%.3f acknowledgements=%llu preview_started_after_ack=%llu preview_without_ack=%llu preview_expired=%llu preview_skipped_no_slot=%llu analysis_no_slot=%llu decoded_to_submit_mean_ms=%.3f submit_to_observed_fence_mean_ms=%.3f host_observation_not_gpu_execution=1 preview_yield_to_analysis=%llu split_decoded=%llu split_decoded_replaced=%llu analysis_published=%llu",
+   "input_analysis_cadence generation=%llu interval_ms=%.3f completed=%llu analysis_fps=%.3f acknowledgements=%llu preview_started_after_ack=%llu preview_without_ack=%llu preview_expired=%llu preview_skipped_no_slot=%llu analysis_no_slot=%llu decoded_to_submit_mean_ms=%.3f submit_to_observed_fence_mean_ms=%.3f host_observation_not_gpu_execution=1 preview_yield_to_analysis=%llu split_decoded=%llu split_decoded_replaced=%llu analysis_published=%llu preview_batched=%llu preview_replaced_by_batch=%llu preview_target_prepare_failures=%llu preview_only_submitted=%llu preview_only_published=%llu",
    (unsigned long long)target_generation,elapsed/1000.0,(unsigned long long)s.analysis_completed,
    s.analysis_completed*1000000.0/elapsed,(unsigned long long)s.acknowledgements,
    (unsigned long long)s.preview_started_after_ack,(unsigned long long)s.preview_without_ack,
@@ -240,11 +250,15 @@ void ReportInputCadence(){
    s.analysis_completed?s.analysis_decode_wait_us/1000.0/s.analysis_completed:0,
    s.analysis_completed?s.analysis_fence_wait_us/1000.0/s.analysis_completed:0,
    (unsigned long long)s.preview_yield_to_analysis,
-   (unsigned long long)s.decoded,(unsigned long long)s.decoded_replaced,(unsigned long long)s.analysis_published);
+   (unsigned long long)s.decoded,(unsigned long long)s.decoded_replaced,(unsigned long long)s.analysis_published,
+   (unsigned long long)s.preview_batched,(unsigned long long)s.preview_replaced_by_batch,
+   (unsigned long long)s.preview_target_prepare_failures,
+   (unsigned long long)s.preview_only_submitted,(unsigned long long)s.preview_only_published);
  }
  split_cadence={};
  cadence.report_us=now;cadence.events=cadence.busy=cadence.empty=cadence.complete=0;
  cadence.no_free_slot=cadence.start_unobserved=0;
+ cadence.fence_pending_events=cadence.preview_published=0;
  cadence.decode_wait_us=cadence.completion_wait_us=0;
  cadence.last_drops=frame_ring.Drops();cadence.last_overwrites=decoded_pending_replaced;
  cadence.last_superseded_unobserved=frame_ring.SupersededUnobserved();
@@ -278,50 +292,74 @@ bool InitializeResources(){
 // Caller holds mutex. Query the real fence without waiting or submitting work.
 // This part is also safe at a main-thread metadata read: no Unity API calls or
 // Vulkan resource destruction. A not-ready/error fence keeps its image leased.
+bool PublishConversion(InputFrameRing& ring, HV_InputGpuFrame& output, int slot,
+                       uint32_t width, uint32_t height, const char* branch) {
+ if(closing||paused||!ring.Complete(slot,completed_token)){
+  ++old_generation_rejections;
+  return false;
+ }
+ auto& f=output.frame;f={};f.size=sizeof(f);f.version=1;f.sequence=active_sequence;f.generation=active->generation;f.width=width;f.height=height;
+ f.received_timestamp_us=active->received_us;f.decoded_timestamp_us=active->decoded_us;f.presentation_timestamp_us=active->pts_us;
+ f.clock_id=ClockId();f.clock_domain=HV_INPUT_CLOCK_NATIVE_MONOTONIC;f.timestamp_kind=HV_INPUT_TIME_LOCAL_DECODE;f.pts_valid=1;f.row_origin=0;f.color_space=0;f.decode_mode=2;
+ output.slot=slot;
+ if(ShouldLogInputFrame(active_sequence,false))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","gpu_frame_published sequence=%llu generation=%llu slot=%d branch=%s",(unsigned long long)active_sequence,(unsigned long long)active->generation,slot,branch);
+ return true;
+}
+void LogColorCompletion(uint32_t width, uint32_t height, int64_t now) {
+ if(ShouldLogInputFrame(active_sequence,!production))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","gpu_color_completed sequence=%llu generation=%llu pts_us=%lld received_us=%lld decoded_us=%lld submitted_us=%lld converted_us=%lld cpu_image_readbacks=0 target_width=%u target_height=%u applied_rotation=%d applied_mirror=%d source_matrix=%u source_range=%u transfer=%u primaries=%u color_space=%u",(unsigned long long)active_sequence,(unsigned long long)active->generation,(long long)active->pts_us,(long long)active->received_us,(long long)active->decoded_us,(long long)diagnostic_submitted_us,(long long)now,width,height,rotation,mirror,active->matrix,active->color_range,active->transfer,active->primaries,0u);
+}
 void PollConversionCompletion(){
  if(inflight){auto status=api.GetFenceStatus(api.unity.device,fence);if(status==VK_NOT_READY)return;if(status!=VK_SUCCESS){Error("poll conversion GPU fence",status);return;}
   completed_token=token;++counters.completes;inflight=false;
   const auto now=NowUs();
   const bool model_pass=conversion==Conversion::Analysis;
+  const bool batched_preview=paired_preview_slot>=0;
   if(model_pass){
    ++split_cadence.analysis_completed;
    split_cadence.analysis_decode_wait_us+=cadence.submitted_us-active->decoded_us;
    split_cadence.analysis_fence_wait_us+=now-cadence.submitted_us;
-  }else{
+  }
+  if(!model_pass||batched_preview){
    ++cadence.complete;cadence.decode_wait_us+=cadence.submitted_us-active->decoded_us;
    cadence.completion_wait_us+=now-cadence.submitted_us;
   }
   bool published=false;
+  bool paired_preview_published=false;
   if(production){
-   if(!closing&&!paused&&ConversionRing().Complete(output_slot,completed_token)){
-    auto& output=model_pass?analysis.published:published_frame;
-    auto& f=output.frame;f={};f.size=sizeof(f);f.version=1;f.sequence=active_sequence;f.generation=active->generation;f.width=target_width;f.height=target_height;
-    f.received_timestamp_us=active->received_us;f.decoded_timestamp_us=active->decoded_us;f.presentation_timestamp_us=active->pts_us;
-    f.clock_id=ClockId();f.clock_domain=HV_INPUT_CLOCK_NATIVE_MONOTONIC;f.timestamp_kind=HV_INPUT_TIME_LOCAL_DECODE;f.pts_valid=1;f.row_origin=0;f.color_space=0;f.decode_mode=2;
-    output.slot=output_slot;
-    published=true;
-    if(ShouldLogInputFrame(active_sequence,!production))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","gpu_frame_published sequence=%llu generation=%llu slot=%d branch=%s",(unsigned long long)active_sequence,(unsigned long long)active->generation,output_slot,model_pass?"analysis":"preview");
-   }else{++old_generation_rejections;}
+   published=PublishConversion(ConversionRing(),model_pass?analysis.published:published_frame,
+                               output_slot,target_width,target_height,model_pass?"analysis":"preview");
+   if(batched_preview)paired_preview_published=PublishConversion(frame_ring,published_frame,paired_preview_slot,preview_width,preview_height,"preview");
+   if(paired_preview_published||(!model_pass&&published))++cadence.preview_published;
    frame_ring.Collect(completed_token);
    analysis.ring.Collect(completed_token);
   }
-  if(ShouldLogInputFrame(active_sequence,!production))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","gpu_color_completed sequence=%llu generation=%llu pts_us=%lld received_us=%lld decoded_us=%lld submitted_us=%lld converted_us=%lld cpu_image_readbacks=0 target_width=%u target_height=%u applied_rotation=%d applied_mirror=%d source_matrix=%u source_range=%u transfer=%u primaries=%u color_space=%u",(unsigned long long)active_sequence,(unsigned long long)active->generation,(long long)active->pts_us,(long long)active->received_us,(long long)active->decoded_us,(long long)diagnostic_submitted_us,(long long)now,target_width,target_height,rotation,mirror,active->matrix,active->color_range,active->transfer,active->primaries,0u);
+  LogColorCompletion(target_width,target_height,now);
   if(model_pass&&published){
    ++split_cadence.analysis_published;
    active_analysis_completed_us=now;
    LogSplitFrame("analysis_ready",now);
-   // The completed fence returned image ownership. Retain only the lease
-   // for a preview opportunity, independently of the active conversion.
-   ReturnImage(preview_pending);
-   split_schedule.OfferPreview(active_sequence,now);
-   preview_storage.TakeFrom(*active);
-   preview_pending=&preview_storage;
-   active=nullptr;
-   active_sequence=0;
-   active_analysis_completed_us=0;
-   return;
+   if(!batched_preview){
+    if(InputSplitSchedule::PreviewExpired(now,active->decoded_us)){
+     ++split_cadence.preview_expired;
+    }else{
+     // HD slots were full at submit. Keep one fresh source image for an idle
+     // opportunity, only until its decode-age limit or the next decision.
+     ReturnImage(preview_pending);
+     split_schedule.OfferPreview(active_sequence,now,active->decoded_us);
+     preview_storage.TakeFrom(*active);
+     preview_pending=&preview_storage;
+     active=nullptr;
+     active_sequence=0;
+     active_analysis_completed_us=0;
+     return;
+    }
+   }
   }
-  if(conversion==Conversion::Preview&&published)LogSplitFrame("preview_ready",now);
+  if(paired_preview_published||(conversion==Conversion::Preview&&published))LogSplitFrame("preview_ready",now);
+  if(conversion==Conversion::PreviewOnly&&published){
+   ++split_cadence.preview_only_published;
+   LogSplitFrame("preview_only_ready",now);
+  }
   ReturnImage(active);retired.notify_all();
  }
 }
@@ -345,7 +383,7 @@ void UNITY_INTERFACE_API SubmitOnUnityQueue(int,void*){
  auto d=api.unity.device;auto* r=static_cast<Imported*>(source_entry->resource);
  const bool model_pass=conversion==Conversion::Analysis;
  bool waited=false;
- // Preview is optional work for an image whose analysis fence completed.
+ // A deferred preview reuses an image whose analysis fence completed.
  // Its original decoder acquire has already been observed.
  if(conversion!=Conversion::Preview&&!gpu_sync.WaitAcquireFdAndOwn(active->acquire_fd,waited)){Error("import actual acquire sync fd");ReturnImage(active);return;}
  if(waited)++counters.positive_waits;else ++counters.already_complete;
@@ -353,28 +391,48 @@ void UNITY_INTERFACE_API SubmitOnUnityQueue(int,void*){
  VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,nullptr,VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};if(api.BeginCommandBuffer(command,&begin)!=VK_SUCCESS){Error("begin color command");ReturnImage(active);return;}
  VkImageMemoryBarrier acquire{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};acquire.srcAccessMask=0;acquire.dstAccessMask=VK_ACCESS_SHADER_READ_BIT;acquire.oldLayout=VK_IMAGE_LAYOUT_GENERAL;acquire.newLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;acquire.srcQueueFamilyIndex=VK_QUEUE_FAMILY_FOREIGN_EXT;acquire.dstQueueFamilyIndex=api.unity.queueFamilyIndex;acquire.image=r->image;acquire.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
  api.CmdPipelineBarrier(command,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,0,nullptr,0,nullptr,1,&acquire);
- VkDescriptorImageInfo images[]={{r->sampler,r->view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},{VK_NULL_HANDLE,target_view,VK_IMAGE_LAYOUT_GENERAL}};
- VkWriteDescriptorSet writes[2]{};for(int i=0;i<2;++i){writes[i].sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;writes[i].dstSet=r->descriptor;writes[i].dstBinding=i;writes[i].descriptorCount=1;writes[i].descriptorType=i?VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;writes[i].pImageInfo=&images[i];}api.UpdateDescriptorSets(d,2,writes,0,nullptr);
- struct Push {float crop[4];int32_t info[4];} push{{float(active->crop_left)/source_entry->contract.width,float(active->crop_top)/source_entry->contract.height,float(active->crop_right)/source_entry->contract.width,float(active->crop_bottom)/source_entry->contract.height},{int32_t(target_width),int32_t(target_height),rotation,int32_t(mirror)}};
- api.CmdBindPipeline(command,VK_PIPELINE_BIND_POINT_COMPUTE,r->pipeline);api.CmdBindDescriptorSets(command,VK_PIPELINE_BIND_POINT_COMPUTE,r->layout,0,1,&r->descriptor,0,nullptr);api.CmdPushConstants(command,r->layout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(push),&push);api.CmdDispatch(command,(target_width+7)/8,(target_height+7)/8,1);
+ const auto record_conversion=[&](VkDescriptorSet descriptor,VkImageView view,uint32_t width,uint32_t height){
+  VkDescriptorImageInfo images[]={{r->sampler,r->view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},{VK_NULL_HANDLE,view,VK_IMAGE_LAYOUT_GENERAL}};
+  VkWriteDescriptorSet writes[2]{};for(int i=0;i<2;++i){writes[i].sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;writes[i].dstSet=descriptor;writes[i].dstBinding=i;writes[i].descriptorCount=1;writes[i].descriptorType=i?VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;writes[i].pImageInfo=&images[i];}
+  api.UpdateDescriptorSets(d,2,writes,0,nullptr);
+  struct Push {float crop[4];int32_t info[4];} push{{float(active->crop_left)/source_entry->contract.width,float(active->crop_top)/source_entry->contract.height,float(active->crop_right)/source_entry->contract.width,float(active->crop_bottom)/source_entry->contract.height},{int32_t(width),int32_t(height),rotation,int32_t(mirror)}};
+  api.CmdBindDescriptorSets(command,VK_PIPELINE_BIND_POINT_COMPUTE,r->layout,0,1,&descriptor,0,nullptr);
+  api.CmdPushConstants(command,r->layout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(push),&push);
+  api.CmdDispatch(command,(width+7)/8,(height+7)/8,1);
+ };
+ api.CmdBindPipeline(command,VK_PIPELINE_BIND_POINT_COMPUTE,r->pipeline);
+ record_conversion(r->descriptors[0],target_view,target_width,target_height);
+ const bool batched_preview=paired_preview_slot>=0;
+ if(batched_preview)
+  record_conversion(r->descriptors[1],output_views[paired_preview_slot],preview_width,preview_height);
  auto release=acquire;release.srcAccessMask=VK_ACCESS_SHADER_READ_BIT;release.dstAccessMask=0;release.oldLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;release.newLayout=VK_IMAGE_LAYOUT_GENERAL;release.srcQueueFamilyIndex=api.unity.queueFamilyIndex;release.dstQueueFamilyIndex=VK_QUEUE_FAMILY_FOREIGN_EXT;
- VkImageMemoryBarrier output{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};output.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT;output.dstAccessMask=VK_ACCESS_MEMORY_READ_BIT;output.oldLayout=output.newLayout=VK_IMAGE_LAYOUT_GENERAL;output.srcQueueFamilyIndex=output.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;output.image=target.image;output.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};VkImageMemoryBarrier barriers[]={release,output};
- api.CmdPipelineBarrier(command,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,0,0,nullptr,0,nullptr,2,barriers);
+ VkImageMemoryBarrier output{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};output.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT;output.dstAccessMask=VK_ACCESS_MEMORY_READ_BIT;output.oldLayout=output.newLayout=VK_IMAGE_LAYOUT_GENERAL;output.srcQueueFamilyIndex=output.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;output.image=target.image;output.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
+ VkImageMemoryBarrier barriers[]={release,output,output};
+ if(batched_preview)barriers[2].image=paired_preview_target.image;
+ api.CmdPipelineBarrier(command,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,0,0,nullptr,0,nullptr,batched_preview?3:2,barriers);
  if(api.EndCommandBuffer(command)!=VK_SUCCESS){Error("end color command");ReturnImage(active);return;}
  VkPipelineStageFlags stage=VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};submit.waitSemaphoreCount=waited?1:0;submit.pWaitSemaphores=waited?&wait_semaphore:nullptr;submit.pWaitDstStageMask=waited?&stage:nullptr;submit.commandBufferCount=1;submit.pCommandBuffers=&command;submit.signalSemaphoreCount=model_pass?0:1;submit.pSignalSemaphores=model_pass?nullptr:&release_semaphore;
  auto result=api.QueueSubmit(api.unity.graphicsQueue,1,&submit,fence);if(result!=VK_SUCCESS){Error("serialized Unity queue color submit",result);ReturnImage(active);return;}
  cadence.submitted_us=NowUs();
  active->gpu_submitted=true;inflight=true;++token;++counters.submits;++counters.ownership_acquires;++counters.ownership_returns;cache.Used(*source_entry,token);if(production)ConversionRing().Queue(output_slot,token);
+ if(batched_preview){
+  frame_ring.Queue(paired_preview_slot,token);
+  ++split_cadence.preview_batched;
+ }
  // Analysis is not returned to the decoder until this real fence completes.
  if(!model_pass){
   if(!gpu_sync.SignalReleaseFdAndReturnOwnership(active->release_fd)){Error("export actual GPU release sync fd");return;}
   active->CountReleaseFd();++counters.exports;
  }
- if(conversion==Conversion::Preview){
+ if(conversion==Conversion::Preview||batched_preview){
   if(active_sequence==acknowledged_sequence)++split_cadence.preview_started_after_ack;
   else ++split_cadence.preview_without_ack;
   LogSplitFrame("preview_submitted",cadence.submitted_us);
  }
+  if(conversion==Conversion::PreviewOnly){
+   ++split_cadence.preview_only_submitted;
+   LogSplitFrame("preview_only_submitted",cadence.submitted_us);
+  }
  if(ShouldLogInputFrame(active_sequence,!production)){
   diagnostic_submitted_us=NowUs();
   const char* wait_kind=conversion==Conversion::Preview?"held_after_analysis_fence":waited?"imported_sync_fd":"actual_minus_one_already_complete";
@@ -480,6 +538,39 @@ bool SelectOutputTarget(AndroidDecodedImage& image, uint64_t sequence){
  target_height=model_pass?analysis.height:preview_height;
  return true;
 }
+static bool PrepareOutputTexture(void* texture, uint32_t width, uint32_t height,
+                          UnityVulkanImage& image, VkImageView& image_view,
+                          VkImage& view_image, bool dirty, bool optional_preview) {
+ const auto fail=[&](const char* stage,VkResult result=VK_ERROR_UNKNOWN){
+  if(!optional_preview)Error(stage,result);
+  else if(++split_cadence.preview_target_prepare_failures==1)
+   __android_log_print(ANDROID_LOG_WARN,"HVInputGate","input_preview_target_unavailable generation=%llu stage=%s result=%d",
+                       (unsigned long long)target_generation,stage,int(result));
+  return false;
+ };
+ auto* u=InputUnityVulkan();
+ if(!u->AccessTexture(texture,UnityVulkanWholeImage,VK_IMAGE_LAYOUT_GENERAL,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_ACCESS_SHADER_WRITE_BIT,kUnityVulkanResourceAccess_PipelineBarrier,&image)){
+  return fail("Unity AccessTexture actual target");
+ }
+ VkFormatProperties features{};api.GetPhysicalDeviceFormatProperties(api.unity.physicalDevice,image.format,&features);
+ if(image.format!=VK_FORMAT_R8G8B8A8_UNORM||!(image.usage&VK_IMAGE_USAGE_STORAGE_BIT)||!(features.optimalTilingFeatures&VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)||image.extent.width!=width||image.extent.height!=height){
+  return fail("actual Unity target lacks qualified rgba8 storage contract");
+ }
+ if(dirty||!image_view||image.image!=view_image){
+  VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};view.image=image.image;view.viewType=VK_IMAGE_VIEW_TYPE_2D;view.format=image.format;view.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
+  VkResult result=VK_SUCCESS;
+  const bool created=ReplaceTargetView(image_view,
+   [&](VkImageView old){api.DestroyImageView(api.unity.device,old,nullptr);++counters.target_views_destroyed;__android_log_print(ANDROID_LOG_INFO,"HVInputGate","target_view_replacement_old_retired=true");},
+   [&](VkImageView& candidate){
+    if(fail_target_view){--fail_target_view;result=VK_ERROR_OUT_OF_HOST_MEMORY;__android_log_print(ANDROID_LOG_INFO,"HVInputGate","target_view_fault_injected=true retired_handle_null=%d pending_lease_returned_on_failure=1",image_view==VK_NULL_HANDLE);return false;}
+    result=api.CreateImageView(api.unity.device,&view,nullptr,&candidate);return result==VK_SUCCESS;
+   });
+  if(!created){view_image=VK_NULL_HANDLE;return fail("create actual Unity storage view",result);}
+  view_image=image.image;++counters.target_views_created;
+  __android_log_print(ANDROID_LOG_INFO,"HVInputGate","actual_unity_target image=%p format=%u usage=%u storage_features=%u width=%u height=%u",image.image,image.format,image.usage,features.optimalTilingFeatures,width,height);
+ }
+ return true;
+}
 bool PrepareConversion(AndroidDecodedImage& image){
  if(!unity_texture)return false;
  if(!InitializeResources()){Error("initialize input GPU resources");return false;}
@@ -491,32 +582,23 @@ bool PrepareConversion(AndroidDecodedImage& image){
   if(production)++old_generation_rejections;else Error("target/source generation mismatch");
   return false;
  }
- auto* u=InputUnityVulkan();
- if(!u->AccessTexture(unity_texture,UnityVulkanWholeImage,VK_IMAGE_LAYOUT_GENERAL,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_ACCESS_SHADER_WRITE_BIT,kUnityVulkanResourceAccess_PipelineBarrier,&target)){
-  Error("Unity AccessTexture actual target");return false;
+ const bool prepared=PrepareOutputTexture(unity_texture,target_width,target_height,target,target_view,last_target,
+                                          target_dirty,conversion==Conversion::Preview||conversion==Conversion::PreviewOnly);
+ if(production){
+  const bool model_pass=conversion==Conversion::Analysis;
+  (model_pass?analysis.views:output_views)[output_slot]=target_view;
+  (model_pass?analysis.images:output_images)[output_slot]=last_target;
  }
- VkFormatProperties features{};api.GetPhysicalDeviceFormatProperties(api.unity.physicalDevice,target.format,&features);
- if(target.format!=VK_FORMAT_R8G8B8A8_UNORM||!(target.usage&VK_IMAGE_USAGE_STORAGE_BIT)||!(features.optimalTilingFeatures&VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)||target.extent.width!=target_width||target.extent.height!=target_height){
-  Error("actual Unity target lacks qualified rgba8 storage contract");return false;
+ if(!prepared)return false;
+ target_dirty=false;
+ if(paired_preview_slot>=0){
+  const int slot=paired_preview_slot;
+  if(!PrepareOutputTexture(output_textures[slot],preview_width,preview_height,
+                           paired_preview_target,output_views[slot],output_images[slot],false,true)){
+   frame_ring.Cancel(slot);
+   paired_preview_slot=-1;
+  }
  }
- const bool model_pass=conversion==Conversion::Analysis;
- auto& views=model_pass?analysis.views:output_views;
- auto& images=model_pass?analysis.images:output_images;
- if(target_dirty||target.image!=last_target){
-  VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};view.image=target.image;view.viewType=VK_IMAGE_VIEW_TYPE_2D;view.format=target.format;view.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
-  VkResult result=VK_SUCCESS;
-  if(production){views[output_slot]=VK_NULL_HANDLE;images[output_slot]=VK_NULL_HANDLE;}
-  const bool created=ReplaceTargetView(target_view,
-   [&](VkImageView old){api.DestroyImageView(api.unity.device,old,nullptr);++counters.target_views_destroyed;__android_log_print(ANDROID_LOG_INFO,"HVInputGate","target_view_replacement_old_retired=true");},
-   [&](VkImageView& candidate){
-    if(fail_target_view){--fail_target_view;result=VK_ERROR_OUT_OF_HOST_MEMORY;__android_log_print(ANDROID_LOG_INFO,"HVInputGate","target_view_fault_injected=true retired_handle_null=%d pending_lease_returned_on_failure=1",target_view==VK_NULL_HANDLE);return false;}
-    result=api.CreateImageView(api.unity.device,&view,nullptr,&candidate);return result==VK_SUCCESS;
-   });
-  if(!created){Error("create actual Unity storage view",result);last_target=VK_NULL_HANDLE;return false;}
-  last_target=target.image;target_dirty=false;++counters.target_views_created;
-  __android_log_print(ANDROID_LOG_INFO,"HVInputGate","actual_unity_target image=%p format=%u usage=%u storage_features=%u width=%u height=%u",target.image,target.format,target.usage,features.optimalTilingFeatures,target_width,target_height);
- }
- if(production){views[output_slot]=target_view;images[output_slot]=last_target;}
  ImageContract contract{};contract.external_format=c.external_format;contract.format=c.format;contract.features=c.format_features;contract.model=c.model;contract.range=c.range;contract.x_chroma=c.x_chroma;contract.y_chroma=c.y_chroma;std::memcpy(contract.components,c.components,sizeof(c.components));
  AHardwareBuffer_Desc desc{};AHardwareBuffer_describe(image.buffer,&desc);contract.width=desc.width;contract.height=desc.height;
  if(image.matrix==1)contract.model=VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;else if(image.matrix==2)contract.model=VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
@@ -532,25 +614,41 @@ void InputRenderEvent(int id){
   std::lock_guard<std::mutex> lock(mutex);
   if(!enabled)return;
   if(initialized)Poll();
-  ++cadence.events;if(inflight||active)++cadence.busy;else if(!pending&&!preview_pending)++cadence.empty;ReportInputCadence();
+  ++cadence.events;
+  if(inflight)++cadence.fence_pending_events;
+  if(inflight||active)++cadence.busy;else if(!pending&&!preview_pending)++cadence.empty;
+  ReportInputCadence();
   if(retire_target&&!inflight&&!active)RetireOutputTargets();
   if(closing||paused||inflight||active)return;
   const bool pending_current=pending&&(!production||pending->generation==target_generation);
   auto* mailbox=&pending;
   uint64_t sequence=token+1;
   int64_t analysis_completed_us=0;
+  bool batch_preview=false;
   conversion=Conversion::Legacy;
   if(production&&SplitEnabled()){
    const bool analysis_ready=pending_current&&analysis.ring.CanStartConversion();
    if(pending_current&&!analysis_ready)++split_cadence.analysis_no_slot;
    const bool preview_slot_free=frame_ring.CanStartConversion();
-   switch(split_schedule.Choose(NowUs(),analysis_ready,preview_slot_free)){
+   if(!preview_slot_free&&(pending_current||preview_pending))++cadence.no_free_slot;
+   const auto now=NowUs();
+   const auto work=split_schedule.Choose(now,analysis_ready,preview_slot_free,pending_current?pending->decoded_us:0);
+   if(preview_pending&&work!=SplitWork::Preview){
+    if(split_schedule.Expired(now))++split_cadence.preview_expired;
+    else if(!preview_slot_free)++split_cadence.preview_skipped_no_slot;
+    else if(work==SplitWork::AnalysisAndPreview)++split_cadence.preview_replaced_by_batch;
+    else ++split_cadence.preview_yield_to_analysis;
+    ReturnImage(preview_pending);
+   }
+   switch(work){
+   case SplitWork::AnalysisAndPreview:
    case SplitWork::Analysis:
-    if(preview_pending){
-     ++split_cadence.preview_yield_to_analysis;
-     ReturnImage(preview_pending);
-    }
+    batch_preview=work==SplitWork::AnalysisAndPreview;
     conversion=Conversion::Analysis;
+    sequence=decoded_sequence+1;
+    break;
+   case SplitWork::PreviewOnly:
+    conversion=Conversion::PreviewOnly;
     sequence=decoded_sequence+1;
     break;
    case SplitWork::Preview:
@@ -560,10 +658,6 @@ void InputRenderEvent(int id){
     analysis_completed_us=split_schedule.CompletedUs();
     break;
    case SplitWork::DiscardPreview:
-    if(preview_slot_free)++split_cadence.preview_expired;
-    else ++split_cadence.preview_skipped_no_slot;
-    ReturnImage(preview_pending);
-    return;
    case SplitWork::None:
     return;
    }
@@ -571,6 +665,11 @@ void InputRenderEvent(int id){
    return;
   }
   if(production&&!SelectOutputTarget(**mailbox,sequence))return;
+  if(batch_preview){
+   paired_preview_slot=frame_ring.Acquire((*mailbox)->generation,sequence);
+   if(paired_preview_slot<0)++old_generation_rejections;
+   else if(frame_ring.HasUnobservedPublication())++cadence.start_unobserved;
+  }
   if(!unity_texture)return;
   if(production){active_storage.TakeFrom(**mailbox);active=&active_storage;}else active=*mailbox;
   *mailbox=nullptr;
@@ -578,7 +677,7 @@ void InputRenderEvent(int id){
   active_sequence=sequence;
   active_analysis_completed_us=analysis_completed_us;
   if(!PrepareConversion(*active)){ReturnImage(active);return;}
-  if(conversion==Conversion::Analysis)decoded_sequence=sequence;
+  if(conversion==Conversion::Analysis||conversion==Conversion::PreviewOnly)decoded_sequence=sequence;
  }
  // Flush Unity's AccessTexture layout transition first; only this callback may submit.
  InputUnityVulkan()->AccessQueue(SubmitOnUnityQueue,event_id,nullptr,true);
