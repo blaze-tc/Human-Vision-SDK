@@ -256,4 +256,9 @@ int RuntimeController::CopySnapshot(uint64_t request,void* bytes,uint32_t capaci
     std::lock_guard<std::mutex> lock(mutex_);
     return source_&&admission_?source_->CopySnapshot(request,bytes,capacity,info):HV_CONTROL_NO_DATA;
 }
+int RuntimeController::CancelSnapshot(uint64_t request) {
+    if(!request)return HV_ERR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(mutex_);
+    return source_&&admission_?source_->CancelSnapshot(request):HV_CONTROL_NO_DATA;
+}
 }

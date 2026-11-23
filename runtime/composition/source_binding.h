@@ -5,6 +5,7 @@
 #include "host/gpu_runtime_host.h"
 #include "composition/preview_mailbox.h"
 #include <atomic>
+#include <array>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
@@ -58,7 +59,7 @@ struct NativeSourceProgress {
 };
 class NativeSourceBinding {
 public:
-    NativeSourceBinding()=default;
+    explicit NativeSourceBinding(PreviewMailbox::AllocationPolicy allocation={});
     ~NativeSourceBinding();
     NativeSourceBinding(const NativeSourceBinding&)=delete;
     bool Open(const OwnedSourceConfig&,bool gpu_route,uint64_t epoch,std::string&);
@@ -77,18 +78,20 @@ public:
     int CopyPreview(uint64_t,void*,uint32_t,HV_RuntimePreviewV1*);
     int RequestSnapshot(uint64_t*);
     int CopySnapshot(uint64_t,void*,uint32_t,HV_RuntimePreviewV1*);
+    int CancelSnapshot(uint64_t);
     std::string PreviewDiagnostics() const;
 private:
     bool Load(const std::string&,std::string&);
     void Run(RuntimeSession*,uint64_t epoch);
     void SetError(const std::string&);
-    void PreviewLoop(uint64_t epoch);
+    void PreviewLoop(uint64_t epoch) noexcept;
+    void PreviewLoopCore(uint64_t epoch);
     void PublishCpuPreview(const HV_InputFrameInfo&,uint64_t epoch);
     bool BuildPreviewInfo(const HV_InputFrameInfo&,uint64_t epoch,HV_RuntimePreviewV1&) const;
     void CheckSnapshot(RuntimeSession&);
-    void ObservePreviewGeneration(uint64_t);
-    void FailPreview(const char*);
+    void FailPreview(const char*) noexcept;
     OwnedSourceConfig config_;
+    uint64_t epoch_=0;
     NativeInputApi api_;
     void* library_=nullptr;
     HV_InputHandle handle_=nullptr;
@@ -100,8 +103,7 @@ private:
     std::thread worker_;
     std::thread preview_worker_;
     PreviewMailbox preview_;
-    std::atomic<uint64_t> snapshot_deadline_us_{0};
-    std::atomic<uint64_t> preview_generation_{0};
+    std::atomic<uint64_t> capture_rgba_bytes_{0};
     std::atomic<bool> preview_failed_{false};
     int64_t next_cpu_preview_us_=0;
     uint64_t snapshot_check_request_=0,snapshot_check_frame_=0,snapshot_check_cursor_=0;
@@ -110,6 +112,7 @@ private:
     std::atomic<uint32_t> source_width_{0},source_height_{0},analysis_width_{0},analysis_height_{0};
     mutable std::mutex error_mutex_,wait_mutex_;
     std::condition_variable wake_;
-    std::string error_,preview_error_;
+    std::string error_;
+    std::array<char,384> preview_error_{};
 };
 }

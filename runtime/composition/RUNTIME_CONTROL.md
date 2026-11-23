@@ -70,20 +70,37 @@ owns capture staging/completion independently of Unity. The conservative
 CPU-copy-call20ms/request-to-ready200ms limits suspend subsequent live copies
 when exceeded; they are not a measured GPU-copy profile or a throughput claim.
 These candidate limits still require actual device qualification.
+The unqualified candidate also limits a capture to8,294,400 RGBA bytes. The last
+admitted visible crop is classified before requesting capture, and actual ready
+metadata is checked again before mailbox growth. Buffer replacement is
+transactional: failure after partial allocation leaves the complete old pool
+unchanged. Optional allocation/growth failure disables preview and records a
+diagnostic; it neither fails source initialization nor escapes its owner thread.
 
 `RequestSnapshot` permits one pending next-image request. Android captures are
 confirmed only against the same source/generation/frame/configuration epoch in
 the accepted canonical journal, retrying overwritten admissions within5seconds.
+Request ID and deadline are one locked record; deadline expiry is checked before
+confirmation as well as before candidate access. Confirmed captures can be
+discarded with `CancelSnapshot` without fetching HD pixels. Cancellation permits
+a subsequent logical request but never retires an in-flight Input/GPU operation.
 Failure/timeout never substitutes the current image. Successful CopySnapshot
 consumes the request; a null/short destination returns BUFFER_TOO_SMALL plus
 metadata. Windows reports Unsupported because the current Input API cannot
 establish original-color geometry. A source generation change invalidates both
-preview and exact identity. Native pending hardware capture remains Input-owned
+preview and exact identity at source admission, even when live preview is off
+or suspended. Late old-generation completions cannot restore it. Native pending
+hardware capture remains Input-owned
 through Stop/Close; mailbox cancellation never pretends that hardware completed.
 
 StatsV3 separately reports coded source and delivered analysis dimensions. Zero
 source geometry means unavailable and is not filled from requested settings or
 from the known test fixture. Preview visible-crop size is returned with its copy.
+
+CancelSnapshot is the appended21st control-table member. The first20 entries
+retain their offsets; the original168-byte prefix remains queryable while a
+176-byte caller additionally receives cancellation. No older public ABI table
+or structure is changed.
 
 Focused checks: RuntimeControl, NativeSourceBinding and runtime_control_c_abi.
 The controlled blocked-initialization fixture checks resource ownership, not a

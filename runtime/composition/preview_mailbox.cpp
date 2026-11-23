@@ -1,23 +1,47 @@
 #include "composition/preview_mailbox.h"
 #include <algorithm>
 #include <cstring>
+#include <chrono>
+#include <limits>
 #include <utility>
 namespace humanvision::runtime {
 namespace {std::atomic<uint64_t> next_snapshot{1};}
+PreviewMailbox::PreviewMailbox(AllocationPolicy allocation,ClockSource clock) noexcept :allocation_(allocation),clock_(clock){}
+int64_t PreviewMailbox::Now() const noexcept {
+ return clock_.now_us?clock_.now_us(clock_.context):std::chrono::duration_cast<std::chrono::microseconds>(
+  std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 bool PreviewMailbox::Valid(const HV_RuntimePreviewV1& i,uint32_t capacity) noexcept {
  return i.struct_size>=sizeof(i)&&i.api_version==1&&i.width&&i.height&&i.width<=4096&&i.height<=4096&&
   uint64_t(i.stride_bytes)>=uint64_t(i.width)*4&&uint64_t(i.rgba_bytes)>=uint64_t(i.stride_bytes)*i.height&&
   i.rgba_bytes<=capacity&&i.source_id&&i.generation&&i.frame_id&&i.config_epoch&&i.timestamp_us>=0;
 }
 bool PreviewMailbox::Configure(uint32_t bytes) {
- if(!bytes||bytes>4096u*4096u*4u)return false;
- std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);
- if(!lock||active_token_||snapshot_writing_||snapshot_readers_)return false;
- for(const auto& slot:slots_)if(slot.readers)return false;
- if(bytes==capacity_)return true;
- for(auto& slot:slots_){slot.bytes.resize(bytes);slot.state=State::Free;}
- snapshot_.resize(bytes);capacity_=bytes;latest_=3;snapshot_candidate_=snapshot_confirmed_=false;
- return true;
+ return ConfigureDetailed(bytes)==ConfigureResult::Ready;
+}
+PreviewMailbox::ConfigureResult PreviewMailbox::ConfigureCandidate(uint32_t bytes) noexcept {
+ if(bytes>kCandidateMaximumBytes)return ConfigureResult::BudgetExceeded;
+ return ConfigureDetailed(bytes);
+}
+PreviewMailbox::ConfigureResult PreviewMailbox::ConfigureDetailed(uint32_t bytes) noexcept {
+ if(!bytes||bytes>4096u*4096u*4u)return ConfigureResult::Invalid;
+ try {
+  std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);
+  if(!lock||active_token_||snapshot_writing_||snapshot_readers_)return ConfigureResult::Busy;
+  for(const auto& slot:slots_)if(slot.readers)return ConfigureResult::Busy;
+  if(bytes==capacity_)return ConfigureResult::Ready;
+  // Build all replacements before changing any currently readable buffer.
+  // Failure after one or more allocations preserves the entire old pool.
+  std::array<std::vector<uint8_t>,4> replacement;
+  for(auto& buffer:replacement) {
+   if(allocation_.allocate)allocation_.allocate(allocation_.context,buffer,bytes);
+   else buffer.resize(bytes);
+   if(buffer.size()<bytes)return ConfigureResult::AllocationFailure;
+  }
+  for(uint32_t i=0;i<3;++i){slots_[i].bytes.swap(replacement[i]);slots_[i].state=State::Free;}
+  snapshot_.swap(replacement[3]);capacity_=bytes;latest_=3;snapshot_candidate_=snapshot_confirmed_=false;
+  return ConfigureResult::Ready;
+ }catch(...) {return ConfigureResult::AllocationFailure;}
 }
 bool PreviewMailbox::TryBeginCopy(uint32_t free_credits,bool additional,bool analysis_pending,CopyTicket& out,bool exact) {
  out={};
@@ -37,15 +61,32 @@ bool PreviewMailbox::FinishCopy(const CopyTicket& ticket,const HV_RuntimePreview
  if(!complete)return false;
  auto& slot=slots_[active_slot_];active_token_=0;active_slot_=3;
  if(duration>20000)budget_exceeded_=true;
- const bool publish=live&&copy_invalidation_==invalidation_&&Valid(info,capacity_);
+ const bool publish=live&&copy_invalidation_==invalidation_&&Valid(info,capacity_)&&MatchesSourceGenerationLocked(info);
  if(publish){slot.info=info;slot.state=State::Published;latest_=ticket.slot;++published_;}
  else {slot.state=State::Free;if(latest_==ticket.slot)latest_=3;}
  return publish;
 }
 void PreviewMailbox::Invalidate() {
- std::lock_guard<std::mutex> lock(mutex_);++invalidation_;latest_=3;
+ std::lock_guard<std::mutex> lock(mutex_);InvalidateLocked();
+}
+void PreviewMailbox::InvalidateLocked() {
+ ++invalidation_;latest_=3;
  for(auto& slot:slots_)if(slot.state!=State::Writing)slot.state=State::Free;
- snapshot_request_=0;snapshot_candidate_=snapshot_confirmed_=false;
+ snapshot_request_=0;snapshot_deadline_us_=0;snapshot_cancelled_=false;snapshot_candidate_=snapshot_confirmed_=false;
+}
+bool PreviewMailbox::AdmitSourceGeneration(uint64_t source,uint64_t generation,uint64_t epoch) {
+ if(!source||!generation||!epoch)return false;
+ std::lock_guard<std::mutex> lock(mutex_);
+ if(source_id_==source&&source_epoch_==epoch&&generation<generation_)return false;
+ if(source_id_&&(source_id_!=source||source_epoch_!=epoch||generation_!=generation))InvalidateLocked();
+ source_id_=source;source_epoch_=epoch;generation_=generation;return true;
+}
+bool PreviewMailbox::MatchesSourceGenerationLocked(const HV_RuntimePreviewV1& info) const noexcept {
+ return !source_id_||(source_id_==info.source_id&&generation_==info.generation&&source_epoch_==info.config_epoch);
+}
+bool PreviewMailbox::MatchesSourceGeneration(uint64_t source,uint64_t generation,uint64_t epoch) const {
+ std::lock_guard<std::mutex> lock(mutex_);
+ return source_id_==source&&generation_==generation&&source_epoch_==epoch;
 }
 bool PreviewMailbox::HasInFlight() const {std::lock_guard<std::mutex> lock(mutex_);return active_token_!=0;}
 PreviewMailbox::ReadLease& PreviewMailbox::ReadLease::operator=(ReadLease&& other) noexcept {
@@ -70,42 +111,66 @@ int PreviewMailbox::CopyLatest(uint64_t after,void* target,uint32_t capacity,HV_
 }
 int PreviewMailbox::RequestSnapshot(uint64_t* out) {
  if(!out)return HV_ERR_INVALID_ARGUMENT;*out=0;std::lock_guard<std::mutex> lock(mutex_);
- if((snapshot_request_&&snapshot_status_==HV_CONTROL_NO_DATA)||snapshot_writing_||snapshot_readers_)return HV_CONTROL_BUSY;
+ const auto now=Now();if(now<0||now>std::numeric_limits<int64_t>::max()-5000000)return HV_ERR_INVALID_ARGUMENT;
+ ExpireSnapshotLocked(now);
+ if((snapshot_request_&&!snapshot_cancelled_&&snapshot_status_==HV_CONTROL_NO_DATA)||snapshot_writing_||snapshot_readers_)return HV_CONTROL_BUSY;
  snapshot_request_=next_snapshot.fetch_add(1);if(!snapshot_request_)snapshot_request_=next_snapshot.fetch_add(1);
+ snapshot_deadline_us_=now+5000000;snapshot_cancelled_=false;
  snapshot_candidate_=snapshot_confirmed_=false;snapshot_status_=HV_CONTROL_NO_DATA;*out=snapshot_request_;return 0;
 }
-uint64_t PreviewMailbox::PendingSnapshot() const {std::lock_guard<std::mutex> lock(mutex_);return snapshot_confirmed_||snapshot_status_!=HV_CONTROL_NO_DATA?0:snapshot_request_;}
+void PreviewMailbox::ExpireSnapshotLocked(int64_t now) {
+ if(snapshot_request_&&!snapshot_confirmed_&&!snapshot_cancelled_&&snapshot_status_==HV_CONTROL_NO_DATA&&now>=snapshot_deadline_us_) {
+  snapshot_status_=HV_CONTROL_TIMEOUT;snapshot_candidate_=false;
+ }
+}
+void PreviewMailbox::ExpireSnapshot() {std::lock_guard<std::mutex> lock(mutex_);ExpireSnapshotLocked(Now());}
+uint64_t PreviewMailbox::PendingSnapshot() {
+ std::lock_guard<std::mutex> lock(mutex_);ExpireSnapshotLocked(Now());
+ return snapshot_cancelled_||snapshot_confirmed_||snapshot_status_!=HV_CONTROL_NO_DATA?0:snapshot_request_;
+}
 bool PreviewMailbox::StoreSnapshotCandidate(uint64_t request,const HV_RuntimePreviewV1& info,const void* data,uint32_t bytes) {
  {std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);
-  if(!lock||!request||request!=snapshot_request_||snapshot_status_!=HV_CONTROL_NO_DATA||snapshot_candidate_||snapshot_writing_||snapshot_readers_||
-      !data||bytes<info.rgba_bytes||!Valid(info,static_cast<uint32_t>(snapshot_.size())))return false;
+  if(!lock)return false;ExpireSnapshotLocked(Now());
+  if(!request||request!=snapshot_request_||snapshot_cancelled_||snapshot_status_!=HV_CONTROL_NO_DATA||snapshot_candidate_||snapshot_writing_||snapshot_readers_||
+      !data||bytes<info.rgba_bytes||!Valid(info,static_cast<uint32_t>(snapshot_.size()))||!MatchesSourceGenerationLocked(info))return false;
   snapshot_writing_=true;}
  std::memcpy(snapshot_.data(),data,info.rgba_bytes);
  std::lock_guard<std::mutex> lock(mutex_);snapshot_writing_=false;
- if(request!=snapshot_request_)return false;snapshot_info_=info;snapshot_candidate_=true;return true;
+ ExpireSnapshotLocked(Now());
+ if(request!=snapshot_request_||snapshot_cancelled_||snapshot_status_!=HV_CONTROL_NO_DATA||!MatchesSourceGenerationLocked(info))return false;
+ snapshot_info_=info;snapshot_candidate_=true;return true;
 }
-bool PreviewMailbox::SnapshotCandidate(uint64_t& request,HV_RuntimePreviewV1& info) const {
- std::lock_guard<std::mutex> lock(mutex_);if(!snapshot_request_||!snapshot_candidate_||snapshot_writing_||snapshot_confirmed_)return false;
+bool PreviewMailbox::SnapshotCandidate(uint64_t& request,HV_RuntimePreviewV1& info) {
+ std::lock_guard<std::mutex> lock(mutex_);ExpireSnapshotLocked(Now());
+ if(!snapshot_request_||snapshot_cancelled_||snapshot_status_!=HV_CONTROL_NO_DATA||!snapshot_candidate_||snapshot_writing_||snapshot_confirmed_)return false;
  request=snapshot_request_;info=snapshot_info_;return true;
 }
 bool PreviewMailbox::ConfirmSnapshot(uint64_t request,uint64_t source,uint64_t generation,uint64_t frame,uint64_t epoch) {
  std::lock_guard<std::mutex> lock(mutex_);
- if(!request||request!=snapshot_request_||!snapshot_candidate_||snapshot_writing_||snapshot_info_.source_id!=source||
-    snapshot_info_.generation!=generation||snapshot_info_.frame_id!=frame||snapshot_info_.config_epoch!=epoch)return false;
+ ExpireSnapshotLocked(Now());
+ if(!request||request!=snapshot_request_||snapshot_cancelled_||snapshot_status_!=HV_CONTROL_NO_DATA||!snapshot_candidate_||snapshot_writing_||snapshot_info_.source_id!=source||
+    snapshot_info_.generation!=generation||snapshot_info_.frame_id!=frame||snapshot_info_.config_epoch!=epoch||!MatchesSourceGenerationLocked(snapshot_info_))return false;
  snapshot_confirmed_=true;return true;
 }
 void PreviewMailbox::RejectSnapshotCandidate(uint64_t request) {
  std::lock_guard<std::mutex> lock(mutex_);if(request==snapshot_request_&&!snapshot_writing_&&!snapshot_readers_)
   snapshot_candidate_=snapshot_confirmed_=false;
 }
-void PreviewMailbox::CancelSnapshot(uint64_t request,int status) {
+int PreviewMailbox::CancelSnapshot(uint64_t request) {
+ if(!request)return HV_ERR_INVALID_ARGUMENT;
+ std::lock_guard<std::mutex> lock(mutex_);
+ if(request!=snapshot_request_)return HV_CONTROL_NO_DATA;
+ snapshot_cancelled_=true;snapshot_candidate_=snapshot_confirmed_=false;return 0;
+}
+void PreviewMailbox::FailSnapshot(uint64_t request,int status) {
  std::lock_guard<std::mutex> lock(mutex_);
  if(request==snapshot_request_){snapshot_status_=status;snapshot_candidate_=snapshot_confirmed_=false;}
 }
 int PreviewMailbox::CopySnapshot(uint64_t request,void* target,uint32_t capacity,HV_RuntimePreviewV1* out) {
  if(!out||out->struct_size<sizeof(*out)||out->api_version!=1||!request)return HV_ERR_INVALID_ARGUMENT;
  {std::lock_guard<std::mutex> lock(mutex_);
-  if(request!=snapshot_request_)return HV_CONTROL_NO_DATA;
+  ExpireSnapshotLocked(Now());
+  if(request!=snapshot_request_||snapshot_cancelled_)return HV_CONTROL_NO_DATA;
   if(snapshot_status_!=HV_CONTROL_NO_DATA)return snapshot_status_;
   if(!snapshot_confirmed_||snapshot_writing_)return HV_CONTROL_NO_DATA;
   *out=snapshot_info_;if(!target||capacity<out->rgba_bytes)return HV_CONTROL_BUFFER_TOO_SMALL;

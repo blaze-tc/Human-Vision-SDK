@@ -98,6 +98,8 @@ typedef struct HV_RuntimeControlApiV1 {
     int32_t (HV_CALL *CopyPreview)(HV_RuntimeControllerHandle, uint64_t, void*, uint32_t, HV_RuntimePreviewV1*);
     int32_t (HV_CALL *RequestSnapshot)(HV_RuntimeControllerHandle, uint64_t*);
     int32_t (HV_CALL *CopySnapshot)(HV_RuntimeControllerHandle, uint64_t, void*, uint32_t, HV_RuntimePreviewV1*);
+    /* Logical cancellation never pretends an Input/GPU operation completed. */
+    int32_t (HV_CALL *CancelSnapshot)(HV_RuntimeControllerHandle, uint64_t request_id);
 } HV_RuntimeControlApiV1;
 #ifdef __cplusplus
 extern "C" {

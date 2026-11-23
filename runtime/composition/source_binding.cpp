@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstring>
 #include <limits>
+#include <new>
 #if defined(_WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -25,6 +26,11 @@ bool String(const char* p,size_t limit,std::string& out) {
     if(n>limit)return false;out.assign(p,n);return true;
 }
 std::atomic<uint64_t> next_source{1};
+uint64_t NativeCaptureBytes(const HV_InputNativeFrameV1& frame) noexcept {
+    const int64_t width=int64_t(frame.crop_right)-frame.crop_left;
+    const int64_t height=int64_t(frame.crop_bottom)-frame.crop_top;
+    return width>0&&height>0&&width<=4096&&height<=4096?uint64_t(width)*uint64_t(height)*4:0;
+}
 }
 bool CopySourceConfig(const HV_RuntimeSourceV1& s,OwnedSourceConfig& out,std::string& error) {
     if(s.struct_size<sizeof(s)||s.api_version!=1||s.kind>HV_NATIVE_SOURCE_RTSP||(s.flags&~HV_NATIVE_SOURCE_LIVE_PREVIEW)||s.reserved||
@@ -77,6 +83,7 @@ FrameEnvelope EnvelopeForNativeFrame(const HV_InputFrameInfo& f,const InputClock
         e.source_timestamp={mapped,1,FrameClockDomain::kRuntimeMonotonic,FrameTimeSource::kDecoded,true};
     e.completion=FrameCompletion::kReady;return e;
 }
+NativeSourceBinding::NativeSourceBinding(PreviewMailbox::AllocationPolicy allocation):preview_(allocation){}
 NativeSourceBinding::~NativeSourceBinding(){StopIngestion();Close();}
 bool NativeSourceBinding::Load(const std::string& name,std::string& error) {
 #if defined(_WIN32)
@@ -111,7 +118,7 @@ bool NativeSourceBinding::Load(const std::string& name,std::string& error) {
 }
 bool NativeSourceBinding::Open(const OwnedSourceConfig& config,bool gpu_route,uint64_t epoch,std::string& error) {
     if(handle_||library_){error="Native source is already open";return false;}
-    config_=config;
+    config_=config;epoch_=epoch;
     std::string library=config.library;
 #if defined(_WIN32)
     if(library.empty()){error="An absolute native Input DLL path is required";return false;}
@@ -149,6 +156,8 @@ bool NativeSourceBinding::Open(const OwnedSourceConfig& config,bool gpu_route,ui
             NativeInputGpuApi{api_.device,api_.pool,api_.acquire,api_.release_native},mapping_.offset_us,
             config_.source_id,epoch,this,[](void* context,const HV_InputNativeFrameV1& frame) {
                 auto& self=*static_cast<NativeSourceBinding*>(context);
+                self.capture_rgba_bytes_.store(NativeCaptureBytes(frame));
+                self.preview_.AdmitSourceGeneration(self.config_.source_id,frame.frame.generation,self.epoch_);
                 self.frames_.fetch_add(1);self.generation_.store(frame.frame.generation);
                 self.frame_id_.store(frame.frame.sequence);
                 self.source_width_.store(frame.source_width);self.source_height_.store(frame.source_height);
@@ -162,8 +171,13 @@ bool NativeSourceBinding::Open(const OwnedSourceConfig& config,bool gpu_route,ui
     // Native HD capture reveals its actual visible size on first completion.
     // Configure once before the workers; larger formats reconfigure on their
     // preview owner only, never on the Unity consumer.
-    const auto preview_capacity=android_native_?std::max<uint32_t>(1920u*1080u*4u,static_cast<uint32_t>(pixels_.size())):static_cast<uint32_t>(pixels_.size());
-    if(!preview_.Configure(preview_capacity)){error="Cannot allocate the bounded preview mailbox";return false;}
+    if(config_.flags&HV_NATIVE_SOURCE_LIVE_PREVIEW) {
+        const auto preview_capacity=android_native_?PreviewMailbox::kCandidateMaximumBytes:static_cast<uint32_t>(pixels_.size());
+        const auto configured=preview_.ConfigureCandidate(preview_capacity);
+        if(configured!=PreviewMailbox::ConfigureResult::Ready)
+            FailPreview(configured==PreviewMailbox::ConfigureResult::BudgetExceeded?
+                "optional preview exceeds the unqualified1080p byte budget":"optional preview allocation failed; analysis remains active");
+    }
     error.clear();return true;
 }
 bool NativeSourceBinding::StartIngestion(RuntimeSession& session,uint64_t epoch,std::string& error) {
@@ -233,6 +247,10 @@ void NativeSourceBinding::Run(RuntimeSession* session,uint64_t epoch) {
         HV_VideoFrame frame{sizeof(frame),static_cast<int32_t>(info.width),static_cast<int32_t>(info.height),
             static_cast<int32_t>(info.stride_bytes),HV_PIXEL_RGBA32,static_cast<int64_t>(info.sequence),
             envelope.source_timestamp.microseconds,pixels_.data(),static_cast<int32_t>(info.rgba_bytes)};
+        capture_rgba_bytes_.store(android_native_?NativeCaptureBytes(native):0);
+        // Retire old preview identity before the asynchronous Session can admit
+        // or publish this new generation, regardless of live-preview policy.
+        preview_.AdmitSourceGeneration(config_.source_id,info.generation,epoch);
         session->RecordSourceArrival(false);
         std::string error;
         if(session->Submit(frame,envelope,error)) {
@@ -259,19 +277,19 @@ bool NativeSourceBinding::BuildPreviewInfo(const HV_InputFrameInfo& info,uint64_
     out={sizeof(out),1,info.width,info.height,info.stride_bytes,info.rgba_bytes,
         config_.source_id,info.generation,info.sequence,epoch,timestamp};return true;
 }
-void NativeSourceBinding::ObservePreviewGeneration(uint64_t generation) {
-    const auto previous=preview_generation_.exchange(generation);
-    if(previous&&previous!=generation)preview_.Invalidate();
-}
 void NativeSourceBinding::PublishCpuPreview(const HV_InputFrameInfo& info,uint64_t epoch) {
-    if(!(config_.flags&HV_NATIVE_SOURCE_LIVE_PREVIEW))return;
+    if(preview_failed_||!(config_.flags&HV_NATIVE_SOURCE_LIVE_PREVIEW))return;
     const auto now=Now();if(now<next_cpu_preview_us_)return;next_cpu_preview_us_=now+200000;
     HV_RuntimePreviewV1 metadata{};if(!BuildPreviewInfo(info,epoch,metadata))return;
-    ObservePreviewGeneration(info.generation);
+    if(!preview_.MatchesSourceGeneration(config_.source_id,info.generation,epoch))return;
     PreviewMailbox::CopyTicket ticket;
     // These bytes are already owned by the ingestion worker; no decoder or
     // analysis credit is retained for the optional copy.
     if(!preview_.TryBeginCopy(0,false,false,ticket))return;
+    if(metadata.rgba_bytes>ticket.capacity) {
+        preview_.FinishCopy(ticket,HV_RuntimePreviewV1{},true,0,false);
+        FailPreview("optional preview exceeds its configured buffer capacity");return;
+    }
     const auto started=Now();std::memcpy(ticket.data,pixels_.data(),metadata.rgba_bytes);
     preview_.FinishCopy(ticket,metadata,true,static_cast<uint64_t>(Now()-started));
 }
@@ -284,24 +302,29 @@ int NativeSourceBinding::RequestSnapshot(uint64_t* request) {
     // cannot establish an original-color snapshot contract.
     if(!android_native_||!api_.request_capture||!api_.copy_capture||preview_failed_)return HV_CONTROL_UNSUPPORTED;
     const auto result=preview_.RequestSnapshot(request);
-    if(result==0){snapshot_deadline_us_=static_cast<uint64_t>(Now())+5000000;wake_.notify_all();}
+    if(result==0)wake_.notify_all();
     return result;
 }
 int NativeSourceBinding::CopySnapshot(uint64_t request,void* data,uint32_t capacity,HV_RuntimePreviewV1* info) {
     return preview_.CopySnapshot(request,data,capacity,info);
 }
+int NativeSourceBinding::CancelSnapshot(uint64_t request) {return preview_.CancelSnapshot(request);}
 std::string NativeSourceBinding::PreviewDiagnostics() const {
     std::lock_guard<std::mutex> lock(error_mutex_);
     return "preview: native-owned copies="+std::to_string(preview_.Published())+
         " skipped="+std::to_string(preview_.Skipped())+" live_limit_fps=5 live_suspended="+
         (preview_.BudgetExceeded()?"1":"0")+" budget=cpu-copy-20ms/request-ready-200ms-unqualified"+
-        (android_native_?" exact=next-accepted-original":" exact=unsupported-original-geometry")+
-        (preview_error_.empty()?"":" error="+preview_error_);
+        (android_native_?(preview_failed_?" exact=unsupported-preview-failure":" exact=next-accepted-original"):" exact=unsupported-original-geometry")+
+        (preview_error_[0]?" error="+std::string(preview_error_.data()):"");
 }
-void NativeSourceBinding::FailPreview(const char* error) {
+void NativeSourceBinding::FailPreview(const char* error) noexcept {
     preview_failed_=true;preview_.SuspendLive();
-    if(const auto request=preview_.PendingSnapshot())preview_.CancelSnapshot(request,HV_CONTROL_UNSUPPORTED);
-    std::lock_guard<std::mutex> lock(error_mutex_);preview_error_=error;
+    try {
+        if(const auto request=preview_.PendingSnapshot())preview_.FailSnapshot(request,HV_CONTROL_UNSUPPORTED);
+        std::lock_guard<std::mutex> lock(error_mutex_);
+        size_t count=0;while(error&&count+1<preview_error_.size()&&error[count])++count;
+        if(count)std::memcpy(preview_error_.data(),error,count);preview_error_[count]=0;
+    }catch(...) {} // Optional failure reporting must not terminate an owner thread.
 }
 void NativeSourceBinding::CheckSnapshot(RuntimeSession& session) {
     uint64_t request=0;HV_RuntimePreviewV1 info{};
@@ -323,9 +346,19 @@ void NativeSourceBinding::CheckSnapshot(RuntimeSession& session) {
     // substitute an arbitrary current image.
     if(passed)preview_.RejectSnapshotCandidate(request);
 }
-void NativeSourceBinding::PreviewLoop(uint64_t epoch) {
+void NativeSourceBinding::PreviewLoop(uint64_t epoch) noexcept {
+    try {PreviewLoopCore(epoch);}
+    catch(const std::bad_alloc&) {FailPreview("optional preview allocation failed; analysis remains active");}
+    catch(const std::exception& error) {FailPreview(error.what());}
+    catch(...) {FailPreview("optional preview owner failed; analysis remains active");}
+}
+void NativeSourceBinding::PreviewLoopCore(uint64_t epoch) {
     uint64_t native_request=0,capture_snapshot=0;int64_t requested_us=0,next_live_us=0,last_live_us=0;
     PreviewMailbox::CopyTicket ticket;
+    struct CpuReservationRetirement {
+        PreviewMailbox& mailbox;PreviewMailbox::CopyTicket& ticket;
+        ~CpuReservationRetirement(){if(ticket.token)try{mailbox.FinishCopy(ticket,HV_RuntimePreviewV1{},true,0,false);}catch(...) {}}
+    } reservation_retirement{preview_,ticket};
     auto retire_cpu_reservation=[&] {
         // No GPU command writes this mailbox target. Input's pending capture
         // owns its own staging and is retired separately by Input Close/Release.
@@ -333,19 +366,29 @@ void NativeSourceBinding::PreviewLoop(uint64_t epoch) {
     };
     while(running_.load(std::memory_order_acquire)) {
         const auto now=Now();auto* session=runtime_.load(std::memory_order_acquire);
+        preview_.ExpireSnapshot();
         if(session)CheckSnapshot(*session);
-        const auto pending=preview_.PendingSnapshot();
-        if(pending&&snapshot_deadline_us_&&uint64_t(now)>snapshot_deadline_us_.load())preview_.CancelSnapshot(pending);
         if(native_request) {
             HV_InputFrameInfo info{sizeof(info),1};const auto probe=api_.copy_capture(handle_,native_request,nullptr,0,&info);
             if(probe==HV_INPUT_BUFFER_TOO_SMALL) {
                 HV_RuntimePreviewV1 metadata{};
                 if(!BuildPreviewInfo(info,epoch,metadata)){retire_cpu_reservation();native_request=0;FailPreview("native capture metadata/clock is invalid; capture staging remains Input-owned until source retirement");}
                 else {
-                    const auto previous=preview_generation_.load();
-                    if(previous&&previous!=info.generation){retire_cpu_reservation();ObservePreviewGeneration(info.generation);}
-                    else ObservePreviewGeneration(info.generation);
-                    if(info.rgba_bytes>ticket.capacity){retire_cpu_reservation();if(!preview_.Configure(info.rgba_bytes)){std::unique_lock<std::mutex> lock(wait_mutex_);wake_.wait_for(lock,std::chrono::milliseconds(10));continue;}}
+                    if(!preview_.MatchesSourceGeneration(metadata.source_id,metadata.generation,metadata.config_epoch)) {
+                        // Drain only this old ready capture; authoritative source
+                        // admission already invalidated its logical image IDs.
+                        if(ticket.data&&info.rgba_bytes<=ticket.capacity)api_.copy_capture(handle_,native_request,ticket.data,ticket.capacity,&info);
+                        if(capture_snapshot)preview_.CancelSnapshot(capture_snapshot);
+                        retire_cpu_reservation();native_request=0;continue;
+                    }
+                    if(info.rgba_bytes>ticket.capacity) {
+                        retire_cpu_reservation();const auto configured=preview_.ConfigureCandidate(info.rgba_bytes);
+                        if(configured==PreviewMailbox::ConfigureResult::Busy){std::unique_lock<std::mutex> lock(wait_mutex_);wake_.wait_for(lock,std::chrono::milliseconds(10));continue;}
+                        if(configured!=PreviewMailbox::ConfigureResult::Ready) {
+                            native_request=0;FailPreview(configured==PreviewMailbox::ConfigureResult::BudgetExceeded?
+                                "optional capture exceeds the unqualified1080p byte budget":"optional preview growth allocation failed; analysis remains active");continue;
+                        }
+                    }
                     if(!ticket.token&&!preview_.TryBeginCopy(0,false,false,ticket,capture_snapshot!=0)){std::unique_lock<std::mutex> lock(wait_mutex_);wake_.wait_for(lock,std::chrono::milliseconds(10));continue;}
                     const auto copy_started=Now();const auto copied=api_.copy_capture(handle_,native_request,ticket.data,ticket.capacity,&info);
                     const auto copy_us=static_cast<uint64_t>(Now()-copy_started);
@@ -357,7 +400,8 @@ void NativeSourceBinding::PreviewLoop(uint64_t epoch) {
                     }else if(copied!=HV_INPUT_NO_FRAME&&copied!=HV_INPUT_BUSY){retire_cpu_reservation();native_request=0;FailPreview("native capture copy failed");}
                 }
             }else if(probe!=HV_INPUT_NO_FRAME&&probe!=HV_INPUT_BUSY){retire_cpu_reservation();native_request=0;
-                if(probe==HV_INPUT_INVALID)preview_.Invalidate();else FailPreview("native capture preparation failed");}
+                if(probe==HV_INPUT_INVALID){if(capture_snapshot)preview_.CancelSnapshot(capture_snapshot);}
+                else FailPreview("native capture preparation failed");}
         }else {
             uint64_t candidate_request=0;HV_RuntimePreviewV1 candidate{};
             const auto snapshot=preview_.PendingSnapshot();
@@ -369,7 +413,17 @@ void NativeSourceBinding::PreviewLoop(uint64_t epoch) {
             // image owner admits and submits the next analysis frame first.
             if(live&&session){const auto stats=session->StatsV2();const auto latest=frame_id_.load();
                 if(latest>uint64_t(std::max<int64_t>(0,stats.source_frame_id))+3&&now-last_live_us<1000000)live=false;}
-            if(!preview_failed_&&frame_id_.load()&&(exact||live)&&preview_.TryBeginCopy(0,false,false,ticket,exact)) {
+            if(!preview_failed_&&frame_id_.load()&&(exact||live)) {
+                const auto expected_bytes=capture_rgba_bytes_.load();
+                if(!expected_bytes||expected_bytes>PreviewMailbox::kCandidateMaximumBytes) {
+                    FailPreview(expected_bytes?"optional capture exceeds the unqualified1080p byte budget":"optional capture crop geometry is unavailable");continue;
+                }
+                const auto configured=preview_.ConfigureCandidate(PreviewMailbox::kCandidateMaximumBytes);
+                if(configured==PreviewMailbox::ConfigureResult::Busy){std::unique_lock<std::mutex> lock(wait_mutex_);wake_.wait_for(lock,std::chrono::milliseconds(10));continue;}
+                if(configured!=PreviewMailbox::ConfigureResult::Ready){FailPreview("optional preview allocation failed; analysis remains active");continue;}
+                if(!preview_.TryBeginCopy(0,false,false,ticket,exact)) {
+                    std::unique_lock<std::mutex> lock(wait_mutex_);wake_.wait_for(lock,std::chrono::milliseconds(10));continue;
+                }
                 uint64_t id=0;const auto result=api_.request_capture(handle_,&id);
                 if(result==HV_INPUT_OK){native_request=id;capture_snapshot=exact?snapshot:0;requested_us=now;if(live)last_live_us=now;}
                 else {retire_cpu_reservation();next_live_us=now+200000;}

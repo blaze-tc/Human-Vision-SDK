@@ -32,6 +32,7 @@ public:
     int CopyPreview(uint64_t,void*,uint32_t,HV_RuntimePreviewV1*);
     int RequestSnapshot(uint64_t*);
     int CopySnapshot(uint64_t,void*,uint32_t,HV_RuntimePreviewV1*);
+    int CancelSnapshot(uint64_t);
 private:
     struct Command {Operation operation;uint64_t id;OwnedRuntimeConfig config;OwnedSourceConfig source;};
     explicit RuntimeController(OwnedRuntimeConfig,SessionFactory);
