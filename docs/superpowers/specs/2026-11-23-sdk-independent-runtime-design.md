@@ -246,3 +246,36 @@ Stop 先禁止新帧、唤醒／取消输入，再处理真实 in-flight 完成�
 - [Unity 原生渲染插件线程](https://docs.unity3d.com/2021.3/Documentation/Manual/NativePluginInterface.html)、[Vulkan queues](https://docs.vulkan.org/guide/latest/queues.html)、[ORT DirectML](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html)。
 
 本轮未探测设备或运行硬件实验。RGA 的 BSP 接口可见性、真实 PRIVATE import、相机暴露方式、RKNN memory import、正 fence、Mali driver、持续温升吞吐均是后续 gate，不阻止先完成跨平台调度与自动化合同测试。
+
+
+## 2026-11-23 真机测试后的实时纹理纠正合同
+
+用户在一加测试中明确要求：实时预览及Unity取得的Texture持续跟随源画面；推理迟到只影响骨骼结果；模型档位不能成为把推理接纳帧率称作源输入帧率的理由。本节覆盖此前将5Hz高清CPU复制通道作为Android独立模式实时预览的设计。禁止把降到1Hz的恢复策略当作该目标完成。
+
+实测旧APK `6e440ebe…` 中，CPU高清预览触发预算后永久停在frame727，而原生识别继续。中档原始codec输出与AImage取得约29.95FPS，原“输入FPS”约14–17实际为worker Claim／Unity观察；这两个问题均已确认。该APK已安装，仅属于发现缺陷的候选，不能记为最终验收通过。
+
+修正范围：同一原生decoder后，live与analysis各自有界三槽／latest publication；live尺寸来自输入预览请求，与模型尺寸无关。Unity实时Texture通过native live AHB、Unity render-thread GPU bridge和真实fence交接，不走5Hz RequestCapture，不额外打开decoder，也不与推理抢一次性analysis Acquire。持旧帧与慢Unity消费者最多丢live帧，不反压analysis或decoder。精确抓拍仍使用独立请求／deadline／CPU快照合同。
+
+新Input live API和RuntimeControl增量尾接口保留旧NativeV1、旧21函数前缀和StatsV3布局。live供图及源统计取真实source状态，不以canonical结果、fresh或claim>0作为门槛。source/generation共享源身份，model config_epoch与source generation分开；旧代迟到结果／纹理不得重新发布。单源模型切档的owner保活另做生命周期验收，不能以稳态live通过代替切档零中断。
+
+Demo统计拆为：源解码（原生累计decode counter差值）、Texture实际可见更新、推理接纳（累计native ingress/claim差值）、识别完成（累计native fresh差值）、有效骨骼交付。旧InputPublicationFps继续是主线程观察值，明确命名；缺测显示未知，不用帧号跳数或标称30补值。
+
+验收必须包含：CPU低/GPU低中高同源短窗口的decoder/live/texture/claim/result五段数据；慢/无识别结果仍有live；Unity15FPS及主线程停2秒时源/原生live/分析继续，恢复取最新而非积压；持有旧纹理不覆盖；关live仍分析；换源/重连/停止/关闭及GPU真实退休；颜色、方向和实际预览尺寸。实际设备结果前，不宣称实时问题已修复。
+
+## 2026-11-23 用户确认的业务接入与单预览
+
+验收Demo同时作为普通业务接入样例。每次Update直接调用现有SDK关节坐标查询，更新池化点线；不在样例中追加FPS、FrameId、ResultSequence、分析Texture或RuntimeProgress前置条件。SDK内部统一处理来源、代次、置信度和时效。重复读取仍有效的同一份结果是允许的；没有有效点就清除对应几何。精确同帧拍照和统计去重保留在各自功能中。
+
+界面左侧集中放选项、按钮和诊断日志，右侧只保留一个实时Texture预览，叠加识别区域框、编号及Update取出的骨骼。全屏复用同一绘制路径；保留后端／模型切换、基础配置、人数、骨骼开关、生命周期、拍照及诊断入口。最新Texture与最近有效骨骼允许时间差，不再展示两张内容相同的视频。
+
+实现限定为样例、私有验收工程的安全补丁与接入文档；不修改稳定SDK／C ABI、模型或native调度。先以真实旧样例验证合同失败，再跑简化Update的来源／失效／无纹理／单预览回归，最后在Unity和当前OnePlus安装新候选复核。性能与硬件限制见[后续设备报告](../../reports/2026-11-23-android-realtime-live-acceptance.md)。
+
+## 2026-11-24 原图 Texture 合同补漏
+
+用户再次明确普通Unity RTSP颜色Texture必须保持当前实际码流的解码后可见原尺寸。本节覆盖此前“live尺寸来自预览请求上限”的约定：不能将模型512×288输入、默认1280×720或硬编码1920上限的图像放大后称作原图。只在SDK内部为模型生成小图；明确Analysis接口保留其专门语义。
+
+SDK普通RTSP兼容和独立路径均保持用户URL，普通颜色输出采用0/0=可见源尺寸的新语义。Windows原生SourceBinding按真实首帧／尺寸变化配置缓冲及预览，不再用模型尺寸限制decoder。Android独立analysis维持正模型传输尺寸，live使用0/0；兼容Android同会话从真实SPS／codec元数据取得decoder hint，禁止用1×1代替未知尺寸。正尺寸低层请求保留既有显式上限语义，部分零值拒绝。旧C ABI字段布局与V1不变。
+
+可见尺寸来自decoder crop，不等于AHB编码对齐分配高度（1080p缓冲可能高1088）。当前每轴4096／有界内存与实际GPU能力是明确门槛，超过能力或分配失败必须报原图不可用，不静默缩图。独立可选live失败保留健康analysis；兼容路径极端分配失败保留原输入失败语义，不扩建新的legacy状态机。
+
+验收检查低／中／高模型切换后普通颜色Texture尺寸仍等于相同源可见尺寸，原生输入／完成／Unity观察计数分开；先跑0/0、部分零值、正上限、4K、首帧尺寸／换代／旧lease回归，再使用配套新库冷加载Unity和当前手机验证1080p原图、点线和左右布局。4K自动化不替代4K摄像机与硬件持续性能验收。

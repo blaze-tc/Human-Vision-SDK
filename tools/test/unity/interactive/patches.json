@@ -4,7 +4,7 @@
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptance.cs",
       "before": "5eaa91fdcacc640045ed5fce882f73523b3b70ac1c691ff2e40cba270a40afd5",
-      "after": "c41649db624ace91f52ba7683bb33c89533be908f0dfd85df1f16b9859f2cbd5",
+      "after": "c5ee48e790627d158bbe09a20c867045047485e2787c4563b284c52ec0c130b4",
       "replacements": [
         [
           "GUI.Label(new Rect(45, 674, 145, 33), \"区域数量\", body);",
@@ -69,6 +69,46 @@
         [
           "识别输入 {sdk.AnalysisInputPublicationFps:F1} FPS",
           "SDK取帧观察 {sdk.AnalysisInputPublicationFps:F1} FPS"
+        ],
+        [
+          "                Texture posePreview = ResolvePosePreview(out var displayed);\n                string poseLabel = matchedPreviewRequested && showSkeleton ? \"Prefab 精确同帧\" : \"实时预览 · 骨骼叠加\";\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                string liveTitle = hasInput && !string.IsNullOrEmpty(streamLabel) ? \"当前码流 · \" + streamLabel : \"实时输入 · 识别区域\";\n                DrawCard(liveCard, liveTitle, live, inputLine, showRegions: true, highlightDetail: probeDecodeMismatch);\n#else\n                DrawCard(liveCard, \"实时输入 · 识别区域\", live, inputLine, showRegions: true);\n#endif\n                string poseDetail = !showSkeleton ? \"骨骼关闭\" : matchedPreviewRequested ? poseLine : \"采样骨骼叠加在最新图像上\";\n                DrawCard(poseCard, poseLabel, posePreview, poseDetail, emptyText: \"等待当前码流\",\n                    drawSkeleton: showSkeleton && !matchedPreviewRequested);\n                DrawFullscreenButton(poseCard);\n                RecordDrawnPreview(posePreview, in displayed);\n",
+          "                DrawUnifiedPreviewCard(liveCard, poseCard);\n                var displayed = default(HumanVisionPresentedFrame);\n                RecordDrawnPreview(live, in displayed);\n"
+        ],
+        [
+          "if (hasTexture || showRegions) {",
+          "if (hasTexture || showRegions || drawSkeleton) {"
+        ],
+        [
+          "                if (hasTexture) DrawCameraImage(image, texture, drawSkeleton);\n                if (showRegions && recognition != null && recognition.UseRegions) DrawRegions(image);",
+          "                DrawPreviewImage(image, texture, showRegions, drawSkeleton);"
+        ],
+        [
+          "if (!hasTexture) GUI.Label(window, emptyText, badge);",
+          "if (!hasTexture && (!drawSkeleton || liveSkeleton.VisibleJoints == 0)) GUI.Label(window, emptyText, badge);"
+        ],
+        [
+          "                    !showSkeleton ? \"骨骼关闭\" : matchedPreviewRequested ? $\"{displayed.BodyCount} 人\" :\n                    $\"{liveSkeleton.VisibleBodies} 人  ·  {visibleJoints} 个点  ·  {visibleBones} 条线\", small);",
+          "                    !showSkeleton ? \"骨骼关闭\" :\n                    $\"{liveSkeleton.VisibleBodies} 人  ·  {visibleJoints} 个点  ·  {visibleBones} 条线\", small);"
+        ],
+        [
+          "missingSkeletonEvidence = validSkeletons == 0 || (matchedPreviewRequested && RuntimeIndependentAcceptanceProbe.PreviewEnabled && showSkeleton && validPresented == 0);",
+          "missingSkeletonEvidence = validSkeletons == 0;"
+        ],
+        [
+          "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) {\n                DrawFullscreenPreview();\n                return;\n            }\n            var previousMatrix = GUI.matrix;\n            float scale = Mathf.Min(Screen.width / 1440f, Screen.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3((Screen.width - 1440f * scale) / 2f, (Screen.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var liveCard, out var poseCard, out var controls);\n                DismissCapacityMenu();\n                GUI.Label(new Rect(28, 12, 900, 52), \"Human Vision  /  Runtime Prefab 验收\", heading);\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawThermalControls();\n#else\n                GUI.Label(new Rect(30, 65, 135, 30), FixedQuality ? \"固定模型等级\" : \"模型等级\", small);\n                GUI.enabled = !operating && !FixedQuality;\n                DrawModelButton(new Rect(177, 64, 80, 32), ModelInputQuality.Low, \"低\");\n                DrawModelButton(new Rect(265, 64, 80, 32), ModelInputQuality.Medium, \"中\");\n                DrawModelButton(new Rect(353, 64, 80, 32), ModelInputQuality.High, \"高\");\n                GUI.enabled = !operating;\n                GUI.Label(new Rect(894, 65, 140, 30), \"分析设备\", small);\n                DrawBackendButton(new Rect(1020, 64, 105, 32), HumanVisionAccelerationMode.Cpu, \"CPU\");\n                DrawBackendButton(new Rect(1133, 64, 105, 32), HumanVisionAccelerationMode.Graphics, \"GPU\");\n                GUI.enabled = !operating && IsAndroid;\n                DrawBackendButton(new Rect(1246, 64, 166, 32), HumanVisionAccelerationMode.Neural, \"NPU · RK3588\");\n#endif\n                GUI.enabled = true;\n                Box(new Rect(1188, 24, 224, 34), Inset);\n                GUI.Label(new Rect(1188, 24, 224, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawInteractiveHeader();\n#endif\n\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawThermalAddress();\n#else\n                string addressLabel = startup.SourceKind == InputKind.WebCamera ? \"设备名称\" :\n                    startup.SourceKind == InputKind.Video ? \"视频路径\" : \"RTSP 地址\";\n                GUI.Label(new Rect(28, 104, 118, 34), addressLabel, body);\n                rtspUrl = GUI.TextField(new Rect(146, 104, 1060, 34), rtspUrl, field);\n                GUI.enabled = !operating;\n                if (GUI.Button(new Rect(1224, 104, 188, 34), \"连接 / 应用地址\", selected)) Run(Connect());\n                GUI.enabled = true;\n#endif\n\n                DrawUnifiedPreviewCard(liveCard, poseCard);\n                var displayed = default(HumanVisionPresentedFrame);\n                RecordDrawnPreview(live, in displayed);\n\n                Box(controls, Panel);\n                GUI.Label(new Rect(45, 633, 870, 32), sdkLine, body);\n                GUI.Label(new Rect(930, 633, 466, 32),\n                    !showSkeleton ? \"骨骼关闭\" :\n                    $\"{liveSkeleton.VisibleBodies} 人  ·  {visibleJoints} 个点  ·  {visibleBones} 条线\", small);\n                GUI.Label(new Rect(45, 674, 145, 33), \"人数上限\", body);\n                GUI.enabled = !operating;\n                if (GUI.Button(CapacityButton, $\"{maxBodies} 人  ▾\", capacityMenuOpen ? selected : button))\n                    capacityMenuOpen = !capacityMenuOpen;\n                GUI.enabled = view != null && !operating;\n                if (GUI.Button(new Rect(437, 674, 128, 33), \"重启 SDK\", button)) Run(Restart());\n                if (GUI.Button(new Rect(578, 674, 128, 33), \"停止 SDK\", button)) Run(StopRuntime());\n                if (GUI.Button(new Rect(719, 674, 128, 33), \"卸载 Prefab\", button)) Run(Unload());\n                GUI.enabled = true;\n                if (GUI.Button(new Rect(852, 674, 133, 33), showSkeleton ? \"关闭骨骼\" : \"开启骨骼\", button)) {\n                    showSkeleton = !showSkeleton;\n                    RefreshPresentationMode();\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                    diagnostics.Mark(thermalPhase, \"skeleton_visibility\", NativePreviewBounds, showSkeleton ? \"on\" : \"off\");\n#endif\n                }\n                GUI.enabled = !operating && CanTakePhoto;\n                if (GUI.Button(new Rect(993, 674, 403, 33), CanTakePhoto ? \"拍照（精确同帧）\" :\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                    PhotoUnavailableReason(),\n#else\n                    \"等待可拍照输入\",\n#endif\n                    button)) Run(TakeExactPhoto());\n                GUI.enabled = true;\n                GUI.Label(new Rect(45, 720, 1349, 32), status ?? \"\", small);\n                GUI.Label(new Rect(45, 754, 1349, 31), telemetry.PerformanceLine, small);\n                GUI.Label(new Rect(45, 785, 1349, 31), telemetry.ReadLine, small);\n                GUI.Label(new Rect(29, 833, 1376, 29), telemetry.StageLine, small);\n                if (capacityMenuOpen) DrawCapacityMenu();\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawBasicOptions();\n#endif\n            } finally {\n                GUI.matrix = previousMatrix;\n                GUI.enabled = true;\n            }\n        }\n",
+          "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n"
+        ],
+        [
+          "private static readonly Rect LiveCard = new Rect(28, 152, 680, 460);",
+          "private static readonly Rect LiveCard = new Rect(28, 86, 480, 752);"
+        ],
+        [
+          "private static readonly Rect PoseCard = new Rect(732, 152, 680, 460);",
+          "private static readonly Rect PoseCard = new Rect(528, 86, 884, 752);"
+        ],
+        [
+          "new Rect(card.x + 16, card.y + 418, card.width - 32, 34), detail,",
+          "new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail,"
         ]
       ],
       "upgrades": [
@@ -78,6 +118,137 @@
             [
               "识别输入 {sdk.AnalysisInputPublicationFps:F1} FPS",
               "SDK取帧观察 {sdk.AnalysisInputPublicationFps:F1} FPS"
+            ],
+            [
+              "                Texture posePreview = ResolvePosePreview(out var displayed);\n                string poseLabel = matchedPreviewRequested && showSkeleton ? \"Prefab 精确同帧\" : \"实时预览 · 骨骼叠加\";\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                string liveTitle = hasInput && !string.IsNullOrEmpty(streamLabel) ? \"当前码流 · \" + streamLabel : \"实时输入 · 识别区域\";\n                DrawCard(liveCard, liveTitle, live, inputLine, showRegions: true, highlightDetail: probeDecodeMismatch);\n#else\n                DrawCard(liveCard, \"实时输入 · 识别区域\", live, inputLine, showRegions: true);\n#endif\n                string poseDetail = !showSkeleton ? \"骨骼关闭\" : matchedPreviewRequested ? poseLine : \"采样骨骼叠加在最新图像上\";\n                DrawCard(poseCard, poseLabel, posePreview, poseDetail, emptyText: \"等待当前码流\",\n                    drawSkeleton: showSkeleton && !matchedPreviewRequested);\n                DrawFullscreenButton(poseCard);\n                RecordDrawnPreview(posePreview, in displayed);\n",
+              "                DrawUnifiedPreviewCard(liveCard, poseCard);\n                var displayed = default(HumanVisionPresentedFrame);\n                RecordDrawnPreview(live, in displayed);\n"
+            ],
+            [
+              "if (hasTexture || showRegions) {",
+              "if (hasTexture || showRegions || drawSkeleton) {"
+            ],
+            [
+              "                if (hasTexture) DrawCameraImage(image, texture, drawSkeleton);\n                if (showRegions && recognition != null && recognition.UseRegions) DrawRegions(image);",
+              "                DrawPreviewImage(image, texture, showRegions, drawSkeleton);"
+            ],
+            [
+              "if (!hasTexture) GUI.Label(window, emptyText, badge);",
+              "if (!hasTexture && (!drawSkeleton || liveSkeleton.VisibleJoints == 0)) GUI.Label(window, emptyText, badge);"
+            ],
+            [
+              "                    !showSkeleton ? \"骨骼关闭\" : matchedPreviewRequested ? $\"{displayed.BodyCount} 人\" :\n                    $\"{liveSkeleton.VisibleBodies} 人  ·  {visibleJoints} 个点  ·  {visibleBones} 条线\", small);",
+              "                    !showSkeleton ? \"骨骼关闭\" :\n                    $\"{liveSkeleton.VisibleBodies} 人  ·  {visibleJoints} 个点  ·  {visibleBones} 条线\", small);"
+            ],
+            [
+              "missingSkeletonEvidence = validSkeletons == 0 || (matchedPreviewRequested && RuntimeIndependentAcceptanceProbe.PreviewEnabled && showSkeleton && validPresented == 0);",
+              "missingSkeletonEvidence = validSkeletons == 0;"
+            ],
+            [
+              "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) {\n                DrawFullscreenPreview();\n                return;\n            }\n            var previousMatrix = GUI.matrix;\n            float scale = Mathf.Min(Screen.width / 1440f, Screen.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3((Screen.width - 1440f * scale) / 2f, (Screen.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var liveCard, out var poseCard, out var controls);\n                DismissCapacityMenu();\n                GUI.Label(new Rect(28, 12, 900, 52), \"Human Vision  /  Runtime Prefab 验收\", heading);\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawThermalControls();\n#else\n                GUI.Label(new Rect(30, 65, 135, 30), FixedQuality ? \"固定模型等级\" : \"模型等级\", small);\n                GUI.enabled = !operating && !FixedQuality;\n                DrawModelButton(new Rect(177, 64, 80, 32), ModelInputQuality.Low, \"低\");\n                DrawModelButton(new Rect(265, 64, 80, 32), ModelInputQuality.Medium, \"中\");\n                DrawModelButton(new Rect(353, 64, 80, 32), ModelInputQuality.High, \"高\");\n                GUI.enabled = !operating;\n                GUI.Label(new Rect(894, 65, 140, 30), \"分析设备\", small);\n                DrawBackendButton(new Rect(1020, 64, 105, 32), HumanVisionAccelerationMode.Cpu, \"CPU\");\n                DrawBackendButton(new Rect(1133, 64, 105, 32), HumanVisionAccelerationMode.Graphics, \"GPU\");\n                GUI.enabled = !operating && IsAndroid;\n                DrawBackendButton(new Rect(1246, 64, 166, 32), HumanVisionAccelerationMode.Neural, \"NPU · RK3588\");\n#endif\n                GUI.enabled = true;\n                Box(new Rect(1188, 24, 224, 34), Inset);\n                GUI.Label(new Rect(1188, 24, 224, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawInteractiveHeader();\n#endif\n\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawThermalAddress();\n#else\n                string addressLabel = startup.SourceKind == InputKind.WebCamera ? \"设备名称\" :\n                    startup.SourceKind == InputKind.Video ? \"视频路径\" : \"RTSP 地址\";\n                GUI.Label(new Rect(28, 104, 118, 34), addressLabel, body);\n                rtspUrl = GUI.TextField(new Rect(146, 104, 1060, 34), rtspUrl, field);\n                GUI.enabled = !operating;\n                if (GUI.Button(new Rect(1224, 104, 188, 34), \"连接 / 应用地址\", selected)) Run(Connect());\n                GUI.enabled = true;\n#endif\n\n                DrawUnifiedPreviewCard(liveCard, poseCard);\n                var displayed = default(HumanVisionPresentedFrame);\n                RecordDrawnPreview(live, in displayed);\n\n                Box(controls, Panel);\n                GUI.Label(new Rect(45, 633, 870, 32), sdkLine, body);\n                GUI.Label(new Rect(930, 633, 466, 32),\n                    !showSkeleton ? \"骨骼关闭\" :\n                    $\"{liveSkeleton.VisibleBodies} 人  ·  {visibleJoints} 个点  ·  {visibleBones} 条线\", small);\n                GUI.Label(new Rect(45, 674, 145, 33), \"人数上限\", body);\n                GUI.enabled = !operating;\n                if (GUI.Button(CapacityButton, $\"{maxBodies} 人  ▾\", capacityMenuOpen ? selected : button))\n                    capacityMenuOpen = !capacityMenuOpen;\n                GUI.enabled = view != null && !operating;\n                if (GUI.Button(new Rect(437, 674, 128, 33), \"重启 SDK\", button)) Run(Restart());\n                if (GUI.Button(new Rect(578, 674, 128, 33), \"停止 SDK\", button)) Run(StopRuntime());\n                if (GUI.Button(new Rect(719, 674, 128, 33), \"卸载 Prefab\", button)) Run(Unload());\n                GUI.enabled = true;\n                if (GUI.Button(new Rect(852, 674, 133, 33), showSkeleton ? \"关闭骨骼\" : \"开启骨骼\", button)) {\n                    showSkeleton = !showSkeleton;\n                    RefreshPresentationMode();\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                    diagnostics.Mark(thermalPhase, \"skeleton_visibility\", NativePreviewBounds, showSkeleton ? \"on\" : \"off\");\n#endif\n                }\n                GUI.enabled = !operating && CanTakePhoto;\n                if (GUI.Button(new Rect(993, 674, 403, 33), CanTakePhoto ? \"拍照（精确同帧）\" :\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                    PhotoUnavailableReason(),\n#else\n                    \"等待可拍照输入\",\n#endif\n                    button)) Run(TakeExactPhoto());\n                GUI.enabled = true;\n                GUI.Label(new Rect(45, 720, 1349, 32), status ?? \"\", small);\n                GUI.Label(new Rect(45, 754, 1349, 31), telemetry.PerformanceLine, small);\n                GUI.Label(new Rect(45, 785, 1349, 31), telemetry.ReadLine, small);\n                GUI.Label(new Rect(29, 833, 1376, 29), telemetry.StageLine, small);\n                if (capacityMenuOpen) DrawCapacityMenu();\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawBasicOptions();\n#endif\n            } finally {\n                GUI.matrix = previousMatrix;\n                GUI.enabled = true;\n            }\n        }\n",
+              "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n"
+            ],
+            [
+              "private static readonly Rect LiveCard = new Rect(28, 152, 680, 460);",
+              "private static readonly Rect LiveCard = new Rect(28, 86, 480, 752);"
+            ],
+            [
+              "private static readonly Rect PoseCard = new Rect(732, 152, 680, 460);",
+              "private static readonly Rect PoseCard = new Rect(528, 86, 884, 752);"
+            ],
+            [
+              "new Rect(card.x + 16, card.y + 418, card.width - 32, 34), detail,",
+              "new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail,"
+            ]
+          ]
+        },
+        {
+          "before": "c41649db624ace91f52ba7683bb33c89533be908f0dfd85df1f16b9859f2cbd5",
+          "replacements": [
+            [
+              "                Texture posePreview = ResolvePosePreview(out var displayed);\n                string poseLabel = matchedPreviewRequested && showSkeleton ? \"Prefab 精确同帧\" : \"实时预览 · 骨骼叠加\";\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                string liveTitle = hasInput && !string.IsNullOrEmpty(streamLabel) ? \"当前码流 · \" + streamLabel : \"实时输入 · 识别区域\";\n                DrawCard(liveCard, liveTitle, live, inputLine, showRegions: true, highlightDetail: probeDecodeMismatch);\n#else\n                DrawCard(liveCard, \"实时输入 · 识别区域\", live, inputLine, showRegions: true);\n#endif\n                string poseDetail = !showSkeleton ? \"骨骼关闭\" : matchedPreviewRequested ? poseLine : \"采样骨骼叠加在最新图像上\";\n                DrawCard(poseCard, poseLabel, posePreview, poseDetail, emptyText: \"等待当前码流\",\n                    drawSkeleton: showSkeleton && !matchedPreviewRequested);\n                DrawFullscreenButton(poseCard);\n                RecordDrawnPreview(posePreview, in displayed);\n",
+              "                DrawUnifiedPreviewCard(liveCard, poseCard);\n                var displayed = default(HumanVisionPresentedFrame);\n                RecordDrawnPreview(live, in displayed);\n"
+            ],
+            [
+              "if (hasTexture || showRegions) {",
+              "if (hasTexture || showRegions || drawSkeleton) {"
+            ],
+            [
+              "                if (hasTexture) DrawCameraImage(image, texture, drawSkeleton);\n                if (showRegions && recognition != null && recognition.UseRegions) DrawRegions(image);",
+              "                DrawPreviewImage(image, texture, showRegions, drawSkeleton);"
+            ],
+            [
+              "if (!hasTexture) GUI.Label(window, emptyText, badge);",
+              "if (!hasTexture && (!drawSkeleton || liveSkeleton.VisibleJoints == 0)) GUI.Label(window, emptyText, badge);"
+            ],
+            [
+              "                    !showSkeleton ? \"骨骼关闭\" : matchedPreviewRequested ? $\"{displayed.BodyCount} 人\" :\n                    $\"{liveSkeleton.VisibleBodies} 人  ·  {visibleJoints} 个点  ·  {visibleBones} 条线\", small);",
+              "                    !showSkeleton ? \"骨骼关闭\" :\n                    $\"{liveSkeleton.VisibleBodies} 人  ·  {visibleJoints} 个点  ·  {visibleBones} 条线\", small);"
+            ],
+            [
+              "missingSkeletonEvidence = validSkeletons == 0 || (matchedPreviewRequested && RuntimeIndependentAcceptanceProbe.PreviewEnabled && showSkeleton && validPresented == 0);",
+              "missingSkeletonEvidence = validSkeletons == 0;"
+            ],
+            [
+              "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) {\n                DrawFullscreenPreview();\n                return;\n            }\n            var previousMatrix = GUI.matrix;\n            float scale = Mathf.Min(Screen.width / 1440f, Screen.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3((Screen.width - 1440f * scale) / 2f, (Screen.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var liveCard, out var poseCard, out var controls);\n                DismissCapacityMenu();\n                GUI.Label(new Rect(28, 12, 900, 52), \"Human Vision  /  Runtime Prefab 验收\", heading);\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawThermalControls();\n#else\n                GUI.Label(new Rect(30, 65, 135, 30), FixedQuality ? \"固定模型等级\" : \"模型等级\", small);\n                GUI.enabled = !operating && !FixedQuality;\n                DrawModelButton(new Rect(177, 64, 80, 32), ModelInputQuality.Low, \"低\");\n                DrawModelButton(new Rect(265, 64, 80, 32), ModelInputQuality.Medium, \"中\");\n                DrawModelButton(new Rect(353, 64, 80, 32), ModelInputQuality.High, \"高\");\n                GUI.enabled = !operating;\n                GUI.Label(new Rect(894, 65, 140, 30), \"分析设备\", small);\n                DrawBackendButton(new Rect(1020, 64, 105, 32), HumanVisionAccelerationMode.Cpu, \"CPU\");\n                DrawBackendButton(new Rect(1133, 64, 105, 32), HumanVisionAccelerationMode.Graphics, \"GPU\");\n                GUI.enabled = !operating && IsAndroid;\n                DrawBackendButton(new Rect(1246, 64, 166, 32), HumanVisionAccelerationMode.Neural, \"NPU · RK3588\");\n#endif\n                GUI.enabled = true;\n                Box(new Rect(1188, 24, 224, 34), Inset);\n                GUI.Label(new Rect(1188, 24, 224, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawInteractiveHeader();\n#endif\n\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawThermalAddress();\n#else\n                string addressLabel = startup.SourceKind == InputKind.WebCamera ? \"设备名称\" :\n                    startup.SourceKind == InputKind.Video ? \"视频路径\" : \"RTSP 地址\";\n                GUI.Label(new Rect(28, 104, 118, 34), addressLabel, body);\n                rtspUrl = GUI.TextField(new Rect(146, 104, 1060, 34), rtspUrl, field);\n                GUI.enabled = !operating;\n                if (GUI.Button(new Rect(1224, 104, 188, 34), \"连接 / 应用地址\", selected)) Run(Connect());\n                GUI.enabled = true;\n#endif\n\n                DrawUnifiedPreviewCard(liveCard, poseCard);\n                var displayed = default(HumanVisionPresentedFrame);\n                RecordDrawnPreview(live, in displayed);\n\n                Box(controls, Panel);\n                GUI.Label(new Rect(45, 633, 870, 32), sdkLine, body);\n                GUI.Label(new Rect(930, 633, 466, 32),\n                    !showSkeleton ? \"骨骼关闭\" :\n                    $\"{liveSkeleton.VisibleBodies} 人  ·  {visibleJoints} 个点  ·  {visibleBones} 条线\", small);\n                GUI.Label(new Rect(45, 674, 145, 33), \"人数上限\", body);\n                GUI.enabled = !operating;\n                if (GUI.Button(CapacityButton, $\"{maxBodies} 人  ▾\", capacityMenuOpen ? selected : button))\n                    capacityMenuOpen = !capacityMenuOpen;\n                GUI.enabled = view != null && !operating;\n                if (GUI.Button(new Rect(437, 674, 128, 33), \"重启 SDK\", button)) Run(Restart());\n                if (GUI.Button(new Rect(578, 674, 128, 33), \"停止 SDK\", button)) Run(StopRuntime());\n                if (GUI.Button(new Rect(719, 674, 128, 33), \"卸载 Prefab\", button)) Run(Unload());\n                GUI.enabled = true;\n                if (GUI.Button(new Rect(852, 674, 133, 33), showSkeleton ? \"关闭骨骼\" : \"开启骨骼\", button)) {\n                    showSkeleton = !showSkeleton;\n                    RefreshPresentationMode();\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                    diagnostics.Mark(thermalPhase, \"skeleton_visibility\", NativePreviewBounds, showSkeleton ? \"on\" : \"off\");\n#endif\n                }\n                GUI.enabled = !operating && CanTakePhoto;\n                if (GUI.Button(new Rect(993, 674, 403, 33), CanTakePhoto ? \"拍照（精确同帧）\" :\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                    PhotoUnavailableReason(),\n#else\n                    \"等待可拍照输入\",\n#endif\n                    button)) Run(TakeExactPhoto());\n                GUI.enabled = true;\n                GUI.Label(new Rect(45, 720, 1349, 32), status ?? \"\", small);\n                GUI.Label(new Rect(45, 754, 1349, 31), telemetry.PerformanceLine, small);\n                GUI.Label(new Rect(45, 785, 1349, 31), telemetry.ReadLine, small);\n                GUI.Label(new Rect(29, 833, 1376, 29), telemetry.StageLine, small);\n                if (capacityMenuOpen) DrawCapacityMenu();\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawBasicOptions();\n#endif\n            } finally {\n                GUI.matrix = previousMatrix;\n                GUI.enabled = true;\n            }\n        }\n",
+              "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n"
+            ],
+            [
+              "private static readonly Rect LiveCard = new Rect(28, 152, 680, 460);",
+              "private static readonly Rect LiveCard = new Rect(28, 86, 480, 752);"
+            ],
+            [
+              "private static readonly Rect PoseCard = new Rect(732, 152, 680, 460);",
+              "private static readonly Rect PoseCard = new Rect(528, 86, 884, 752);"
+            ],
+            [
+              "new Rect(card.x + 16, card.y + 418, card.width - 32, 34), detail,",
+              "new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail,"
+            ]
+          ]
+        },
+        {
+          "before": "c418e108570c9fa6b5b2fa7336494f3a8c5ff683fbea440b2e1605ea33246d61",
+          "replacements": [
+            [
+              "missingSkeletonEvidence = validSkeletons == 0 || (matchedPreviewRequested && RuntimeIndependentAcceptanceProbe.PreviewEnabled && showSkeleton && validPresented == 0);",
+              "missingSkeletonEvidence = validSkeletons == 0;"
+            ],
+            [
+              "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) {\n                DrawFullscreenPreview();\n                return;\n            }\n            var previousMatrix = GUI.matrix;\n            float scale = Mathf.Min(Screen.width / 1440f, Screen.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3((Screen.width - 1440f * scale) / 2f, (Screen.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var liveCard, out var poseCard, out var controls);\n                DismissCapacityMenu();\n                GUI.Label(new Rect(28, 12, 900, 52), \"Human Vision  /  Runtime Prefab 验收\", heading);\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawThermalControls();\n#else\n                GUI.Label(new Rect(30, 65, 135, 30), FixedQuality ? \"固定模型等级\" : \"模型等级\", small);\n                GUI.enabled = !operating && !FixedQuality;\n                DrawModelButton(new Rect(177, 64, 80, 32), ModelInputQuality.Low, \"低\");\n                DrawModelButton(new Rect(265, 64, 80, 32), ModelInputQuality.Medium, \"中\");\n                DrawModelButton(new Rect(353, 64, 80, 32), ModelInputQuality.High, \"高\");\n                GUI.enabled = !operating;\n                GUI.Label(new Rect(894, 65, 140, 30), \"分析设备\", small);\n                DrawBackendButton(new Rect(1020, 64, 105, 32), HumanVisionAccelerationMode.Cpu, \"CPU\");\n                DrawBackendButton(new Rect(1133, 64, 105, 32), HumanVisionAccelerationMode.Graphics, \"GPU\");\n                GUI.enabled = !operating && IsAndroid;\n                DrawBackendButton(new Rect(1246, 64, 166, 32), HumanVisionAccelerationMode.Neural, \"NPU · RK3588\");\n#endif\n                GUI.enabled = true;\n                Box(new Rect(1188, 24, 224, 34), Inset);\n                GUI.Label(new Rect(1188, 24, 224, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawInteractiveHeader();\n#endif\n\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawThermalAddress();\n#else\n                string addressLabel = startup.SourceKind == InputKind.WebCamera ? \"设备名称\" :\n                    startup.SourceKind == InputKind.Video ? \"视频路径\" : \"RTSP 地址\";\n                GUI.Label(new Rect(28, 104, 118, 34), addressLabel, body);\n                rtspUrl = GUI.TextField(new Rect(146, 104, 1060, 34), rtspUrl, field);\n                GUI.enabled = !operating;\n                if (GUI.Button(new Rect(1224, 104, 188, 34), \"连接 / 应用地址\", selected)) Run(Connect());\n                GUI.enabled = true;\n#endif\n\n                DrawUnifiedPreviewCard(liveCard, poseCard);\n                var displayed = default(HumanVisionPresentedFrame);\n                RecordDrawnPreview(live, in displayed);\n\n                Box(controls, Panel);\n                GUI.Label(new Rect(45, 633, 870, 32), sdkLine, body);\n                GUI.Label(new Rect(930, 633, 466, 32),\n                    !showSkeleton ? \"骨骼关闭\" :\n                    $\"{liveSkeleton.VisibleBodies} 人  ·  {visibleJoints} 个点  ·  {visibleBones} 条线\", small);\n                GUI.Label(new Rect(45, 674, 145, 33), \"人数上限\", body);\n                GUI.enabled = !operating;\n                if (GUI.Button(CapacityButton, $\"{maxBodies} 人  ▾\", capacityMenuOpen ? selected : button))\n                    capacityMenuOpen = !capacityMenuOpen;\n                GUI.enabled = view != null && !operating;\n                if (GUI.Button(new Rect(437, 674, 128, 33), \"重启 SDK\", button)) Run(Restart());\n                if (GUI.Button(new Rect(578, 674, 128, 33), \"停止 SDK\", button)) Run(StopRuntime());\n                if (GUI.Button(new Rect(719, 674, 128, 33), \"卸载 Prefab\", button)) Run(Unload());\n                GUI.enabled = true;\n                if (GUI.Button(new Rect(852, 674, 133, 33), showSkeleton ? \"关闭骨骼\" : \"开启骨骼\", button)) {\n                    showSkeleton = !showSkeleton;\n                    RefreshPresentationMode();\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                    diagnostics.Mark(thermalPhase, \"skeleton_visibility\", NativePreviewBounds, showSkeleton ? \"on\" : \"off\");\n#endif\n                }\n                GUI.enabled = !operating && CanTakePhoto;\n                if (GUI.Button(new Rect(993, 674, 403, 33), CanTakePhoto ? \"拍照（精确同帧）\" :\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                    PhotoUnavailableReason(),\n#else\n                    \"等待可拍照输入\",\n#endif\n                    button)) Run(TakeExactPhoto());\n                GUI.enabled = true;\n                GUI.Label(new Rect(45, 720, 1349, 32), status ?? \"\", small);\n                GUI.Label(new Rect(45, 754, 1349, 31), telemetry.PerformanceLine, small);\n                GUI.Label(new Rect(45, 785, 1349, 31), telemetry.ReadLine, small);\n                GUI.Label(new Rect(29, 833, 1376, 29), telemetry.StageLine, small);\n                if (capacityMenuOpen) DrawCapacityMenu();\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawBasicOptions();\n#endif\n            } finally {\n                GUI.matrix = previousMatrix;\n                GUI.enabled = true;\n            }\n        }\n",
+              "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n"
+            ],
+            [
+              "private static readonly Rect LiveCard = new Rect(28, 152, 680, 460);",
+              "private static readonly Rect LiveCard = new Rect(28, 86, 480, 752);"
+            ],
+            [
+              "private static readonly Rect PoseCard = new Rect(732, 152, 680, 460);",
+              "private static readonly Rect PoseCard = new Rect(528, 86, 884, 752);"
+            ],
+            [
+              "new Rect(card.x + 16, card.y + 418, card.width - 32, 34), detail,",
+              "new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail,"
+            ]
+          ]
+        },
+        {
+          "before": "4836119b08f386c61deb00e79b5e2b49929133807583ffd1710941c0ca9f0449",
+          "replacements": [
+            [
+              "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) {\n                DrawFullscreenPreview();\n                return;\n            }\n            var previousMatrix = GUI.matrix;\n            float scale = Mathf.Min(Screen.width / 1440f, Screen.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3((Screen.width - 1440f * scale) / 2f, (Screen.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var liveCard, out var poseCard, out var controls);\n                DismissCapacityMenu();\n                GUI.Label(new Rect(28, 12, 900, 52), \"Human Vision  /  Runtime Prefab 验收\", heading);\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawThermalControls();\n#else\n                GUI.Label(new Rect(30, 65, 135, 30), FixedQuality ? \"固定模型等级\" : \"模型等级\", small);\n                GUI.enabled = !operating && !FixedQuality;\n                DrawModelButton(new Rect(177, 64, 80, 32), ModelInputQuality.Low, \"低\");\n                DrawModelButton(new Rect(265, 64, 80, 32), ModelInputQuality.Medium, \"中\");\n                DrawModelButton(new Rect(353, 64, 80, 32), ModelInputQuality.High, \"高\");\n                GUI.enabled = !operating;\n                GUI.Label(new Rect(894, 65, 140, 30), \"分析设备\", small);\n                DrawBackendButton(new Rect(1020, 64, 105, 32), HumanVisionAccelerationMode.Cpu, \"CPU\");\n                DrawBackendButton(new Rect(1133, 64, 105, 32), HumanVisionAccelerationMode.Graphics, \"GPU\");\n                GUI.enabled = !operating && IsAndroid;\n                DrawBackendButton(new Rect(1246, 64, 166, 32), HumanVisionAccelerationMode.Neural, \"NPU · RK3588\");\n#endif\n                GUI.enabled = true;\n                Box(new Rect(1188, 24, 224, 34), Inset);\n                GUI.Label(new Rect(1188, 24, 224, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawInteractiveHeader();\n#endif\n\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawThermalAddress();\n#else\n                string addressLabel = startup.SourceKind == InputKind.WebCamera ? \"设备名称\" :\n                    startup.SourceKind == InputKind.Video ? \"视频路径\" : \"RTSP 地址\";\n                GUI.Label(new Rect(28, 104, 118, 34), addressLabel, body);\n                rtspUrl = GUI.TextField(new Rect(146, 104, 1060, 34), rtspUrl, field);\n                GUI.enabled = !operating;\n                if (GUI.Button(new Rect(1224, 104, 188, 34), \"连接 / 应用地址\", selected)) Run(Connect());\n                GUI.enabled = true;\n#endif\n\n                DrawUnifiedPreviewCard(liveCard, poseCard);\n                var displayed = default(HumanVisionPresentedFrame);\n                RecordDrawnPreview(live, in displayed);\n\n                Box(controls, Panel);\n                GUI.Label(new Rect(45, 633, 870, 32), sdkLine, body);\n                GUI.Label(new Rect(930, 633, 466, 32),\n                    !showSkeleton ? \"骨骼关闭\" :\n                    $\"{liveSkeleton.VisibleBodies} 人  ·  {visibleJoints} 个点  ·  {visibleBones} 条线\", small);\n                GUI.Label(new Rect(45, 674, 145, 33), \"人数上限\", body);\n                GUI.enabled = !operating;\n                if (GUI.Button(CapacityButton, $\"{maxBodies} 人  ▾\", capacityMenuOpen ? selected : button))\n                    capacityMenuOpen = !capacityMenuOpen;\n                GUI.enabled = view != null && !operating;\n                if (GUI.Button(new Rect(437, 674, 128, 33), \"重启 SDK\", button)) Run(Restart());\n                if (GUI.Button(new Rect(578, 674, 128, 33), \"停止 SDK\", button)) Run(StopRuntime());\n                if (GUI.Button(new Rect(719, 674, 128, 33), \"卸载 Prefab\", button)) Run(Unload());\n                GUI.enabled = true;\n                if (GUI.Button(new Rect(852, 674, 133, 33), showSkeleton ? \"关闭骨骼\" : \"开启骨骼\", button)) {\n                    showSkeleton = !showSkeleton;\n                    RefreshPresentationMode();\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                    diagnostics.Mark(thermalPhase, \"skeleton_visibility\", NativePreviewBounds, showSkeleton ? \"on\" : \"off\");\n#endif\n                }\n                GUI.enabled = !operating && CanTakePhoto;\n                if (GUI.Button(new Rect(993, 674, 403, 33), CanTakePhoto ? \"拍照（精确同帧）\" :\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                    PhotoUnavailableReason(),\n#else\n                    \"等待可拍照输入\",\n#endif\n                    button)) Run(TakeExactPhoto());\n                GUI.enabled = true;\n                GUI.Label(new Rect(45, 720, 1349, 32), status ?? \"\", small);\n                GUI.Label(new Rect(45, 754, 1349, 31), telemetry.PerformanceLine, small);\n                GUI.Label(new Rect(45, 785, 1349, 31), telemetry.ReadLine, small);\n                GUI.Label(new Rect(29, 833, 1376, 29), telemetry.StageLine, small);\n                if (capacityMenuOpen) DrawCapacityMenu();\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawBasicOptions();\n#endif\n            } finally {\n                GUI.matrix = previousMatrix;\n                GUI.enabled = true;\n            }\n        }\n",
+              "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n"
+            ],
+            [
+              "private static readonly Rect LiveCard = new Rect(28, 152, 680, 460);",
+              "private static readonly Rect LiveCard = new Rect(28, 86, 480, 752);"
+            ],
+            [
+              "private static readonly Rect PoseCard = new Rect(732, 152, 680, 460);",
+              "private static readonly Rect PoseCard = new Rect(528, 86, 884, 752);"
+            ],
+            [
+              "new Rect(card.x + 16, card.y + 418, card.width - 32, 34), detail,",
+              "new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail,"
             ]
           ]
         }
@@ -133,7 +304,7 @@
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptancePreview.cs",
       "before": "d98f358b4087600c34febb9e85af52dc4bce9c42df1f57fcd123a0cff49ce919",
-      "after": "cbc45933f7faa165c0dd7272c556883ec1360b2872cd1385f4261429e886ee07",
+      "after": "90328f1f1b0d8f98ee08085c04040b7bb4b71009a66a1427e93f98c02ce84502",
       "replacements": [
         [
           "GUI.Label(screen, \"等待当前码流\", badge);",
@@ -150,6 +321,38 @@
         [
           "            if (hasInput && showSkeleton && (!matchedPreviewRequested || fullscreenPreview)) liveSkeleton.Sample(sdk, in input);",
           "            liveSkeleton.Configure(recognition);\n            if (hasInput && showSkeleton && (!matchedPreviewRequested || fullscreenPreview)) liveSkeleton.Sample(sdk, in input);"
+        ],
+        [
+          "        private void RefreshLivePreview(HumanVisionSdk sdk)\n        {\n            input = default;\n            hasInput = sdk != null && sdk.InputState == InputSourceState.Streaming &&\n                sdk.TryGetInputFrame(-1, out input) && input.Texture != null && input.Width > 0 && input.Height > 0;\n            if (startup != null && !startup.PreviewEnabled) hasInput = false;\n            live = hasInput ? input.Texture : null;\n            liveSkeleton.Configure(recognition);\n            if (hasInput && showSkeleton && (!matchedPreviewRequested || fullscreenPreview)) liveSkeleton.Sample(sdk, in input);\n            else liveSkeleton.Clear();\n        }\n",
+          "        private void DrawUnifiedPreviewCard(Rect left, Rect right)\n        {\n            var card = new Rect(left.x, left.y, right.xMax - left.x, Mathf.Max(left.height, right.height));\n            DrawCard(card, \"实时预览 · 骨骼与识别区域\", live, inputLine, showRegions: true, drawSkeleton: showSkeleton);\n            DrawFullscreenButton(card);\n        }\n\n        private void DrawPreviewImage(Rect image, Texture texture, bool showRegions, bool drawSkeleton, float strokeWidth = 2)\n        {\n            if (texture != null) DrawCameraImage(image, texture);\n            if (showRegions && recognition != null && recognition.UseRegions) DrawRegions(image);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n        private void RefreshLivePreview(HumanVisionSdk sdk)\n        {\n            input = default;\n            hasInput = sdk != null && sdk.InputState == InputSourceState.Streaming &&\n                sdk.TryGetInputFrame(-1, out input) && input.Texture != null && input.Width > 0 && input.Height > 0;\n            if (startup != null && !startup.PreviewEnabled) hasInput = false;\n            live = hasInput ? input.Texture : null;\n            if (showSkeleton) liveSkeleton.Sample(sdk);\n            else liveSkeleton.Clear();\n        }\n"
+        ],
+        [
+          "                if (live != null) {\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, live.width, live.height, fullscreenCrop);\n                    DrawCameraImage(image, live, showSkeleton, 2 * scale);\n",
+          "                if (live != null || showSkeleton) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n"
+        ],
+        [
+          "        private HumanVisionRuntimePresentationMode OrdinaryPresentationMode =>\n            matchedPreviewRequested && showSkeleton && !fullscreenPreview\n                ? HumanVisionRuntimePresentationMode.MatchedOverlay\n                : HumanVisionRuntimePresentationMode.Disabled;",
+          "        private HumanVisionRuntimePresentationMode OrdinaryPresentationMode =>\n            HumanVisionRuntimePresentationMode.Disabled;"
+        ],
+        [
+          "                if (live != null || showSkeleton) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n",
+          "                if (live != null || showSkeleton || recognition != null && recognition.UseRegions) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n"
+        ],
+        [
+          "previewEval.Observe(matchedPreviewRequested ? \"matched\" : \"live\", texture, in input, in displayed, matched, view.Sdk);",
+          "previewEval.Observe(\"live\", texture, in input, in displayed, matched, view.Sdk);"
+        ],
+        [
+          "var card = new Rect(left.x, left.y, right.xMax - left.x, Mathf.Max(left.height, right.height));",
+          "var card = right;"
+        ],
+        [
+          "        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float extraSide = Mathf.Max(0, (Screen.width / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width + extraSide, LiveCard.height);\n            right = new Rect(PoseCard.x, PoseCard.y, PoseCard.width + extraSide, PoseCard.height);\n            controls = new Rect(28 - extraSide, 624, 1384 + extraSide * 2, 205);\n        }\n",
+          "        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float availableWidth = Screen.safeArea.width > 0 ? Screen.safeArea.width : Screen.width;\n            float extraSide = Mathf.Max(0, (availableWidth / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width, LiveCard.height);\n            right = new Rect(PoseCard.x - extraSide, PoseCard.y, PoseCard.width + extraSide * 2, PoseCard.height);\n            controls = left;\n        }\n"
+        ],
+        [
+          "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, 365);",
+          "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));"
         ]
       ],
       "upgrades": [
@@ -159,6 +362,117 @@
             [
               "            if (hasInput && showSkeleton && (!matchedPreviewRequested || fullscreenPreview)) liveSkeleton.Sample(sdk, in input);",
               "            liveSkeleton.Configure(recognition);\n            if (hasInput && showSkeleton && (!matchedPreviewRequested || fullscreenPreview)) liveSkeleton.Sample(sdk, in input);"
+            ],
+            [
+              "        private void RefreshLivePreview(HumanVisionSdk sdk)\n        {\n            input = default;\n            hasInput = sdk != null && sdk.InputState == InputSourceState.Streaming &&\n                sdk.TryGetInputFrame(-1, out input) && input.Texture != null && input.Width > 0 && input.Height > 0;\n            if (startup != null && !startup.PreviewEnabled) hasInput = false;\n            live = hasInput ? input.Texture : null;\n            liveSkeleton.Configure(recognition);\n            if (hasInput && showSkeleton && (!matchedPreviewRequested || fullscreenPreview)) liveSkeleton.Sample(sdk, in input);\n            else liveSkeleton.Clear();\n        }\n",
+              "        private void DrawUnifiedPreviewCard(Rect left, Rect right)\n        {\n            var card = new Rect(left.x, left.y, right.xMax - left.x, Mathf.Max(left.height, right.height));\n            DrawCard(card, \"实时预览 · 骨骼与识别区域\", live, inputLine, showRegions: true, drawSkeleton: showSkeleton);\n            DrawFullscreenButton(card);\n        }\n\n        private void DrawPreviewImage(Rect image, Texture texture, bool showRegions, bool drawSkeleton, float strokeWidth = 2)\n        {\n            if (texture != null) DrawCameraImage(image, texture);\n            if (showRegions && recognition != null && recognition.UseRegions) DrawRegions(image);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n        private void RefreshLivePreview(HumanVisionSdk sdk)\n        {\n            input = default;\n            hasInput = sdk != null && sdk.InputState == InputSourceState.Streaming &&\n                sdk.TryGetInputFrame(-1, out input) && input.Texture != null && input.Width > 0 && input.Height > 0;\n            if (startup != null && !startup.PreviewEnabled) hasInput = false;\n            live = hasInput ? input.Texture : null;\n            if (showSkeleton) liveSkeleton.Sample(sdk);\n            else liveSkeleton.Clear();\n        }\n"
+            ],
+            [
+              "                if (live != null) {\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, live.width, live.height, fullscreenCrop);\n                    DrawCameraImage(image, live, showSkeleton, 2 * scale);\n",
+              "                if (live != null || showSkeleton) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n"
+            ],
+            [
+              "        private HumanVisionRuntimePresentationMode OrdinaryPresentationMode =>\n            matchedPreviewRequested && showSkeleton && !fullscreenPreview\n                ? HumanVisionRuntimePresentationMode.MatchedOverlay\n                : HumanVisionRuntimePresentationMode.Disabled;",
+              "        private HumanVisionRuntimePresentationMode OrdinaryPresentationMode =>\n            HumanVisionRuntimePresentationMode.Disabled;"
+            ],
+            [
+              "                if (live != null || showSkeleton) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n",
+              "                if (live != null || showSkeleton || recognition != null && recognition.UseRegions) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n"
+            ],
+            [
+              "previewEval.Observe(matchedPreviewRequested ? \"matched\" : \"live\", texture, in input, in displayed, matched, view.Sdk);",
+              "previewEval.Observe(\"live\", texture, in input, in displayed, matched, view.Sdk);"
+            ],
+            [
+              "var card = new Rect(left.x, left.y, right.xMax - left.x, Mathf.Max(left.height, right.height));",
+              "var card = right;"
+            ],
+            [
+              "        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float extraSide = Mathf.Max(0, (Screen.width / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width + extraSide, LiveCard.height);\n            right = new Rect(PoseCard.x, PoseCard.y, PoseCard.width + extraSide, PoseCard.height);\n            controls = new Rect(28 - extraSide, 624, 1384 + extraSide * 2, 205);\n        }\n",
+              "        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float availableWidth = Screen.safeArea.width > 0 ? Screen.safeArea.width : Screen.width;\n            float extraSide = Mathf.Max(0, (availableWidth / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width, LiveCard.height);\n            right = new Rect(PoseCard.x - extraSide, PoseCard.y, PoseCard.width + extraSide * 2, PoseCard.height);\n            controls = left;\n        }\n"
+            ],
+            [
+              "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, 365);",
+              "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));"
+            ]
+          ]
+        },
+        {
+          "before": "cbc45933f7faa165c0dd7272c556883ec1360b2872cd1385f4261429e886ee07",
+          "replacements": [
+            [
+              "        private void RefreshLivePreview(HumanVisionSdk sdk)\n        {\n            input = default;\n            hasInput = sdk != null && sdk.InputState == InputSourceState.Streaming &&\n                sdk.TryGetInputFrame(-1, out input) && input.Texture != null && input.Width > 0 && input.Height > 0;\n            if (startup != null && !startup.PreviewEnabled) hasInput = false;\n            live = hasInput ? input.Texture : null;\n            liveSkeleton.Configure(recognition);\n            if (hasInput && showSkeleton && (!matchedPreviewRequested || fullscreenPreview)) liveSkeleton.Sample(sdk, in input);\n            else liveSkeleton.Clear();\n        }\n",
+              "        private void DrawUnifiedPreviewCard(Rect left, Rect right)\n        {\n            var card = new Rect(left.x, left.y, right.xMax - left.x, Mathf.Max(left.height, right.height));\n            DrawCard(card, \"实时预览 · 骨骼与识别区域\", live, inputLine, showRegions: true, drawSkeleton: showSkeleton);\n            DrawFullscreenButton(card);\n        }\n\n        private void DrawPreviewImage(Rect image, Texture texture, bool showRegions, bool drawSkeleton, float strokeWidth = 2)\n        {\n            if (texture != null) DrawCameraImage(image, texture);\n            if (showRegions && recognition != null && recognition.UseRegions) DrawRegions(image);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n        private void RefreshLivePreview(HumanVisionSdk sdk)\n        {\n            input = default;\n            hasInput = sdk != null && sdk.InputState == InputSourceState.Streaming &&\n                sdk.TryGetInputFrame(-1, out input) && input.Texture != null && input.Width > 0 && input.Height > 0;\n            if (startup != null && !startup.PreviewEnabled) hasInput = false;\n            live = hasInput ? input.Texture : null;\n            if (showSkeleton) liveSkeleton.Sample(sdk);\n            else liveSkeleton.Clear();\n        }\n"
+            ],
+            [
+              "                if (live != null) {\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, live.width, live.height, fullscreenCrop);\n                    DrawCameraImage(image, live, showSkeleton, 2 * scale);\n",
+              "                if (live != null || showSkeleton) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n"
+            ],
+            [
+              "        private HumanVisionRuntimePresentationMode OrdinaryPresentationMode =>\n            matchedPreviewRequested && showSkeleton && !fullscreenPreview\n                ? HumanVisionRuntimePresentationMode.MatchedOverlay\n                : HumanVisionRuntimePresentationMode.Disabled;",
+              "        private HumanVisionRuntimePresentationMode OrdinaryPresentationMode =>\n            HumanVisionRuntimePresentationMode.Disabled;"
+            ],
+            [
+              "                if (live != null || showSkeleton) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n",
+              "                if (live != null || showSkeleton || recognition != null && recognition.UseRegions) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n"
+            ],
+            [
+              "previewEval.Observe(matchedPreviewRequested ? \"matched\" : \"live\", texture, in input, in displayed, matched, view.Sdk);",
+              "previewEval.Observe(\"live\", texture, in input, in displayed, matched, view.Sdk);"
+            ],
+            [
+              "var card = new Rect(left.x, left.y, right.xMax - left.x, Mathf.Max(left.height, right.height));",
+              "var card = right;"
+            ],
+            [
+              "        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float extraSide = Mathf.Max(0, (Screen.width / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width + extraSide, LiveCard.height);\n            right = new Rect(PoseCard.x, PoseCard.y, PoseCard.width + extraSide, PoseCard.height);\n            controls = new Rect(28 - extraSide, 624, 1384 + extraSide * 2, 205);\n        }\n",
+              "        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float availableWidth = Screen.safeArea.width > 0 ? Screen.safeArea.width : Screen.width;\n            float extraSide = Mathf.Max(0, (availableWidth / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width, LiveCard.height);\n            right = new Rect(PoseCard.x - extraSide, PoseCard.y, PoseCard.width + extraSide * 2, PoseCard.height);\n            controls = left;\n        }\n"
+            ],
+            [
+              "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, 365);",
+              "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));"
+            ]
+          ]
+        },
+        {
+          "before": "68a5e6fbcd7e251dd34d49a5e2eba5ec119bc6f48368cef144996aa926044fcf",
+          "replacements": [
+            [
+              "                if (live != null || showSkeleton) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n",
+              "                if (live != null || showSkeleton || recognition != null && recognition.UseRegions) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n"
+            ],
+            [
+              "previewEval.Observe(matchedPreviewRequested ? \"matched\" : \"live\", texture, in input, in displayed, matched, view.Sdk);",
+              "previewEval.Observe(\"live\", texture, in input, in displayed, matched, view.Sdk);"
+            ],
+            [
+              "var card = new Rect(left.x, left.y, right.xMax - left.x, Mathf.Max(left.height, right.height));",
+              "var card = right;"
+            ],
+            [
+              "        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float extraSide = Mathf.Max(0, (Screen.width / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width + extraSide, LiveCard.height);\n            right = new Rect(PoseCard.x, PoseCard.y, PoseCard.width + extraSide, PoseCard.height);\n            controls = new Rect(28 - extraSide, 624, 1384 + extraSide * 2, 205);\n        }\n",
+              "        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float availableWidth = Screen.safeArea.width > 0 ? Screen.safeArea.width : Screen.width;\n            float extraSide = Mathf.Max(0, (availableWidth / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width, LiveCard.height);\n            right = new Rect(PoseCard.x - extraSide, PoseCard.y, PoseCard.width + extraSide * 2, PoseCard.height);\n            controls = left;\n        }\n"
+            ],
+            [
+              "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, 365);",
+              "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));"
+            ]
+          ]
+        },
+        {
+          "before": "9e6751a831d21d8452f325d6ef1374a513e24123b28827baabd5a7934cecc328",
+          "replacements": [
+            [
+              "var card = new Rect(left.x, left.y, right.xMax - left.x, Mathf.Max(left.height, right.height));",
+              "var card = right;"
+            ],
+            [
+              "        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float extraSide = Mathf.Max(0, (Screen.width / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width + extraSide, LiveCard.height);\n            right = new Rect(PoseCard.x, PoseCard.y, PoseCard.width + extraSide, PoseCard.height);\n            controls = new Rect(28 - extraSide, 624, 1384 + extraSide * 2, 205);\n        }\n",
+              "        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float availableWidth = Screen.safeArea.width > 0 ? Screen.safeArea.width : Screen.width;\n            float extraSide = Mathf.Max(0, (availableWidth / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width, LiveCard.height);\n            right = new Rect(PoseCard.x - extraSide, PoseCard.y, PoseCard.width + extraSide * 2, PoseCard.height);\n            controls = left;\n        }\n"
+            ],
+            [
+              "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, 365);",
+              "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));"
             ]
           ]
         }
@@ -167,7 +481,7 @@
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimeAcceptanceTelemetry.cs",
       "before": "c6e0e11c0ba6dd4d6e14b038aa4af893bdf9bbdbb887e7d9965dc48963503f9d",
-      "after": "4fc1bde985e7932032bff5fdc6c6aebca8d217f4a72954ffd74fdf72728b4e55",
+      "after": "fd72c4cabb61b0bc9647e8505348abecd1d4c07b02d1dad550b38806b2a87565",
       "replacements": [
         [
           "            int joints, int bones, double validSkeletonFps)",
@@ -199,7 +513,7 @@
         ],
         [
           "            string inputRate = sdk != null && sdk.IsRunning ? inputFps.ToString(\"F1\") : \"未知\";\n            string previewRate = livePreviewFps >= 0 ? livePreviewFps.ToString(\"F1\") : \"未知\";\n            string resultRate = sdk != null && sdk.HasFreshResult ? freshFps.ToString(\"F1\") : \"未知\";\n            PerformanceLine = $\"游戏 {fps:F1} FPS / {averageFrame:F1} ms  |  输入 {inputRate}  |  预览 {previewRate}  |  新结果 {resultRate} FPS{validRate}  |  同帧配对 {pairedFps:F1} FPS\";",
-          "            string sourceRate = sourceRates.First >= 0 ? sourceRates.First.ToString(\"F1\") : \"未知\";\n            string previewRate = livePreviewFps >= 0 ? livePreviewFps.ToString(\"F1\") : \"未知\";\n            string claimRate = processingRates.First >= 0 ? processingRates.First.ToString(\"F1\") : \"未知\";\n            string completeRate = processingRates.Second >= 0 ? processingRates.Second.ToString(\"F1\") : \"未知\";\n            PerformanceLine = $\"游戏 {fps:F1} FPS  |  源解码 {sourceRate}  |  Texture {previewRate}  |  推理接纳 {claimRate}  |  识别完成 {completeRate}{validRate}\";"
+          "            string sourceRate = sourceRates.First >= 0 ? sourceRates.First.ToString(\"F1\") : \"未知\";\n            string previewRate = livePreviewFps >= 0 ? livePreviewFps.ToString(\"F1\") : \"未知\";\n            string claimRate = processingRates.First >= 0 ? processingRates.First.ToString(\"F1\") : \"未知\";\n            string completeRate = processingRates.Second >= 0 ? processingRates.Second.ToString(\"F1\") : \"未知\";\n            PerformanceLine = $\"游戏 {fps:F1} FPS  |  源解码 {sourceRate}  |  Texture {previewRate}  |  送入识别 {claimRate}  |  识别完成 {completeRate}{validRate}\";"
         ],
         [
           "ReadLine = $\"Update 取帧",
@@ -232,7 +546,7 @@
             ],
             [
               "            string inputRate = sdk != null && sdk.IsRunning ? inputFps.ToString(\"F1\") : \"未知\";\n            string previewRate = livePreviewFps >= 0 ? livePreviewFps.ToString(\"F1\") : \"未知\";\n            string resultRate = sdk != null && sdk.HasFreshResult ? freshFps.ToString(\"F1\") : \"未知\";\n            PerformanceLine = $\"游戏 {fps:F1} FPS / {averageFrame:F1} ms  |  输入 {inputRate}  |  预览 {previewRate}  |  新结果 {resultRate} FPS{validRate}  |  同帧配对 {pairedFps:F1} FPS\";",
-              "            string sourceRate = sourceRates.First >= 0 ? sourceRates.First.ToString(\"F1\") : \"未知\";\n            string previewRate = livePreviewFps >= 0 ? livePreviewFps.ToString(\"F1\") : \"未知\";\n            string claimRate = processingRates.First >= 0 ? processingRates.First.ToString(\"F1\") : \"未知\";\n            string completeRate = processingRates.Second >= 0 ? processingRates.Second.ToString(\"F1\") : \"未知\";\n            PerformanceLine = $\"游戏 {fps:F1} FPS  |  源解码 {sourceRate}  |  Texture {previewRate}  |  推理接纳 {claimRate}  |  识别完成 {completeRate}{validRate}\";"
+              "            string sourceRate = sourceRates.First >= 0 ? sourceRates.First.ToString(\"F1\") : \"未知\";\n            string previewRate = livePreviewFps >= 0 ? livePreviewFps.ToString(\"F1\") : \"未知\";\n            string claimRate = processingRates.First >= 0 ? processingRates.First.ToString(\"F1\") : \"未知\";\n            string completeRate = processingRates.Second >= 0 ? processingRates.Second.ToString(\"F1\") : \"未知\";\n            PerformanceLine = $\"游戏 {fps:F1} FPS  |  源解码 {sourceRate}  |  Texture {previewRate}  |  送入识别 {claimRate}  |  识别完成 {completeRate}{validRate}\";"
             ],
             [
               "ReadLine = $\"Update 取帧",
@@ -243,6 +557,24 @@
               " input_fps={inputFps:F2} input_observed_fps={inputFps:F2} source_decode_fps={sourceRates.First:F2} source_acquired_fps={sourceRates.Second:F2} source_live_pub_fps={sourceRates.Third:F2} source_analysis_pub_fps={sourceRates.Fourth:F2} texture_fps={livePreviewFps:F2} native_claim_fps={processingRates.First:F2} native_completed_fps={processingRates.Second:F2} fresh_fps="
             ]
           ]
+        },
+        {
+          "before": "4fc1bde985e7932032bff5fdc6c6aebca8d217f4a72954ffd74fdf72728b4e55",
+          "replacements": [
+            [
+              "推理接纳",
+              "送入识别"
+            ]
+          ]
+        },
+        {
+          "before": "2469707dd1dd24c9f8a6a46deb178dbbe5d369aad5e119b86a23c32f0bdd6c97",
+          "replacements": [
+            [
+              "开始推理",
+              "送入识别"
+            ]
+          ]
         }
       ]
     }
@@ -251,12 +583,16 @@
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceInteractive.cs",
       "payload": "RuntimePrefabAcceptanceInteractive.cs",
-      "sha256": "09e15c3c0d4c7c9cb084977da0be21a1534d86a6968de630fbaf27b4d2387b88",
+      "sha256": "ad637f6e6e90c1c7a7baa891d8de6bcf56030cad18f6925f3ec54a4d28dea828",
       "previous_sha256": [
         "9421fd7d346783ba59cacd32e2b034b513d39c9fcc2f2cdcc44d6d6050e2e0d1",
         "44c50dbe0e7ed6c54ce9cb2989da488eb9c79c4ccc1d8b2fddbd7d8de074fde7",
         "c0714e821c0ab2aa85333160085bdf960ba885329b2b9a5e1e30fd38f49efd9a",
-        "c76e493bb48a1fd286d1a4441c9eb9328b807f6539e036afb16ab35764c7850e"
+        "c76e493bb48a1fd286d1a4441c9eb9328b807f6539e036afb16ab35764c7850e",
+        "09e15c3c0d4c7c9cb084977da0be21a1534d86a6968de630fbaf27b4d2387b88",
+        "7f9c4d1e065e48a16b085e54f10bd773f247b25e27eea0aad6de571148d7e95a",
+        "77bbcbc31e4021593b65c6c35adebeabc062e0252f084bce393cb390041dd66b",
+        "7c3c20acfea8226a35f0baf8aae4eb2d12cafe8a415623e60d6c875c3e4cfc77"
       ]
     },
     {
@@ -279,6 +615,16 @@
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimeCounterRateWindow.cs",
       "payload": "RuntimeCounterRateWindow.cs",
       "sha256": "039583cb1054802517bd8ba1036af4a60f6d91a52b29b1147891f48098ce7412"
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceSidebar.cs",
+      "payload": "RuntimePrefabAcceptanceSidebar.cs",
+      "sha256": "9236d6f762ae0ef9427ce8575d6516ecc6f68495853133180c43dd243769ca3e",
+      "previous_sha256": [
+        "d94217cee68441cedd9522ecda56a692621adbea3105c99c75f19687266224ef",
+        "ba84c88fb101dd8cfabbb5b19e3639874be6f950e12ed6007d2c3840a3207913",
+        "350580d0bda86b1051c9c10a0b93e5f1c688601e34dbd8de6aa157feb4f108aa"
+      ]
     }
   ]
 }

@@ -8,6 +8,8 @@ namespace HumanVisionAcceptance
 {
     internal sealed class RuntimeAcceptanceTelemetry
     {
+        private readonly RuntimeCounterRateWindow sourceRates = new RuntimeCounterRateWindow();
+        private readonly RuntimeCounterRateWindow processingRates = new RuntimeCounterRateWindow();
         private double windowStart;
         private int updates, liveUpdates, pairedUpdates, poseUpdates, newPairs, newSkeletonPairs;
         private long lastSequence, lastNative;
@@ -19,6 +21,7 @@ namespace HumanVisionAcceptance
 
         internal void Reset()
         {
+            sourceRates.Reset(); processingRates.Reset();
             windowStart = Time.realtimeSinceStartupAsDouble;
             updates = liveUpdates = pairedUpdates = poseUpdates = newPairs = newSkeletonPairs = 0;
             updateTicks = maxFrameSeconds = lastPairAt = maxPairInterval = 0;
@@ -42,9 +45,17 @@ namespace HumanVisionAcceptance
         }
 
         internal void Observe(long startTicks, HumanVisionSdk sdk, string backend, bool live, bool paired, HumanVisionPresentedFrame frame,
-            int joints, int bones, double validSkeletonFps)
+            int joints, int bones, double validSkeletonFps, double livePreviewFps = -1)
         {
             double now = Time.realtimeSinceStartupAsDouble;
+            if (sdk != null && sdk.TryGetSourceProgress(out var sourceProgress) && sourceProgress.Streaming) {
+                sourceRates.Observe(sourceProgress.SourceId, sourceProgress.Generation, 0, sourceProgress.TimestampUs,
+                    sourceProgress.DecodedFrames, sourceProgress.AcquiredFrames, sourceProgress.LivePublishedFrames, sourceProgress.AnalysisPublishedFrames);
+            } else sourceRates.Reset();
+            if (sdk != null && sdk.TryGetRuntimeProgress(out var nativeProgress) && nativeProgress.Streaming) {
+                processingRates.Observe(nativeProgress.SourceId, nativeProgress.Generation, nativeProgress.ConfigEpoch,
+                    (long)(now * 1000000d), nativeProgress.NativeInputFrames, nativeProgress.NativeFreshFrames, 0, 0);
+            } else processingRates.Reset();
             ++updates;
             updateTicks += Stopwatch.GetTimestamp() - startTicks;
             maxFrameSeconds = Math.Max(maxFrameSeconds, Time.unscaledDeltaTime);
@@ -70,10 +81,16 @@ namespace HumanVisionAcceptance
             double fpsGap = inputFps - freshFps;
             double pairedFps = newPairs / seconds, skeletonFps = newSkeletonPairs / seconds;
             string pairInterval = maxPairInterval > 0 ? $"{maxPairInterval * 1000:F0} ms" : "—";
-            string validRate = validSkeletonFps >= 0 ? $"  |  有效骨骼 {validSkeletonFps:F1} FPS" : "";
-            PerformanceLine = $"游戏 {fps:F1} FPS / {averageFrame:F1} ms  |  预览 {inputFps:F1}  |  新识别 {freshFps:F1} FPS{validRate}  |  同帧骨骼 {skeletonFps:F1} FPS  |  配对 {pairedFps:F1} FPS";
-            ReadLine = $"Update 取帧 {liveUpdates}/{updates} · 取点 {poseUpdates}/{updates} · 新配对 {newPairs}  |  最长配对间隔 {pairInterval}  |  取数 + 提交绘制 {updateMs:F2} ms";
-            StageLine = $"SDK 预处理 {stats.DetectionMs:F1} ms  ·  推理 {stats.PoseMs:F1} ms  ·  后处理 {stats.TrackingMs:F1} ms  ·  结果年龄 {(ageMs >= 0 ? ageMs.ToString("F1") + " ms" : "—")}";
+            string validRate = validSkeletonFps >= 0 ? $"  |  骨骼交付 {validSkeletonFps:F1} FPS" : "";
+            string sourceRate = sourceRates.First >= 0 ? sourceRates.First.ToString("F1") : "未知";
+            string previewRate = livePreviewFps >= 0 ? livePreviewFps.ToString("F1") : "未知";
+            string claimRate = processingRates.First >= 0 ? processingRates.First.ToString("F1") : "未知";
+            string completeRate = processingRates.Second >= 0 ? processingRates.Second.ToString("F1") : "未知";
+            PerformanceLine = $"游戏 {fps:F1} FPS  |  源解码 {sourceRate}  |  Texture {previewRate}  |  送入识别 {claimRate}  |  识别完成 {completeRate}{validRate}";
+            ReadLine = $"SDK观察 {inputFps:F1} / 结果交付 {freshFps:F1} FPS · Update 取帧 {liveUpdates}/{updates} · 取点 {poseUpdates}/{updates} · 新配对 {newPairs}  |  最长配对间隔 {pairInterval}  |  取数 + 提交绘制 {updateMs:F2} ms";
+            StageLine = sdk != null && sdk.IsInitialized && sdk.ResultSequence > 0
+                ? $"SDK 预处理 {stats.DetectionMs:F1} ms  ·  推理 {stats.PoseMs:F1} ms  ·  后处理 {stats.TrackingMs:F1} ms  ·  结果年龄 {(ageMs >= 0 ? ageMs.ToString("F1") + " ms" : "未知")} · {sdk.RuntimeProfile}"
+                : "SDK尚无有效结果，阶段耗时和结果年龄未知";
             if (Application.platform == RuntimePlatform.Android) {
                 var device = SystemInfo.graphicsDeviceType;
                 string profile = sdk != null && sdk.IsRunning ? sdk.RuntimeProfile : "-";
@@ -83,7 +100,7 @@ namespace HumanVisionAcceptance
                 long seq = paired ? frame.ResultSequence : -1;
                 int width = validPair ? frame.ColorTexture.width : 0, height = validPair ? frame.ColorTexture.height : 0;
                 int bodies = paired ? frame.BodyCount : 0;
-                UnityEngine.Debug.Log(FormattableString.Invariant($"HV_RT_SAMPLE state={state} profile={profile} backend={backend} model_size={analysis.x}x{analysis.y} gfx={device} game_fps={fps:F2} frame_ms={averageFrame:F2} max_frame_ms={maxFrameSeconds*1000:F2} input_fps={inputFps:F2} fresh_fps={freshFps:F2} skeleton_fps={skeletonFps:F2} fps_gap={fpsGap:F2} paired_fps={pairedFps:F2} max_pair_gap_ms={maxPairInterval*1000:F2} sdk_ms={stats.TotalMs:F2} age_ms={ageMs:F2} update_ms={updateMs:F3} mem_mib={memoryMiB} updates={updates} live_updates={liveUpdates} paired_updates={pairedUpdates} joint_updates={poseUpdates} new_pairs={newPairs} bodies={bodies} joints={joints} bones={bones} size={width}x{height} input={input} native={native} seq={seq} dropped={stats.DroppedFrames}"));
+                UnityEngine.Debug.Log(FormattableString.Invariant($"HV_RT_SAMPLE state={state} profile={profile} backend={backend} model_size={analysis.x}x{analysis.y} gfx={device} game_fps={fps:F2} frame_ms={averageFrame:F2} max_frame_ms={maxFrameSeconds*1000:F2} input_fps={inputFps:F2} input_observed_fps={inputFps:F2} source_decode_fps={sourceRates.First:F2} source_acquired_fps={sourceRates.Second:F2} source_live_pub_fps={sourceRates.Third:F2} source_analysis_pub_fps={sourceRates.Fourth:F2} texture_fps={livePreviewFps:F2} native_claim_fps={processingRates.First:F2} native_completed_fps={processingRates.Second:F2} fresh_fps={freshFps:F2} skeleton_fps={skeletonFps:F2} fps_gap={fpsGap:F2} paired_fps={pairedFps:F2} max_pair_gap_ms={maxPairInterval*1000:F2} sdk_ms={stats.TotalMs:F2} age_ms={ageMs:F2} update_ms={updateMs:F3} mem_mib={memoryMiB} updates={updates} live_updates={liveUpdates} paired_updates={pairedUpdates} joint_updates={poseUpdates} new_pairs={newPairs} bodies={bodies} joints={joints} bones={bones} size={width}x{height} input={input} native={native} seq={seq} dropped={stats.DroppedFrames}"));
             }
 
             updates = liveUpdates = pairedUpdates = poseUpdates = newPairs = newSkeletonPairs = 0;

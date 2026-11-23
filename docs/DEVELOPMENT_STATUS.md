@@ -1,17 +1,39 @@
-## 2026-11-23 当前活动：SDK 通用独立运行候选与交互 Demo 验收
+## 2026-11-24 当前活动：原图 Texture、Update 取点与左右布局已本地验证
+
+本轮唯一活动仍为用户批准的SDK独立运行及Human-Vision-SDK-Test验收。普通业务在Update直接读取有效骨骼坐标；Demo只保留一个右侧预览，左侧选项与固定日志分别滚动。用户随后再次要求普通RTSP颜色Texture使用解码可见原尺寸；对应SDK／Input修正均已实现，旧C ABI布局与模型保持兼容。
+
+同decoder独立live GPU出口已在LE2120实测；前序1280阶段源解码约30FPS、GPU中／高识别约17／10FPS而Unity新纹理约22／26FPS。新live不走5Hz CPU复制。Unity无async compute时使用CPU查询型真实GPU fence；此前SDK原生572/572、Input64/64、实际Unity106/106及PlayMode真实GPU采样fence1/1通过，后续原图回归见下文。失败APK和失败XML均保留。完整数据、统计口径及未验范围见[后续设备报告](reports/2026-11-23-android-realtime-live-acceptance.md)。
+
+普通点线绘制每Update直接调用 `Sdk.TryGetJointNormalizedPosition`，不要求preview、RuntimeProgress、FrameId或新ResultSequence。真实SDK查询15项、最终GUI组合11项、安全补丁29项及public／private Windows／Android编译通过；最终真实Unity批次146/146，无失败或跳过。SDK原生 `ctest --test-dir build/windows-test -C Release --output-on-failure` 576/576、Input原生66/66，原图策略先RED再GREEN；确切日志见报告。
+
+普通RTSP颜色API统一0/0=实际可见原尺寸，兼容与独立路径保持输入URL，不自动切低码流；明确Analysis接口仍为识别图。Windows实际冷加载配套新DLL，Play两次1920×1080纹理持续变化，4人96点／92线，错误为空。原图候选 `ec788a1e…` 在手机独立GPU低／中／高及默认兼容模式都取得1920×1080；中档模型仍640×384、独立analysis640×360。右预览、左侧独立日志／控制滚动、模态配置、骨骼开关、全屏及1920×1080精确照片实跑。该候选后续发现photo结束后保留配对槽、Texture持续降速，已补internal完整帧身份撤保，仍等待真实fence／复制完成。实际Unity两例先RED，修复后全批150/150，无失败跳过；最终APK `d9f9fa908940db0644075b05a9fdf1f41fc7153eb0db3ad34f4b39a02155f212` 已更新安装并校验。证据在 `out/original-resolution-20261124/` 与 `out/original-resolution-photo-release-20261124/`；前述1280阶段吞吐表不能充当原图性能SLA。
+
+没有RK3588设备。RGA、长期热机、联合业务GPU负载、切档零中断、完整手部及每人30完整骨骼FPS仍不计通过。没有合并、推送或发布。
+
+最终新包同源拍照前20秒／后5–35秒／后35–65秒，Texture平均24.55／22.73／22.37 FPS，源解码29.97／29.97／30.01，原生错误0，未再出现旧包持续5–7FPS；没有重开源绕过问题。1920×1080精确照片frame3896已拉回检查；拍照约170秒后仍同源4人96点／92线。Windows新managed实际Play两次纹理frame235→3094、像素变化、错误为空。保留Editor与手机运行，当前夹具约02:50到期，后续可填真实RTSP地址。
+
+## 2026-11-23 前序记录：SDK 通用独立运行候选与交互 Demo 验收
 
 用户已批准 `docs/superpowers/specs/2026-11-23-sdk-independent-runtime-design.md` 及配套实施计划，要求使用 `Human-Vision-SDK-Test` 的 `RuntimePrefabAcceptance` 在 Unity 和当前连接真机验证。优先共用 CPU／GPU／NPU 的原生调度与结果发布；RGA 为后续可选图像服务，不是 RKNN 自主运行的前提。保留全部旧 ABI 与模型合同。
 
-当前连接设备为 OnePlus 9 Pro LE2120；用户已明确“暂不进行真机安装”，因此本轮没有继续安装或验收候选。没有RK3588设备。原生变更前集中基线48/48，Unity 2021.3.45f1 InputAdapterTests25/25；历史设备数据不能证明本轮候选。
+当前连接设备为 OnePlus 9 Pro LE2120。用户早先暂缓安装，在完成桌面验收后又明确要求“当前demo发布到连接的安卓真机测试”，现已恢复本轮构建／安装／验收授权。没有RK3588设备。原生变更前集中基线48/48，Unity 2021.3.45f1 InputAdapterTests25/25；历史设备数据不能证明本轮候选。
 
 - 完成帧envelope、完成驱动canonical发布、独立控制API及RTSP SourceBinding；CPU／GPU／NPU共用调度，Unity保持主线程结果／显示。默认兼容模式保留。图像服务与prepared扩展不修改旧Plugin ABI，旧35个Windows导出名称和ordinal保留。
-- 早期全量554/554（69.16秒），随后修复Windows预览限速并新增两项回归；当前全量 `ctest --test-dir build/windows-test -C Release --output-on-failure` 556/556（62.30秒），日志 `out/unity-visible-preview-20261123/final-native-tests.log`。Task9B停止期间等待返回有效帧的竞态先RED（模型被调用1次），修复 `5d13dd1` 后58/58；Task6锁外分配与慢reader修复 `12851a9` 先4/4 RED，再39/39 GREEN。
+- 早期全量554/554（69.16秒），随后修复Windows预览限速并新增两项回归；该桌面阶段全量 `ctest --test-dir build/windows-test -C Release --output-on-failure` 556/556（62.30秒），日志 `out/unity-visible-preview-20261123/final-native-tests.log`。Task9B停止期间等待返回有效帧的竞态先RED（模型被调用1次），修复 `5d13dd1` 后58/58；Task6锁外分配与慢reader修复 `12851a9` 先4/4 RED，再39/39 GREEN。
 - Android ARM64/API26 SDK及独立Input编译链接通过。原生Input自主拥有Vulkan上下文，CPU／RKNN使用完成后的staging，NCNN接AHB；这仍使用GPU，RGA服务未实现、未设备验收。
 - Unity新接口6/6及真实预览槽像素1/1通过；交互与参数Editor用例57/57（job `2259b9b0`，41秒，无跳过），InputAdapter定向复跑25/25（job `62276d2f`）。历史391项整批得到315通过、14失败、62跳过，保留原失败记录，不能用定向结果倒推整批通过。
 - Windows无Unity CPU／DirectML闭环、当前Unity受控六组合及配置／生命周期实跑记录见[本轮验收记录](reports/2026-11-23-sdk-independent-runtime-acceptance.md)。架构、公开接口、组件目录和15项包快照回归通过。没有合并、推送或发布。
 - 用户反馈画面卡顿、无骨骼和缺少后端／模型选项后，修复Windows预览5FPS限速并补齐交互Demo。用户手动重新打开Editor后，8090实跑确认4人、96点／92线与真实视频纹理；CPU／DirectML低中高六组合均有新结果、正确profile和点线。置信度与年龄过滤、预览关闭仍推理、人数1／8、区域、存读、15／30／60限帧、停止／重启／卸载／再连接、本地视频兼容模式及RTSP独立偏好往返均已实跑。相机实流、Android／RK3588和长时压力性能不计通过。
-- 当前Editor加载DML配套SDK SHA-256 `7c0053421810e329378506de7889d3f20fc6a30eedcfa176bd7d6c17e20d8277`、ORT1.23及 `hv_dml.dll`，CPU与GPU使用同一套库；不能混入CPU专用ORT1.29。Android对应SDK及Input已编译链接，未安装验收。
+- 当前Editor加载DML配套SDK SHA-256 `7c0053421810e329378506de7889d3f20fc6a30eedcfa176bd7d6c17e20d8277`、ORT1.23及 `hv_dml.dll`，CPU与GPU使用同一套库；不能混入CPU专用ORT1.29。此桌面阶段尚未安装Android，后续授权和实测见上文。
 - 当前候选真实主线程停顿501.481ms（15FPS）与2002.111ms（30FPS）期间，native输入／新结果分别+6／+3及+60／+60；Unity回调／交付／渲染均不增长、来源稳定、原生错误0。这证明输入与发布可自主推进，不替代GPU压力或持续性能验收。
+
+## 2026-11-23 安卓真机前序：实时Texture与源帧率纠正
+
+用户恢复安装授权后，当前Demo已构建并更新安装到LE2120；APK SHA `6e440ebe5e36dce9a164a89502896f812f1a2bc16821c2b79bed521956d57609`。APK 9个SO/62项索引资源核对通过，SDK为RKNN=ON完整候选 `d3ee82d3…`，Input为 `9c6d0147…`。先前8b9e候选RKNN厂商实现未启用，不能生成Neural audit；已用锁定header重建并真实审计，新增审计工具29项通过。此处不代表RK3588硬件验收。
+
+CPU实际显示4人96点/92线；主线程停2002.790ms时原生input+60/fresh+37，回调/交付/渲染+0、原生错误0。随后发现预览永久suspend、骨骼仍动；GPU中档也被用户观察到。此APK是发现缺陷的实测候选，不记为最终通过。
+
+旧HD复制预算恢复兜底 `dc35114` 已35项定向/566项全量通过；仅处理超预算永久冻结，仍不是用户要求的跟源实时Texture。当前唯一活动实现按[更新合同](superpowers/specs/2026-11-23-sdk-independent-runtime-design.md)拆独立live GPU通道、同decoder双输出和真实源计数。实测中档codec/acquired约29.95FPS，14–17FPS为推理接纳/Unity观察，不能继续称原始输入。
 
 ## 2026-11-19 preview.17 发布范围
 

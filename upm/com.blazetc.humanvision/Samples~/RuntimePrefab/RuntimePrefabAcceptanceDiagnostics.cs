@@ -66,6 +66,7 @@ namespace HumanVisionAcceptance
         internal long ValidSkeletonResults { get; private set; }
         internal long ValidSkeletonPresented { get; private set; }
         internal double ValidSkeletonFps { get; private set; } = -1;
+        internal double PreviewFps { get; private set; } = -1;
 
         private readonly struct ResultIdentity
         {
@@ -398,7 +399,7 @@ namespace HumanVisionAcceptance
             if (windowSeconds > 0) {
                 sample.accepted_result_fps = acceptedInWindow / windowSeconds;
                 sample.valid_skeleton_fps = ValidSkeletonFps = validInWindow / windowSeconds;
-                sample.preview_fps = previewInWindow / windowSeconds;
+                sample.preview_fps = PreviewFps = previewInWindow / windowSeconds;
                 sample.presented_fps = presentedInWindow / windowSeconds;
                 sample.valid_skeleton_presented_fps = validPresentedInWindow / windowSeconds;
             }

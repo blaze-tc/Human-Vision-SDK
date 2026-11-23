@@ -31,6 +31,8 @@ public static class RuntimePrefabRealtimeTestBatch
             "HumanVision.Input.Tests.InputRetirementPumpEditModeTests",
             "HumanVision.Tests.NativeLiveAttachmentTests",
             "HumanVision.Tests.HumanVisionIndependentRuntimeTests",
+            "HumanVision.Tests.NativePreviewOwnershipTests",
+            "HumanVision.Input.Tests.AndroidRtspOutputSizeTests",
             "HumanVision.Tests.RuntimePrefabInteractiveAcceptanceTests",
             "HumanVision.Tests.InputAdapterTests"
         } }));
