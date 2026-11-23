@@ -36,7 +36,9 @@ namespace HumanVision.Input
     {
         private sealed class SamplingFence : ILiveSamplingFence {
             private GraphicsFence fence;
-            public void Arm() => fence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, SynchronisationStageFlags.AllGPUOperations);
+            // This fence is only polled by the CPU; an async-queue fence requires
+            // async compute even on devices that support ordinary graphics fences.
+            public void Arm() => fence = Graphics.CreateGraphicsFence(GraphicsFenceType.CPUSynchronisation, SynchronisationStageFlags.AllGPUOperations);
             public bool IsComplete => fence.passed;
         }
         private sealed class Slot {

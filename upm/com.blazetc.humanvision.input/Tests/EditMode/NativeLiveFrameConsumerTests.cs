@@ -28,7 +28,7 @@ private sealed class Backend:INativeLiveConsumerApi {
  private readonly List<NativeLiveFrameConsumer> active = new List<NativeLiveFrameConsumer>();
  private readonly List<Fence> fences = new List<Fence>();
  [SetUp] public void RequireGraphics(){if(SystemInfo.graphicsDeviceType==GraphicsDeviceType.Null)Assert.Ignore("Realtime target ownership requires a graphics-enabled Editor.");}
- [TearDown] public void Retire(){foreach(var fence in fences)fence.Complete=true;foreach(var consumer in active){consumer.Close();for(int i=0;i<4;i++)consumer.Tick();Assert.That(consumer.Pending,Is.False);}active.Clear();fences.Clear();}
+ [TearDown] public void Retire(){foreach(var fence in fences)fence.Complete=true;bool pending=false;try{foreach(var consumer in active){consumer.Close();for(int i=0;i<4;i++)consumer.Tick();pending|=consumer.Pending;}}finally{active.Clear();fences.Clear();}Assert.That(pending,Is.False,"Every controlled consumer must retire without contaminating the next test.");}
  private Fence NewFence(bool complete=true){var fence=new Fence{Complete=complete};fences.Add(fence);return fence;}
  private NativeLiveFrameConsumer Consumer(Backend backend,Fence[] supplied=null,bool enabled=true){int index=0;var consumer=new NativeLiveFrameConsumer(backend,77,enabled,()=>{var fence=supplied==null?NewFence():supplied[index++];if(supplied!=null)fences.Add(fence);return fence;});active.Add(consumer);return consumer;}
  private static void Check(bool value,string reason)=>Assert.That(value,Is.True,reason);
