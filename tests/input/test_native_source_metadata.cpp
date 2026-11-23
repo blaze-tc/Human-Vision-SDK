@@ -9,12 +9,18 @@ using namespace hvinput;
     }                                                                          \
   } while (false)
 int main() {
+  std::atomic<int64_t> legacy_activity{0};
+  CHECK(RecordDemuxRead(0, 2, 2, 100, &legacy_activity) == 100);
+  CHECK(RecordDemuxRead(0, 3, 2, 101, &legacy_activity) == -1);
+  CHECK(legacy_activity.load() == 101); // audio read updates legacy Unity metadata
+  CHECK(RecordDemuxRead(-1, -1, 2, 102, &legacy_activity) == -1);
+  CHECK(legacy_activity.load() == 102); // failed read is still demux activity
   NativePacketLedger inputs;
-  auto arrival = VideoPacketReceiveTime(0, 2, 2, 100);
+  auto arrival = RecordDemuxRead(0, 2, 2, 100);
   auto absent = inputs.Submit(false, 0, arrival);
-  CHECK(VideoPacketReceiveTime(0, 3, 2, 101) == -1); // interleaved audio
-  CHECK(VideoPacketReceiveTime(-1, 2, 2, 102) == -1);
-  auto zero = inputs.Submit(true, 0, VideoPacketReceiveTime(0, 2, 2, 103));
+  CHECK(RecordDemuxRead(0, 3, 2, 101) == -1); // interleaved audio
+  CHECK(RecordDemuxRead(-1, 2, 2, 102) == -1);
+  auto zero = inputs.Submit(true, 0, RecordDemuxRead(0, 2, 2, 103));
   auto negative = inputs.Submit(true, -40000, 104);
   CHECK(zero != absent && negative != zero);
   auto b = inputs.Take(zero);

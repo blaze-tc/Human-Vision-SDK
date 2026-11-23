@@ -1,12 +1,15 @@
 #pragma once
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 
 namespace hvinput {
-inline int64_t VideoPacketReceiveTime(int read_status, int stream,
-                                      int video_stream, int64_t now_us) {
+inline int64_t RecordDemuxRead(int read_status, int stream, int video_stream,
+                               int64_t now_us, std::atomic<int64_t> *legacy_activity = nullptr) {
+  // Legacy Unity exposes activity from every demux read, including errors.
+  if (legacy_activity) *legacy_activity = now_us;
   return read_status >= 0 && stream == video_stream ? now_us : -1;
 }
 struct PacketStamp {

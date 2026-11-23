@@ -362,11 +362,10 @@ void Session::Decode() {
   while(!stop && (production||ColorProbeEnabled()||decoded<3)) {
     deadline=NowUs()+int64_t(timeout_ms)*1000;
     status=av_read_frame(r.format,r.packet);
-    const auto read_us=NowUs();
+    const auto received_us=RecordDemuxRead(status,status>=0?r.packet->stream_index:-1,stream,NowUs(),
+        native?nullptr:&last_received_us);
     if(status<0) {if(production)reconnect("read compressed H264",status);else fail("read compressed H264",status);return;}
-    const auto received_us=VideoPacketReceiveTime(status,r.packet->stream_index,stream,read_us);
     if(received_us<0) {av_packet_unref(r.packet);continue;}
-    if(!native)last_received_us=received_us;
     ++packets_received;
     // A newly joined RTSP stream may begin inside a GOP. Concealed decoder output
     // is not a valid source image: start the hardware decoder input at a keyframe.
