@@ -29,3 +29,7 @@ component README and its test filter, so the destination is at most two hops awa
 
 Caches and user archives are retained by user instruction. Do not clean them as
 part of a maintenance change. [Release guide](RELEASE_GUIDE.md) owns publication.
+
+## 2026-11-23 SDK 独立运行本地候选
+
+[设计](../superpowers/specs/2026-11-23-sdk-independent-runtime-design.md)与[分阶段计划](../superpowers/plans/2026-11-23-sdk-independent-runtime-plan.md)已获用户批准，通用原生调度、完成驱动发布、增量控制API和RTSP自主输入已实现，保留Unity异步输入兼容模式。RK3588的RGA仍是可选、待设备验证的图像服务优化。[MediaPipeUnityPlugin核查](../reports/2026-11-23-mediapipe-async-runtime-analysis.md)说明借鉴依据；[候选验收记录](../reports/2026-11-23-sdk-independent-runtime-acceptance.md)区分本地自动化、Windows实际运行与未完成硬件项。本轮未发布，用户已暂缓真机安装。

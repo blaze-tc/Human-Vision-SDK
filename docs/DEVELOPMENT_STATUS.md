@@ -1,3 +1,18 @@
+## 2026-11-23 当前活动：SDK 通用独立运行候选与交互 Demo 验收
+
+用户已批准 `docs/superpowers/specs/2026-11-23-sdk-independent-runtime-design.md` 及配套实施计划，要求使用 `Human-Vision-SDK-Test` 的 `RuntimePrefabAcceptance` 在 Unity 和当前连接真机验证。优先共用 CPU／GPU／NPU 的原生调度与结果发布；RGA 为后续可选图像服务，不是 RKNN 自主运行的前提。保留全部旧 ABI 与模型合同。
+
+当前连接设备为 OnePlus 9 Pro LE2120；用户已明确“暂不进行真机安装”，因此本轮没有继续安装或验收候选。没有RK3588设备。原生变更前集中基线48/48，Unity 2021.3.45f1 InputAdapterTests25/25；历史设备数据不能证明本轮候选。
+
+- 完成帧envelope、完成驱动canonical发布、独立控制API及RTSP SourceBinding；CPU／GPU／NPU共用调度，Unity保持主线程结果／显示。默认兼容模式保留。图像服务与prepared扩展不修改旧Plugin ABI，旧35个Windows导出名称和ordinal保留。
+- 早期全量554/554（69.16秒），随后修复Windows预览限速并新增两项回归；当前全量 `ctest --test-dir build/windows-test -C Release --output-on-failure` 556/556（62.30秒），日志 `out/unity-visible-preview-20261123/final-native-tests.log`。Task9B停止期间等待返回有效帧的竞态先RED（模型被调用1次），修复 `5d13dd1` 后58/58；Task6锁外分配与慢reader修复 `12851a9` 先4/4 RED，再39/39 GREEN。
+- Android ARM64/API26 SDK及独立Input编译链接通过。原生Input自主拥有Vulkan上下文，CPU／RKNN使用完成后的staging，NCNN接AHB；这仍使用GPU，RGA服务未实现、未设备验收。
+- Unity新接口6/6及真实预览槽像素1/1通过；交互与参数Editor用例57/57（job `2259b9b0`，41秒，无跳过），InputAdapter定向复跑25/25（job `62276d2f`）。历史391项整批得到315通过、14失败、62跳过，保留原失败记录，不能用定向结果倒推整批通过。
+- Windows无Unity CPU／DirectML闭环、当前Unity受控六组合及配置／生命周期实跑记录见[本轮验收记录](reports/2026-11-23-sdk-independent-runtime-acceptance.md)。架构、公开接口、组件目录和15项包快照回归通过。没有合并、推送或发布。
+- 用户反馈画面卡顿、无骨骼和缺少后端／模型选项后，修复Windows预览5FPS限速并补齐交互Demo。用户手动重新打开Editor后，8090实跑确认4人、96点／92线与真实视频纹理；CPU／DirectML低中高六组合均有新结果、正确profile和点线。置信度与年龄过滤、预览关闭仍推理、人数1／8、区域、存读、15／30／60限帧、停止／重启／卸载／再连接、本地视频兼容模式及RTSP独立偏好往返均已实跑。相机实流、Android／RK3588和长时压力性能不计通过。
+- 当前Editor加载DML配套SDK SHA-256 `7c0053421810e329378506de7889d3f20fc6a30eedcfa176bd7d6c17e20d8277`、ORT1.23及 `hv_dml.dll`，CPU与GPU使用同一套库；不能混入CPU专用ORT1.29。Android对应SDK及Input已编译链接，未安装验收。
+- 当前候选真实主线程停顿501.481ms（15FPS）与2002.111ms（30FPS）期间，native输入／新结果分别+6／+3及+60／+60；Unity回调／交付／渲染均不增长、来源稳定、原生错误0。这证明输入与发布可自主推进，不替代GPU压力或持续性能验收。
+
 ## 2026-11-19 preview.17 发布范围
 
 SDK `0.4.0-preview.17` / Input `0.1.0-preview.10` 包含 HLK-AL00 AVC 首帧修复、Runtime Prefab 实时预览与精确同帧，以及 Android 超低档可选接入。CPU、RKNN 和 384×224 实验模型使用配套本地资源。YOLO26 对照属于离线模型研究。见[公开验证报告](../upm/com.blazetc.humanvision/Documentation/reports/2026-11-19-preview17-hlk-and-live-preview.md)。
