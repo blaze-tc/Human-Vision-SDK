@@ -230,8 +230,10 @@ namespace HumanVision
             }
 
             if (composeOverlay && (isNew || changed)) drawing.Draw(color);
-            current = new HumanVisionPresentedFrame(input.SourceId, input.Generation, frameId, inputFrameId,
+            var next = new HumanVisionPresentedFrame(input.SourceId, input.Generation, frameId, inputFrameId,
                 sequence, Sdk.SourceTimestampUs, count, color, drawing.Target);
+            if (!Sdk.ProtectRuntimeViewColor(in input)) { ClearFrame(false); return; }
+            current = next;
             currentBridge = Sdk.FrameBridge;
             currentRevision = Sdk.RecognitionRevision;
             currentWidth = input.Width;

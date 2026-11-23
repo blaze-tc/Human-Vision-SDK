@@ -208,16 +208,18 @@ namespace HumanVision
         }
         public void RefreshStats()
         {
+            long submitted = _submitted;
             if (_control != null) {
                 if (!_control.TryGetStats(out var stats)) return;
                 _nativeV2 = stats.Runtime;
+                if (UsesIndependentInput) submitted = stats.NativeInputFrames > (ulong)long.MaxValue ? long.MaxValue : (long)stats.NativeInputFrames;
             } else
             {
                 _nativeV2.Size = (uint)Marshal.SizeOf<RuntimeStatsV2Native>(); _nativeV2.Version = 2;
                 Check(RuntimeBindings.HV_RuntimeGetStatsV2(_handle, ref _nativeV2), "V2 runtime stats");
             }
             Stats = new HumanVisionStats(0, _native.BodyFps, _native.PreprocessMs, _native.InferenceMs, _native.PostprocessMs,
-                _native.PreprocessMs + _native.InferenceMs + _native.PostprocessMs, _submitted, _native.BodySequence, _native.Dropped);
+                _native.PreprocessMs + _native.InferenceMs + _native.PostprocessMs, submitted, _native.BodySequence, _native.Dropped);
         }
         public void ReconfigureMaxBodies(int maxBodies)
         {
