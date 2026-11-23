@@ -30,6 +30,8 @@ typedef struct HV_RuntimeSourceV1 {
     uint32_t struct_size, api_version, kind, flags;
     const char *library_utf8, *url_utf8, *hardware_avc_codec_utf8;
     uint64_t source_id;
+    /* Paired 0/0 preserves the actual source size on the CPU RTSP source.
+       Positive dimensions retain the explicit output cap; partial zero is invalid. */
     uint32_t width, height, timeout_ms, reconnect_delay_ms, transport_tcp;
     uint32_t rotation_degrees, mirror_x, reserved;
 } HV_RuntimeSourceV1;

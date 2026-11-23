@@ -37,7 +37,7 @@ uint64_t NativeCaptureBytes(const HV_InputNativeFrameV1& frame) noexcept {
 bool CopySourceConfig(const HV_RuntimeSourceV1& s,OwnedSourceConfig& out,std::string& error) {
     if(s.struct_size<sizeof(s)||s.api_version!=1||s.kind>HV_NATIVE_SOURCE_RTSP||(s.flags&~HV_NATIVE_SOURCE_LIVE_PREVIEW)||s.reserved||
        s.mirror_x>1||s.transport_tcp>1||s.rotation_degrees%90||s.rotation_degrees>=360||
-       (s.kind&&(!s.url_utf8||!*s.url_utf8||!s.width||!s.height||s.width>4096||s.height>4096))) {
+       (s.kind&&(!s.url_utf8||!*s.url_utf8||(s.width==0)!=(s.height==0)||s.width>4096||s.height>4096))) {
         error="Invalid native source configuration";return false;
     }
     OwnedSourceConfig copy;
@@ -154,7 +154,11 @@ bool NativeSourceBinding::Open(const OwnedSourceConfig& config,bool gpu_route,ui
     if(config.rotation_degrees||config.mirror_x) {
         error="Native Windows source rotation/mirroring is not implemented; use a compatible source";return false;
     }
-    if(api_.open(&options,&handle_)!=HV_INPUT_OK){error="Native CPU input failed to open";return false;}
+    if(api_.open(&options,&handle_)!=HV_INPUT_OK){
+        error=config.width?"Native CPU input failed to open":
+            "Native Input cannot open original-size RTSP (0/0); install the matching full-source Input plugin";
+        return false;
+    }
 #endif
     if(gpu_route) {
         auto source=std::make_unique<NativeInputGpuSource>(handle_,
@@ -176,9 +180,9 @@ bool NativeSourceBinding::Open(const OwnedSourceConfig& config,bool gpu_route,ui
     // Native HD capture reveals its actual visible size on first completion.
     // Configure once before the workers; larger formats reconfigure on their
     // preview owner only, never on the Unity consumer.
-    if(config_.flags&HV_NATIVE_SOURCE_LIVE_PREVIEW) {
-        const auto preview_capacity=android_native_?PreviewMailbox::kCandidateMaximumBytes:static_cast<uint32_t>(pixels_.size());
-        const auto configured=preview_.ConfigureCandidate(preview_capacity);
+    if((config_.flags&HV_NATIVE_SOURCE_LIVE_PREVIEW)&&(android_native_||config.width)) {
+        const auto configured=android_native_?preview_.ConfigureCandidate(PreviewMailbox::kCandidateMaximumBytes):
+            preview_.ConfigureDetailed(static_cast<uint32_t>(pixels_.size()));
         if(configured!=PreviewMailbox::ConfigureResult::Ready)
             FailPreview(configured==PreviewMailbox::ConfigureResult::BudgetExceeded?
                 "optional preview exceeds the unqualified1080p byte budget":"optional preview allocation failed; analysis remains active");
@@ -229,10 +233,21 @@ void NativeSourceBinding::Run(RuntimeSession* session,uint64_t epoch) {
         }
         if(acquired!=HV_INPUT_OK){SetError("Native Input failed to acquire a frame");break;}
         if(android_native_)info=native.frame;
+        const bool original=!android_native_&&!config_.width&&!config_.height;
         const bool layout=info.size>=sizeof(info)&&info.version==1&&info.width&&info.height&&
-            info.width<=config_.width&&info.height<=config_.height&&info.stride_bytes>=uint64_t(info.width)*4&&
-            info.rgba_bytes<=pixels_.size()&&info.rgba_bytes>=uint64_t(info.stride_bytes)*info.height&&
+            info.width<=4096&&info.height<=4096&&
+            (original||(info.width<=config_.width&&info.height<=config_.height))&&
+            info.stride_bytes>=uint64_t(info.width)*4&&info.rgba_bytes<=4096u*4096u*4u&&
+            info.rgba_bytes>=uint64_t(info.stride_bytes)*info.height&&
             info.sequence<=uint64_t(std::numeric_limits<int64_t>::max())&&info.row_origin==HV_INPUT_ROW_TOP_LEFT;
+        if(layout&&info.rgba_bytes>pixels_.size()) {
+            // This ingestion owner alone owns pixels_. Allocate on first actual
+            // geometry/growth, never under a Session admission/publication lock.
+            try{pixels_.resize(info.rgba_bytes);}catch(...){
+                SetError("Native source pixel allocation failed; original-size input is not resized as a fallback");
+                FailPreview("Original-size CPU input allocation failed");break;
+            }
+        }
         int copied=HV_INPUT_INVALID;
         if(layout)copied=android_native_?api_.copy_native(handle_,native.slot,info.generation,info.sequence,pixels_.data(),static_cast<uint32_t>(pixels_.size())):
             api_.copy(handle_,info.sequence,pixels_.data(),static_cast<uint32_t>(pixels_.size()),&info);
@@ -246,7 +261,11 @@ void NativeSourceBinding::Run(RuntimeSession* session,uint64_t epoch) {
         }
         after=info.sequence;
         if(copied==HV_INPUT_NO_FRAME)continue;
-        if(!layout||copied!=HV_INPUT_OK){SetError("Native Input RGBA frame contract/copy failed");continue;}
+        if(!layout||copied!=HV_INPUT_OK){
+            SetError(!layout?"Native Input RGBA frame exceeds supported geometry/64MiB layout or explicit source bounds; original-size input is never resized as a fallback":
+                "Native Input RGBA frame contract/copy failed");
+            continue;
+        }
         auto envelope=EnvelopeForNativeFrame(info,mapping_,config_.source_id,epoch);
         if(android_native_&&!BindNativeImageGeometry(native,envelope)){SetError("Native Input source geometry is invalid");continue;}
         if(!envelope.source_timestamp.valid){SetError("Native Input frame clock identity changed without remapping");continue;}
@@ -261,7 +280,8 @@ void NativeSourceBinding::Run(RuntimeSession* session,uint64_t epoch) {
         std::string error;
         if(session->Submit(frame,envelope,error)) {
             frames_.fetch_add(1);generation_.store(info.generation);frame_id_.store(info.sequence);
-            source_width_.store(android_native_?native.source_width:0);source_height_.store(android_native_?native.source_height:0);
+            source_width_.store(android_native_?native.source_width:original?info.width:0);
+            source_height_.store(android_native_?native.source_height:original?info.height:0);
             analysis_width_.store(info.width);analysis_height_.store(info.height);
             if(!android_native_)PublishCpuPreview(info,epoch);
         }else SetError(error);
@@ -287,6 +307,17 @@ void NativeSourceBinding::PublishCpuPreview(const HV_InputFrameInfo& info,uint64
     if(preview_failed_||!(config_.flags&HV_NATIVE_SOURCE_LIVE_PREVIEW))return;
     HV_RuntimePreviewV1 metadata{};if(!BuildPreviewInfo(info,epoch,metadata))return;
     if(!preview_.MatchesSourceGeneration(config_.source_id,info.generation,epoch))return;
+    if(metadata.rgba_bytes>pixels_.size()){
+        FailPreview("Original-size preview has no complete owned source pixels");return;
+    }
+    // Windows follows the actual decoded source, including 4K. The old Android
+    // CPU capture budget remains separate. ConfigureDetailed is transactional
+    // and returns Busy while a prior-size reader still owns its pixels.
+    const auto configured=preview_.ConfigureDetailed(metadata.rgba_bytes);
+    if(configured==PreviewMailbox::ConfigureResult::Busy)return;
+    if(configured!=PreviewMailbox::ConfigureResult::Ready){
+        FailPreview("Original-size CPU preview allocation/geometry is unsupported; no resized fallback is published");return;
+    }
     PreviewMailbox::CopyTicket ticket;
     // Follow already-owned analysis frames at source cadence. Android's
     // separate original-resolution capture path retains its conservative

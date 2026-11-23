@@ -1,4 +1,5 @@
 #include "composition/source_binding.h"
+#include "composition/session.h"
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <array>
@@ -57,6 +58,33 @@ struct LoopMember {using type=void(NativeSourceBinding::*)(uint64_t) noexcept;fr
 template struct SourceMemberAccess<LoopMember,&NativeSourceBinding::PreviewLoop>;
 struct EpochMember {using type=uint64_t NativeSourceBinding::*;friend type SourceMember(EpochMember);};
 template struct SourceMemberAccess<EpochMember,&NativeSourceBinding::epoch_>;
+struct RunMember {using type=void(NativeSourceBinding::*)(RuntimeSession*,uint64_t);friend type SourceMember(RunMember);};
+template struct SourceMemberAccess<RunMember,&NativeSourceBinding::Run>;
+struct OriginalInput {
+    NativeSourceBinding source;unsigned polled=0,copied=0;
+    OriginalInput(){
+        auto& config=source.*SourceMember(ConfigMember{});config.source_id=77;
+        source.*SourceMember(ClockMember{})=InputClockMapping{42,1000,0,true};
+        source.*SourceMember(HandleMember{})=reinterpret_cast<HV_InputHandle>(this);
+        auto& api=source.*SourceMember(ApiMember{});api.poll=Poll;api.copy=Copy;api.state=State;
+    }
+    ~OriginalInput(){source.*SourceMember(HandleMember{})=nullptr;}
+    static int HV_INPUT_CALL Poll(HV_InputHandle handle,uint64_t,HV_InputFrameInfo* info){
+        auto& self=*reinterpret_cast<OriginalInput*>(handle);
+        if(++self.polled>2){self.source.*SourceMember(RunningMember{})=false;return HV_INPUT_NO_FRAME;}
+        *info={sizeof(*info),1};info->sequence=self.polled;info->generation=2;
+        info->width=self.polled==1?4:3840;info->height=self.polled==1?2:2160;
+        info->stride_bytes=info->width*4;info->rgba_bytes=info->stride_bytes*info->height;
+        info->decoded_timestamp_us=self.polled*33333;info->clock_id=42;
+        info->clock_domain=HV_INPUT_CLOCK_NATIVE_MONOTONIC;info->row_origin=HV_INPUT_ROW_TOP_LEFT;
+        return HV_INPUT_OK;
+    }
+    static int HV_INPUT_CALL Copy(HV_InputHandle handle,uint64_t sequence,void* pixels,uint32_t capacity,HV_InputFrameInfo* info){
+        auto& self=*reinterpret_cast<OriginalInput*>(handle);if(capacity<info->rgba_bytes)return HV_INPUT_BUFFER_TOO_SMALL;
+        std::memset(pixels,int(sequence),info->rgba_bytes);++self.copied;return HV_INPUT_OK;
+    }
+    static int HV_INPUT_CALL State(HV_InputHandle,uint32_t* state){*state=HV_INPUT_STREAMING;return HV_INPUT_OK;}
+};
 struct SourceOnlyProgress {
     NativeSourceBinding source;uint64_t generation=2;
     SourceOnlyProgress(){
@@ -168,6 +196,54 @@ TEST(NativeSourceBinding, UnknownClockAndUnsupportedSourceAreRejected) {
     EXPECT_FALSE(CopySourceConfig(source,copy,error));EXPECT_NE(error.find("RTSP"),std::string::npos);
     source.url_utf8="rtsp://127.0.0.1/test";source.transport_tcp=1;
     EXPECT_TRUE(CopySourceConfig(source,copy,error))<<error;EXPECT_NE(copy.source_id,0u);
+}
+TEST(NativeSourceBinding, OriginalSourceDimensionsRequirePairedZeroAndKeepExplicitCaps) {
+    HV_RuntimeSourceV1 source{sizeof(source),1};source.kind=HV_NATIVE_SOURCE_RTSP;
+    source.url_utf8="rtsp://127.0.0.1/original";source.transport_tcp=1;
+    OwnedSourceConfig copy;std::string error;
+    ASSERT_TRUE(CopySourceConfig(source,copy,error))<<error;
+    EXPECT_EQ(copy.width,0u);EXPECT_EQ(copy.height,0u);
+    source.width=1920;EXPECT_FALSE(CopySourceConfig(source,copy,error));
+    source.width=0;source.height=1080;EXPECT_FALSE(CopySourceConfig(source,copy,error));
+    source.width=1920;ASSERT_TRUE(CopySourceConfig(source,copy,error))<<error;
+    EXPECT_EQ(copy.width,1920u);EXPECT_EQ(copy.height,1080u);
+}
+TEST(NativeSourceBinding, OriginalIngestionGrowsOnActualGeometryBeforeRuntimeAdmission) {
+    OriginalInput input;RuntimeSession not_started;
+    input.source.*SourceMember(RunningMember{})=true;
+    (input.source.*SourceMember(RunMember{}))(&not_started,3);
+    EXPECT_EQ(input.copied,2u)<<"Both real source sizes must be copied before runtime admission";
+    const auto& pixels=input.source.*SourceMember(PixelsMember{});
+    ASSERT_GE(pixels.size(),3840u*2160u*4u);EXPECT_EQ(pixels.front(),2);EXPECT_EQ(pixels.back(),2);
+    EXPECT_EQ(input.source.Progress().frames,0u)<<"An unopened runtime must not fabricate accepted input/results";
+}
+TEST(NativeSourceBinding, OriginalCpuPreviewAllocatesActual4KWithoutAnInferenceResult) {
+    CpuPreview preview;
+    preview.input.width=3840;preview.input.height=2160;
+    preview.input.stride_bytes=3840*4;preview.input.rgba_bytes=3840*2160*4;
+    (preview.source.*SourceMember(PixelsMember{})).resize(preview.input.rgba_bytes);
+    ASSERT_TRUE(preview.Mailbox().AdmitSourceGeneration(77,2,3));
+    preview.Publish(1);
+    auto held=preview.Mailbox().AcquireLatest(0);ASSERT_TRUE(held);
+    EXPECT_EQ(held.Info().width,3840u);EXPECT_EQ(held.Info().height,2160u);
+    EXPECT_EQ(held.Info().rgba_bytes,3840u*2160u*4u);
+    EXPECT_EQ(held.Data()[held.Info().rgba_bytes-1],1);
+    EXPECT_EQ(preview.source.Progress().frames,0u)<<"No inference/analysis claim gates this publication";
+    preview.Publish(2);
+    EXPECT_EQ(held.Data()[0],1)<<"A borrowed full-source preview must remain immutable";
+    auto latest=preview.Mailbox().AcquireLatest(1);ASSERT_TRUE(latest);EXPECT_EQ(latest.Info().frame_id,2u);
+}
+TEST(NativeSourceBinding, CpuPreviewGeometryChangeWaitsForHeldPixelsAndThenUsesActualSize) {
+    CpuPreview preview;ASSERT_TRUE(preview.Mailbox().AdmitSourceGeneration(77,2,3));
+    preview.Publish(1);auto held=preview.Mailbox().AcquireLatest(0);ASSERT_TRUE(held);
+    preview.input.width=1920;preview.input.height=1080;
+    preview.input.stride_bytes=1920*4;preview.input.rgba_bytes=1920*1080*4;
+    (preview.source.*SourceMember(PixelsMember{})).resize(preview.input.rgba_bytes);
+    preview.Publish(2);EXPECT_EQ(held.Data()[0],1);EXPECT_EQ(held.Info().width,4u);
+    held.Reset();preview.Publish(3);
+    auto latest=preview.Mailbox().AcquireLatest(1);ASSERT_TRUE(latest);
+    EXPECT_EQ(latest.Info().width,1920u);EXPECT_EQ(latest.Info().height,1080u);
+    EXPECT_EQ(latest.Data()[latest.Info().rgba_bytes-1],3);
 }
 TEST(NativeSourceBinding, CpuPreviewFollowsReadyFramesWithoutFiveFpsThrottle) {
     CpuPreview preview;ASSERT_TRUE(preview.Mailbox().Configure(32));
