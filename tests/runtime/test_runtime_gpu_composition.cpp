@@ -1,5 +1,6 @@
 #include "host/gpu_runtime_host.h"
 #include "composition/session.h"
+#include "gpu/android/consumer_image_source.h"
 #include <gtest/gtest.h>
 #include <atomic>
 #include <chrono>
@@ -24,6 +25,8 @@ struct FakeSource final : GpuConsumerSource {
     bool stale_token = false;
     int64_t frame_id = 88, timestamp_us = 1000;
     int64_t capture_steady_us = 0;
+    ConsumerImageSource* producer = nullptr;
+    FrameEnvelope supplied_envelope;
     AhbSlotRing ring{SlotLifecycle{this,Create,Drain}};
     static bool Create(void*,uint32_t,const SlotContract&,SlotResources&) noexcept { return true; }
     static void Drain(void*,uint32_t,AhbSlotState,SlotResources&,SyncFd&) noexcept {}
@@ -48,6 +51,11 @@ struct FakeSource final : GpuConsumerSource {
         frame.token = token;
         if(stale_token)--frame.token.generation;
         frame.metadata = metadata;
+        if(producer){
+            frame.producer=producer;frame.source_envelope=supplied_envelope;
+            frame.metadata.source_id=supplied_envelope.source_id;
+            frame.metadata.config_epoch=supplied_envelope.config_epoch;
+        }
         frame.ahb_buffer = 42;
         if(ring.TakeProducerFence(token,frame.producer_fd)!=SlotResult::Ok)return SlotResult::Invalid;
         ++claims;
@@ -287,6 +295,63 @@ TEST(RuntimeGpuComposition, PreservesPairedCaptureClockAndRegionInV3FrameExtensi
     ASSERT_TRUE(Await([&]{return fake.processes.load()==1;}));
     EXPECT_EQ(fake.observed_capture_steady.load(),7654321);
     EXPECT_EQ(fake.observed_region_revision.load(),19);
+    host.Stop();active=nullptr;
+}
+
+TEST(RuntimeGpuComposition, NativeEnvelopeSurvivesPublicationWithDistinctCaptureAndSubmitClocks) {
+    SnapshotProfileFixture files;FakeSource source;FakePipeline fake;fake.snapshot_mode=true;active=&fake;
+    BridgeConsumerImageSource producer(nullptr);source.producer=&producer;
+    const auto now=std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    const auto capture=now-100000,submitted=now-30000;
+    source.frame_id=1;source.timestamp_us=capture;source.capture_steady_us=capture;
+    auto& envelope=source.supplied_envelope;
+    envelope.source_id=73;envelope.generation=source.Generation();envelope.frame_id=1;envelope.config_epoch=5;
+    envelope.width=320;envelope.height=240;envelope.crop={12,18,280,200};
+    envelope.format=HV_PIXEL_RGBA32;envelope.plane_count=1;envelope.planes[0]={0,1280,4};
+    envelope.source_timestamp={capture,1,FrameClockDomain::kRuntimeMonotonic,FrameTimeSource::kDecoded,true};
+    envelope.submitted={submitted,1,FrameClockDomain::kRuntimeMonotonic,FrameTimeSource::kSubmitted,true};
+    envelope.presentation={3333,0,FrameClockDomain::kMediaPresentation,FrameTimeSource::kPresentation,true};
+    RuntimeSession runtime;std::string error;
+    ASSERT_TRUE(runtime.Start(files.root,"android-ncnn-vulkan",1,error,QueryFixtureGpu,&source))<<error;
+    source.ready=true;
+    auto entry=std::make_unique<ObservationEntry>();
+    ASSERT_TRUE(Await([&]{return runtime.ReadObservations(0,entry.get(),1).written==1;}))<<runtime.LastError();
+    EXPECT_EQ(entry->envelope.source_id,73u);EXPECT_EQ(entry->envelope.config_epoch,5u);
+    EXPECT_EQ(entry->envelope.width,320);EXPECT_EQ(entry->envelope.height,240);
+    EXPECT_EQ(entry->envelope.crop.x,12);EXPECT_EQ(entry->envelope.crop.y,18);
+    EXPECT_EQ(entry->envelope.crop.width,280);EXPECT_EQ(entry->envelope.crop.height,200);
+    EXPECT_EQ(entry->envelope.planes[0].row_stride_bytes,1280);
+    EXPECT_EQ(entry->envelope.presentation.microseconds,3333);
+    EXPECT_EQ(entry->envelope.submitted.microseconds,submitted);
+    EXPECT_EQ(entry->envelope.submitted.source,FrameTimeSource::kSubmitted);
+    EXPECT_EQ(runtime.StatsV2().capture_timestamp_us,capture);
+    EXPECT_GE(entry->published.microseconds,submitted);
+    EXPECT_EQ(runtime.StatsV2().fresh_observation_frames,1u);
+    EXPECT_EQ(runtime.ErrorCount(),0u);active=nullptr;
+}
+
+TEST(RuntimeGpuComposition, MissingSubmissionClockUsesActualHostAdmission) {
+    FakeSource source;FakePipeline fake;active=&fake;fake.pause_run=true;
+    GpuRuntimeHost host(source);auto module=Module();
+    struct Unpause{FakePipeline& fake;~Unpause(){fake.pause_run=false;}} unpause{fake};
+    host.SetCompletionNotifier(nullptr,[](void*){});
+    HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,2};HV_HostServicesV3 services{};
+    std::string error;ASSERT_TRUE(host.Start(module,services,config,error))<<error;
+    const auto before=std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    source.capture_steady_us=before-100000;source.ready=true;
+    ASSERT_TRUE(Await([&]{return fake.entered.load();}));
+    const auto entered=std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));fake.pause_run=false;
+    auto completion=std::make_unique<GpuRuntimeHost::Completion>();
+    ASSERT_TRUE(Await([&]{return host.TryTakeCompletion(*completion);}));
+    const auto& submitted=completion->envelope.submitted;
+    ASSERT_TRUE(submitted.valid);EXPECT_EQ(submitted.domain,FrameClockDomain::kRuntimeMonotonic);
+    EXPECT_EQ(submitted.source,FrameTimeSource::kSubmitted);
+    EXPECT_GE(submitted.microseconds,before);EXPECT_LE(submitted.microseconds,entered);
+    EXPECT_EQ(completion->envelope.crop.width,320);EXPECT_EQ(completion->envelope.crop.height,240);
     host.Stop();active=nullptr;
 }
 

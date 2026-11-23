@@ -51,6 +51,8 @@ public:
         HV_GpuObservationFrameV3 frame{};
         FrameEnvelope envelope;
         PipelineDiagnostics diagnostics{};
+        // Runtime monotonic source capture proof, distinct from Host admission.
+        int64_t capture_steady_us = 0;
     };
     void SetCompletionNotifier(void* context, void (*notify)(void*)) { completions_.Configure(context,notify); }
     bool TryTakeCompletion(Completion& completion) { return completions_.TryTake(completion); }

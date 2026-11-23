@@ -154,6 +154,8 @@ void GpuRuntimeHost::Run(uint32_t index) {
         const auto generation = frame.metadata.generation;
         const auto source_id=frame.metadata.source_id,config_epoch=frame.metadata.config_epoch;
         const auto source_envelope=frame.producer?frame.source_envelope:FrameEnvelope{};
+        const auto admitted_us=std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
         if (!frame.claimed || !frame.ahb_buffer || !generation ||
             frame.token.generation != generation ||
             frame.token.frame_id != frame.metadata.frame_id ||
@@ -220,17 +222,21 @@ void GpuRuntimeHost::Run(uint32_t index) {
         }
         Completion completion;
         completion.frame=next;
+        completion.capture_steady_us=input.capture_steady_us;
         completion.envelope=source_envelope;
         auto& envelope=completion.envelope;
         envelope.source_id=source_id;envelope.config_epoch=config_epoch;
         envelope.generation=generation;envelope.frame_id=input.v1.frame_id;
         envelope.region_revision=revision;
-        envelope.width=input.v1.width;envelope.height=input.v1.height;
-        envelope.crop={0,0,input.v1.width,input.v1.height};
-        envelope.format=HV_PIXEL_RGBA32;envelope.completion=FrameCompletion::kReady;
+        if(envelope.width<=0)envelope.width=input.v1.width;
+        if(envelope.height<=0)envelope.height=input.v1.height;
+        if(!envelope.crop.IsSpecified())envelope.crop={0,0,envelope.width,envelope.height};
+        if(!envelope.format)envelope.format=HV_PIXEL_RGBA32;
+        envelope.completion=FrameCompletion::kReady;
         if(!envelope.source_timestamp.valid)
             envelope.source_timestamp={input.v1.timestamp_us,0,FrameClockDomain::kUnspecified,FrameTimeSource::kCaller,true};
-        envelope.submitted={input.capture_steady_us,1,FrameClockDomain::kRuntimeMonotonic,FrameTimeSource::kSubmitted,input.capture_steady_us>0};
+        if(!envelope.submitted.valid)
+            envelope.submitted={admitted_us,1,FrameClockDomain::kRuntimeMonotonic,FrameTimeSource::kSubmitted,true};
         CopyPipelineDiagnostics(instance,completion.diagnostics);
         publish.unlock();
         completions_.Publish(completion);

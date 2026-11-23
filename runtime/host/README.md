@@ -40,6 +40,12 @@ Full completion storage pauses native job admission; a Unity reader is never par
 of this handoff. Stop wakes credit waiters before joining producers. Standalone
 Hosts without a notifier keep the existing latest-result copy behavior.
 
+GPU completions retain supplied image dimensions, explicit crop, image layout
+and valid submission timestamps. Missing fields are filled from the admitted
+image contract; a missing submission clock is stamped at actual Host admission.
+The native capture-clock proof travels separately in the completion and feeds
+age/provenance checks, so capture is never relabeled as submission time.
+
 ## Allowed dependencies
 Plugin ABI, common frame buffer/latest-frame slot, C++ standard library, Windows loader,
 vendored JSON parser and SHA-256 implementation for configuration validation only.

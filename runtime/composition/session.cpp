@@ -170,7 +170,7 @@ bool RuntimeSession::SetRegions(const HV_Rect* regions,uint32_t count,int64_t re
 bool RuntimeSession::AcceptGpuObservation(const GpuRuntimeHost::Completion& completion){
  const auto& gpu_frame=completion.frame;
  const auto& envelope=completion.envelope;
- const auto revision=envelope.region_revision,capture_steady_us=envelope.submitted.microseconds;
+ const auto revision=envelope.region_revision,capture_steady_us=completion.capture_steady_us;
  if(revision!=revision_){error_="GPU observation rejected: stale Region revision";return false;}
  if(envelope.source_id!=active_envelope_.source_id||envelope.generation!=active_envelope_.generation||
     envelope.config_epoch!=active_envelope_.config_epoch){
