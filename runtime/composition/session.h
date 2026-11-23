@@ -18,6 +18,8 @@ HV_PipelineConfigV1 BuildPipelineConfig(const PipelineSelection&,int public_capa
 // The composition root registers built-ins; the generic Host never names them.
 class RuntimeSession {
 public:
+ explicit RuntimeSession(std::shared_ptr<ObservationJournal> journal={})
+  :journal_(journal?std::move(journal):std::make_shared<ObservationJournal>()){}
  ~RuntimeSession();
  // Serialized control-owner operation. Joins native owners; never call per frame.
  void Stop();
@@ -29,7 +31,7 @@ public:
  BodySnapshot Copy(int64_t sample_time,HV_RuntimeStatsV1& stats);
  HV_RuntimeStatsV2 StatsV2();
  ObservationRead ReadObservations(uint64_t cursor,ObservationEntry* output,uint32_t capacity) const {
-  return journal_.ReadAfter(cursor,output,capacity);
+  return journal_->ReadAfter(cursor,output,capacity);
  }
  void RecordSourceArrival(bool rate_limited) noexcept;
  void SetCaptureProvenance(uint32_t provenance) noexcept { capture_provenance_.store(provenance,std::memory_order_relaxed); }
@@ -73,7 +75,7 @@ private:
  uint64_t gpu_completion_rejections_=0;
  bool regions_pending_=false;
  FrameEnvelope active_envelope_;
- ObservationJournal journal_;
+ std::shared_ptr<ObservationJournal> journal_;
  FrameRateCredit body_admission_;
  HV_RuntimeStatsV1 stats_{};
  humanvision::StatsCollectorV2 stats_v2_;

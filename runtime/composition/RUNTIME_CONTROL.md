@@ -39,6 +39,13 @@ of resetting a terminal latest-frame slot or overlapping RKNN contexts.
 No publication/query lock is held during joins or driver waits. Copy and journal
 read copy into caller-owned storage; they cannot hold source credits.
 
+The bounded observation journal belongs to the controller for its entire
+lifetime. Session rebuilds for Pause/Resume, source changes and reconfiguration
+share that journal; its monotonic cursor never resets. Retained observations
+remain readable while paused/stopped and carry their original configuration
+epoch. Independent readers retain their own cursors and receive explicit
+overrun/lost counts when more than64 entries have replaced their history.
+
 Request deadlines do not imply hardware completion. A blocked owner reports
 ErrorRetiring/Timeout, keeps its handle and libraries, and prohibits conflicting
 replacement contexts. TryRelease returns BUSY until Close has actually retired

@@ -15,7 +15,7 @@ bool CopyRuntimeConfig(const HV_RuntimeControllerConfigV1&,OwnedRuntimeConfig&,s
 class RuntimeController {
 public:
     // Composition dependency seam. The public C API always uses the built-in factory.
-    using SessionFactory=std::function<std::unique_ptr<RuntimeSession>(const OwnedRuntimeConfig&,GpuConsumerSource*,std::string&)>;
+    using SessionFactory=std::function<std::unique_ptr<RuntimeSession>(const OwnedRuntimeConfig&,GpuConsumerSource*,std::shared_ptr<ObservationJournal>,std::string&)>;
     enum class Operation {Start,Source,Pause,Resume,Stop,Reconfigure,Close};
     static std::unique_ptr<RuntimeController> Create(const HV_RuntimeControllerConfigV1&,std::string&,SessionFactory={});
     ~RuntimeController(); // only after IsRetired; public TryRelease enforces this
@@ -44,6 +44,7 @@ private:
     std::condition_variable wake_;
     OwnedRuntimeConfig config_;
     OwnedSourceConfig source_config_;
+    std::shared_ptr<ObservationJournal> journal_=std::make_shared<ObservationJournal>();
     SessionFactory factory_;
     std::unique_ptr<RuntimeSession> session_;
     std::unique_ptr<NativeSourceBinding> source_;

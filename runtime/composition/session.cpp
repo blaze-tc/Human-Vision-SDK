@@ -369,7 +369,7 @@ void RuntimeSession::PublishObservation(ObservationKind kind,const FrameEnvelope
      std::chrono::steady_clock::now().time_since_epoch()).count();
  entry.published={now,1,FrameClockDomain::kRuntimeMonotonic,FrameTimeSource::kPublished,true};
  const auto snapshot=services_.Raw();entry.body_count=snapshot.count;entry.bodies=snapshot.bodies;
- journal_.Publish(entry);
+ journal_->Publish(entry);
 }
 void RuntimeSession::DrainCompletions(){
  {

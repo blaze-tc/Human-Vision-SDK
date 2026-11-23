@@ -99,7 +99,7 @@ TEST(RuntimeControl, CloseDuringBlockedStartTimesOutWithoutReleasingOwner) {
     auto config=Config();config.retirement_timeout_ms=20;
     std::promise<void> entered,unblock;auto gate=unblock.get_future().share();std::string error;
     auto controller=humanvision::runtime::RuntimeController::Create(config,error,
-        [&](const humanvision::runtime::OwnedRuntimeConfig&,humanvision::runtime::GpuConsumerSource*,std::string& message){
+        [&](const humanvision::runtime::OwnedRuntimeConfig&,humanvision::runtime::GpuConsumerSource*,std::shared_ptr<humanvision::runtime::ObservationJournal>,std::string& message){
             entered.set_value();gate.wait();message="Injected vendor initialization failure";
             return std::unique_ptr<humanvision::runtime::RuntimeSession>{};});
     ASSERT_TRUE(controller)<<error;
@@ -128,7 +128,7 @@ TEST(RuntimeControl, StopQueuedBehindBlockedStartRetainsOwnerUntilReturn) {
     auto config=Config();config.retirement_timeout_ms=20;
     std::promise<void> entered,unblock;auto gate=unblock.get_future().share();std::string error;
     auto controller=humanvision::runtime::RuntimeController::Create(config,error,
-        [&](const humanvision::runtime::OwnedRuntimeConfig&,humanvision::runtime::GpuConsumerSource*,std::string& message){
+        [&](const humanvision::runtime::OwnedRuntimeConfig&,humanvision::runtime::GpuConsumerSource*,std::shared_ptr<humanvision::runtime::ObservationJournal>,std::string& message){
             entered.set_value();gate.wait();message="Injected vendor failure";
             return std::unique_ptr<humanvision::runtime::RuntimeSession>{};});
     ASSERT_TRUE(controller);uint64_t start=0,stop=0,close=0;
@@ -162,4 +162,67 @@ TEST(RuntimeControl, NativeSourceRejectsSecondUnityProducer) {
     HV_RuntimeCapabilitiesV1 capabilities{sizeof(capabilities),1};ASSERT_EQ(api.GetCapabilities(h,&capabilities),0);
     EXPECT_EQ(capabilities.capability_level,HV_CAPABILITY_INDEPENDENT_PIPELINE);
     EXPECT_STREQ(capabilities.source,"native-rtsp");EXPECT_EQ(capabilities.uses_gpu_image_service,0u);
+}
+TEST(RuntimeControl, JournalCursorSurvivesRealCpuPauseResumeWithIndependentReaders) {
+    const auto api=Api();auto config=Config();HV_RuntimeControllerHandle h=nullptr;char error[512]{};
+    ASSERT_EQ(api.CreateDeferred(&config,&h,error,sizeof(error)),0);
+    struct Cleanup{const HV_RuntimeControlApiV1& api;HV_RuntimeControllerHandle h;~Cleanup(){Close(api,h);}} cleanup{api,h};
+    uint64_t request=0;ASSERT_EQ(api.RequestStart(h,&request),0);
+    ASSERT_EQ(Wait(api,h,request).status,HV_REQUEST_SUCCEEDED);
+    HV_RuntimeStatsV3 before{sizeof(before),3};ASSERT_EQ(api.GetStatsV3(h,&before),0);
+    auto pixels=humanvision::test::ReadBytes(HV_TEST_RAW_IMAGE_PATH);
+    auto observations=std::make_unique<HV_RuntimeObservationV1[]>(64);
+    HV_RuntimeObservationReadV1 read{sizeof(read),1};uint64_t cursor=0;int64_t frame_id=0;
+    bool real_body=false;
+    const auto input_deadline=std::chrono::steady_clock::now()+std::chrono::seconds(30);
+    auto next_submit=std::chrono::steady_clock::now();
+    // These100+ entries are produced by the real CPU pipeline, not inserted into
+    // the journal. The source is paced above the profile's30FPS admission period.
+    while(cursor<100&&std::chrono::steady_clock::now()<input_deadline) {
+        std::this_thread::sleep_until(next_submit);
+        const auto frame=humanvision::test::MakeBgrFrame(pixels,218,346,++frame_id,HV_RuntimeClockUs());
+        ASSERT_EQ(api.Submit(h,&frame),0);next_submit=std::chrono::steady_clock::now()+std::chrono::milliseconds(35);
+        const auto completion_deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+        do {
+            read={sizeof(read),1};ASSERT_EQ(api.ReadObservations(h,cursor,observations.get(),64,&read),0);
+            if(read.written) {
+                for(uint32_t i=0;i<read.written;++i)real_body|=observations[i].kind==0&&observations[i].body_count>0;
+                cursor=read.next_cursor;break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }while(std::chrono::steady_clock::now()<completion_deadline);
+    }
+    ASSERT_GE(cursor,100u);ASSERT_TRUE(real_body);
+    read={sizeof(read),1};ASSERT_EQ(api.ReadObservations(h,0,observations.get(),1,&read),0);
+    const auto lost_before=read.lost_count;ASSERT_GT(lost_before,0u);
+    ASSERT_EQ(api.RequestPause(h,&request),0);ASSERT_EQ(Wait(api,h,request).state,HV_CONTROL_PAUSED);
+    read={sizeof(read),1};EXPECT_EQ(api.ReadObservations(h,0,observations.get(),1,&read),0);
+    EXPECT_GT(read.written,0u); // Retained history can be read without an active Session.
+    ASSERT_EQ(api.RequestResume(h,&request),0);ASSERT_EQ(Wait(api,h,request).state,HV_CONTROL_RUNNING);
+    HV_RuntimeStatsV3 after{sizeof(after),3};ASSERT_EQ(api.GetStatsV3(h,&after),0);
+    ASSERT_GT(after.config_epoch,before.config_epoch);
+    const auto frame=humanvision::test::MakeBgrFrame(pixels,218,346,10000,HV_RuntimeClockUs());
+    ASSERT_EQ(api.Submit(h,&frame),0);
+    uint64_t second_cursor=100;bool first_saw_new=false,second_saw_new=false;
+    const auto resume_deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+    do {
+        for(int reader=0;reader<2;++reader) {
+            auto& position=reader?second_cursor:cursor;
+            read={sizeof(read),1};ASSERT_EQ(api.ReadObservations(h,position,observations.get(),64,&read),0);
+            if(read.written) {
+                EXPECT_GT(read.next_cursor,position);
+                for(uint32_t i=0;i<read.written;++i)if(observations[i].config_epoch==after.config_epoch) {
+                    EXPECT_GT(observations[i].sequence,100u);
+                    if(reader)second_saw_new=true;else first_saw_new=true;
+                }
+                position=read.next_cursor;
+            }
+        }
+        if(first_saw_new&&second_saw_new)break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }while(std::chrono::steady_clock::now()<resume_deadline);
+    EXPECT_TRUE(first_saw_new);EXPECT_TRUE(second_saw_new);
+    read={sizeof(read),1};ASSERT_EQ(api.ReadObservations(h,0,observations.get(),1,&read),0);
+    EXPECT_GE(read.lost_count,lost_before);
+    ASSERT_EQ(api.GetStatsV3(h,&after),0);EXPECT_GE(after.journal_overruns,lost_before+read.lost_count);
 }

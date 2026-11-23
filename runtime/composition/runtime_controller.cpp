@@ -36,8 +36,8 @@ std::unique_ptr<RuntimeController> RuntimeController::Create(const HV_RuntimeCon
 }
 RuntimeController::RuntimeController(OwnedRuntimeConfig config,SessionFactory factory)
     :config_(std::move(config)),factory_(std::move(factory)) {
-    if(!factory_)factory_=[](const OwnedRuntimeConfig& c,GpuConsumerSource* source,std::string& error) {
-        auto session=std::make_unique<RuntimeSession>();
+    if(!factory_)factory_=[](const OwnedRuntimeConfig& c,GpuConsumerSource* source,std::shared_ptr<ObservationJournal> journal,std::string& error) {
+        auto session=std::make_unique<RuntimeSession>(std::move(journal));
         if(!session->Start(std::filesystem::u8path(c.root),c.profile,c.capacity,error,nullptr,source))return std::unique_ptr<RuntimeSession>{};
         return session;
     };
@@ -98,7 +98,7 @@ bool RuntimeController::Start(std::string& error) {
     if(!source&&config.policy==HV_EXECUTION_INDEPENDENT_PREFERRED) {
         std::lock_guard<std::mutex> lock(mutex_);fallback_="No native source was selected; compatible Unity input remains active";
     }
-    auto session=factory_(config,source?source->GpuSource():nullptr,error);
+    auto session=factory_(config,source?source->GpuSource():nullptr,journal_,error);
     if(!session)return false;
     if(source&&!source->StartIngestion(*session,epoch,error))return false;
     {std::lock_guard<std::mutex> lock(mutex_);
@@ -169,7 +169,8 @@ int RuntimeController::Submit(const HV_VideoFrame* frame) {
     if(!frame)return HV_ERR_INVALID_ARGUMENT;std::lock_guard<std::mutex> lock(mutex_);
     if(!session_||!admission_)return HV_ERR_NOT_INITIALIZED;
     if(source_)return HV_ERR_INVALID_ARGUMENT; // one ingestion owner
-    std::string error;const bool ok=session_->Submit(*frame,error);if(!ok)error_=error;return ok?0:HV_ERR_INVALID_ARGUMENT;
+    FrameEnvelope envelope;envelope.config_epoch=epoch_;
+    std::string error;const bool ok=session_->Submit(*frame,envelope,error);if(!ok)error_=error;return ok?0:HV_ERR_INVALID_ARGUMENT;
 }
 int RuntimeController::SetRegions(const HV_Rect* regions,uint32_t count,int64_t revision) {
     std::lock_guard<std::mutex> lock(mutex_);if(!session_||!admission_)return HV_ERR_NOT_INITIALIZED;
@@ -218,9 +219,8 @@ int RuntimeController::Stats(HV_RuntimeStatsV3* out) {
 int RuntimeController::ReadObservations(uint64_t cursor,HV_RuntimeObservationV1* entries,uint32_t capacity,HV_RuntimeObservationReadV1* result) {
     if(!result||result->struct_size<sizeof(*result)||result->api_version!=1||(capacity&&!entries)||capacity>64)return HV_ERR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(mutex_);*result={};result->struct_size=sizeof(*result);result->api_version=1;result->next_cursor=cursor;
-    if(!session_||!admission_)return HV_CONTROL_NO_DATA;
     // One bounded scratch record on stack; callers can batch up to64 without allocations.
-    for(uint32_t i=0;i<capacity;++i){ObservationEntry entry;const auto read=session_->ReadObservations(result->next_cursor,&entry,1);
+    for(uint32_t i=0;i<capacity;++i){ObservationEntry entry;const auto read=journal_->ReadAfter(result->next_cursor,&entry,1);
         result->lost_count+=read.lost_count;if(!read.written)break;
         auto& out=entries[i];out={};out.struct_size=sizeof(out);out.api_version=1;
         out.kind=entry.kind==ObservationKind::Body?0:1;out.body_count=entry.body_count;
