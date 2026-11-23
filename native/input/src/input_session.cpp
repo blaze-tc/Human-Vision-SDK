@@ -1,6 +1,9 @@
 #include "input_internal.h"
+#include "humanvision_input_native.h"
+#include <cstdio>
 #ifdef __ANDROID__
 #include "android/input_vulkan_private.h"
+#include "android/native_vulkan_image_service.h"
 #include "android_input_vulkan.h"
 #endif
 #include <cstring>
@@ -84,6 +87,9 @@ void Session::Run() noexcept {
     wake.wait_for(lock, std::chrono::milliseconds(reconnect_delay_ms),
                   [this] { return stop.load(); });
   }
+#ifdef __ANDROID__
+  if(native_output)native_output->Close();
+#endif
   worker_done = true;
 }
 } // namespace hvinput
@@ -98,7 +104,7 @@ bool Retired(HV_InputHandle h) {
 #else
   return h->active_copies == 0 && h->worker_done
 #ifdef __ANDROID__
-         && hvinput::InputGpuRetired(h)
+         && (h->native_output ? h->native_output->Retired() : hvinput::InputGpuRetired(h))
 #endif
          ;
 #endif
@@ -125,8 +131,8 @@ HV_INPUT_API int HV_INPUT_CALL HV_Input_QueryClock(HV_InputClockInfo *p) {
   p->reserved = 0;
   return 0;
 }
-HV_INPUT_API int HV_INPUT_CALL HV_Input_Open(const HV_InputOptions *o,
-                                             HV_InputHandle *out) {
+static int OpenInput(const HV_InputOptions *o, HV_InputHandle *out,
+    const HV_InputNativeOptionsV1 *native, char *error, uint32_t capacity) {
   if (!out)
     return HV_INPUT_INVALID;
   *out = nullptr;
@@ -156,13 +162,21 @@ HV_INPUT_API int HV_INPUT_CALL HV_Input_Open(const HV_InputOptions *o,
     s->info.decode_mode = 0; // GPU PRIVATE source; no CPU RGBA contract.
 #endif
     hvinput::InstallSafeLog();
-    #ifdef __ANDROID__
-    if (!hvinput::BeginInputGpu(s.get())) return HV_INPUT_BUSY;
+#ifdef __ANDROID__
+    if(native) {
+      s->hardware_codec=native->hardware_avc_codec;
+      s->native_output=std::make_shared<hvinput::NativeVulkanImageService>(*s);
+      std::string detail;
+      if(!s->native_output->Open(*native,detail)) {
+        std::snprintf(error,capacity,"%s",detail.c_str());
+        return HV_INPUT_ERROR;
+      }
+    } else if (!hvinput::BeginInputGpu(s.get())) return HV_INPUT_BUSY;
 #endif
     try { s->worker = std::thread(&hvinput::Session::Run, s.get()); }
     catch (...) {
 #ifdef __ANDROID__
-      hvinput::DetachInputGpu(s.get());
+      if(!s->native_output)hvinput::DetachInputGpu(s.get());
 #endif
       throw;
     }
@@ -172,11 +186,85 @@ HV_INPUT_API int HV_INPUT_CALL HV_Input_Open(const HV_InputOptions *o,
     return HV_INPUT_ERROR;
   }
 }
+HV_INPUT_API int HV_INPUT_CALL HV_Input_Open(const HV_InputOptions *o,HV_InputHandle *out) {
+  return OpenInput(o,out,nullptr,nullptr,0);
+}
+HV_INPUT_API int HV_INPUT_CALL HV_Input_OpenNativeV1(const HV_InputNativeOptionsV1* o,
+    HV_InputHandle* out,char* error,uint32_t capacity) {
+  if(out)*out=nullptr;
+  if(!out || !error || !capacity)return HV_INPUT_INVALID;
+  error[0]=0;
+  if(!Valid(o) || !o->hardware_avc_codec || !o->hardware_avc_codec[0] ||
+     !o->width || o->width>4096 || !o->height || o->height>4096 ||
+     o->rotation_degrees>270 || o->rotation_degrees%90 || o->mirror_x>1 || o->enable_readback>1) {
+    std::snprintf(error,capacity,"invalid native output options, dimensions, transform or hardware AVC codec");
+    return HV_INPUT_INVALID;
+  }
+#ifdef __ANDROID__
+  int status=OpenInput(&o->source,out,o,error,capacity);
+  if(status!=HV_INPUT_OK && !error[0])std::snprintf(error,capacity,"native Input open failed (%d)",status);
+  return status;
+#else
+  std::snprintf(error,capacity,"native Vulkan output requires Android ARM64");
+  return HV_INPUT_ERROR;
+#endif
+}
+HV_INPUT_API int HV_INPUT_CALL HV_Input_GetNativeDeviceV1(HV_InputHandle h, HV_InputNativeDeviceV1* d) {
+#ifdef __ANDROID__
+  if(h && h->native_output && Valid(d))return h->native_output->Device(*d);
+#endif
+  return HV_INPUT_INVALID;
+}
+HV_INPUT_API int HV_INPUT_CALL HV_Input_GetNativePoolV1(HV_InputHandle h, HV_InputNativePoolV1* p) {
+#ifdef __ANDROID__
+  if(h && h->native_output && Valid(p))return h->native_output->Pool(*p);
+#endif
+  return HV_INPUT_INVALID;
+}
+HV_INPUT_API int HV_INPUT_CALL HV_Input_WaitNativeFrameV1(HV_InputHandle h,uint64_t after,uint32_t timeout,
+    HV_InputNativeFrameV1* f) {
+#ifdef __ANDROID__
+  if(h && h->native_output && Valid(f) && timeout<=60000)return h->native_output->Acquire(after,*f,timeout);
+#endif
+  return HV_INPUT_INVALID;
+}
+HV_INPUT_API int HV_INPUT_CALL HV_Input_AcquireNativeFrameV1(HV_InputHandle h,uint64_t after,HV_InputNativeFrameV1* f) {
+#ifdef __ANDROID__
+  if(h && h->native_output && Valid(f))return h->native_output->Acquire(after,*f);
+#endif
+  return HV_INPUT_INVALID;
+}
+HV_INPUT_API int HV_INPUT_CALL HV_Input_CopyNativeRgbaV1(HV_InputHandle h,uint32_t slot,uint64_t gen,uint64_t seq,
+    void* dst,uint32_t cap) {
+#ifdef __ANDROID__
+  if(h && h->native_output && dst)return h->native_output->Copy(slot,gen,seq,dst,cap);
+#endif
+  return HV_INPUT_INVALID;
+}
+HV_INPUT_API int HV_INPUT_CALL HV_Input_RequestNativeCaptureV1(HV_InputHandle h,uint64_t* id) {
+#ifdef __ANDROID__
+  if(h && h->native_output && id)return h->native_output->RequestCapture(*id);
+#endif
+  return HV_INPUT_INVALID;
+}
+HV_INPUT_API int HV_INPUT_CALL HV_Input_CopyNativeCaptureV1(HV_InputHandle h,uint64_t id,void* dst,
+    uint32_t cap,HV_InputFrameInfo* info) {
+#ifdef __ANDROID__
+  if(h && h->native_output && Valid(info))return h->native_output->CopyCapture(id,dst,cap,*info);
+#endif
+  return HV_INPUT_INVALID;
+}
+HV_INPUT_API int HV_INPUT_CALL HV_Input_ReleaseNativeFrameV1(HV_InputHandle h,uint32_t slot,uint64_t gen,uint64_t seq) {
+#ifdef __ANDROID__
+  if(h && h->native_output)return h->native_output->Release(slot,gen,seq);
+#endif
+  return HV_INPUT_INVALID;
+}
 HV_INPUT_API int HV_INPUT_CALL HV_Input_Close(HV_InputHandle h) {
   if (!h)
     return HV_INPUT_INVALID;
   #ifdef __ANDROID__
-  hvinput::CloseInputGpu(h);
+  if(h->native_output)h->native_output->Close(); else hvinput::CloseInputGpu(h);
 #endif
   h->stop = true;
   h->wake.notify_all();
@@ -193,7 +281,7 @@ HV_INPUT_API int HV_INPUT_CALL HV_Input_Release(HV_InputHandle h) {
   lock.unlock();
   h->worker.join();
 #ifdef __ANDROID__
-  hvinput::DetachInputGpu(h);
+  if(!h->native_output)hvinput::DetachInputGpu(h);
 #endif
   delete h;
   return 0;
@@ -202,6 +290,9 @@ HV_INPUT_API int HV_INPUT_CALL HV_Input_GetState(HV_InputHandle h,
                                                  uint32_t *out) {
   if (!h || !out)
     return HV_INPUT_INVALID;
+#ifdef __ANDROID__
+  if(h->native_output && h->state==HV_INPUT_FAILED){*out=HV_INPUT_FAILED;return 0;}
+#endif
   *out = h->stop ? (Retired(h) ? HV_INPUT_STOPPED : HV_INPUT_CLOSING)
                  : h->state.load();
   return 0;

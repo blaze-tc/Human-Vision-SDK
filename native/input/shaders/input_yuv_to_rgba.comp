@@ -7,9 +7,9 @@ void main() {
  ivec2 p=ivec2(gl_GlobalInvocationID.xy), size=contract.outputInfo.xy;
  if(any(greaterThanEqual(p,size)))return;
  vec2 uv=(vec2(p)+0.5)/vec2(size);
- // Normalized output rows are UnityBottomLeft; decoder crop is NativeTopLeft.
- uv.y=1.0-uv.y;
- if(contract.outputInfo.w!=0)uv.x=1.0-uv.x;
+ // Bit 1 requests native top-left rows. Unity uses bottom-left rows.
+ if((contract.outputInfo.w & 2)==0)uv.y=1.0-uv.y;
+ if((contract.outputInfo.w & 1)!=0)uv.x=1.0-uv.x;
  int rotation=contract.outputInfo.z;
  if(rotation==90)uv=vec2(uv.y,1.0-uv.x);
  else if(rotation==180)uv=1.0-uv;

@@ -1,5 +1,52 @@
 # Independent input native plugin
 
+## Autonomous Android Vulkan source
+
+The optional source ABI in `include/humanvision_input_native.h` takes the
+platform-selected hardware AVC codec, RTSP options, output dimensions, rotation,
+mirror and readback mode. Call `HV_Input_OpenNativeV1` from a control thread.
+Open checks the actual Vulkan 1.1 device and UUIDs, sampler YCbCr conversion,
+foreign ownership, external RGBA memory and bidirectional sync-fd support.
+Each live native session owns its codec, Vulkan instance, device, queue,
+worker, import cache and three analysis slots. Use `HV_Input_GetNativeDeviceV1`
+and `HV_Input_GetNativePoolV1` at startup to match the consumer device and warm
+persistent imports. The three RGBA AHB addresses stay valid until source
+release. The codec name and decoder capability selection belong to the caller.
+
+The producer wakes on decoded images and slot returns. It retains the newest
+pending decoder image while consumers hold all slots. It converts PRIVATE YCbCr
+with the same sampler and crop shader as the Unity adapter. Output rows start at
+the top. Every publication includes its decoder generation and sequence, color
+declarations, source crop, transformed dimensions, PTS availability and local
+decoder clock. A readback-enabled source copies the identical conversion target
+to persistent host-visible staging. Its fence and noncoherent invalidate must
+both succeed before publication.
+
+- `HV_Input_WaitNativeFrameV1` waits on a condition variable on the consumer
+  worker. `HV_Input_AcquireNativeFrameV1` checks immediately. Either call
+  acquires a publication exactly once and transfers the exported sync fd.
+- For GPU use, import or close that fd exactly once. Acquire the AHB image from
+  EXTERNAL_KHR in GENERAL layout, return ownership to EXTERNAL_KHR, and observe
+  the actual consumer fence before calling `HV_Input_ReleaseNativeFrameV1`.
+  A completed producer proof can be represented by fd -1. For CPU reads,
+  `HV_Input_CopyNativeRgbaV1` checks the leased slot, generation and sequence.
+- `HV_Input_RequestNativeCaptureV1` requests one full visible-crop RGBA capture
+  with the next admitted analysis frame. Its extra dispatch and staging copy
+  use that same decoded image and submission. `HV_Input_CopyNativeCaptureV1`
+  with a null destination returns the required bytes and exact frame metadata
+  once ready. A successful copy consumes the capture. Repeated requests are
+  bounded to one outstanding capture. During the caller's full-resolution
+  memcpy, analysis can keep advancing.
+- `HV_Input_Close` stops admission and wakes waiters. Outstanding completed
+  frames can still be released. `HV_Input_Release` returns BUSY until the
+  decoder, producer and all leases retire. A failed post-submit fence with
+  unproven completion quarantines the owned hardware resources through process
+  exit. The failure string remains available from `HV_Input_GetLastError`.
+
+The existing Windows source exposes top-left CPU frames through
+`HV_Input_Open`, `HV_Input_PollFrame` and `HV_Input_CopyRgba`.
+Windows reports an explicit platform error for the Android Vulkan open.
+
 ## Model-sized Android output and RTSP probing
 
 An Android Vulkan source can bind an optional three-texture `512×288` analysis

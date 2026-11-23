@@ -4,6 +4,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -18,7 +19,12 @@ namespace hvinput {
 int64_t NowUs();
 uint64_t ClockId();
 void InstallSafeLog();
+class NativeVulkanImageService;
 struct Session {
+#ifdef __ANDROID__
+  std::shared_ptr<NativeVulkanImageService> native_output;
+  std::string hardware_codec;
+#endif
   std::string url;
   uint32_t max_width = 0, max_height = 0, timeout_ms = 0,
            reconnect_delay_ms = 0;

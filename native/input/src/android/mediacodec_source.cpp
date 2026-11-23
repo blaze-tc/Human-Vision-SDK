@@ -1,6 +1,7 @@
 #include "input_internal.h"
 #include "android_input_gpu.h"
 #include "input_vulkan_private.h"
+#include "native_vulkan_image_service.h"
 #include "input_h264_color.h"
 #include "input_frame_ring.h"
 #include "input_diagnostic_sampling.h"
@@ -74,6 +75,7 @@ void InstallSafeLog() {
   std::call_once(once,[]{av_log_set_callback(SafeLog); avformat_network_init();});
 }
 struct Resources {
+  NativeVulkanImageService* output=nullptr;
   AVFormatContext* format=avformat_alloc_context();
   AVPacket* packet=av_packet_alloc();
   AImageReader* reader=nullptr;
@@ -81,7 +83,7 @@ struct Resources {
   AMediaFormat* configuration=nullptr;
   bool started=false;
   ~Resources() {
-    DrainColorImagesBeforeReaderClose();
+    if(output)output->DrainReader(); else DrainColorImagesBeforeReaderClose();
     if(codec) { if(started) AMediaCodec_stop(codec); AMediaCodec_delete(codec); }
     if(configuration) AMediaFormat_delete(configuration);
     if(reader) AImageReader_delete(reader);
@@ -90,10 +92,12 @@ struct Resources {
   }
 };
 void Session::Decode() {
-  const bool production=InputGpuProduction(this);
-  if(production)PrepareInputGpuGeneration(this);
+  const bool native=bool(native_output);
+  const bool production=native || InputGpuProduction(this);
+  if(production && !native)PrepareInputGpuGeneration(this);
   std::string name;
-  {std::lock_guard<std::mutex> lock(gate_mutex);name=codec_name;}
+  if(native)name=hardware_codec;
+  else {std::lock_guard<std::mutex> lock(gate_mutex);name=codec_name;}
   char model[PROP_VALUE_MAX]{}, api[PROP_VALUE_MAX]{};
   if(production && name=="OMX.hisi.video.decoder.avc") {
     __system_property_get("ro.product.model",model);
@@ -102,7 +106,7 @@ void Session::Decode() {
   const int reader_depth=AndroidPrivateReaderDepth(model,api,name,production);
   const bool limited_reader=reader_depth<kAndroidPrivateReaderDepth;
   constexpr const char* output_mode="AImageReader_PRIVATE_GPU_SAMPLED_IMAGE";
-  Resources r;
+  Resources r; r.output=native_output.get();
   auto fail=[&,this](const char* stage,int code){SetError(stage,code); state=HV_INPUT_FAILED;
     __android_log_print(ANDROID_LOG_ERROR,"HVInputGate","capability_result=FAIL stage=%s code=%d decoder=%s output_mode=%s reader_max_images=%d",stage,code,name.c_str(),output_mode,reader_depth); stop=true;};
   if(!tcp) {fail("Android capability gate requires RTSP TCP",AVERROR(EINVAL));return;}
@@ -119,16 +123,19 @@ void Session::Decode() {
   if(stream<0 || r.format->streams[stream]->codecpar->codec_id!=AV_CODEC_ID_H264) {fail("RTSP stream must be H264",AVERROR_INVALIDDATA);return;}
   auto* params=r.format->streams[stream]->codecpar;
   H264Color declared{};bool valid_sps=ParseH264Color(params->extradata,params->extradata_size>0?size_t(params->extradata_size):0,declared);
-  if((ColorProbeEnabled()||production)&&params->extradata_size>0&&!valid_sps){fail("H264 SPS color contract malformed or unsupported",AVERROR_INVALIDDATA);return;}
+  if((production||ColorProbeEnabled())&&params->extradata_size>0&&!valid_sps){fail("H264 SPS color contract malformed or unsupported",AVERROR_INVALIDDATA);return;}
   __android_log_print(ANDROID_LOG_INFO,"HVInputGate","source_h264_vui valid_sps=%d present=%d matrix=%u range=%u matrix_code=%u primaries=%u transfer=%u demux_av_colorspace=%d demux_av_range=%d metadata_domain=H264_SPS_VUI",valid_sps,declared.present,declared.matrix,declared.range,declared.matrix_code,declared.primaries,declared.transfer,params->color_space,params->color_range);
   ANativeWindow* window=nullptr;
   status=AImageReader_newWithUsage(max_width,max_height,AIMAGE_FORMAT_PRIVATE,AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE,reader_depth,&r.reader);
   if(status==AMEDIA_OK)status=AImageReader_getWindow(r.reader,&window);
   if(status!=AMEDIA_OK) {fail("PRIVATE GPU sampled ImageReader",status);return;}
-  if(ColorProbeEnabled()||production) {
+  if(production||ColorProbeEnabled()) {
     // No borrowed stack callback context. Reader deletion quiesces its listener;
     // callback-supplied reader/AHB values identify the registered source domain.
-    AImageReader_BufferRemovedListener listener{nullptr,[](void*,AImageReader* reader,AHardwareBuffer* b){NotifyRemovedBuffer(reader,b);}};
+    AImageReader_BufferRemovedListener listener{r.output,[](void* ctx,AImageReader* reader,AHardwareBuffer* b){
+      if(ctx)static_cast<NativeVulkanImageService*>(ctx)->Removed(reader,b);
+      else NotifyRemovedBuffer(reader,b);
+    }};
     status=AImageReader_setBufferRemovedListener(r.reader,&listener);
     if(status!=AMEDIA_OK){fail("register AHB buffer removal listener",status);return;}
     __android_log_print(ANDROID_LOG_INFO,"HVInputGate","buffer_removed_listener_registered=true reader=%p status=%d",r.reader,status);
@@ -163,6 +170,8 @@ void Session::Decode() {
   AImageCropRect codec_crop{};bool codec_crop_known=false;
   int32_t visible_width=0,visible_height=0;
   unsigned old_surface_images_remaining=0;
+  AImageCropRect previous_crop{};
+  uint32_t last_color[4]{};
   InputDecodeTiming decode_timing;
   InputSurfaceReleasePacer release_pacer;
   if (production) __android_log_print(ANDROID_LOG_INFO, "HVInputGate",
@@ -233,8 +242,9 @@ void Session::Decode() {
     AHardwareBuffer* borrowed=nullptr;
     if(AImage_getHardwareBuffer(image.image,&borrowed)!=AMEDIA_OK || !borrowed) {fail("decoded AHB missing",AVERROR_INVALIDDATA);return;}
     AHardwareBuffer_acquire(borrowed); image.buffer=borrowed;++live_ahb_references;
-    int64_t ns=0; AImage_getTimestamp(image.image,&ns);
-    image.pts_us=ns/1000;
+    int64_t ns=0;
+    const auto timestamp_status=AImage_getTimestamp(image.image,&ns);
+    image.pts_us=native && (timestamp_status!=AMEDIA_OK || ns<0) ? -1 : ns/1000;
     // Last packet arrival is an activity timestamp, NOT this image's matched
     // packet time. The diagnostics must not call their difference decode time.
     image.received_us=last_received_us.load(); image.decoded_us=NowUs();
@@ -258,22 +268,27 @@ void Session::Decode() {
     image.crop_left=actual_crop.left;image.crop_top=actual_crop.top;image.crop_right=actual_crop.right;image.crop_bottom=actual_crop.bottom;
     if(production){
       const int32_t width=actual_crop.right-actual_crop.left,height=actual_crop.bottom-actual_crop.top;
-      if(visible_width&&(width!=visible_width||height!=visible_height)){
+      const uint32_t current_color[]={matrix,range,transfer,primaries};
+      const bool native_contract_changed=native && (actual_crop.left!=previous_crop.left || actual_crop.top!=previous_crop.top ||
+          std::memcmp(last_color,current_color,sizeof(last_color))!=0);
+      if(visible_width&&(width!=visible_width||height!=visible_height||native_contract_changed)){
         {
           std::lock_guard<std::mutex> lock(mutex);
           generation=++info.generation;
         }
         __android_log_print(ANDROID_LOG_INFO,"HVInputGate","input_decoded_geometry_changed previous=%dx%d decoded=%dx%d generation=%llu",visible_width,visible_height,width,height,(unsigned long long)generation);
       }
+      previous_crop=actual_crop; std::memcpy(last_color,current_color,sizeof(last_color));
       visible_width=width;visible_height=height;old_surface_images_remaining=0;
     }
     image.generation=generation;
-    if(image.log_frame_details&&(ColorProbeEnabled()||production))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","resolved_ahb_crop left=%d top=%d right_exclusive=%d bottom_exclusive=%d ahb_width=%u ahb_height=%u aimage_rect=%d,%d,%d,%d crop_source=MediaCodec_coded_rect",actual_crop.left,actual_crop.top,actual_crop.right,actual_crop.bottom,allocation.width,allocation.height,crop.left,crop.top,crop.right,crop.bottom);
-    if(image.log_frame_details&&(ColorProbeEnabled()||production))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoded_crop generation=%llu image_width=%d image_height=%d left=%d top=%d right=%d bottom=%d display_width=%d display_height=%d matrix=%u range=%u transfer=%u primaries=%u crop_metadata_domain=AImage_full_window matrix_range_domain=resolved_Android_or_H264_VUI raw_transfer_primaries_domain=AndroidMediaFormat",(unsigned long long)image.generation,image.width,image.height,crop.left,crop.top,crop.right,crop.bottom,crop.right-crop.left,crop.bottom-crop.top,matrix,range,transfer,primaries);
+    if(image.log_frame_details&&(production||ColorProbeEnabled()))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","resolved_ahb_crop left=%d top=%d right_exclusive=%d bottom_exclusive=%d ahb_width=%u ahb_height=%u aimage_rect=%d,%d,%d,%d crop_source=MediaCodec_coded_rect",actual_crop.left,actual_crop.top,actual_crop.right,actual_crop.bottom,allocation.width,allocation.height,crop.left,crop.top,crop.right,crop.bottom);
+    if(image.log_frame_details&&(production||ColorProbeEnabled()))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoded_crop generation=%llu image_width=%d image_height=%d left=%d top=%d right=%d bottom=%d display_width=%d display_height=%d matrix=%u range=%u transfer=%u primaries=%u crop_metadata_domain=AImage_full_window matrix_range_domain=resolved_Android_or_H264_VUI raw_transfer_primaries_domain=AndroidMediaFormat",(unsigned long long)image.generation,image.width,image.height,crop.left,crop.top,crop.right,crop.bottom,crop.right-crop.left,crop.bottom-crop.top,matrix,range,transfer,primaries);
     if(decoded==0) __android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoder_first_image decoder=%s output_mode=%s reader_max_images=%d generation=%llu pts_us=%lld visible=%dx%d ahb=%ux%u",name.c_str(),output_mode,reader_depth,(unsigned long long)generation,(long long)image.pts_us,actual_crop.right-actual_crop.left,actual_crop.bottom-actual_crop.top,allocation.width,allocation.height);
-    if(!production||decoded==0)RecordDecodedCapability(image,name.c_str()); ++decoded;
+    if(!native && (!production||decoded==0))RecordDecodedCapability(image,name.c_str()); ++decoded;
     if(production)SetDecoderState(HV_INPUT_STREAMING);
-    if(ColorProbeEnabled()||production)QueueColorImage(image);
+    if(native)native_output->Queue(image);
+    else if(production||ColorProbeEnabled())QueueColorImage(image);
   };
   InputOutputPump output_pump([&] {
     if(stop)return;

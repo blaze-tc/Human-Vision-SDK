@@ -1,4 +1,5 @@
 #include "android_input_gpu.h"
+#include "decoded_ahb_properties.h"
 #include "input_ycbcr_declarations.h"
 #include "IUnityGraphics.h"
 #include "IUnityGraphicsVulkan.h"
@@ -151,19 +152,7 @@ bool ProbeDecodedBuffer(AHardwareBuffer* buffer, VkPhysicalDevice physical, Inpu
   const auto required=VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT|VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT;
   out->physical_sync_fd=(semaphore.externalSemaphoreFeatures & required)==required;
   if(!get_ahb) return false;
-  VkAndroidHardwareBufferFormatPropertiesANDROID format{VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID};
-  VkAndroidHardwareBufferPropertiesANDROID properties{VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID,&format};
-  if(get_ahb(instance.device,buffer,&properties)!=VK_SUCCESS) return false;
-  out->format=format.format; out->external_format=format.externalFormat;
-  out->format_features=format.formatFeatures;
-  out->sampled=(format.formatFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)!=0 && (desc.usage & AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE)!=0;
-  out->model=format.suggestedYcbcrModel; out->range=format.suggestedYcbcrRange;
-  out->x_chroma=format.suggestedXChromaOffset; out->y_chroma=format.suggestedYChromaOffset;
-  out->components[0]=format.samplerYcbcrConversionComponents.r;
-  out->components[1]=format.samplerYcbcrConversionComponents.g;
-  out->components[2]=format.samplerYcbcrConversionComponents.b;
-  out->components[3]=format.samplerYcbcrConversionComponents.a;
-  return true;
+  return QueryDecodedAhbProperties(get_ahb,instance.device,buffer,desc,out);
 }
 void RecordDecodedCapability(AndroidDecodedImage& image,const char* codec) {
   InputGpuCapabilities c{};
