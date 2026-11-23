@@ -30,6 +30,9 @@ struct Session {
            reconnect_delay_ms = 0;
   bool tcp = true;
   std::atomic<uint32_t> active_copies{0};
+  // Decoder-output and acquired-image counts, never inference/claim surrogates.
+  std::atomic<uint64_t> decoded_frames{0}, acquired_frames{0};
+  std::atomic<uint32_t> live_consumers{0};
   int last_width = 0, last_height = 0, last_format = -1, last_matrix = -1,
       last_range = -1, last_transfer = -1, last_primaries = -1;
   std::atomic<bool> stop{false};

@@ -65,7 +65,7 @@ struct Imported {
   VkImageView view = VK_NULL_HANDLE;
   VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
   VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
-  std::array<VkDescriptorSet, 2> descriptors{};
+  std::array<VkDescriptorSet, 3> descriptors{};
   VkPipelineLayout layout = VK_NULL_HANDLE;
   VkPipeline pipeline = VK_NULL_HANDLE;
   bool reference = false;
@@ -282,13 +282,13 @@ public:
       // plane count.
       constexpr uint32_t descriptor_budget = 16;
       VkDescriptorPoolSize sizes[] = {
-          {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 * descriptor_budget},
-          {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2}};
+          {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 * descriptor_budget},
+          {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3}};
       VkDescriptorPoolCreateInfo pool{
           VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
           nullptr,
           0,
-          2,
+          3,
           2,
           sizes};
       if (!check(api.CreateDescriptorPool(d, &pool, nullptr,
@@ -297,10 +297,11 @@ public:
         return false;
       ++counters.descriptor_pools_created;
       const VkDescriptorSetLayout layouts[] = {resource->set_layout,
+                                               resource->set_layout,
                                                resource->set_layout};
       VkDescriptorSetAllocateInfo descriptors{
           VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr,
-          resource->descriptor_pool, 2, layouts};
+          resource->descriptor_pool, 3, layouts};
       if (!check(api.AllocateDescriptorSets(d, &descriptors,
                                             resource->descriptors.data()),
                  "allocate converted descriptors"))

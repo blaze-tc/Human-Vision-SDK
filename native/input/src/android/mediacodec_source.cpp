@@ -250,7 +250,7 @@ void Session::Decode() {
         release=AMediaCodec_releaseOutputBuffer(r.codec,index,!native);
       }
       if(release!=AMEDIA_OK) {fail("render hardware output Surface",release);return;}
-      ++outputs_released;
+      ++outputs_released;++decoded_frames;
       if (production) release_pacer.RecordRelease(NowUs());
     }
     AndroidDecodedImage image;
@@ -260,6 +260,7 @@ void Session::Decode() {
     // the decoded image. Let the normal retirement path return its lease.
     if(limited_reader && acquired==AMEDIA_IMGREADER_MAX_IMAGES_ACQUIRED) {++acquire_pressure;return;}
     if(acquired!=AMEDIA_OK) {fail("acquireLatestImageAsync",acquired);return;}
+    ++acquired_frames;
     image.reader=r.reader;image.image_counted=true; ++live_images;if(image.acquire_fd>=0)++live_owned_fds;
     AHardwareBuffer* borrowed=nullptr;
     if(AImage_getHardwareBuffer(image.image,&borrowed)!=AMEDIA_OK || !borrowed) {fail("decoded AHB missing",AVERROR_INVALIDDATA);return;}

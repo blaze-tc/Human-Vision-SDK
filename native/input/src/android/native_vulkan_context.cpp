@@ -274,24 +274,29 @@ bool NativeVulkanContext::Open(const HV_InputNativeOptionsV1 &config) {
   }
   return true;
 }
-bool NativeVulkanContext::MakeOutput(NativeRgbaSlot &slot, bool readback) {
+bool NativeVulkanContext::MakeOutput(NativeRgbaSlot &slot, bool readback,
+                                      uint32_t width,uint32_t height,
+                                      bool transfer_source) {
+  if(!width)width=width_;
+  if(!height)height=height_;
   AHardwareBuffer_Desc desc{};
-  desc.width = width_;
-  desc.height = height_;
+  desc.width = width;
+  desc.height = height;
   desc.layers = 1;
   desc.format = AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM;
   desc.usage = slot.usage;
   if (AHardwareBuffer_allocate(&desc, &slot.ahb) != 0)
     return Fail("allocate RGBA AHardwareBuffer");
   AHardwareBuffer_describe(slot.ahb, &desc);
-  if (desc.width != width_ || desc.height != height_ || desc.layers != 1 ||
+  if (desc.width != width || desc.height != height || desc.layers != 1 ||
       desc.format != AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM ||
       (desc.usage & slot.usage) != slot.usage)
     return Fail("allocated RGBA AHB geometry or usage mismatch");
   slot.usage = desc.usage;
   VkExternalMemoryImageCreateInfo ext{
       VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO, nullptr, ahb_handle};
-  auto image = Image(width_, height_, output_usage);
+  auto image = Image(width, height, output_usage |
+      (transfer_source?VK_IMAGE_USAGE_TRANSFER_SRC_BIT:0));
   image.pNext = &ext;
   if (!Check(CreateImage(device, &image, nullptr, &slot.image),
              "create external RGBA image"))
@@ -319,7 +324,7 @@ bool NativeVulkanContext::MakeOutput(NativeRgbaSlot &slot, bool readback) {
       !Check(BindImageMemory(device, slot.image, slot.memory, 0),
              "bind RGBA AHB"))
     return false;
-  return !readback || MakeStaging(slot, width_, height_);
+  return !readback || MakeStaging(slot, width, height);
 }
 bool NativeVulkanContext::MakeScratch(uint32_t width, uint32_t height,
                                       VkImage &target, VkDeviceMemory &memory,
@@ -392,6 +397,45 @@ void NativeVulkanContext::DestroyStaging(NativeRgbaSlot &slot) {
   slot.staging = {};
   slot.staging_memory = {};
 }
+void NativeVulkanContext::DestroyOutput(NativeRgbaSlot &slot) {
+  if(slot.producer_fd>=0)close(slot.producer_fd);
+  DestroyStaging(slot);
+  if(slot.image)DestroyImage(device,slot.image,nullptr);
+  if(slot.memory)FreeMemory(device,slot.memory,nullptr);
+  if(slot.ahb)AHardwareBuffer_release(slot.ahb);
+  slot={};
+}
+void NativeVulkanContext::DestroyLive() {
+  for(auto& slot:live_slots)DestroyOutput(slot);
+  if(live_scratch_view_)DestroyImageView(device,live_scratch_view_,nullptr);
+  if(live_scratch_)DestroyImage(device,live_scratch_,nullptr);
+  if(live_scratch_memory_)FreeMemory(device,live_scratch_memory_,nullptr);
+  live_scratch_={};live_scratch_view_={};live_scratch_memory_={};
+  live_width_=live_height_=0;live_scratch_used_=false;
+}
+bool NativeVulkanContext::PrepareLive(uint32_t width,uint32_t height) {
+  if(width==live_width_&&height==live_height_&&live_slots[0].ahb)return true;
+  std::array<NativeRgbaSlot,3> next{};
+  VkImage scratch{};VkDeviceMemory memory{};VkImageView view{};
+  bool ready=MakeScratch(width,height,scratch,memory,view);
+  for(auto& slot:next) {
+    if(!ready)break;
+    slot.usage=slots[0].usage;
+    ready=MakeOutput(slot,false,width,height,true);
+  }
+  if(!ready) {
+    for(auto& slot:next)DestroyOutput(slot);
+    if(view)DestroyImageView(device,view,nullptr);
+    if(scratch)DestroyImage(device,scratch,nullptr);
+    if(memory)FreeMemory(device,memory,nullptr);
+    return false;
+  }
+  // Caller proved all live leases retired; allocation is transactional.
+  DestroyLive();live_slots=next;
+  live_scratch_=scratch;live_scratch_memory_=memory;live_scratch_view_=view;
+  live_width_=width;live_height_=height;
+  return true;
+}
 void NativeVulkanContext::DestroyCapture() {
   DestroyStaging(capture_.staging);
   if (capture_.view)
@@ -421,17 +465,8 @@ NativeVulkanContext::~NativeVulkanContext() {
   // Session release is gated on true GPU retirement.
   cache.RemoveAll();
   cache.Collect();
-  for (auto &slot : slots) {
-    if (slot.producer_fd >= 0)
-      close(slot.producer_fd);
-    DestroyStaging(slot);
-    if (slot.image)
-      DestroyImage(device, slot.image, nullptr);
-    if (slot.memory)
-      FreeMemory(device, slot.memory, nullptr);
-    if (slot.ahb)
-      AHardwareBuffer_release(slot.ahb);
-  }
+  for (auto &slot : slots)DestroyOutput(slot);
+  DestroyLive();
   DestroyCapture();
   if (scratch_view_)
     DestroyImageView(device, scratch_view_, nullptr);
@@ -469,120 +504,76 @@ bool NativeVulkanContext::ReadContract(AndroidDecodedImage &image,
   contract = DecodedImageContract(image, capabilities);
   return true;
 }
-void NativeVulkanContext::Record(AndroidDecodedImage &source, CacheEntry &entry,
-                                 NativeRgbaSlot &slot, int rotation,
-                                 bool mirror) {
-  auto *resource = static_cast<Imported *>(entry.resource);
-  const auto family = identity.queue_family;
-  VkImageMemoryBarrier prepare[] = {
-      Barrier(resource->image, VK_IMAGE_LAYOUT_GENERAL,
-              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0,
-              VK_ACCESS_SHADER_READ_BIT, VK_QUEUE_FAMILY_FOREIGN_EXT, family),
-      Barrier(scratch_,
-              scratch_used_ ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-                            : VK_IMAGE_LAYOUT_UNDEFINED,
-              VK_IMAGE_LAYOUT_GENERAL,
-              scratch_used_ ? VK_ACCESS_TRANSFER_READ_BIT : 0,
-              VK_ACCESS_SHADER_WRITE_BIT),
-      Barrier(
-          slot.image,
-          slot.written ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_UNDEFINED,
-          VK_IMAGE_LAYOUT_GENERAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT,
-          slot.written ? VK_QUEUE_FAMILY_EXTERNAL_KHR : VK_QUEUE_FAMILY_IGNORED,
-          slot.written ? family : VK_QUEUE_FAMILY_IGNORED)};
-  CmdPipelineBarrier(command_, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
-                         VK_PIPELINE_STAGE_TRANSFER_BIT,
-                     0, 0, nullptr, 0, nullptr, 3, prepare);
-  if (capturing_) {
-    auto prepare_capture =
-        Barrier(capture_.image,
-                capture_.initialized ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-                                     : VK_IMAGE_LAYOUT_UNDEFINED,
-                VK_IMAGE_LAYOUT_GENERAL,
-                capture_.initialized ? VK_ACCESS_TRANSFER_READ_BIT : 0,
-                VK_ACCESS_SHADER_WRITE_BIT);
-    CmdPipelineBarrier(command_, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0,
-                       nullptr, 1, &prepare_capture);
-  }
-  CmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_COMPUTE, resource->pipeline);
-  RecordInputConversion(*this, device, command_, resource,
-                        resource->descriptors[0], scratch_view_, width_,
-                        height_, source, entry.contract, rotation, mirror,
-                        true);
-  if (capturing_) {
-    RecordInputConversion(*this, device, command_, resource,
-                          resource->descriptors[1], capture_.view,
-                          capture_.width, capture_.height, source,
-                          entry.contract, rotation, mirror, true);
-    auto readable =
-        Barrier(capture_.image, VK_IMAGE_LAYOUT_GENERAL,
-                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-    CmdPipelineBarrier(command_, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
-                       nullptr, 1, &readable);
-    VkBufferImageCopy region{};
-    region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-    region.imageExtent = {capture_.width, capture_.height, 1};
-    CmdCopyImageToBuffer(command_, capture_.image,
-                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                         capture_.staging.staging, 1, &region);
-    VkBufferMemoryBarrier visible{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-    visible.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    visible.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-    visible.srcQueueFamilyIndex = visible.dstQueueFamilyIndex =
-        VK_QUEUE_FAMILY_IGNORED;
-    visible.buffer = capture_.staging.staging;
-    visible.size = VK_WHOLE_SIZE;
-    CmdPipelineBarrier(command_, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 1, &visible,
-                       0, nullptr);
-  }
-  VkImageMemoryBarrier converted[] = {
-      Barrier(scratch_, VK_IMAGE_LAYOUT_GENERAL,
-              VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_SHADER_WRITE_BIT,
-              VK_ACCESS_TRANSFER_READ_BIT),
-      Barrier(resource->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-              VK_IMAGE_LAYOUT_GENERAL, VK_ACCESS_SHADER_READ_BIT, 0, family,
-              VK_QUEUE_FAMILY_FOREIGN_EXT)};
-  CmdPipelineBarrier(command_, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                     VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr,
-                     2, converted);
+void NativeVulkanContext::RecordOutput(AndroidDecodedImage &source, CacheEntry &entry,
+    NativeRgbaSlot &slot,VkImage scratch,VkImageView view,bool used,
+    uint32_t width,uint32_t height,unsigned descriptor,int rotation,bool mirror) {
+  auto* resource=static_cast<Imported*>(entry.resource);
+  const auto family=identity.queue_family;
+  VkImageMemoryBarrier prepare[]={
+    Barrier(scratch,used?VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:VK_IMAGE_LAYOUT_UNDEFINED,
+      VK_IMAGE_LAYOUT_GENERAL,used?VK_ACCESS_TRANSFER_READ_BIT:0,VK_ACCESS_SHADER_WRITE_BIT),
+    Barrier(slot.image,slot.written?VK_IMAGE_LAYOUT_GENERAL:VK_IMAGE_LAYOUT_UNDEFINED,
+      VK_IMAGE_LAYOUT_GENERAL,0,VK_ACCESS_TRANSFER_WRITE_BIT,
+      slot.written?VK_QUEUE_FAMILY_EXTERNAL_KHR:VK_QUEUE_FAMILY_IGNORED,
+      slot.written?family:VK_QUEUE_FAMILY_IGNORED)};
+  CmdPipelineBarrier(command_,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT|VK_PIPELINE_STAGE_TRANSFER_BIT,
+    0,0,nullptr,0,nullptr,2,prepare);
+  // Live descriptor2 is a Unity-sampled texture: store bottom-left rows so a
+  // default Unity material samples it correctly. Analysis/exact stay top-left.
+  RecordInputConversion(*this,device,command_,resource,resource->descriptors[descriptor],
+    view,width,height,source,entry.contract,rotation,mirror,descriptor!=2);
+  auto readable=Barrier(scratch,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    VK_ACCESS_SHADER_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
+  CmdPipelineBarrier(command_,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,
+    0,0,nullptr,0,nullptr,1,&readable);
   VkImageCopy copy{};
-  copy.srcSubresource =
-      copy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-  copy.extent = {width_, height_, 1};
-  CmdCopyImage(command_, scratch_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-               slot.image, VK_IMAGE_LAYOUT_GENERAL, 1, &copy);
+  copy.srcSubresource=copy.dstSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};
+  copy.extent={width,height,1};
+  CmdCopyImage(command_,scratch,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    slot.image,VK_IMAGE_LAYOUT_GENERAL,1,&copy);
   VkBufferMemoryBarrier host{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-  if (slot.staging) {
-    VkBufferImageCopy region{};
-    region.imageSubresource = copy.srcSubresource;
-    region.imageExtent = copy.extent;
-    CmdCopyImageToBuffer(command_, scratch_,
-                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, slot.staging, 1,
-                         &region);
-    host.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    host.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-    host.srcQueueFamilyIndex = host.dstQueueFamilyIndex =
-        VK_QUEUE_FAMILY_IGNORED;
-    host.buffer = slot.staging;
-    host.size = VK_WHOLE_SIZE;
+  if(slot.staging) {
+    VkBufferImageCopy region{};region.imageSubresource=copy.srcSubresource;region.imageExtent=copy.extent;
+    CmdCopyImageToBuffer(command_,scratch,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,slot.staging,1,&region);
+    host.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;host.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+    host.srcQueueFamilyIndex=host.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+    host.buffer=slot.staging;host.size=VK_WHOLE_SIZE;
   }
-  auto release = Barrier(slot.image, VK_IMAGE_LAYOUT_GENERAL,
-                         VK_IMAGE_LAYOUT_GENERAL, VK_ACCESS_TRANSFER_WRITE_BIT,
-                         0, family, VK_QUEUE_FAMILY_EXTERNAL_KHR);
-  CmdPipelineBarrier(command_, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                     VK_PIPELINE_STAGE_HOST_BIT |
-                         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                     0, 0, nullptr, slot.staging ? 1 : 0,
-                     slot.staging ? &host : nullptr, 1, &release);
+  auto release=Barrier(slot.image,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_GENERAL,
+    VK_ACCESS_TRANSFER_WRITE_BIT,0,family,VK_QUEUE_FAMILY_EXTERNAL_KHR);
+  CmdPipelineBarrier(command_,VK_PIPELINE_STAGE_TRANSFER_BIT,
+    VK_PIPELINE_STAGE_HOST_BIT|VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+    0,0,nullptr,slot.staging?1:0,slot.staging?&host:nullptr,1,&release);
 }
-bool NativeVulkanContext::RunFence(NativeRgbaSlot &slot,
-                                   AndroidDecodedImage &source,
-                                   CacheEntry &entry) {
+void NativeVulkanContext::RecordCapture(AndroidDecodedImage &source,CacheEntry &entry,
+                                       int rotation,bool mirror) {
+  auto* resource=static_cast<Imported*>(entry.resource);
+  auto prepare=Barrier(capture_.image,
+    capture_.initialized?VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:VK_IMAGE_LAYOUT_UNDEFINED,
+    VK_IMAGE_LAYOUT_GENERAL,capture_.initialized?VK_ACCESS_TRANSFER_READ_BIT:0,VK_ACCESS_SHADER_WRITE_BIT);
+  CmdPipelineBarrier(command_,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+    0,0,nullptr,0,nullptr,1,&prepare);
+  RecordInputConversion(*this,device,command_,resource,resource->descriptors[1],
+    capture_.view,capture_.width,capture_.height,source,entry.contract,rotation,mirror,true);
+  auto readable=Barrier(capture_.image,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    VK_ACCESS_SHADER_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
+  CmdPipelineBarrier(command_,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,
+    0,0,nullptr,0,nullptr,1,&readable);
+  VkBufferImageCopy region{};region.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};
+  region.imageExtent={capture_.width,capture_.height,1};
+  CmdCopyImageToBuffer(command_,capture_.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    capture_.staging.staging,1,&region);
+  VkBufferMemoryBarrier host{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+  host.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;host.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+  host.srcQueueFamilyIndex=host.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+  host.buffer=capture_.staging.staging;host.size=VK_WHOLE_SIZE;
+  CmdPipelineBarrier(command_,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,
+    0,0,nullptr,1,&host,0,nullptr);
+}
+bool NativeVulkanContext::RunFence(NativeRgbaSlot *analysis,NativeRgbaSlot *live,
+                                   AndroidDecodedImage &source,CacheEntry &entry) {
+  auto& slot=analysis?*analysis:*live;
   const bool wait = source.acquire_fd >= 0;
   if (wait) {
     int duplicate = fcntl(source.acquire_fd, F_DUPFD_CLOEXEC, 0);
@@ -645,8 +636,8 @@ bool NativeVulkanContext::RunFence(NativeRgbaSlot &slot,
     return false;
   ++completed;
   unfenced = false;
-  scratch_used_ = true;
-  slot.written = true;
+  if(analysis){scratch_used_=true;analysis->written=true;}
+  if(live){live_scratch_used_=true;live->written=true;}
   source.gpu_submitted = true;
   if (proof_state != NativeReadbackProof::Visible)
     return false;
@@ -661,44 +652,57 @@ bool NativeVulkanContext::RunFence(NativeRgbaSlot &slot,
           InvalidateMappedMemoryRanges(device, 1, &range) == VK_SUCCESS;
     }
   }
-  if (!Check(exported, "export producer completion fd"))
-    return false;
+  // Live consumers see an already observed producer fence and receive fd -1.
+  // Preserve the original NativeV1 exported-fd contract for analysis consumers.
+  if(!analysis&&slot.producer_fd>=0){close(slot.producer_fd);slot.producer_fd=-1;}
+  if (!Check(exported, "export producer completion fd"))return false;
   return true;
 }
-bool NativeVulkanContext::Convert(AndroidDecodedImage &source, int index,
-                                  int rotation, bool mirror, bool capture) {
-  capture_visible_ = false;
-  capturing_ = false;
-  if (capture) {
-    uint32_t width = source.crop_right - source.crop_left,
-             height = source.crop_bottom - source.crop_top;
-    if (rotation == 90 || rotation == 270)
-      std::swap(width, height);
-    capturing_ = PrepareCapture(width, height);
+bool NativeVulkanContext::Convert(AndroidDecodedImage &source,int index,
+                                  int rotation,bool mirror,bool capture) {
+  return ConvertBranches(source,index,-1,rotation,mirror,rotation,mirror,capture);
+}
+bool NativeVulkanContext::ConvertBranches(AndroidDecodedImage &source,int analysis_index,int live_index,
+    int rotation,bool mirror,int live_rotation,bool live_mirror,bool capture) {
+  if((analysis_index<0&&live_index<0)||analysis_index>=3||live_index>=3)
+    return Fail("native conversion requires an admitted branch slot");
+  auto* analysis=analysis_index>=0?&slots[analysis_index]:nullptr;
+  auto* live=live_index>=0?&live_slots[live_index]:nullptr;
+  capture_visible_=false;capturing_=false;
+  if(capture&&analysis) {
+    uint32_t width=source.crop_right-source.crop_left,height=source.crop_bottom-source.crop_top;
+    if(rotation==90||rotation==270)std::swap(width,height);
+    capturing_=PrepareCapture(width,height);
   }
   BufferIdentity removed{};
-  while (registry.TakeRemoved(removed))
-    cache.Remove(removed.buffer);
-  cache.Collect();
-  ImageContract contract{};
-  if (!ReadContract(source, contract))
-    return false;
-  importer.source_reader = source.reader;
-  auto *entry = cache.Acquire(source.buffer, source.generation, contract);
-  if (!entry) {
-    if (error.empty())
-      error = CacheFailureName(cache.LastFailure().reason);
-    return false;
-  }
-  if (!Check(ResetCommandBuffer(command_, 0), "reset conversion command") ||
-      !Check(ResetFences(device, 1, &fence_), "reset conversion fence"))
-    return false;
-  VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-  bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (!Check(BeginCommandBuffer(command_, &bi), "begin conversion command"))
-    return false;
-  Record(source, *entry, slots[index], rotation, mirror);
-  return Check(EndCommandBuffer(command_), "end conversion command") &&
-         RunFence(slots[index], source, *entry);
+  while(registry.TakeRemoved(removed))cache.Remove(removed.buffer);
+  cache.Collect();ImageContract contract{};
+  if(!ReadContract(source,contract))return false;
+  importer.source_reader=source.reader;
+  auto* entry=cache.Acquire(source.buffer,source.generation,contract);
+  if(!entry){if(error.empty())error=CacheFailureName(cache.LastFailure().reason);return false;}
+  if(!Check(ResetCommandBuffer(command_,0),"reset conversion command")||
+     !Check(ResetFences(device,1,&fence_),"reset conversion fence"))return false;
+  VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+  begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  if(!Check(BeginCommandBuffer(command_,&begin),"begin conversion command"))return false;
+  auto* resource=static_cast<Imported*>(entry->resource);
+  auto acquire=Barrier(resource->image,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    0,VK_ACCESS_SHADER_READ_BIT,VK_QUEUE_FAMILY_FOREIGN_EXT,identity.queue_family);
+  CmdPipelineBarrier(command_,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+    0,0,nullptr,0,nullptr,1,&acquire);
+  CmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_COMPUTE,resource->pipeline);
+  if(analysis)RecordOutput(source,*entry,*analysis,scratch_,scratch_view_,scratch_used_,
+    width_,height_,0,rotation,mirror);
+  if(live)RecordOutput(source,*entry,*live,live_scratch_,live_scratch_view_,live_scratch_used_,
+    live_width_,live_height_,2,live_rotation,live_mirror);
+  if(capturing_)RecordCapture(source,*entry,rotation,mirror);
+  // The decoded AImage/AHB is acquired and returned exactly once for both
+  // branches. No second VkDevice samples the PRIVATE decoder image.
+  auto release=Barrier(resource->image,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_IMAGE_LAYOUT_GENERAL,
+    VK_ACCESS_SHADER_READ_BIT,0,identity.queue_family,VK_QUEUE_FAMILY_FOREIGN_EXT);
+  CmdPipelineBarrier(command_,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+    0,0,nullptr,0,nullptr,1,&release);
+  return Check(EndCommandBuffer(command_),"end conversion command")&&RunFence(analysis,live,source,*entry);
 }
 } // namespace hvinput

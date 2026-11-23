@@ -1,5 +1,6 @@
 #include "input_internal.h"
 #include "humanvision_input_native.h"
+#include "humanvision_input_live.h"
 #include <cstdio>
 #ifdef __ANDROID__
 #include "android/input_vulkan_private.h"
@@ -98,6 +99,7 @@ template <class T> bool Valid(T *p) {
   return p && p->size == sizeof(T) && p->version == HV_INPUT_ABI_VERSION;
 }
 bool Retired(HV_InputHandle h) {
+  if(h->live_consumers.load()!=0)return false;
 #ifdef _WIN32
   return h->active_copies == 0 &&
          WaitForSingleObject(h->worker.native_handle(), 0) == WAIT_OBJECT_0;
@@ -259,6 +261,19 @@ HV_INPUT_API int HV_INPUT_CALL HV_Input_ReleaseNativeFrameV1(HV_InputHandle h,ui
   if(h && h->native_output)return h->native_output->Release(slot,gen,seq);
 #endif
   return HV_INPUT_INVALID;
+}
+HV_INPUT_API int HV_INPUT_CALL HV_Input_GetSourceProgressV1(HV_InputHandle h,HV_InputSourceProgressV1* out) {
+  if(!h||!Valid(out))return HV_INPUT_INVALID;
+#ifdef __ANDROID__
+  if(!h->native_output)return HV_INPUT_INVALID;
+  *out={};out->size=sizeof(*out);out->version=1;
+  out->decoded_frames=h->decoded_frames.load();out->acquired_frames=h->acquired_frames.load();
+  out->timestamp_us=hvinput::NowUs();HV_Input_GetState(h,&out->state);
+  h->native_output->FillProgress(*out);
+  return HV_INPUT_OK;
+#else
+  return HV_INPUT_INVALID;
+#endif
 }
 HV_INPUT_API int HV_INPUT_CALL HV_Input_Close(HV_InputHandle h) {
   if (!h)

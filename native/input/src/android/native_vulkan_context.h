@@ -30,6 +30,11 @@ class NativeVulkanContext : public InputConversionApi {
   VkFence fence_{};
   VkSemaphore acquire_{}, ready_{};
   bool scratch_used_{};
+  VkImage live_scratch_{};
+  VkImageView live_scratch_view_{};
+  VkDeviceMemory live_scratch_memory_{};
+  bool live_scratch_used_{};
+  uint32_t live_width_{},live_height_{};
   struct Capture {
     uint32_t width{}, height{};
     VkImage image{};
@@ -56,13 +61,17 @@ class NativeVulkanContext : public InputConversionApi {
 #define DECL(name) PFN_vk##name name{};
   NATIVE_VK_EXTRA(DECL)
 #undef DECL
-  bool MakeOutput(NativeRgbaSlot &, bool readback);
+  bool MakeOutput(NativeRgbaSlot &, bool readback, uint32_t width=0,
+                  uint32_t height=0, bool transfer_source=false);
+  void DestroyOutput(NativeRgbaSlot &);
   uint32_t MemoryType(uint32_t bits, VkMemoryPropertyFlags required) const;
   bool Check(VkResult result, const char *stage);
   bool Fail(const char *reason);
   bool ReadContract(AndroidDecodedImage &, ImageContract &);
-  void Record(AndroidDecodedImage &, CacheEntry &, NativeRgbaSlot &, int, bool);
-  bool RunFence(NativeRgbaSlot &, AndroidDecodedImage &, CacheEntry &);
+  void RecordOutput(AndroidDecodedImage &, CacheEntry &, NativeRgbaSlot &,
+                    VkImage,VkImageView,bool,uint32_t,uint32_t,unsigned,int,bool);
+  void RecordCapture(AndroidDecodedImage &, CacheEntry &, int, bool);
+  bool RunFence(NativeRgbaSlot *, NativeRgbaSlot *, AndroidDecodedImage &, CacheEntry &);
 
 public:
   VkDevice device{};
@@ -73,6 +82,7 @@ public:
   InputConversionImporter importer;
   InputImageCache cache;
   std::array<NativeRgbaSlot, 3> slots{};
+  std::array<NativeRgbaSlot, 3> live_slots{};
   HV_InputNativeDeviceV1 identity{};
   std::string error;
   bool unfenced = false;
@@ -81,6 +91,13 @@ public:
   bool Open(const HV_InputNativeOptionsV1 &);
   bool Convert(AndroidDecodedImage &, int slot, int rotation, bool mirror,
                bool capture);
+  bool PrepareLive(uint32_t width,uint32_t height);
+  void DestroyLive();
+  uint32_t LiveWidth() const { return live_width_; }
+  uint32_t LiveHeight() const { return live_height_; }
+  bool ConvertBranches(AndroidDecodedImage &,int analysis_slot,int live_slot,
+                       int rotation,bool mirror,int live_rotation,bool live_mirror,
+                       bool capture);
   bool CaptureVisible() const { return capture_visible_; }
   const void *CaptureBytes() const { return capture_.staging.mapped; }
   uint32_t CaptureWidth() const { return capture_.width; }

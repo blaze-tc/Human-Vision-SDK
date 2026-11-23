@@ -1,5 +1,56 @@
 # Independent input native plugin
 
+## Independent live GPU preview (candidate 2026-11-23)
+
+`include/humanvision_input_live.h` adds a versioned function table without
+changing any existing Input or NativeV1 structure/function. Attach a live
+consumer to an existing `OpenNativeV1` handle; this never opens another decoder
+or claims an analysis publication. The same acquired PRIVATE AImage is sampled
+only on the native producer device, under one acquire/return proof. Analysis and live output have independent
+three-slot RGBA AHB pools and latest-only publication. A full/disabled live pool
+does not stop analysis; held analysis outputs do not stop live-only conversion.
+The preview bounds/transform are independent of model dimensions. Exact CPU
+capture remains a separate explicit request with the existing contract.
+
+The new Unity bridge imports completed **RGBA live AHBs**, never the PRIVATE
+decoder image. It copies them on Unity's actual Vulkan device/serialized queue
+into three borrowed Unity RenderTextures. It never wraps a foreign-device
+VkImage in `CreateExternalTexture`, maps pixels to CPU, or uses the 5 Hz exact
+capture path for live display. Native AHB and Unity target leases are separate;
+the native live lease returns only after the actual Unity copy fence. A target
+held by a Unity sampler/copy remains leased until the caller's real GPU fence
+and `ReleaseSlot(slot, target_generation, sequence)`. Unobserved images may be
+replaced, so a slow/resumed consumer gets the newest available image rather
+than replaying a queue. There can still be one real copy in flight to retire.
+
+The producer live shader writes bottom-left rows; analysis/exact keep their
+original top-left rows. Live payloads contain encoded display RGB, not linear
+RGB. Use `R8G8B8A8_SRGB` targets in a Linear Unity project and
+`R8G8B8A8_UNorm` in a Gamma project. The bridge uses same-size RGBA32
+`vkCmdCopyImage` to preserve texel codes, without a blit/color conversion or
+double encoding. Normal sRGB texture sampling provides the Linear-project
+decode; a Demo-specific material must not be required. Source color metadata
+is not invented: explicit IEC61966-2-1 transfer is sRGB, other transfers remain
+unknown. True GPU orientation/default-sampling color checks remain device
+acceptance, not a host test result.
+
+Each `PrepareRenderEvent` reservation must be followed by
+`GL.IssuePluginEventAndData(GetRenderEventFunc(), HV_INPUT_LIVE_RENDER_EVENT_ID,
+consumer)`. The consumer retains the source and queued callback lifetime.
+Retire targets, release held slots after sampling fences, and continue issuing
+retirement events until `TargetsRetired` succeeds. `Close` is nonblocking;
+`TryRelease` stays BUSY until callbacks, copies, imported memory and target
+leases actually retire. Input `Release` stays BUSY while a consumer exists.
+Serialize final consumer `TryRelease` against every other consumer API call;
+OK invalidates that handle. Unproven GPU completion quarantines resources.
+
+`GetSourceProgressV1` reads real Android native-source cumulative codec-output,
+acquired-image, live publication, analysis publication/claim and live-drop
+counts without a model-result/claim gate. Source geometry, state and timestamp
+come from the source/explicit Input monotonic clock. Other source paths return
+unsupported/INVALID rather than reporting fabricated zero activity. These are
+distinct stages; native publication counts are not Unity display FPS.
+
 ## Autonomous Android Vulkan source
 
 The optional source ABI in `include/humanvision_input_native.h` takes the
