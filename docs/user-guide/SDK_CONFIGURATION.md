@@ -2,6 +2,7 @@
 
 适用版本：SDK **0.4.0-preview.17** / Input **0.1.0-preview.10**。Android CPU/NPU 完整资源安装见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)；公共附件范围见[安装说明](../UPM_INSTALLATION.md)。
 这是当前版本的接入说明；历史 Release 的验证结果不自动适用于本次变更。
+下文“原生独立运行候选”仅适用于 2026-11-23 的本地未发布候选及其配套原生库，不表示已发布 preview.17 包已包含该能力。
 
 ## 最小接入
 
@@ -68,7 +69,7 @@ yield return sdk.Initialize(request);
 | `ExecutionPolicy` | 默认 `CompatibleUnityInput`；原生 RTSP 可选 `IndependentPreferred` / `IndependentRequired` | 完整重新初始化 |
 | `PreviewEnabled` | 默认 true；独立路径可关闭预览而继续采集、识别和发布 | 完整重新初始化 |
 | `AutoSelectRtspStream` | 默认关闭。启用后在 RTSP/TCP 接入时探测同通道的宇视 H.264 码流尺寸 | 打开 RTSP 时 |
-| `UseModelSizedAnalysisInput` | 默认关闭。启用后允许 Android RTSP 的 GPU/NPU 低档从解码帧独立生成模型输入 | 重新初始化 |
+| `UseModelSizedAnalysisInput` | 默认关闭；兼容路径保留 Android RTSP 分路合同，原生 RTSP 路径可按已选模型限制分析传输尺寸；不改变模型档位 | 重新初始化 |
 | `InputOpenTimeoutSeconds` | 默认 15 秒；APK 视频首次缓存另有有界准备等待 | 初始化 |
 | `RuntimeRoot` | 留空自动准备安装资源 | 初始化 |
 | `OpenInputOnInitialize` | 默认 true；false 只准备 Runtime，成功为 Ready | 初始化 |
@@ -86,6 +87,7 @@ Windows CPU 与 DirectML 使用同一套 YOLOv8n-pose 权重。低、中、高�
 ### 原生独立运行候选
 
 本次独立运行改造仍是本地候选，须安装配套的 SDK 和 Input 原生库；不更改旧项目的默认输入模式。
+本地验收和候选库替换步骤见[独立运行验收](../maintenance/INDEPENDENT_RUNTIME_ACCEPTANCE.md)。
 
 ```csharp
 var request = configuration.CreateOptionsForInput(InputKind.Rtsp, rtspAddress);
@@ -99,20 +101,30 @@ if (sdk.TryGetRuntimeProgress(out var progress))
     Debug.Log($"{progress.CapabilityLevel}: {progress.ActualBackend}, native fresh={progress.NativeFreshFrames}");
 ```
 
-Windows 原生 RTSP 将解码后的 CPU 图像直接提交给现有后端；Android 原生 RTSP 使用独立 Vulkan 图像服务，供 GPU 或经 staging 供 CPU/NPU。
-`UsesGpuImageService` 与 `ActualBackend` 分开报告；选择 NPU 不代表图像处理完全不使用 GPU。相同设备上的带宽、功耗和散热竞争仍然存在。
+Windows 原生 RTSP 将解码后的 CPU 图像直接提交给现有 CPU 或 DirectML 后端。Android 原生 RTSP 使用独立 Vulkan 图像服务，供 GPU 或经原生 staging 回读供 CPU/NPU。
+RGA 是后续可替换的图像服务优化，不是 NPU 获得独立输入和 worker 的前提。`UsesGpuImageService` 与 `ActualBackend` 分开报告；选择 NPU 不代表图像处理完全不使用 GPU。
+这些路线复用同一调度、完成发布和结果读取合同；独立线程、独立逻辑设备/队列不提供 GPU 算力硬隔离，相同设备上的带宽、功耗和散热竞争仍然存在。
 
 `IndependentRequired` 当前要求 RTSP 并开启 `OpenInputOnInitialize`。VideoPlayer、WebCamTexture 和游戏纹理继续使用异步兼容入口；
 `IndependentPreferred` 在这些来源上保留兼容驱动，不能据此宣称输入已脱离 Unity。原生 RTSP 启动错误会明确报告，不会暗中启动第二个 Unity 解码器。
 
 独立模式的初始化只排队控制请求，模型、设备和网络启动在原生控制线程执行。`ResultUpdated` 仍在 Unity 主线程通知；主线程停顿期间，
 界面和事件不会更新，原生采集、推理及 canonical 发布可继续前进。`TryGetRuntimeProgress` 直接查询原生累计计数，重复读取或采样不增加新结果。
-旧 ABI 会话没有这些计数时返回 false。`IndependentInputSize` 是实际分析图像尺寸；`RtspDecodedInputSize` 单独返回可用的原始解码尺寸，未知时为零。
+旧 ABI 会话没有这些计数时返回 false，不能把 unavailable 当作测得的零。`SubmittedAnalysisInputSize` 是实际已送入识别的分析图像尺寸；
+`AnalysisInputSize` 是模型合同尺寸，二者可能不同。`RtspDecodedInputSize` 单独返回可用的原始解码尺寸，未知时为零。
 
 预览是独立的可丢帧消费者，不持有原生解码图像或分析槽；关闭预览不会停止识别。精确图像与骨骼只有 source、generation、frame、epoch 匹配时才返回，
-原生分析缓冲未提供为 Unity 纹理时，`TryGetAnalysisInputFrame` 返回 false，使用 `IndependentInputSize` 查询实际分析尺寸；高清预览不会冒充分析图。
+原生分析缓冲未提供为 Unity 纹理时，`TryGetAnalysisInputFrame` 返回 false，使用 `SubmittedAnalysisInputSize` 查询实际分析尺寸；高清预览不会冒充分析图。
 暂缺时不拿当前画面替代。停止请求不会在 Unity 线程等待原生退出；`StopSdk()` 等待真实退役。驱动未完成时保持资源所有权，
 可从 `RuntimeDiagnostics` 查看退役状态，不能强制卸载库或把超时当作完成。
+
+本地候选的 live preview 采用保守准入：最多 5 FPS，压力下可降至 1 FPS，慢拷贝可暂停后续预览；可选预览/抓拍另有 `1920×1080×4` 字节上限。
+这些值尚未经过目标设备资格验证，也没有改变原兼容路径的默认预览合同。
+Android 图像服务目前仍让分析和可选高清抓拍共用一次提交的完成 fence；长抓拍或该提交失败仍可能影响分析。独立预览缓冲已隔离 Unity 慢读者，
+尚不能据此承诺高清预览对识别零影响。实际设备的像素、延迟、热机吞吐及 RGA/RKNN 路线需要分别验收。
+
+`NativeFreshFrames` 统计不同的已发布原生观察，包含明确无人结果；`NativeInputFrames` 统计原生接纳输入，`InputFrameId` 与 canonical `FrameId` 分开保存。
+Unity 的 `ResultUpdated`/显示帧率受主线程消费频率限制。三者都不能替代逐人完整骨骼帧率；1–8 人、真实双手关键点和逐人 30 FPS 的产品目标仍需单独证明。
 
 ### Android RTSP 低档
 
@@ -163,6 +175,8 @@ yield return sdk.Initialize(options);
 | `GetColorImageWidth/Height()` | 实际纹理尺寸；无图像为 0 |
 | `TryGetInputFrame(afterId, out frame)` | 最新不同预览帧及来源身份/时间/尺寸；换源后重置 afterId=-1 |
 | `InputPublicationFps` / `FreshResultFps` / `Stats` | 输入发布率 / 新结果率 / 阶段统计；不等于逐人完整骨骼 FPS |
+| `TryGetRuntimeProgress(out progress)` | 查询已有原生累计计数、当前 source/generation/epoch、实际图像服务/后端及能力级别；读取不推进推理，旧 ABI 无该数据时返回 false |
+| `SubmittedAnalysisInputSize` / `RtspDecodedInputSize` | 实际分析传输尺寸 / 可用的原始解码尺寸；未知尺寸为零，不以请求值或高清预览尺寸代填 |
 | `State/Busy/IsInitialized/IsRunning/HasFreshResult` | 生命周期与结果时效 |
 | `ResultSequence/SourceFrameId/SourceTimestampUs/ResultAgeMilliseconds` | 原始结果序号及实际来源时序；不要与 Unity 渲染帧号混淆 |
 

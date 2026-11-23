@@ -32,3 +32,18 @@ After focused checks, run the architecture guard.
 
 | Delayed preview / pose flicker / frame identity | Demo/Input/PresentationTextureHistory.cs, PresentationPoseHistory.cs, VideoPlayerFrameSource.cs | raw SDK result timestamps / fresh counters | PresentationPoseHistoryTests; device snapshot pixel probe; inspect source/generation transitions |
 | Instance routing or publication FPS | runtime/composition/session.cpp; input AndroidRtspGpuSource.Tick; diagnostics pipeline.snapshot | GPU utilization must not replace fresh-person counts | RuntimeGpuComposition / RuntimeHost; A/B device measurements, thermal evidence |
+
+## Independent runtime candidate
+
+These rows describe the unreleased 2026-11-23 candidate. Start its local validation
+at [independent runtime acceptance](INDEPENDENT_RUNTIME_ACCEPTANCE.md); the released
+preview.17 evidence does not qualify a later native/managed combination.
+
+| Need | Modify first / component README | Usually do not modify | Focused filter/check |
+|---|---|---|---|
+| Change execution policy or deferred start/stop | [control contract](../../runtime/composition/RUNTIME_CONTROL.md), runtime_controller, HumanVisionRuntimeControl, HumanVisionSdkOptions | old Runtime handle casts, model weights, gameplay event thread | RuntimeControl; HumanVisionIndependentRuntimeTests; actual close/retirement |
+| Publish the last completion without Unity polling | [Host](../../runtime/host/README.md), RuntimeSession coordinator, completion mailbox | Unity Update as a publication pump, tracker from a second thread | RuntimeSession; RuntimeGpuComposition; ObservationJournal; StatsV2 |
+| Add a native source or diagnose clock/geometry identity | [input](../../native/input/README.md), SourceBinding, NativeInputGpuSource, native_frame_geometry | inference pipeline algorithms, Unity texture fallback in IndependentRequired | NativeSourceBinding; NativeGpuProducer; FrameEnvelope; VulkanDeviceIdentity |
+| Add an image service or prepared-input extension | [image ABI](../../runtime/include/README.md), image_transform_contract, CPU image service, explicit pipeline registration | Plugin ABI1/2/3 layout, duplicate model normalization | ImageServiceAbi; PreparedImageContract; PreparedPipelineRoute; legacy/default route |
+| Fix slow preview, exact capture or mutable matched pixels | [control contract](../../runtime/composition/RUNTIME_CONTROL.md), PreviewMailbox, HumanVisionNativeFrameSource, HumanVisionRuntimeView | decoder/analysis lease release on a Unity frame, current-image substitution | PreviewMailbox; NativePreviewOwnershipTests in graphics Editor; generation/cancel/deadline tests |
+| Reproduce Unity/native frame-loop separation | [acceptance procedure](INDEPENDENT_RUNTIME_ACCEPTANCE.md), existing RuntimePrefabAcceptance and tools/test probes | private Demo partials via a public sample overwrite, native fresh counts from display FPS | Full progress log; 500/2000ms stalls; 15/30/60 controls; library/model/source hashes |
