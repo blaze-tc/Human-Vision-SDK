@@ -61,14 +61,18 @@ into caller memory and never retain a decoder/analysis lease. A full or slow
 reader pool skips new preview work. A copy reservation is not retired by cancel:
 the owner must observe the actual completion before reuse.
 
-The first candidate caps live copies at5FPS, reducing them to1FPS under admission
-pressure. Windows fans out its already-owned analysis RGBA and leaves original
-coded dimensions unavailable (zero). Android requests one full visible-color
+Windows fans out its already-owned analysis-size RGBA at source cadence; each
+ready frame may attempt a bounded three-buffer copy, and pool/copy pressure
+skips optional preview work. There is no fixed 5 FPS throttle on this path. These
+pixels are not original-resolution HD, and original coded dimensions remain
+unavailable (zero). Android's original-color HD path caps live copies at 5 FPS,
+reducing them to 1 FPS under admission pressure. It requests one full visible-color
 capture from the image already admitted for analysis. It does not acquire an
 extra decoder image. The native Input image service submits analysis first and
 owns capture staging/completion independently of Unity. The conservative
-CPU-copy-call20ms/request-to-ready200ms limits suspend subsequent live copies
-when exceeded; they are not a measured GPU-copy profile or a throughput claim.
+20 ms CPU-copy-call limit applies to both paths; Android additionally has a
+200 ms request-to-ready limit. Exceeding these limits suspends subsequent live copies.
+They are not a measured GPU-copy profile or a throughput claim.
 These candidate limits still require actual device qualification.
 The unqualified candidate also limits a capture to8,294,400 RGBA bytes. The last
 admitted visible crop is classified before requesting capture, and actual ready

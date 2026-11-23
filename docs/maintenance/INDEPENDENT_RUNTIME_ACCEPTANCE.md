@@ -25,6 +25,10 @@ NPU 不必等待 RGA 才能使用共同的异步调度。RGA 及共享设备内�
 | 结果年龄 | Runtime 单调时钟下的本地 decode-to-query 年龄 | 未验证的传感器端到端延迟 |
 | 原始/分析/预览尺寸 | StatsV3 和实际预览 metadata | 请求尺寸；未知原始几何不能填成已知素材尺寸 |
 
+基础 Demo 的实时叠加显示当前预览和同一来源身份下最新仍有效的骨骼；画面与骨骼不要求来自同一帧。
+精确同帧模式必须另外核对 source/generation/frame/config epoch 和像素身份，实时叠加可见不能替代精确同帧验收。
+当前基础交互、实际画面和骨骼仍待 Unity 验证，不能用原生合同测试通过代填 UI 通过。
+
 ## 准备一致的候选
 
 1. 保留项目源文件、插件、meta 和 PlayerSettings 的备份。SDK 与 Input 必须来自兼容的一组候选。
@@ -94,7 +98,8 @@ source/generation/config epoch 改变、计数倒退、未知计数、缺失停�
 本地 native/managed 合同、编译或 mock/fence 测试只证明相应协议，不能代替 Android 驱动、像素或吞吐证据。
 本轮用户已暂缓新的真机 APK 安装，因而没有本次 OnePlus 新 APK、RK3588、RKNN 或 RGA 的硬件验收；此处不提供继续安装步骤。
 
-Android live preview 当前最多 5 FPS，压力下可降至 1 FPS，慢 copy 会暂停后续预览；可选预览/抓拍提交前还有 `1920×1080×4` 字节上限。
+Windows 原生预览当前复制分析尺寸 RGBA，不是原始高清图。它随已准备来源帧逐帧尝试三槽有界复制，槽位或拷贝预算不足时跳过，没有固定 5 FPS 上限。
+Android 原色高清 live preview 当前最多 5 FPS，压力下可降至 1 FPS，慢 copy 会暂停后续预览；可选高清预览/抓拍提交前还有 `1920×1080×4` 字节上限。
 这些是保守准入值，尚未经过设备 GPU copy budget 资格验证。
 分析和可选 HD 抓拍仍经过 Input 中同一转换提交/完成 fence，capture-only 失败也可能转成 source GPU error。
 因此“Unity 慢读不持有 decoder/analysis lease”已经有独立合同，强意义的“延迟硬件预览不影响分析/抓拍失败完全隔离”仍是 Input 层待验收门槛。

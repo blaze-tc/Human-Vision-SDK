@@ -21,6 +21,16 @@ performs semantic work, so the final inference publishes even with no later fram
 and no Unity consumer. Copy retains the existing coherent raw/sampled contract;
 sampling does not create a fresh observation.
 
+Native RTSP preview uses a bounded three-buffer copy pool. Windows fans out its
+already-owned analysis-size RGBA at source cadence, skipping optional copies
+when no slot or copy budget is available; it has no fixed 5 FPS throttle and does
+not provide original-resolution HD pixels. Android's original-color HD capture
+path retains the conservative 5 FPS/1 FPS admission budget. Live Demo overlays may
+show a newer preview with the latest valid skeleton; exact same-frame display
+requires matching source/generation/frame/configuration epoch separately. Demo
+picture/skeleton verification and RK3588 NPU/RGA device acceptance remain open.
+See [runtime control](RUNTIME_CONTROL.md) for ownership and capture limits.
+
 `ReadObservations(cursor, caller_buffer, capacity)` reads an independent bounded
 64-entry canonical journal. Each entry contains the original envelope, native
 publication clock, body/hand kind and separate model sequences. The returned
