@@ -68,7 +68,7 @@ namespace HumanVision.Interop
         internal uint Size, Version;
         internal IntPtr CreateDeferred, RequestStart, RequestSource, RequestPause, RequestResume, RequestStop,
             RequestReconfigure, RequestClose, TryRelease, Copy, GetRequestStatus, GetCapabilities, GetStatsV3,
-            ReadObservations, Submit, SetRegions, GetDiagnostics, CopyPreview, RequestSnapshot, CopySnapshot;
+            ReadObservations, Submit, SetRegions, GetDiagnostics, CopyPreview, RequestSnapshot, CopySnapshot, CancelSnapshot;
     }
     internal sealed class RuntimeControlBindings
     {
@@ -88,6 +88,7 @@ namespace HumanVision.Interop
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int DiagnosticsFn(IntPtr handle, StringBuilder text, uint capacity);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int PreviewFn(IntPtr handle, ulong after, IntPtr rgba, uint capacity, ref RuntimePreviewNative info);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int ObservationsFn(IntPtr handle, ulong after, IntPtr entries, uint capacity, ref RuntimeObservationReadNative read);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int CancelSnapshotFn(IntPtr handle, ulong request);
         internal readonly CreateFn CreateDeferred;
         internal readonly RequestFn RequestStart, RequestClose, RequestSnapshot;
         internal readonly SourceFn RequestSource;
@@ -101,6 +102,7 @@ namespace HumanVision.Interop
         internal readonly DiagnosticsFn GetDiagnostics;
         internal readonly PreviewFn CopyPreview, CopySnapshot;
         internal readonly ObservationsFn ReadObservations;
+        internal readonly CancelSnapshotFn CancelSnapshot;
         private static RuntimeControlBindings instance;
         internal static RuntimeControlBindings Load()
         {
@@ -109,7 +111,10 @@ namespace HumanVision.Interop
             int result;
             try { result = HV_QueryRuntimeControlApiV1(1, ref table); }
             catch (EntryPointNotFoundException e) { throw new NotSupportedException("The installed native SDK has no independent runtime API. Install the matching SDK/Input candidate together.", e); }
-            if (result != 0 || table.Version != 1 || table.Size < Marshal.SizeOf<RuntimeControlTableNative>())
+            // The unreleased 20-function table can still run while its matching
+            // native candidate is being replaced. Cancellation is explicitly absent.
+            uint requiredBytes = (uint)(8 + 20 * IntPtr.Size);
+            if (result != 0 || table.Version != 1 || table.Size < requiredBytes)
                 throw new NotSupportedException("The native SDK independent runtime contract is incompatible (" + result + ").");
             return instance = new RuntimeControlBindings(table);
         }
@@ -124,6 +129,8 @@ namespace HumanVision.Interop
             CopyPreview = Function<PreviewFn>(t.CopyPreview); RequestSnapshot = Function<RequestFn>(t.RequestSnapshot);
             CopySnapshot = Function<PreviewFn>(t.CopySnapshot);
             ReadObservations = Function<ObservationsFn>(t.ReadObservations);
+            CancelSnapshot = t.Size >= Marshal.SizeOf<RuntimeControlTableNative>() && t.CancelSnapshot != IntPtr.Zero
+                ? Function<CancelSnapshotFn>(t.CancelSnapshot) : null;
         }
         private static T Function<T>(IntPtr address) where T : Delegate
         {

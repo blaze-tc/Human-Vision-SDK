@@ -65,7 +65,7 @@ namespace HumanVision.Tests
                 new object[] { "RuntimeRequestStatusNative", 544 },
                 new object[] { "RuntimeCapabilitiesNative", 912 },
                 new object[] { "RuntimePreviewNative", 64 },
-                new object[] { "RuntimeControlTableNative", 168 }
+                new object[] { "RuntimeControlTableNative", 176 }
             }) {
                 var type = assembly.GetType("HumanVision.Interop." + pair[0]);
                 Assert.That(type, Is.Not.Null, "Missing additive controller binding: " + pair[0]);

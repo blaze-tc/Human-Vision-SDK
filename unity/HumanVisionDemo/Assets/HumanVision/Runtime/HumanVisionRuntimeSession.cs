@@ -61,6 +61,8 @@ namespace HumanVision
         }
         internal int CopyNativeSnapshot(ulong request, IntPtr pixels, uint capacity, ref RuntimePreviewNative info) =>
             _control == null ? RuntimeControlBindings.Unsupported : _control.CopySnapshot(request, pixels, capacity, ref info);
+        internal int CancelNativeSnapshot(ulong request) =>
+            _control == null ? RuntimeControlBindings.Unsupported : _control.CancelSnapshot(request);
         internal void RecordSourceArrival(bool rateLimited)
         {
             if (_control != null) return;

@@ -13,6 +13,7 @@ namespace HumanVision
         private readonly RuntimeControlBindings api;
         private IntPtr controller;
         private ulong startRequest;
+        private ulong pendingSnapshot;
         private bool closeRequested, released;
         private readonly int retirementSlot;
         private long nextCapabilitiesAt;
@@ -186,14 +187,44 @@ namespace HumanVision
         internal int CopyPreview(ulong after, IntPtr buffer, uint capacity, ref RuntimePreviewNative info)
         { lock (gate) { return released || closeRequested ? RuntimeControlBindings.NoData : api.CopyPreview(controller, after, buffer, capacity, ref info); } }
         internal int RequestSnapshot(out ulong request)
-        { lock (gate) { request = 0; return released || closeRequested ? RuntimeControlBindings.NoData : api.RequestSnapshot(controller, out request); } }
+        {
+            lock (gate) {
+                request = 0; if (released || closeRequested) return RuntimeControlBindings.NoData;
+                int result = api.RequestSnapshot(controller, out request);
+                if (result == RuntimeControlBindings.Ok) pendingSnapshot = request;
+                return result;
+            }
+        }
         internal int CopySnapshot(ulong request, IntPtr buffer, uint capacity, ref RuntimePreviewNative info)
-        { lock (gate) { return released || closeRequested ? RuntimeControlBindings.NoData : api.CopySnapshot(controller, request, buffer, capacity, ref info); } }
+        {
+            lock (gate) {
+                if (released || closeRequested) return RuntimeControlBindings.NoData;
+                int result = api.CopySnapshot(controller, request, buffer, capacity, ref info);
+                if (result == RuntimeControlBindings.Ok && pendingSnapshot == request) pendingSnapshot = 0;
+                return result;
+            }
+        }
+        internal int CancelSnapshot(ulong request)
+        {
+            lock (gate) {
+                if (released || closeRequested) return RuntimeControlBindings.NoData;
+                if (api.CancelSnapshot == null) return RuntimeControlBindings.Unsupported;
+                int result = api.CancelSnapshot(controller, request);
+                if ((result == RuntimeControlBindings.Ok || result == RuntimeControlBindings.NoData) && pendingSnapshot == request) pendingSnapshot = 0;
+                return result;
+            }
+        }
         internal void RequestClose()
         {
             lock (gate) {
                 if (released || closeRequested) return;
+                if (pendingSnapshot != 0 && api.CancelSnapshot != null) {
+                    // Cancellation only abandons the logical request. Native
+                    // owners still retire its real image operation on close.
+                    api.CancelSnapshot(controller, pendingSnapshot);
+                }
                 Check(api.RequestClose(controller, out _), "runtime close request"); closeRequested = true;
+                pendingSnapshot = 0;
             }
         }
         internal bool PollRetired()

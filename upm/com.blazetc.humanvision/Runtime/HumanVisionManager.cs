@@ -59,6 +59,8 @@ namespace HumanVision
         }
         internal int CopyNativeSnapshot(ulong request, IntPtr buffer, uint capacity, ref RuntimePreviewNative info) =>
             _session is HumanVisionRuntimeSession runtime ? runtime.CopyNativeSnapshot(request, buffer, capacity, ref info) : RuntimeControlBindings.Unsupported;
+        internal int CancelNativeSnapshot(ulong request) =>
+            _session is HumanVisionRuntimeSession runtime ? runtime.CancelNativeSnapshot(request) : RuntimeControlBindings.Unsupported;
         public string ActiveRuntimeProfile => (_session as HumanVisionRuntimeSession)?.ProfileId ?? string.Empty;
         public float HandInferenceFps => (_session as HumanVisionRuntimeSession)?.HandFps ?? 0;
         public string RuntimeDiagnostics => (_session as HumanVisionRuntimeSession)?.Diagnostics ?? "V1 compatibility session";
