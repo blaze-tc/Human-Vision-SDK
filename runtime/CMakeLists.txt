@@ -112,7 +112,9 @@ else()
     target_sources(humanvision_internal PRIVATE ${HV_ANDROID_GPU_PROBE_SOURCES})
 endif()
 
-target_sources(humanvision PRIVATE composition/runtime_c.cpp composition/android_gpu_c.cpp)
+target_sources(humanvision PRIVATE composition/runtime_c.cpp composition/android_gpu_c.cpp composition/runtime_control_c.cpp)
+target_sources(humanvision_internal PRIVATE composition/runtime_controller.cpp composition/source_binding.cpp)
+target_include_directories(humanvision_internal PUBLIC ${PROJECT_SOURCE_DIR}/native/input/include)
 target_include_directories(humanvision_internal PRIVATE ${PROJECT_SOURCE_DIR}/third_party)
 target_include_directories(humanvision_internal PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
