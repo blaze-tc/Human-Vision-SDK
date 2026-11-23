@@ -281,12 +281,12 @@ bool NativeSourceBinding::BuildPreviewInfo(const HV_InputFrameInfo& info,uint64_
 }
 void NativeSourceBinding::PublishCpuPreview(const HV_InputFrameInfo& info,uint64_t epoch) {
     if(preview_failed_||!(config_.flags&HV_NATIVE_SOURCE_LIVE_PREVIEW))return;
-    const auto now=Now();if(now<next_cpu_preview_us_)return;next_cpu_preview_us_=now+200000;
     HV_RuntimePreviewV1 metadata{};if(!BuildPreviewInfo(info,epoch,metadata))return;
     if(!preview_.MatchesSourceGeneration(config_.source_id,info.generation,epoch))return;
     PreviewMailbox::CopyTicket ticket;
-    // These bytes are already owned by the ingestion worker; no decoder or
-    // analysis credit is retained for the optional copy.
+    // Follow already-owned analysis frames at source cadence. Android's
+    // separate original-resolution capture path retains its conservative
+    // request budget; this copy takes no decoder or analysis credit.
     if(!preview_.TryBeginCopy(0,false,false,ticket))return;
     if(metadata.rgba_bytes>ticket.capacity) {
         preview_.FinishCopy(ticket,HV_RuntimePreviewV1{},true,0,false);
@@ -314,8 +314,8 @@ int NativeSourceBinding::CancelSnapshot(uint64_t request) {return preview_.Cance
 std::string NativeSourceBinding::PreviewDiagnostics() const {
     std::lock_guard<std::mutex> lock(error_mutex_);
     return "preview: native-owned copies="+std::to_string(preview_.Published())+
-        " skipped="+std::to_string(preview_.Skipped())+" live_limit_fps=5 live_suspended="+
-        (preview_.BudgetExceeded()?"1":"0")+" budget=cpu-copy-20ms/request-ready-200ms-unqualified"+
+        " skipped="+std::to_string(preview_.Skipped())+" live_limit_fps="+(android_native_?"5":"source")+" live_suspended="+
+        (preview_.BudgetExceeded()?"1":"0")+" budget="+(android_native_?"cpu-copy-20ms/request-ready-200ms-unqualified":"cpu-copy-20ms")+
         (android_native_?(preview_failed_?" exact=unsupported-preview-failure":" exact=next-accepted-original"):" exact=unsupported-original-geometry")+
         (preview_error_[0]?" error="+std::string(preview_error_.data()):"");
 }

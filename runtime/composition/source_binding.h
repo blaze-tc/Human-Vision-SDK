@@ -105,7 +105,6 @@ private:
     PreviewMailbox preview_;
     std::atomic<uint64_t> capture_rgba_bytes_{0};
     std::atomic<bool> preview_failed_{false};
-    int64_t next_cpu_preview_us_=0;
     uint64_t snapshot_check_request_=0,snapshot_check_frame_=0,snapshot_check_cursor_=0;
     std::vector<uint8_t> pixels_;
     std::atomic<uint64_t> frames_{0},generation_{0},frame_id_{0},errors_{0};
