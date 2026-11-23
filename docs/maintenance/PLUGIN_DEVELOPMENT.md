@@ -49,6 +49,9 @@ protocol without changing Plugin ABI1/2/3. Static plugins register a unique imag
 query with `PluginRegistry::RegisterImageExtension` before a profile/Host retains
 the module. A dynamic pipeline DLL may export `HV_QueryPipelineImageExtensionV1`;
 its optional table is validated before the module is published in the registry.
+Registering an extension does not select it: Host starts use legacy dispatch by
+default and require an explicit prepared-image opt-in. The old semantic C API and
+CompatibleUnityInput policy keep their existing pipeline path.
 
 The pipeline's DescribeTransform owns geometry and preprocessing decisions. An
 image service executes that plan, returns a service-owned prepared lease, and

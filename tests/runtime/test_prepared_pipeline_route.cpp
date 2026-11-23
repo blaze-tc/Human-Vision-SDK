@@ -57,12 +57,20 @@ TEST(PreparedImageContract, HostUsesOneWorkerAndPreservesTheOriginalEnvelope) {
  Trace trace;PluginRegistry registry;RuntimeHost host;std::string error;
  ASSERT_TRUE(registry.Register(Query,error));ASSERT_TRUE(registry.RegisterImageExtension("fixture.prepared",Extension,error));
  HV_PipelineConfigV1 config{sizeof(config),1,1,0,"{}",".","{}"};HV_HostServicesV1 services{sizeof(services),1,&trace};
- ASSERT_TRUE(host.Start(registry.Find("fixture.prepared",HV_CAP_BODY_POSE,error),config,services,error))<<error;
+ ASSERT_TRUE(host.Start(registry.Find("fixture.prepared",HV_CAP_BODY_POSE,error),config,services,error,nullptr,true))<<error;
  uint8_t pixels[16]{};auto frame=Frame(pixels);FrameEnvelope envelope;envelope.source_id=5;envelope.generation=8;envelope.config_epoch=13;envelope.region_revision=21;
  ASSERT_TRUE(host.Submit(frame,envelope,nullptr,0,error));ASSERT_TRUE(WaitResult(host))<<host.LastError();
  host.Stop();EXPECT_EQ(trace.prepared,1);EXPECT_EQ(trace.legacy,0);EXPECT_EQ(trace.identity.source_id,5);EXPECT_EQ(trace.identity.generation,8);
  EXPECT_EQ(trace.identity.config_epoch,13);EXPECT_EQ(trace.identity.region_revision,21);
  EXPECT_EQ(trace.describe_thread,trace.process_thread);EXPECT_NE(trace.process_thread,std::this_thread::get_id());
+}
+TEST(PreparedImageContract, ARegisteredExtensionDoesNotChangeLegacyDispatchByDefault) {
+ Trace trace;PluginRegistry registry;RuntimeHost host;std::string error;
+ ASSERT_TRUE(registry.Register(Query,error));ASSERT_TRUE(registry.RegisterImageExtension("fixture.prepared",Extension,error));
+ HV_PipelineConfigV1 config{sizeof(config),1,1,0,"{}",".","{}"};HV_HostServicesV1 services{sizeof(services),1,&trace};
+ ASSERT_TRUE(host.Start(registry.Find("fixture.prepared",HV_CAP_BODY_POSE,error),config,services,error))<<error;
+ uint8_t pixels[16]{};ASSERT_TRUE(host.Submit(Frame(pixels),error));ASSERT_TRUE(WaitResult(host));host.Stop();
+ EXPECT_EQ(trace.legacy,1);EXPECT_EQ(trace.prepared,0);EXPECT_EQ(trace.describe_thread,std::thread::id{});
 }
 TEST(PreparedImageContract, APluginWithoutExtensionKeepsItsLegacyProcess) {
  Trace trace;PluginRegistry registry;RuntimeHost host;std::string error;
@@ -76,7 +84,7 @@ TEST(PreparedImageContract, HostCancelCannotRetireAnUncompletedImageOperation) {
  Trace trace;DeferredService deferred;auto image_api=deferred.Api();PluginRegistry registry;RuntimeHost host;std::string error;
  ASSERT_TRUE(registry.Register(Query,error));ASSERT_TRUE(registry.RegisterImageExtension("fixture.prepared",Extension,error));
  HV_PipelineConfigV1 config{sizeof(config),1,1,0,"{}",".","{}"};HV_HostServicesV1 services{sizeof(services),1,&trace};
- ASSERT_TRUE(host.Start(registry.Find("fixture.prepared",HV_CAP_BODY_POSE,error),config,services,error,&image_api));
+ ASSERT_TRUE(host.Start(registry.Find("fixture.prepared",HV_CAP_BODY_POSE,error),config,services,error,&image_api,true));
  uint8_t pixels[16]{};ASSERT_TRUE(host.Submit(Frame(pixels),error));
  const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(3);
  while(!deferred.cancelled&&std::chrono::steady_clock::now()<until)std::this_thread::sleep_for(std::chrono::milliseconds(1));

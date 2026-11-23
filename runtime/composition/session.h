@@ -23,6 +23,11 @@ public:
  ~RuntimeSession();
  // Serialized control-owner operation. Joins native owners; never call per frame.
  void Stop();
+ // Control owner, before Start only. Legacy/compatible sessions never opt in.
+ bool EnablePreparedImages(bool enabled) noexcept {
+  if(profile_||closing_.load(std::memory_order_relaxed))return false;
+  prepared_images_enabled_=enabled;return true;
+ }
  bool Start(const std::filesystem::path& root,const std::string& profile,int capacity,std::string& error,
             HV_QueryPluginV3Fn gpu_pipeline_query=nullptr,GpuConsumerSource* gpu_test_source=nullptr);
  bool Submit(const HV_VideoFrame&,std::string& error);
@@ -74,6 +79,7 @@ private:
  int64_t revision_=0,body_sequence_=0,hand_sequence_=0;
  uint64_t gpu_completion_rejections_=0;
  bool regions_pending_=false;
+ bool prepared_images_enabled_=false;
  FrameEnvelope active_envelope_;
  std::shared_ptr<ObservationJournal> journal_;
  FrameRateCredit body_admission_;

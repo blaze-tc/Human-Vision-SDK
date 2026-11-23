@@ -38,6 +38,7 @@ RuntimeController::RuntimeController(OwnedRuntimeConfig config,SessionFactory fa
     :config_(std::move(config)),factory_(std::move(factory)) {
     if(!factory_)factory_=[](const OwnedRuntimeConfig& c,GpuConsumerSource* source,std::shared_ptr<ObservationJournal> journal,std::string& error) {
         auto session=std::make_unique<RuntimeSession>(std::move(journal));
+        session->EnablePreparedImages(c.policy!=HV_EXECUTION_COMPATIBLE);
         if(!session->Start(std::filesystem::u8path(c.root),c.profile,c.capacity,error,nullptr,source))return std::unique_ptr<RuntimeSession>{};
         return session;
     };

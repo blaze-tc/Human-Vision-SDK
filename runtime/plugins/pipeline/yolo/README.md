@@ -159,7 +159,10 @@ not be redistributed by these tools.
 ## Prepared image extension
 
 The CPU, desktop and tensor registrations expose separate optional image-extension
-queries. Their initial plan preserves the source's packed pixel geometry/format
+queries. These do not switch compatible or legacy sessions away from their
+existing processing path. Prepared routing requires an explicit Host opt-in;
+the deferred controller enables it for an independently selected execution policy.
+Their initial plan preserves the source's packed pixel geometry/format
 and delegates model letterbox, channel packing and exactly one normalization to
 the existing pipeline/backend. CPU image preparation may strip row padding but
 does not alter model preprocessing. RKNN's compiled normalization remains in its

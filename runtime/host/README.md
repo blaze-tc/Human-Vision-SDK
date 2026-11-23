@@ -89,11 +89,15 @@ No model/provider ID switches belong in this dispatcher.
 ## Optional image preparation
 
 An immutable PluginModule can carry a separately queried
-`HV_PipelineImageExtensionV1`. The existing Host worker runs DescribeTransform,
+`HV_PipelineImageExtensionV1`. Registration advertises capability and does not
+enable another pixel copy. Start/StartPool keep legacy dispatch by default;
+the control owner must explicitly opt into prepared image jobs. Only then does
+the existing Host worker run DescribeTransform,
 the selected image service and ProcessPrepared inside the same admitted job;
 its envelope, completion credit and publication behavior remain unchanged.
 Composition may supply any valid `HV_ImageServiceApiV1` table with a context that
-outlives Stop. The default is the bounded synchronous CPU oracle. The Host does
+outlives Stop. Once opted in, the default provider is the bounded synchronous CPU
+oracle. The Host does
 not select model geometry, normalization or a vendor implementation.
 
 Legacy modules without an extension call their existing process function. Image

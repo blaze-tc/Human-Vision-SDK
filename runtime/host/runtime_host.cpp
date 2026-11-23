@@ -27,11 +27,11 @@ void RetirePrepared(const HV_ImageServiceApiV1& api,HV_PreparedImageLeaseV1& lea
 }
 }
 bool RuntimeHost::Start(std::shared_ptr<const PluginModule> module, const HV_PipelineConfigV1& config,
-        const HV_HostServicesV1& services, std::string& error,const HV_ImageServiceApiV1* image_service) {
-    return StartPool(std::move(module),{config},services,error,image_service);
+        const HV_HostServicesV1& services, std::string& error,const HV_ImageServiceApiV1* image_service,bool enable_prepared_images) {
+    return StartPool(std::move(module),{config},services,error,image_service,enable_prepared_images);
 }
 bool RuntimeHost::StartPool(std::shared_ptr<const PluginModule> module,const std::vector<HV_PipelineConfigV1>& configs,
-        const HV_HostServicesV1& services,std::string& error,const HV_ImageServiceApiV1* image_service) {
+        const HV_HostServicesV1& services,std::string& error,const HV_ImageServiceApiV1* image_service,bool enable_prepared_images) {
     if (!module || module->api.type != HV_PLUGIN_PIPELINE || configs.empty() || configs.size()>3 ||
         services.struct_size < sizeof(services) || services.api_version != HV_PLUGIN_API_V1) {
         error = "Invalid pipeline configuration or plugin capabilities"; return false;
@@ -69,7 +69,7 @@ bool RuntimeHost::StartPool(std::shared_ptr<const PluginModule> module,const std
     HV_ImageServiceApiV1 image_api{};
     try {
         new_slot = std::make_unique<FrameJobSlot>();
-        if(module->has_image_extension){
+        if(enable_prepared_images&&module->has_image_extension){
             const auto& extension=module->image_extension;
             if(extension.struct_size<sizeof(extension)||extension.api_version!=1||!extension.DescribeTransform||!extension.ProcessPrepared){
                 error="Invalid optional pipeline image extension";return false;
@@ -82,6 +82,7 @@ bool RuntimeHost::StartPool(std::shared_ptr<const PluginModule> module,const std
     Stop();
     std::unique_lock<std::mutex> lock(lifecycle_mutex_);
     module_ = std::move(module); max_bodies_ = configs[0].max_bodies;
+    prepared_images_enabled_=enable_prepared_images&&module_->has_image_extension;
     cpu_images_=std::move(new_images);image_service_=image_api;
     for(size_t i=0;i<candidates.size();++i)instances_[i]=candidates[i].release();
     worker_count_=uint32_t(configs.size());active_workers_=0;late_drops_=0;errors_=0;
@@ -183,6 +184,7 @@ void RuntimeHost::Stop() {
     std::lock_guard<std::mutex> lock(lifecycle_mutex_);
     for(auto& instance:instances_)if(instance){try {module_->api.pipeline->destroy(instance);}catch(...){}instance=nullptr;}
     worker_count_=0;active_workers_=0;
+    prepared_images_enabled_=false;
     image_service_={};cpu_images_.reset();
     module_.reset();
     { std::lock_guard<std::mutex> result_lock(result_mutex_); has_result_ = false; diagnostics_={}; }
@@ -215,7 +217,7 @@ void RuntimeHost::Run(uint32_t index) {
         HV_ErrorBufferV1 buffer{sizeof(buffer), HV_PLUGIN_API_V1, message, sizeof(message)};
         HV_Result status = HV_ERR_INTERNAL;
         try {
-            if(module_->has_image_extension){
+            if(prepared_images_enabled_){
                 const auto source=DescribeCopiedImage(input.frame,metadata.envelope);
                 HV_ImageTransformPlanV1 plan{};plan.struct_size=sizeof(plan);plan.api_version=1;
                 HV_PreparedImageLeaseV1 prepared{};prepared.struct_size=sizeof(prepared);prepared.api_version=1;

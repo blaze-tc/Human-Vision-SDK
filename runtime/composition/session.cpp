@@ -114,7 +114,7 @@ bool RuntimeSession::Start(const std::filesystem::path& root,const std::string& 
   // Keep a single RKNN context with the established three-core mask; private
   // input-memory and graph candidates remain independent of instance count.
 #endif
-  return host.Start(selection.plugin,config,factory_->Services(),error);
+  return host.Start(selection.plugin,config,factory_->Services(),error,nullptr,prepared_images_enabled_);
  };
  body_.SetCompletionNotifier(this,CompletionReady);
  hand_.SetCompletionNotifier(this,CompletionReady);

@@ -52,7 +52,9 @@ existing Host worker and owns three bounded reusable output buffers.
 
 `HV_QueryPipelineImageExtensionV1` is an optional dynamic-module symbol. Static
 composition registers each unique query against a pipeline ID before immutable
-plugin use. DescribeTransform and ProcessPrepared use the same existing pipeline
+plugin use. Registration does not enable prepared dispatch; the Host's default
+remains legacy processing until its control owner explicitly opts in.
+DescribeTransform and ProcessPrepared use the same existing pipeline
 instance and worker. A prepared lease binds plan/model-profile fingerprints,
 source identity, inverse transform and explicit normalization counts. These are
 compatibility fingerprints, not cryptographic authentication. A mismatch or
