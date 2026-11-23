@@ -133,17 +133,7 @@ namespace HumanVision.Input
             if (Pending) throw new InvalidOperationException("RTSP GPU source is still retiring; wait for Closing to finish before reopening.");
             if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.Vulkan) throw new InvalidOperationException("Android RTSP requires Vulkan and qualified AHB/sync-fd support.");
 #if UNITY_ANDROID && !UNITY_EDITOR
-            using (var version = new AndroidJavaClass("android.os.Build$VERSION"))
-                if (version.GetStatic<int>("SDK_INT") < 29) throw new InvalidOperationException("This Android hardware codec qualification requires API29 device capability query; native ABI remains API26.");
-            string selected = null;
-            using (var list = new AndroidJavaObject("android.media.MediaCodecList", 0))
-                foreach (var codec in list.Call<AndroidJavaObject[]>("getCodecInfos"))
-                using (codec) {
-                    if (codec.Call<bool>("isEncoder") || !codec.Call<bool>("isHardwareAccelerated")) continue;
-                    foreach (string type in codec.Call<string[]>("getSupportedTypes")) if (type == "video/avc") { selected = codec.Call<string>("getName"); break; }
-                    if (selected != null) break;
-                }
-            if (selected == null) throw new InvalidOperationException("No hardware H.264 decoder is available; software fallback is disabled.");
+            string selected = HardwareVideoDecoderSelection.SelectAvcCodec();
             NativeInputBindings.HV_Input_SelectHardwareCodec(selected);
 #endif
             var url = NativeInputBindings.Utf8(settings.Location);

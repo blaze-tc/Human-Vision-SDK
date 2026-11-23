@@ -174,6 +174,7 @@ public sealed class HumanVisionInputAdapter:MonoBehaviour {
         }
         if(manager==null)manager=GetComponent<HumanVisionManager>();
         if(manager==null||!manager.IsInitialized){latest=frame.FrameId;LastError="SDK is not initialized; independent preview continues.";return;}
+        if(manager.UsesIndependentInput){LastError="The native runtime already owns input; Unity texture ingestion is disabled.";return;}
         if(closing)return;
         if(sourceId!=0&&(sourceId!=frame.SourceId||generation!=frame.Generation)) {
             // Retire CPU result identity immediately on reconnect/mirror changes.

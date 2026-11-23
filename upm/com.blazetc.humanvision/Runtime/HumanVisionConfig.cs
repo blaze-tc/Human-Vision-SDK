@@ -18,12 +18,16 @@ namespace HumanVision
         [Tooltip("Prepared runtime data folder. Empty selects the V1 compatibility configuration.")]
         public string RuntimeRoot;
         public string Profile = "auto";
+        public HumanVisionExecutionPolicy ExecutionPolicy = HumanVisionExecutionPolicy.CompatibleUnityInput;
+        internal HumanVisionNativeSourceConfiguration NativeSource;
         // Deprecated V1 compatibility inputs; new applications use RuntimeRoot/Profile.
         public string DetectorModelPath;
         public string PoseModelPath;
 
         public void Validate()
         {
+            if (!Enum.IsDefined(typeof(HumanVisionExecutionPolicy), ExecutionPolicy))
+                throw new ArgumentException("Invalid runtime execution policy.");
             if (MaxBodies < 1)
             {
                 throw new ArgumentException("MaxBodies must be at least 1.", nameof(MaxBodies));
@@ -57,7 +61,7 @@ namespace HumanVision
 
         public HumanVisionConfig Clone()
         {
-            return (HumanVisionConfig)MemberwiseClone();
+            var copy = (HumanVisionConfig)MemberwiseClone(); copy.NativeSource = NativeSource?.Clone(); return copy;
         }
 
         internal NativeConfigLease CreateNativeLease()

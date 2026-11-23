@@ -65,6 +65,8 @@ yield return sdk.Initialize(request);
 | `MaximumHandAgeMilliseconds` | 手关节 200 ms；不是人体新结果帧率 | 应用识别配置 |
 | `Input.Mirror` | 水平镜像；骨骼映射同步处理 | 重新初始化 |
 | `RtspTcp` | 默认 TCP，false 为 UDP | 重新初始化 |
+| `ExecutionPolicy` | 默认 `CompatibleUnityInput`；原生 RTSP 可选 `IndependentPreferred` / `IndependentRequired` | 完整重新初始化 |
+| `PreviewEnabled` | 默认 true；独立路径可关闭预览而继续采集、识别和发布 | 完整重新初始化 |
 | `AutoSelectRtspStream` | 默认关闭。启用后在 RTSP/TCP 接入时探测同通道的宇视 H.264 码流尺寸 | 打开 RTSP 时 |
 | `UseModelSizedAnalysisInput` | 默认关闭。启用后允许 Android RTSP 的 GPU/NPU 低档从解码帧独立生成模型输入 | 重新初始化 |
 | `InputOpenTimeoutSeconds` | 默认 15 秒；APK 视频首次缓存另有有界准备等待 | 初始化 |
@@ -80,6 +82,36 @@ preview.8 的完整本地 Android 资源补充包使用 YOLOv8n-pose CPU 模型�
 CPU 的人数上限不切换模型。Vulkan 保留低/中/高三个原模型，NPU 保留已恢复的低档 RKNN 模型。
 Windows CPU 与 DirectML 使用同一套 YOLOv8n-pose 权重。低、中、高分别为 512×288、640×384、960×576。模型准备使用 SDK 随附的图结构与现有 NCNN 权重。Android 私有资源见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)。
 旧代码直接创建 `HumanVisionSdkOptions` 时仍须注意 `UseWindowsCpu` 兼容开关；推荐从资产创建副本。
+
+### 原生独立运行候选
+
+本次独立运行改造仍是本地候选，须安装配套的 SDK 和 Input 原生库；不更改旧项目的默认输入模式。
+
+```csharp
+var request = configuration.CreateOptionsForInput(InputKind.Rtsp, rtspAddress);
+request.ExecutionPolicy = HumanVisionExecutionPolicy.IndependentRequired;
+request.UseModelSizedAnalysisInput = true;
+request.PreviewEnabled = true; // 测识别自主性时可关闭
+yield return sdk.Initialize(request);
+if (!sdk.IsRunning) Debug.LogError(sdk.LastError);
+
+if (sdk.TryGetRuntimeProgress(out var progress))
+    Debug.Log($"{progress.CapabilityLevel}: {progress.ActualBackend}, native fresh={progress.NativeFreshFrames}");
+```
+
+Windows 原生 RTSP 将解码后的 CPU 图像直接提交给现有后端；Android 原生 RTSP 使用独立 Vulkan 图像服务，供 GPU 或经 staging 供 CPU/NPU。
+`UsesGpuImageService` 与 `ActualBackend` 分开报告；选择 NPU 不代表图像处理完全不使用 GPU。相同设备上的带宽、功耗和散热竞争仍然存在。
+
+`IndependentRequired` 当前要求 RTSP 并开启 `OpenInputOnInitialize`。VideoPlayer、WebCamTexture 和游戏纹理继续使用异步兼容入口；
+`IndependentPreferred` 在这些来源上保留兼容驱动，不能据此宣称输入已脱离 Unity。原生 RTSP 启动错误会明确报告，不会暗中启动第二个 Unity 解码器。
+
+独立模式的初始化只排队控制请求，模型、设备和网络启动在原生控制线程执行。`ResultUpdated` 仍在 Unity 主线程通知；主线程停顿期间，
+界面和事件不会更新，原生采集、推理及 canonical 发布可继续前进。`TryGetRuntimeProgress` 直接查询原生累计计数，重复读取或采样不增加新结果。
+旧 ABI 会话没有这些计数时返回 false。`IndependentInputSize` 是实际分析图像尺寸；`RtspDecodedInputSize` 单独返回可用的原始解码尺寸，未知时为零。
+
+预览是独立的可丢帧消费者，不持有原生解码图像或分析槽；关闭预览不会停止识别。精确图像与骨骼只有 source、generation、frame、epoch 匹配时才返回，
+暂缺时不拿当前画面替代。停止请求不会在 Unity 线程等待原生退出；`StopSdk()` 等待真实退役。驱动未完成时保持资源所有权，
+可从 `RuntimeDiagnostics` 查看退役状态，不能强制卸载库或把超时当作完成。
 
 ### Android RTSP 低档
 

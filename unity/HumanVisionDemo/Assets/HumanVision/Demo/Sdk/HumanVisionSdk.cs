@@ -5,6 +5,7 @@ using HumanVision.Demo;
 using HumanVision.Input;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.Scripting;
 
 namespace HumanVision
 {
@@ -117,13 +118,21 @@ namespace HumanVision
         public double FreshResultFps => resultRate.Rate;
         /// <summary>当前实际 Runtime 配置和诊断字符串，用于实机日志；尚未初始化时为空。</summary>
         public string RuntimeProfile => manager != null && manager.IsInitialized ? manager.ActiveRuntimeProfile : "";
-        public string RuntimeDiagnostics => manager != null && manager.IsInitialized ? manager.RuntimeDiagnostics : "";
+        public string RuntimeDiagnostics => manager != null && manager.IsInitialized ? manager.RuntimeDiagnostics : retirement?.RetirementDiagnostics ?? "";
+        /// <summary>Read native counters immediately; this does not submit, infer, or publish a result.</summary>
+        [Preserve]
+        public bool TryGetRuntimeProgress(out HumanVisionRuntimeProgress progress) {
+            progress = default; return manager != null && manager.TryGetRuntimeProgress(out progress);
+        }
+        /// <summary>Actual native analysis transport size, or zero before its first valid input.</summary>
+        public Vector2Int IndependentInputSize => manager != null ? manager.IndependentInputSize : Vector2Int.zero;
         /// <summary>当前 RTSP 码流的公开标签。标准路径分为主、辅、第三流，标签不包含登录信息。</summary>
         public string SelectedRtspStreamLabel => RtspStreamSelector.StreamLabel(selectedRtspStream.Address);
         /// <summary>连接前探测到的编码尺寸；尚未探测或未返回尺寸时为零。预览尺寸以已发布的输入帧为准。</summary>
         public Vector2Int SelectedRtspStreamSize => selectedRtspStream.Size;
         /// <summary>Android RTSP 硬解报告的输入尺寸，尚未建立或不可用时为零。</summary>
-        public Vector2Int RtspDecodedInputSize => source is RtspFrameSource rtsp ? rtsp.DecodedInputSize : Vector2Int.zero;
+        public Vector2Int RtspDecodedInputSize => manager != null && manager.UsesIndependentInput ? manager.IndependentDecodedSize :
+            source is RtspFrameSource rtsp ? rtsp.DecodedInputSize : Vector2Int.zero;
         /// <summary>实际成功应用的语义加速器；请求失败时保持旧值。</summary>
         public HumanVisionAccelerationMode ActiveAccelerationMode => IsInitialized
             ? HumanVisionAndroidAccelerationSelection.IsNeuralProfile(RuntimeProfile) ? HumanVisionAccelerationMode.Neural
@@ -134,7 +143,8 @@ namespace HumanVision
         public string ActiveModelPack => IsInitialized ? activeContract?.ModelPackId ?? "" : "";
         public Vector2Int AnalysisInputSize => IsInitialized && activeContract != null ? new Vector2Int(activeContract.PoseWidth, activeContract.PoseHeight) : Vector2Int.zero;
         /// <summary>Actual dimensions of the latest successfully submitted recognition frame, or zero while unavailable.</summary>
-        public Vector2Int SubmittedAnalysisInputSize => IsRunning && bridge != null ? bridge.SubmittedAnalysisInputSize : Vector2Int.zero;
+        public Vector2Int SubmittedAnalysisInputSize => IsRunning && manager != null && manager.UsesIndependentInput ? manager.IndependentInputSize :
+            IsRunning && bridge != null ? bridge.SubmittedAnalysisInputSize : Vector2Int.zero;
         /// <summary>原始结果序号。</summary>
         public long ResultSequence => manager != null ? manager.ResultSequence : 0;
         /// <summary>来源帧 ID；未初始化为 -1。</summary>
@@ -177,6 +187,12 @@ namespace HumanVision
         internal bool TryGetRuntimeViewResult(out HumanVisionTextureFrame input, out Texture color, out long inputFrameId)
         {
             color = null; inputFrameId = -1;
+            if (source is HumanVisionNativeFrameSource native) {
+                TryGetInputFrame(-1, out input);
+                if (!HasFreshResult || manager == null || acceptedSequence != manager.ResultSequence ||
+                    !native.TryGetMatchedFrame(manager.SourceFrameId, manager.ResultSourceId, manager.ResultGeneration, out var matched)) return false;
+                input = matched; color = matched.Texture; inputFrameId = matched.FrameId; return true;
+            }
             return TryGetInputFrame(-1, out input) && HasFreshResult &&
                 input.SourceId == sourceId && input.Generation == sourceGeneration &&
                 acceptedSequence == manager.ResultSequence &&
@@ -258,10 +274,29 @@ namespace HumanVision
                 }
             }
             var nativeConfig = new HumanVisionConfig { RuntimeRoot = root, Profile = contract.ProfileId, MaxBodies = candidate.Recognition.MaxBodies };
+            bool independent = candidate.ExecutionPolicy != HumanVisionExecutionPolicy.CompatibleUnityInput &&
+                candidate.SourceKind == InputKind.Rtsp && candidate.OpenInputOnInitialize;
+            if (independent) {
+                try {
+                    var analysis = new Vector2Int(candidate.Input.RequestedWidth, candidate.Input.RequestedHeight);
+                    if (candidate.UseModelSizedAnalysisInput && contract.DetectorWidth == 0)
+                        analysis = AnalysisRenderTextureGeometry.CalculateTargetSize(analysis.x, analysis.y, contract.PoseWidth, contract.PoseHeight);
+                    // The existing ultra-low graph consumes the reviewed 512x288 transport and applies its own model resize.
+                    if (candidate.UseModelSizedAnalysisInput && contract.PoseWidth == 384 && contract.PoseHeight == 224)
+                        analysis = new Vector2Int(512, 288);
+                    nativeConfig.ExecutionPolicy = candidate.ExecutionPolicy;
+                    nativeConfig.NativeSource = new HumanVisionNativeSourceConfiguration {
+                        Library = NativeInputRuntimeLibrary.ResolvePath(), Url = stream.Address?.AbsoluteUri ?? candidate.Input.RtspUrl,
+                        HardwareCodec = HardwareVideoDecoderSelection.SelectAvcCodec(), Width = (uint)analysis.x, Height = (uint)analysis.y,
+                        Tcp = candidate.RtspTcp, Mirror = candidate.Input.Mirror, Preview = candidate.PreviewEnabled,
+                        TimeoutMs = (uint)Math.Min(60000, Math.Max(1000, candidate.InputOpenTimeoutSeconds * 1000))
+                    };
+                } catch (Exception e) { Error(e.Message); State = previousState; yield break; }
+            }
             HumanVisionStagedInitialization<HumanVisionRuntimeSession> pending = null;
             long preparedRevision = 0;
-            if (SharedRecognitionSettings.IsDesktopYolo(contract.ProfileId) || candidate.AccelerationMode == HumanVisionAccelerationMode.Neural ||
-                (Application.platform == RuntimePlatform.Android && candidate.AccelerationMode == HumanVisionAccelerationMode.Cpu)) {
+            if (!independent && (SharedRecognitionSettings.IsDesktopYolo(contract.ProfileId) || candidate.AccelerationMode == HumanVisionAccelerationMode.Neural ||
+                (Application.platform == RuntimePlatform.Android && candidate.AccelerationMode == HumanVisionAccelerationMode.Cpu))) {
                 // Resolve Android metadata on the main thread above. Only pure managed/native CPU creation runs here.
                 var requestedRegions = candidate.Recognition.UseRegions ? candidate.Recognition.Regions : Array.Empty<Rect>();
                 preparedRevision = revision + 1;
@@ -298,6 +333,15 @@ namespace HumanVision
             if (!initialized) {
                 string error = manager.LastError; yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); yield break;
             }
+            double runtimeDeadline = Time.realtimeSinceStartupAsDouble + 120;
+            string runtimeFailure = "";
+            while (token == operation && !manager.PollRuntimeInitialization(out runtimeFailure) &&
+                string.IsNullOrEmpty(runtimeFailure) && Time.realtimeSinceStartupAsDouble < runtimeDeadline) yield return null;
+            if (token != operation || !isActiveAndEnabled) yield break;
+            if (!manager.PollRuntimeInitialization(out runtimeFailure)) {
+                string error = string.IsNullOrEmpty(runtimeFailure) ? "Native runtime did not finish initialization within its observation deadline; retirement remains owned." : runtimeFailure;
+                yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); yield break;
+            }
             activeContract = contract;
             if (!ApplyRecognition(candidate.Recognition, preparedRevision)) {
                 string error = LastError; yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); yield break;
@@ -312,7 +356,10 @@ namespace HumanVision
                 yield break;
             }
             try {
-                switch (candidate.SourceKind) {
+                if (manager.UsesIndependentInput) {
+                    var nativeSource = go.AddComponent<HumanVisionNativeFrameSource>();
+                    nativeSource.Configure(manager, candidate.PreviewEnabled, candidate.Input.Mirror); source = nativeSource;
+                } else switch (candidate.SourceKind) {
                     case InputKind.WebCamera: source = go.AddComponent<WebCameraFrameSource>(); break;
                     case InputKind.Video: source = go.AddComponent<VideoFrameSource>(); break;
                     case InputKind.Rtsp: source = go.AddComponent<RtspFrameSource>(); break;
@@ -333,7 +380,7 @@ namespace HumanVision
                     !string.Equals(stream.Address.OriginalString, candidate.Input.RtspUrl, StringComparison.Ordinal))
                     rtspSettings.Location = stream.Address.AbsoluteUri;
                 source.Open(sourceSettings);
-                bridge.BindUnifiedSource(source, splitSize);
+                if (!manager.UsesIndependentInput) bridge.BindUnifiedSource(source, splitSize);
                 selectedRtspStream = stream;
                 if (candidate.AutoSelectRtspStream && stream.Address != null)
                     Debug.Log($"HumanVision RTSP stream: {SelectedRtspStreamLabel} probed={stream.Size.x}x{stream.Size.y} reason={stream.Reason}");
@@ -446,7 +493,14 @@ namespace HumanVision
             double now = Time.realtimeSinceStartupAsDouble;
             bool freshInput = false;
             var separate = SeparateAnalysisSource;
-            if (acceptResults && source != null && source.State == InputSourceState.Streaming &&
+            if (acceptResults && manager != null && manager.UsesIndependentInput && manager.TryGetRuntimeProgress(out var progress) && progress.Streaming) {
+                freshInput = true;
+                if (sourceId != 0 && (sourceId != progress.SourceId || sourceGeneration != progress.Generation)) {
+                    raw?.Clear(); sampled?.Clear(); minimumSequence = ResultSequence; ResetFrameRates(now);
+                }
+                sourceId = progress.SourceId; sourceGeneration = progress.Generation;
+                publicationRate.Observe(checked((long)progress.InputFrameId)); analysisPublicationRate.Observe(checked((long)progress.InputFrameId));
+            } else if (acceptResults && source != null && source.State == InputSourceState.Streaming &&
                 TryGetRecognitionSourceFrame(-1, out var frame)) {
                 long inputNowUs = InputMonotonicClock.NowUs;
                 double validAgeUs = (active?.Recognition.MaximumResultAgeMilliseconds ?? 1000) * 1000d;
@@ -499,6 +553,17 @@ namespace HumanVision
         }
         private void OnResult(long sequence)
         {
+            if (manager != null && manager.UsesIndependentInput) {
+                if (!acceptResults || sequence <= minimumSequence || !manager.TryGetRuntimeProgress(out var progress) || !progress.Streaming ||
+                    manager.ResultSourceId != progress.SourceId || manager.ResultGeneration != progress.Generation || manager.ResultConfigEpoch != progress.ConfigEpoch) return;
+                if (sourceId != 0 && (sourceId != manager.ResultSourceId || sourceGeneration != manager.ResultGeneration)) {
+                    raw.Clear(); sampled.Clear(); ResetFrameRates(Time.realtimeSinceStartupAsDouble);
+                }
+                sourceId = manager.ResultSourceId; sourceGeneration = manager.ResultGeneration; sourceFresh = true;
+                if (!manager.TryCopyRegionAssignments(regionIndices, out long nativeRevision) || nativeRevision != revision) return;
+                if (!raw.Observe(manager.Bodies, manager.BodyCount, sequence, manager.SourceFrameId, manager.SourceTimestampUs, true)) return;
+                acceptedSequence = sequence; resultRate.Observe(manager.SourceFrameId); RefreshIdentityEvents(); ResultUpdated?.Invoke(sequence); return;
+            }
             if (!acceptResults || !sourceFresh || manager == null || sequence <= minimumSequence ||
                 !bridge.CanPresentResult(manager.SourceFrameId)) return;
             // 帧像素已应用镜像/旋转。来源代次改变时拒绝上一代晚到结果。
@@ -635,6 +700,9 @@ namespace HumanVision
         {
             decodedSize = default;
             nativeGeneration = 0;
+            if (IsRunning && manager != null && manager.UsesIndependentInput && frame.SourceId == manager.ResultSourceId && frame.Generation == manager.ResultGeneration) {
+                decodedSize = manager.IndependentDecodedSize; nativeGeneration = frame.Generation; return decodedSize.x > 0 && decodedSize.y > 0;
+            }
             return IsRunning && source is RtspFrameSource rtsp && rtsp.TryGetDecodedGeometry(in frame, out decodedSize, out nativeGeneration);
         }
         /// <summary>借用最新识别输入。支持解码分路时，无需等同帧预览发布。</summary>
@@ -650,6 +718,10 @@ namespace HumanVision
         public bool TryGetResultDecodeAgeMs(long resultFrameId, out long inputFrameId, out double ageMs)
         {
             inputFrameId = -1; ageMs = -1;
+            if (IsRunning && manager != null && manager.UsesIndependentInput && manager.SourceFrameId == resultFrameId &&
+                manager.TryGetRuntimeProgress(out var progress) && progress.FrameId == resultFrameId && progress.ResultAgeMicroseconds >= 0) {
+                inputFrameId = resultFrameId; ageMs = progress.ResultAgeMicroseconds / 1000d; return true;
+            }
             return IsRunning && bridge != null && bridge.TryGetResultDecodeAgeMs(resultFrameId, out inputFrameId, out ageMs);
         }
         /// <summary>同一解码帧的识别发布、SDK 接受和预览发布时间，使用 InputMonotonic 微秒。</summary>

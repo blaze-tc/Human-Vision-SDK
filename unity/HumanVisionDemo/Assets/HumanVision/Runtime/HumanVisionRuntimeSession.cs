@@ -13,6 +13,9 @@ namespace HumanVision
         private static readonly int[] HandMap = {8,9,10,15,16,17};
         private HumanVisionConfig _config;
         private IntPtr _handle, _buffer;
+        private HumanVisionRuntimeControl _control;
+        private bool _closeRequested;
+        private RuntimeObservationHeaderNative _identity;
         private HumanVisionAndroidGpuFrameBridge _gpuBridge;
         private RenderTexture _gpuSourceTexture;
         private RuntimeStatsNative _native;
@@ -34,17 +37,43 @@ namespace HumanVision
         internal float HandFps => _native.HandFps;
         internal string ProfileId => _config.Profile;
         internal RuntimeStatsV2Native StatsV2 => _nativeV2;
+        internal bool UsesIndependentInput => _control != null && _config.NativeSource != null;
+        internal Vector2Int IndependentInputSize => _control != null && _control.TryGetStats(out var stats) && stats.NativeInputFrames > 0
+            ? new Vector2Int((int)stats.AnalysisWidth, (int)stats.AnalysisHeight) : Vector2Int.zero;
+        internal Vector2Int IndependentDecodedSize => _control != null && _control.TryGetStats(out var stats)
+            ? new Vector2Int((int)stats.SourceWidth, (int)stats.SourceHeight) : Vector2Int.zero;
+        internal bool TryGetNativeInputState(out uint state, out ulong frames) {
+            state = 0; frames = 0; if (_control == null || !_control.TryGetStats(out var stats)) return false;
+            state = stats.State; frames = stats.NativeInputFrames; return true;
+        }
+        internal bool PollInitialization(out string error) { error = ""; return _control == null || _control.PollStarted(out error); }
+        internal bool TryGetRuntimeProgress(out HumanVisionRuntimeProgress progress) {
+            progress = default; if (_control == null || !_control.TryGetProgress(out progress)) return false;
+            return true;
+        }
+        internal ulong ResultSourceId => _identity.SourceId;
+        internal ulong ResultGeneration => _identity.Generation;
+        internal ulong ResultConfigEpoch => _identity.ConfigEpoch;
+        internal int CopyNativePreview(ulong after, IntPtr pixels, uint capacity, ref RuntimePreviewNative info) =>
+            _control == null ? RuntimeControlBindings.Unsupported : _control.CopyPreview(after, pixels, capacity, ref info);
+        internal int RequestNativeSnapshot(out ulong request) {
+            request = 0; return _control == null ? RuntimeControlBindings.Unsupported : _control.RequestSnapshot(out request);
+        }
+        internal int CopyNativeSnapshot(ulong request, IntPtr pixels, uint capacity, ref RuntimePreviewNative info) =>
+            _control == null ? RuntimeControlBindings.Unsupported : _control.CopySnapshot(request, pixels, capacity, ref info);
         internal void RecordSourceArrival(bool rateLimited)
         {
+            if (_control != null) return;
             Check(RuntimeBindings.HV_RuntimeRecordSourceFrameV2(_handle, rateLimited ? 1u : 0u), "source diagnostics");
         }
         internal void SetCaptureProvenance(uint provenance)
         {
+            if (_control != null) return;
             Check(RuntimeBindings.HV_RuntimeSetCaptureProvenanceV2(_handle, provenance), "capture provenance");
         }
-        internal bool UsesGpuFrames => HumanVisionAndroidFrameRoute.UsesGpu(_config.Profile);
+        internal bool UsesGpuFrames => _control == null && HumanVisionAndroidFrameRoute.UsesGpu(_config.Profile);
         internal string Diagnostics {
-            get { var text = new StringBuilder(4096); Check(RuntimeBindings.HV_RuntimeGetDiagnostics(_handle, text, 4096), "diagnostics"); return "Android mode: " + _config.Profile + "; input: " + (UsesGpuFrames ? "GPU" : "CPU") + "\n" + (_gpuBridge == null ? "" : _gpuBridge.Diagnostics + "\n") + text; }
+            get { if (_control != null) return _control.Diagnostics; var text = new StringBuilder(4096); Check(RuntimeBindings.HV_RuntimeGetDiagnostics(_handle, text, 4096), "diagnostics"); return "Android mode: " + _config.Profile + "; input: " + (UsesGpuFrames ? "GPU" : "CPU") + "\n" + (_gpuBridge == null ? "" : _gpuBridge.Diagnostics + "\n") + text; }
         }
         internal HumanVisionRuntimeSession(HumanVisionConfig config) : this(config, config == null ? null : config.Profile)
         {
@@ -54,7 +83,10 @@ namespace HumanVision
             _config = config.Clone(); _config.Profile = profileId; _config.Validate();
             if (HeaderBytes != 72 || JointBytes != 48) throw new InvalidOperationException("Unsupported canonical ABI layout.");
             _buffer = Marshal.AllocHGlobal(BodyBytes * 8);
-            try { _handle = Create(_config); if (UsesGpuFrames) _gpuBridge = new HumanVisionAndroidGpuFrameBridge(_handle); } catch { Dispose(); throw; }
+            try {
+                if (_config.ExecutionPolicy != HumanVisionExecutionPolicy.CompatibleUnityInput) _control = new HumanVisionRuntimeControl(_config);
+                else { _handle = Create(_config); if (UsesGpuFrames) _gpuBridge = new HumanVisionAndroidGpuFrameBridge(_handle); }
+            } catch { Dispose(); throw; }
         }
         private static HumanVisionBody[] AllocateBodies()
         { var bodies = new HumanVisionBody[8]; for (int i = 0; i < 8; i++) bodies[i] = new HumanVisionBody(); return bodies; }
@@ -80,10 +112,11 @@ namespace HumanVision
         }
         public bool SubmitFrame(IntPtr data, int width, int height, int strideBytes, HumanVisionPixelFormat format, long frameId, long timestampUs, int bytes)
         {
+            if (UsesIndependentInput) throw new InvalidOperationException("The native input already owns this session. Unity frame submission would create a second producer.");
             if (UsesGpuFrames) throw new InvalidOperationException("android-ncnn-vulkan accepts GPU textures only; CPU frame submission is disabled.");
             var frame = new HVVideoFrameNative { StructSize = NativeBindings.VideoFrameSize, Data = data, Width = width, Height = height,
                 StrideBytes = strideBytes, PixelFormat = (HVPixelFormat)format, FrameId = frameId, TimestampUs = timestampUs, DataBytes = bytes };
-            Check(RuntimeBindings.HV_RuntimeSubmit(_handle, ref frame), "frame submission"); _submitted++; return true;
+            if (_control != null) _control.Submit(ref frame); else Check(RuntimeBindings.HV_RuntimeSubmit(_handle, ref frame), "frame submission"); _submitted++; return true;
         }
         internal void BeginGpuSourceLease(RenderTexture texture)
         {
@@ -112,16 +145,29 @@ namespace HumanVision
         }
         public bool PollLatestResult()
         {
+            if (_closeRequested) return false;
+            if (_control != null && !_control.PollStarted(out var initializationError)) {
+                if (!string.IsNullOrEmpty(initializationError)) throw new InvalidOperationException(initializationError);
+                return false;
+            }
             long previous = _native.BodySequence;
+            var previousStats = _native;
             _native.Size = (uint)Marshal.SizeOf<RuntimeStatsNative>(); _native.Version = RuntimeBindings.Version;
-            Check(RuntimeBindings.HV_RuntimeCopy(_handle, 0, _buffer, 8, out uint count, ref _native), "raw snapshot");
+            uint count;
+            if (_control != null) { if (_control.Copy(0, _buffer, 8, out count, ref _native) != 0) return false; }
+            else Check(RuntimeBindings.HV_RuntimeCopy(_handle, 0, _buffer, 8, out count, ref _native), "raw snapshot");
+            if (_control != null && _native.BodySequence > 0) {
+                if (!_control.TryGetCanonicalIdentity(_native.Frame, _native.BodySequence, out var identity)) { _native = previousStats; return false; }
+                _identity = identity;
+            }
             bool changed = previous != _native.BodySequence || _lastHand != _native.HandSequence;
             BodyCount = (int)count; CopyBodies(Bodies, BodyCount, true); _lastHand = _native.HandSequence;
             var sampledStats = _native;
             // CPU observations use native steady-clock microseconds. GPU keeps its existing sampling route.
             long sampleTimeUs = UsesGpuFrames ? (long)(Time.realtimeSinceStartupAsDouble * 1000000) : RuntimeBindings.HV_RuntimeClockUs();
             if (!UsesGpuFrames && sampleTimeUs < 0) throw new InvalidOperationException("Invalid runtime monotonic sample clock.");
-            Check(RuntimeBindings.HV_RuntimeCopy(_handle, sampleTimeUs, _buffer, 8, out count, ref sampledStats), "sampled snapshot");
+            if (_control != null) _control.Copy(sampleTimeUs, _buffer, 8, out count, ref sampledStats);
+            else Check(RuntimeBindings.HV_RuntimeCopy(_handle, sampleTimeUs, _buffer, 8, out count, ref sampledStats), "sampled snapshot");
             SampledCount = (int)count; CopyBodies(SampledBodies, SampledCount, false);
             RefreshStats(); return changed;
         }
@@ -147,7 +193,8 @@ namespace HumanVision
         {
             var native = new HVRectNative[regions.Length];
             for (int i = 0; i < regions.Length; i++) native[i] = new HVRectNative { X=regions[i].x,Y=regions[i].y,Width=regions[i].width,Height=regions[i].height };
-            Check(RuntimeBindings.HV_RuntimeSetRegions(_handle, native, (uint)native.Length, revision), "region configuration");
+            if (_control != null) _control.SetRegions(native, revision);
+            else Check(RuntimeBindings.HV_RuntimeSetRegions(_handle, native, (uint)native.Length, revision), "region configuration");
             BodyCount = SampledCount = 0; _native.Revision = revision;
         }
         public bool CopyRegions(long sequence, int[] indices, out long revision)
@@ -161,6 +208,10 @@ namespace HumanVision
         }
         public void RefreshStats()
         {
+            if (_control != null) {
+                if (!_control.TryGetStats(out var stats)) return;
+                _nativeV2 = stats.Runtime;
+            } else
             {
                 _nativeV2.Size = (uint)Marshal.SizeOf<RuntimeStatsV2Native>(); _nativeV2.Version = 2;
                 Check(RuntimeBindings.HV_RuntimeGetStatsV2(_handle, ref _nativeV2), "V2 runtime stats");
@@ -171,6 +222,7 @@ namespace HumanVision
         public void ReconfigureMaxBodies(int maxBodies)
         {
             if (maxBodies == MaxBodies) return;
+            if (_control != null) throw new InvalidOperationException("Native capacity changes require asynchronous full SDK initialization. The active session is retained.");
             if (HumanVisionAndroidAccelerationSelection.IsNeuralProfile(ProfileId))
                 throw new InvalidOperationException("Neural capacity changes require asynchronous initialization. Use HumanVisionSdk.Initialize with updated full options; the current session is retained.");
             var updated = _config.Clone(); updated.MaxBodies = maxBodies; updated.Validate();
@@ -188,7 +240,12 @@ namespace HumanVision
             BodyCount = SampledCount = 0; _native = default; _lastHand = 0;
         }
         public void Dispose()
-        { if (_handle != IntPtr.Zero) { _gpuBridge?.Dispose(); RuntimeBindings.HV_RuntimeDestroy(_handle); _handle = IntPtr.Zero; _gpuBridge = null; _gpuSourceTexture = null; }
+        { RequestClose();
+          if (_handle != IntPtr.Zero) { _gpuBridge?.Dispose(); RuntimeBindings.HV_RuntimeDestroy(_handle); _handle = IntPtr.Zero; _gpuBridge = null; _gpuSourceTexture = null; }
+          _control = null;
           if (_buffer != IntPtr.Zero) { Marshal.FreeHGlobal(_buffer); _buffer = IntPtr.Zero; } }
+        internal bool UsesDeferredControl => _control != null;
+        internal void RequestClose() { _closeRequested = true; _control?.RequestClose(); }
+        internal bool TryCompleteClose() { if (_control != null && !_control.PollRetired()) return false; Dispose(); return true; }
     }
 }

@@ -10,6 +10,7 @@ namespace HumanVision
     internal sealed class HumanVisionSdkLifetime : MonoBehaviour
     {
         internal bool Complete { get; private set; }
+        internal string RetirementDiagnostics { get; private set; } = "";
         private bool retiring;
         internal void Retire(HumanVisionManager manager, VideoPlayerFrameSource bridge,
             IHumanVisionFrameSource source, System.Action complete)
@@ -24,6 +25,17 @@ namespace HumanVision
             // 等待的是帧复制/读回退役，不是在主线程等待推理。
             while (bridge != null && bridge.UnifiedRetirementPending) yield return null;
             source?.Close();
+            var deferred = manager != null ? manager.DetachDeferredRuntimeSession() : null;
+            if (deferred != null) {
+                deferred.RequestClose();
+                double nextDiagnosticAt = 0;
+                while (!deferred.TryCompleteClose()) {
+                    if (Time.realtimeSinceStartupAsDouble >= nextDiagnosticAt) {
+                        RetirementDiagnostics = deferred.Diagnostics; nextDiagnosticAt = Time.realtimeSinceStartupAsDouble + .25;
+                    }
+                    yield return null;
+                }
+            }
             var neural = manager != null ? manager.DetachNeuralRuntimeSession() : null;
             if (neural != null) {
                 var release = Task.Run(() => neural.Dispose());

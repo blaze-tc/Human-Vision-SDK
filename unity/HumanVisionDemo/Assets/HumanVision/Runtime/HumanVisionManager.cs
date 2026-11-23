@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using HumanVision.Interop;
+using UnityEngine.Scripting;
 
 namespace HumanVision
 {
@@ -33,6 +34,31 @@ namespace HumanVision
         public int SampledBodyCount => (_session as HumanVisionRuntimeSession)?.SampledCount ?? BodyCount;
         public bool UsesRuntimeProfile => _session is HumanVisionRuntimeSession;
         public bool UsesAndroidGpuFrames => (_session as HumanVisionRuntimeSession)?.UsesGpuFrames ?? false;
+        public bool UsesIndependentInput => (_session as HumanVisionRuntimeSession)?.UsesIndependentInput ?? false;
+        public Vector2Int IndependentInputSize => (_session as HumanVisionRuntimeSession)?.IndependentInputSize ?? Vector2Int.zero;
+        internal Vector2Int IndependentDecodedSize => (_session as HumanVisionRuntimeSession)?.IndependentDecodedSize ?? Vector2Int.zero;
+        internal ulong ResultSourceId => (_session as HumanVisionRuntimeSession)?.ResultSourceId ?? 0;
+        internal ulong ResultGeneration => (_session as HumanVisionRuntimeSession)?.ResultGeneration ?? 0;
+        internal ulong ResultConfigEpoch => (_session as HumanVisionRuntimeSession)?.ResultConfigEpoch ?? 0;
+        internal bool TryGetNativeInputState(out uint state, out ulong frames) {
+            state = 0; frames = 0; return _session is HumanVisionRuntimeSession runtime && runtime.TryGetNativeInputState(out state, out frames);
+        }
+        internal bool PollRuntimeInitialization(out string error) {
+            error = "";
+            return !(_session is HumanVisionRuntimeSession runtime) || runtime.PollInitialization(out error);
+        }
+        [Preserve]
+        public bool TryGetRuntimeProgress(out HumanVisionRuntimeProgress progress) {
+            progress = default;
+            return _session is HumanVisionRuntimeSession runtime && runtime.TryGetRuntimeProgress(out progress);
+        }
+        internal int CopyNativePreview(ulong after, IntPtr buffer, uint capacity, ref RuntimePreviewNative info) =>
+            _session is HumanVisionRuntimeSession runtime ? runtime.CopyNativePreview(after, buffer, capacity, ref info) : RuntimeControlBindings.Unsupported;
+        internal int RequestNativeSnapshot(out ulong request) {
+            request = 0; return _session is HumanVisionRuntimeSession runtime ? runtime.RequestNativeSnapshot(out request) : RuntimeControlBindings.Unsupported;
+        }
+        internal int CopyNativeSnapshot(ulong request, IntPtr buffer, uint capacity, ref RuntimePreviewNative info) =>
+            _session is HumanVisionRuntimeSession runtime ? runtime.CopyNativeSnapshot(request, buffer, capacity, ref info) : RuntimeControlBindings.Unsupported;
         public string ActiveRuntimeProfile => (_session as HumanVisionRuntimeSession)?.ProfileId ?? string.Empty;
         public float HandInferenceFps => (_session as HumanVisionRuntimeSession)?.HandFps ?? 0;
         public string RuntimeDiagnostics => (_session as HumanVisionRuntimeSession)?.Diagnostics ?? "V1 compatibility session";
@@ -95,7 +121,8 @@ namespace HumanVision
 
         public bool TryInitialize(HumanVisionConfig requestedConfig)
         {
-            if (HumanVisionAndroidAccelerationSelection.IsNeuralProfile(requestedConfig?.Profile)) {
+            if (HumanVisionAndroidAccelerationSelection.IsNeuralProfile(requestedConfig?.Profile) &&
+                requestedConfig.ExecutionPolicy == HumanVisionExecutionPolicy.CompatibleUnityInput) {
                 ReportError("Neural model initialization must run asynchronously. Use HumanVisionSdk.Initialize with the Neural acceleration preference.");
                 return false;
             }
@@ -219,6 +246,12 @@ namespace HumanVision
 
             _session.Dispose();
             _session = null;
+        }
+
+        internal HumanVisionRuntimeSession DetachDeferredRuntimeSession()
+        {
+            if (!(_session is HumanVisionRuntimeSession runtime) || !runtime.UsesDeferredControl) return null;
+            _session = null; return runtime;
         }
 
         // Detach only admitted pure CPU sessions; all Unity/GPU registration stays on the main thread.

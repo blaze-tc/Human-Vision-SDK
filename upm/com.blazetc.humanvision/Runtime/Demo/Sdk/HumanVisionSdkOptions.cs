@@ -17,6 +17,10 @@ namespace HumanVision
         public DemoModeSettings Input = new DemoModeSettings();
         /// <summary>RTSP 使用 TCP；关闭后使用 UDP。</summary>
         public bool RtspTcp = true;
+        /// <summary>Native RTSP can run independently; Unity video/camera inputs retain their compatibility drivers.</summary>
+        public HumanVisionExecutionPolicy ExecutionPolicy = HumanVisionExecutionPolicy.CompatibleUnityInput;
+        /// <summary>Best-effort native preview is optional and never owns the analysis input.</summary>
+        public bool PreviewEnabled = true;
         /// <summary>连接前探测已知同通道 RTSP 地址，以请求尺寸为上限选择最清晰的可用码流。默认按原地址连接。</summary>
         public bool AutoSelectRtspStream;
         /// <summary>Windows 默认 CPU；关闭时使用已有 GPU 配置。</summary>
@@ -46,9 +50,13 @@ namespace HumanVision
         public void Validate()
         {
             if (Recognition == null || Input == null || !Enum.IsDefined(typeof(InputKind), SourceKind) ||
-                !Enum.IsDefined(typeof(ModelInputQuality), InputQuality) || !Enum.IsDefined(typeof(HumanVisionAccelerationMode), AccelerationMode))
+                !Enum.IsDefined(typeof(ModelInputQuality), InputQuality) || !Enum.IsDefined(typeof(HumanVisionAccelerationMode), AccelerationMode) ||
+                !Enum.IsDefined(typeof(HumanVisionExecutionPolicy), ExecutionPolicy))
                 throw new ArgumentException("识别配置、输入配置或输入类型无效。");
             Recognition.Validate(); Input.Validate();
+            if (ExecutionPolicy == HumanVisionExecutionPolicy.IndependentRequired &&
+                (SourceKind != InputKind.Rtsp || !OpenInputOnInitialize))
+                throw new ArgumentException("IndependentRequired currently requires native RTSP with input startup enabled. Unity video and camera drivers provide asynchronous processing only.");
             if (float.IsNaN(InputOpenTimeoutSeconds) || float.IsInfinity(InputOpenTimeoutSeconds) || InputOpenTimeoutSeconds < 1)
                 throw new ArgumentException("输入启动超时必须是至少一秒的有限值。");
             if (OpenInputOnInitialize && SourceKind == InputKind.Video && string.IsNullOrWhiteSpace(Input.VideoPath))
