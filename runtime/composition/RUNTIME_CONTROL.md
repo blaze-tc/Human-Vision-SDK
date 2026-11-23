@@ -71,7 +71,15 @@ capture from the image already admitted for analysis. It does not acquire an
 extra decoder image. The native Input image service submits analysis first and
 owns capture staging/completion independently of Unity. The conservative
 20 ms CPU-copy-call limit applies to both paths; Android additionally has a
-200 ms request-to-ready limit. Exceeding these limits suspends subsequent live copies.
+200 ms request-to-ready limit. A single exceeded limit cools live copies for one
+second, then permits at most one recovery copy per second. Three consecutive
+healthy live copies restore the original cadence; another exceeded limit starts
+the cooldown again. Historical budget flags and counts remain cumulative.
+Exact requests do not count as recovery probes. Optional metadata/allocation or
+driver failures still disable live preview until the source is replaced.
+Cooldown only gates future optional copies; it never retires an unfinished
+capture, clears a held reader or blocks the analysis owner. Stop interrupts the
+existing wait and joins the preview owner without starting a recovery worker.
 They are not a measured GPU-copy profile or a throughput claim.
 These candidate limits still require actual device qualification.
 The unqualified candidate also limits a capture to8,294,400 RGBA bytes. The last

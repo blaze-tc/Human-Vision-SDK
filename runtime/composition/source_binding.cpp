@@ -314,8 +314,10 @@ int NativeSourceBinding::CancelSnapshot(uint64_t request) {return preview_.Cance
 std::string NativeSourceBinding::PreviewDiagnostics() const {
     std::lock_guard<std::mutex> lock(error_mutex_);
     return "preview: native-owned copies="+std::to_string(preview_.Published())+
-        " skipped="+std::to_string(preview_.Skipped())+" live_limit_fps="+(android_native_?"5":"source")+" live_suspended="+
-        (preview_.BudgetExceeded()?"1":"0")+" budget="+(android_native_?"cpu-copy-20ms/request-ready-200ms-unqualified":"cpu-copy-20ms")+
+        " skipped="+std::to_string(preview_.Skipped())+" live_limit_fps="+(preview_.RecoveryCopiesRemaining()?"1":android_native_?"5":"source")+" live_suspended="+
+        (preview_.LiveSuspended()?"1":"0")+" budget_exceeded="+(preview_.BudgetExceeded()?"1":"0")+
+        " budget_events="+std::to_string(preview_.BudgetEvents())+" recovery_copies_remaining="+std::to_string(preview_.RecoveryCopiesRemaining())+
+        " budget="+(android_native_?"cpu-copy-20ms/request-ready-200ms-unqualified":"cpu-copy-20ms")+
         (android_native_?(preview_failed_?" exact=unsupported-preview-failure":" exact=next-accepted-original"):" exact=unsupported-original-geometry")+
         (preview_error_[0]?" error="+std::string(preview_error_.data()):"");
 }
@@ -397,7 +399,7 @@ void NativeSourceBinding::PreviewLoopCore(uint64_t epoch) {
                     if(copied==HV_INPUT_OK) {
                         if(capture_snapshot&&capture_snapshot==preview_.PendingSnapshot())preview_.StoreSnapshotCandidate(capture_snapshot,metadata,ticket.data,metadata.rgba_bytes);
                         preview_.FinishCopy(ticket,metadata,true,copy_us,(config_.flags&HV_NATIVE_SOURCE_LIVE_PREVIEW)!=0);
-                        if(Now()-requested_us>200000)preview_.SuspendLive();
+                        preview_.RecordReadyDuration(static_cast<uint64_t>(std::max<int64_t>(0,Now()-requested_us)));
                         ticket={};native_request=0;next_live_us=Now()+200000;
                     }else if(copied!=HV_INPUT_NO_FRAME&&copied!=HV_INPUT_BUSY){retire_cpu_reservation();native_request=0;FailPreview("native capture copy failed");}
                 }
@@ -408,7 +410,7 @@ void NativeSourceBinding::PreviewLoopCore(uint64_t epoch) {
             uint64_t candidate_request=0;HV_RuntimePreviewV1 candidate{};
             const auto snapshot=preview_.PendingSnapshot();
             const bool exact=snapshot&&!preview_.SnapshotCandidate(candidate_request,candidate);
-            bool live=(config_.flags&HV_NATIVE_SOURCE_LIVE_PREVIEW)&&!preview_.BudgetExceeded()&&now>=next_live_us;
+            bool live=(config_.flags&HV_NATIVE_SOURCE_LIVE_PREVIEW)&&preview_.CanAttemptLive()&&now>=next_live_us;
             // A normal asynchronous frame gap is not pressure. If more than
             // three admitted frames are outstanding, reduce optional previews
             // to one per second; the capture still attaches only after the

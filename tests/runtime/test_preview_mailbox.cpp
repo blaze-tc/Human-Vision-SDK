@@ -139,6 +139,84 @@ struct ControlledClock {
  PreviewMailbox::ClockSource Clock(){return {this,Now};}
 };
 }
+TEST(PreviewMailbox, ASlowCopyCoolsDownThenThreeHealthyCopiesRestoreTheOriginalCadence) {
+ ControlledClock clock;PreviewMailbox mailbox({},clock.Clock());ASSERT_TRUE(mailbox.Configure(16));
+ PreviewMailbox::CopyTicket ticket;
+ ASSERT_TRUE(mailbox.TryBeginCopy(0,false,false,ticket));ASSERT_TRUE(mailbox.FinishCopy(ticket,Info(1),true,20001));
+ ASSERT_TRUE(mailbox.BudgetExceeded());
+ clock.now+=999999;EXPECT_FALSE(mailbox.TryBeginCopy(0,false,false,ticket));
+ ++clock.now;
+ for(uint64_t frame=2;frame<=4;++frame) {
+  ASSERT_TRUE(mailbox.TryBeginCopy(0,false,false,ticket))<<"Budget pressure must allow a bounded recovery attempt";
+  ASSERT_TRUE(mailbox.FinishCopy(ticket,Info(frame),true,100));
+  if(frame<4){EXPECT_FALSE(mailbox.TryBeginCopy(0,false,false,ticket));clock.now+=1000000;}
+ }
+ EXPECT_TRUE(mailbox.BudgetExceeded())<<"Restoring cadence must not clear historical budget evidence";
+ ASSERT_TRUE(mailbox.TryBeginCopy(0,false,false,ticket))<<"Three healthy probes must restore the original copy cadence";
+ ASSERT_TRUE(mailbox.FinishCopy(ticket,Info(5),true,20001));
+ EXPECT_FALSE(mailbox.TryBeginCopy(0,false,false,ticket))<<"Another slow copy must reenter cooldown";
+}
+TEST(PreviewMailbox, CoolingDownNeverRetiresAnUnprovedCopyOrInvalidatesHeldPixelsAndSnapshots) {
+ ControlledClock clock;PreviewMailbox mailbox({},clock.Clock());ASSERT_TRUE(mailbox.Configure(16));
+ ASSERT_TRUE(mailbox.AdmitSourceGeneration(41,2,3));Publish(mailbox,1);auto held=mailbox.AcquireLatest(0);ASSERT_TRUE(held);
+ uint64_t request=0;ASSERT_EQ(mailbox.RequestSnapshot(&request),0);std::array<uint8_t,16> pixels{};pixels.fill(9);
+ ASSERT_TRUE(mailbox.StoreSnapshotCandidate(request,Info(9),pixels.data(),pixels.size()));ASSERT_TRUE(mailbox.ConfirmSnapshot(request,41,2,9,3));
+ PreviewMailbox::CopyTicket ticket,other;
+ ASSERT_TRUE(mailbox.TryBeginCopy(0,false,false,ticket));ASSERT_TRUE(mailbox.FinishCopy(ticket,Info(2),true,20001));
+ clock.now+=1000000;ASSERT_TRUE(mailbox.TryBeginCopy(0,false,false,ticket));
+ EXPECT_FALSE(mailbox.FinishCopy(ticket,Info(3),false,0));clock.now+=1000000;
+ EXPECT_FALSE(mailbox.TryBeginCopy(0,false,false,other));EXPECT_TRUE(mailbox.HasInFlight());
+ ASSERT_TRUE(mailbox.FinishCopy(ticket,Info(3),true,100));
+ EXPECT_EQ(held.Info().frame_id,1u);EXPECT_EQ(held.Data()[0],1u);
+ auto info=Info(0);ASSERT_EQ(mailbox.CopySnapshot(request,pixels.data(),pixels.size(),&info),0);
+ EXPECT_EQ(info.frame_id,9u);for(auto value:pixels)EXPECT_EQ(value,9);
+}
+TEST(PreviewMailbox, RecoveryCannotReviveALateOldGenerationOrAFullReaderPool) {
+ ControlledClock clock;PreviewMailbox mailbox({},clock.Clock());ASSERT_TRUE(mailbox.Configure(16));
+ ASSERT_TRUE(mailbox.AdmitSourceGeneration(41,2,3));Publish(mailbox,1);auto first=mailbox.AcquireLatest(0);
+ Publish(mailbox,2);auto second=mailbox.AcquireLatest(1);
+ PreviewMailbox::CopyTicket ticket;ASSERT_TRUE(mailbox.TryBeginCopy(0,false,false,ticket));
+ ASSERT_TRUE(mailbox.FinishCopy(ticket,Info(3),true,20001));auto third=mailbox.AcquireLatest(2);
+ clock.now+=1000000;EXPECT_FALSE(mailbox.TryBeginCopy(0,false,false,ticket));
+ first.Reset();ASSERT_TRUE(mailbox.TryBeginCopy(0,false,false,ticket));
+ ASSERT_TRUE(mailbox.AdmitSourceGeneration(41,3,3));EXPECT_FALSE(mailbox.FinishCopy(ticket,Info(4),true,100));
+ auto info=Info(0);std::array<uint8_t,16> pixels{};EXPECT_EQ(mailbox.CopyLatest(0,pixels.data(),pixels.size(),&info),HV_CONTROL_NO_DATA);
+ second.Reset();third.Reset();clock.now+=1000000;ASSERT_TRUE(mailbox.TryBeginCopy(0,false,false,ticket));
+ ASSERT_TRUE(mailbox.FinishCopy(ticket,Info(5,3),true,100));
+ ASSERT_EQ(mailbox.CopyLatest(0,pixels.data(),pixels.size(),&info),0);EXPECT_EQ(info.generation,3u);
+}
+TEST(PreviewMailbox, SlowReadyBudgetRecoversWithoutClearingItsHistoryOrLettingExactRequestsSkipProbation) {
+ ControlledClock clock;PreviewMailbox mailbox({},clock.Clock());ASSERT_TRUE(mailbox.Configure(16));
+ mailbox.RecordReadyDuration(200000);EXPECT_FALSE(mailbox.BudgetExceeded());
+ mailbox.RecordReadyDuration(200001);EXPECT_TRUE(mailbox.BudgetExceeded());EXPECT_EQ(mailbox.BudgetEvents(),1u);
+ EXPECT_FALSE(mailbox.CanAttemptLive());PreviewMailbox::CopyTicket ticket;
+ ASSERT_TRUE(mailbox.TryBeginCopy(0,false,false,ticket,true));ASSERT_TRUE(mailbox.FinishCopy(ticket,Info(1),true,100));
+ EXPECT_EQ(mailbox.RecoveryCopiesRemaining(),3u);EXPECT_FALSE(mailbox.CanAttemptLive());
+ for(uint64_t frame=2;frame<=4;++frame) {
+  clock.now+=1000000;ASSERT_TRUE(mailbox.CanAttemptLive());ASSERT_TRUE(mailbox.TryBeginCopy(0,false,false,ticket));
+  ASSERT_TRUE(mailbox.FinishCopy(ticket,Info(frame),true,100));mailbox.RecordReadyDuration(100);
+ }
+ EXPECT_EQ(mailbox.RecoveryCopiesRemaining(),0u);EXPECT_TRUE(mailbox.CanAttemptLive());
+ EXPECT_TRUE(mailbox.BudgetExceeded());EXPECT_EQ(mailbox.BudgetEvents(),1u);
+ mailbox.RecordReadyDuration(200001);EXPECT_EQ(mailbox.BudgetEvents(),2u);EXPECT_FALSE(mailbox.CanAttemptLive());
+}
+TEST(PreviewMailbox, FatalPreviewSuspensionCannotRecoverOnACooldownTimer) {
+ ControlledClock clock;PreviewMailbox mailbox({},clock.Clock());ASSERT_TRUE(mailbox.Configure(16));
+ mailbox.SuspendLive();clock.now+=10000000;
+ EXPECT_TRUE(mailbox.LiveSuspended());EXPECT_FALSE(mailbox.CanAttemptLive());
+ PreviewMailbox::CopyTicket ticket;EXPECT_FALSE(mailbox.TryBeginCopy(0,false,false,ticket));
+}
+TEST(PreviewMailbox, AnUnpublishedRecoveryAttemptStillConsumesItsOneSecondPermit) {
+ ControlledClock clock;PreviewMailbox mailbox({},clock.Clock());ASSERT_TRUE(mailbox.Configure(16));
+ mailbox.RecordReadyDuration(200001);clock.now+=1000000;
+ PreviewMailbox::CopyTicket ticket;ASSERT_TRUE(mailbox.TryBeginCopy(0,false,false,ticket));
+ // A BUSY request takes no hardware ownership, but the reserved CPU target
+ // still retires through the actual-completion path without publication.
+ EXPECT_FALSE(mailbox.FinishCopy(ticket,HV_RuntimePreviewV1{},true,0,false));
+ ASSERT_FALSE(mailbox.TryBeginCopy(0,false,false,ticket))<<"An unsuccessful probe must not bypass the one-Hz recovery budget";
+ clock.now+=999999;EXPECT_FALSE(mailbox.TryBeginCopy(0,false,false,ticket));
+ ++clock.now;EXPECT_TRUE(mailbox.TryBeginCopy(0,false,false,ticket));
+}
 TEST(PreviewMailbox, SourceAdmissionInvalidatesConfirmedCaptureWithLivePreviewOff) {
  PreviewMailbox mailbox;ASSERT_TRUE(mailbox.Configure(16));ASSERT_TRUE(mailbox.AdmitSourceGeneration(41,2,3));
  uint64_t request=0;ASSERT_EQ(mailbox.RequestSnapshot(&request),0);std::array<uint8_t,16> bytes{};

@@ -73,13 +73,16 @@ PreviewMailbox::ConfigureResult PreviewMailbox::ConfigureDetailed(uint32_t bytes
 bool PreviewMailbox::TryBeginCopy(uint32_t free_credits,bool additional,bool analysis_pending,CopyTicket& out,bool exact) {
  out={};
  std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);
- if(!lock||!capacity_||active_token_||analysis_pending||(additional&&free_credits<3)||(!exact&&budget_exceeded_)) {++skipped_;return false;}
+ if(!lock||!capacity_||active_token_||analysis_pending||(additional&&free_credits<3)||(!exact&&!CanAttemptLive())) {++skipped_;return false;}
  uint32_t selected=3;
  for(uint32_t i=0;i<3;++i)if(!slots_[i].readers&&i!=latest_&&slots_[i].state!=State::Writing){selected=i;break;}
  if(selected==3&&latest_<3&&!slots_[latest_].readers)selected=latest_;
  if(selected==3){++skipped_;return false;}
  auto& slot=slots_[selected];slot.state=State::Writing;
- active_slot_=selected;active_token_=++next_copy_;copy_invalidation_=invalidation_;
+ active_slot_=selected;active_token_=++next_copy_;copy_invalidation_=invalidation_;active_exact_=exact;
+ // Reserve the recovery permit when work is admitted, including a request
+ // that later returns BUSY or drains without publishing. Full pools consume none.
+ if(!exact&&recovery_copies_)retry_after_us_=Now()+1000000;
  out={active_token_,selected,slot.bytes.data(),capacity_};return true;
 }
 bool PreviewMailbox::FinishCopy(const CopyTicket& ticket,const HV_RuntimePreviewV1& info,bool complete,uint64_t duration,bool live) {
@@ -87,11 +90,30 @@ bool PreviewMailbox::FinishCopy(const CopyTicket& ticket,const HV_RuntimePreview
  if(!active_token_||ticket.token!=active_token_||ticket.slot!=active_slot_)return false;
  if(!complete)return false;
  auto& slot=slots_[active_slot_];active_token_=0;active_slot_=3;
- if(duration>20000)budget_exceeded_=true;
+ if(duration>20000)RecordBudgetPressureLocked();
  const bool publish=live&&copy_invalidation_==invalidation_&&Valid(info,capacity_)&&MatchesSourceGenerationLocked(info);
+ // Recovery only counts current, completed live copies. An exact request,
+ // cancellation or stale-generation drain cannot accelerate the live budget.
+ if(duration<=20000&&publish&&!active_exact_&&recovery_copies_) {
+  const auto remaining=recovery_copies_.load()-1;recovery_copies_=remaining;
+  retry_after_us_=remaining?Now()+1000000:0;
+ }
  if(publish){slot.info=info;slot.state=State::Published;latest_=ticket.slot;++published_;}
  else {slot.state=State::Free;if(latest_==ticket.slot)latest_=3;}
  return publish;
+}
+bool PreviewMailbox::CanAttemptLive() const noexcept {
+ return !live_suspended_.load()&&(!recovery_copies_.load()||Now()>=retry_after_us_.load());
+}
+void PreviewMailbox::RecordBudgetPressureLocked() noexcept {
+ // Retain cumulative evidence while transient scheduling/copy pressure recovers.
+ // Three healthy one-Hz probes restore the caller's original live cadence.
+ budget_exceeded_=true;++budget_events_;recovery_copies_=3;
+ retry_after_us_=Now()+1000000;
+}
+void PreviewMailbox::RecordReadyDuration(uint64_t duration) {
+ if(duration<=200000)return;
+ std::lock_guard<std::mutex> lock(mutex_);RecordBudgetPressureLocked();
 }
 void PreviewMailbox::Invalidate() {
  std::lock_guard<std::mutex> lock(mutex_);InvalidateLocked();

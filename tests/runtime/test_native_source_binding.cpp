@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstring>
+#include <thread>
 using namespace humanvision::runtime;
 namespace {
 // Exercise the real source-owned copy boundary without a production test API.
@@ -37,6 +39,66 @@ struct CpuPreview {
         auto& pixels=source.*SourceMember(PixelsMember{});
         std::fill(pixels.begin(),pixels.end(),static_cast<uint8_t>(sequence));
         (source.*SourceMember(PublishMember{}))(input,3);
+    }
+};
+struct ApiMember {using type=NativeInputApi NativeSourceBinding::*;friend type SourceMember(ApiMember);};
+template struct SourceMemberAccess<ApiMember,&NativeSourceBinding::api_>;
+struct HandleMember {using type=HV_InputHandle NativeSourceBinding::*;friend type SourceMember(HandleMember);};
+template struct SourceMemberAccess<HandleMember,&NativeSourceBinding::handle_>;
+struct RunningMember {using type=std::atomic<bool> NativeSourceBinding::*;friend type SourceMember(RunningMember);};
+template struct SourceMemberAccess<RunningMember,&NativeSourceBinding::running_>;
+struct FrameMember {using type=std::atomic<uint64_t> NativeSourceBinding::*;friend type SourceMember(FrameMember);};
+template struct SourceMemberAccess<FrameMember,&NativeSourceBinding::frame_id_>;
+struct BytesMember {using type=std::atomic<uint64_t> NativeSourceBinding::*;friend type SourceMember(BytesMember);};
+template struct SourceMemberAccess<BytesMember,&NativeSourceBinding::capture_rgba_bytes_>;
+struct WorkerMember {using type=std::thread NativeSourceBinding::*;friend type SourceMember(WorkerMember);};
+template struct SourceMemberAccess<WorkerMember,&NativeSourceBinding::preview_worker_>;
+struct LoopMember {using type=void(NativeSourceBinding::*)(uint64_t) noexcept;friend type SourceMember(LoopMember);};
+template struct SourceMemberAccess<LoopMember,&NativeSourceBinding::PreviewLoop>;
+struct SlowCapture {
+    NativeSourceBinding source;
+    std::atomic<uint64_t> requests{0},copies{0},generation{2};
+    const bool slow_copy;
+    std::chrono::steady_clock::time_point requested;
+    uint64_t requested_generation=2;
+    explicit SlowCapture(bool copy) :slow_copy(copy) {
+        auto& config=source.*SourceMember(ConfigMember{});config.source_id=77;config.flags=HV_NATIVE_SOURCE_LIVE_PREVIEW;
+        source.*SourceMember(ClockMember{})=InputClockMapping{42,1000,0,true};
+        auto& api=source.*SourceMember(ApiMember{});api.request_capture=Request;api.copy_capture=Copy;
+        source.*SourceMember(HandleMember{})=reinterpret_cast<HV_InputHandle>(this);
+        (source.*SourceMember(FrameMember{}))=100;(source.*SourceMember(BytesMember{}))=16;
+        Mailbox().AdmitSourceGeneration(77,2,3);
+    }
+    ~SlowCapture(){source.StopIngestion();source.*SourceMember(HandleMember{})=nullptr;}
+    PreviewMailbox& Mailbox(){return source.*SourceMember(PreviewMember{});}
+    void Start() {
+        (source.*SourceMember(RunningMember{}))=true;
+        source.*SourceMember(WorkerMember{})=std::thread([this]{(source.*SourceMember(LoopMember{}))(3);});
+    }
+    bool WaitForCopies(uint64_t count,int timeout_ms=3000) {
+        const auto deadline=std::chrono::steady_clock::now()+std::chrono::milliseconds(timeout_ms);
+        while(Mailbox().Published()<count&&std::chrono::steady_clock::now()<deadline)std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        return Mailbox().Published()>=count;
+    }
+    bool WaitForBudget() {
+        const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(1);
+        while(!Mailbox().BudgetExceeded()&&std::chrono::steady_clock::now()<deadline)std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        return Mailbox().BudgetExceeded();
+    }
+    static int32_t Request(HV_InputHandle handle,uint64_t* request) {
+        auto& self=*reinterpret_cast<SlowCapture*>(handle);
+        self.requested=std::chrono::steady_clock::now();self.requested_generation=self.generation.load();
+        *request=++self.requests;return HV_INPUT_OK;
+    }
+    static int32_t Copy(HV_InputHandle handle,uint64_t request,void* pixels,uint32_t capacity,HV_InputFrameInfo* info) {
+        auto& self=*reinterpret_cast<SlowCapture*>(handle);
+        if(!self.slow_copy&&request==1&&std::chrono::steady_clock::now()-self.requested<std::chrono::milliseconds(220))return HV_INPUT_NO_FRAME;
+        *info={sizeof(*info),1};info->width=2;info->height=2;info->stride_bytes=8;info->rgba_bytes=16;
+        info->sequence=100+request;info->generation=self.requested_generation;info->decoded_timestamp_us=static_cast<int64_t>(info->sequence*33333);
+        info->clock_id=42;info->clock_domain=HV_INPUT_CLOCK_NATIVE_MONOTONIC;info->row_origin=HV_INPUT_ROW_TOP_LEFT;
+        if(!pixels||capacity<16)return HV_INPUT_BUFFER_TOO_SMALL;
+        if(self.slow_copy&&request==1)std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        std::memset(pixels,int(request),16);++self.copies;return HV_INPUT_OK;
     }
 };
 }
@@ -94,4 +156,44 @@ TEST(NativeSourceBinding, UnreadCpuPreviewKeepsNewestWithoutOverwritingHeldPixel
     ASSERT_EQ(preview.source.CopyPreview(1,pixels.data(),pixels.size(),&info),HV_CONTROL_OK);
     EXPECT_EQ(info.frame_id,8u);EXPECT_EQ(held.Info().frame_id,1u);
     EXPECT_EQ(held.Data()[0],1u);EXPECT_EQ(pixels.front(),8u);EXPECT_FALSE(preview.Mailbox().HasInFlight());
+}
+TEST(NativeSourceBinding, PreviewRecoversAfterOneSlowCpuCopyWithoutRestartingTheSource) {
+    SlowCapture capture(true);capture.Start();ASSERT_TRUE(capture.WaitForCopies(1));
+    ASSERT_TRUE(capture.Mailbox().BudgetExceeded());
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));EXPECT_EQ(capture.requests.load(),1u);
+    ASSERT_TRUE(capture.WaitForCopies(2))<<"A single >20ms optional copy must not freeze live preview forever";
+    EXPECT_TRUE(capture.Mailbox().BudgetExceeded())<<"Recovery must retain the historical budget breach";
+    const auto requests=capture.requests.load();std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    EXPECT_EQ(capture.requests.load(),requests)<<"Recovered previews stay limited to one attempt per second";
+    ASSERT_TRUE(capture.WaitForCopies(4));EXPECT_EQ(capture.Mailbox().RecoveryCopiesRemaining(),0u);
+    ASSERT_TRUE(capture.WaitForCopies(5,600))<<"Three healthy probes must restore the original 200ms request cadence";
+}
+TEST(NativeSourceBinding, PreviewRecoversAfterOneSlowReadyCaptureAndStopCannotReopenIt) {
+    SlowCapture capture(false);capture.Start();ASSERT_TRUE(capture.WaitForCopies(1));
+    ASSERT_TRUE(capture.WaitForBudget()); // request-to-ready pressure is recorded after publication.
+    ASSERT_TRUE(capture.WaitForCopies(2))<<"A single >200ms request-to-ready delay must not freeze live preview forever";
+    ASSERT_TRUE(capture.WaitForCopies(4));EXPECT_EQ(capture.Mailbox().RecoveryCopiesRemaining(),0u);
+    ASSERT_TRUE(capture.WaitForCopies(5,600));
+    capture.source.StopIngestion();const auto requests=capture.requests.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));EXPECT_EQ(capture.requests.load(),requests);
+    std::array<uint8_t,16> pixels{};HV_RuntimePreviewV1 info{sizeof(info),1};
+    EXPECT_EQ(capture.source.CopyPreview(0,pixels.data(),pixels.size(),&info),HV_CONTROL_NO_DATA);
+}
+TEST(NativeSourceBinding, RecoveryPublishesOnlyTheCurrentSourceGeneration) {
+    SlowCapture capture(true);capture.Start();ASSERT_TRUE(capture.WaitForCopies(1));
+    capture.generation=3;ASSERT_TRUE(capture.Mailbox().AdmitSourceGeneration(77,3,3));
+    ASSERT_TRUE(capture.WaitForCopies(2));
+    std::array<uint8_t,16> pixels{};HV_RuntimePreviewV1 info{sizeof(info),1};
+    ASSERT_EQ(capture.source.CopyPreview(0,pixels.data(),pixels.size(),&info),HV_CONTROL_OK);
+    EXPECT_EQ(info.generation,3u);EXPECT_GE(info.frame_id,102u);EXPECT_TRUE(capture.Mailbox().BudgetExceeded());
+}
+TEST(NativeSourceBinding, StopDuringPreviewCooldownIsPromptAndNeverRequestsAnotherCapture) {
+    SlowCapture capture(true);capture.Start();ASSERT_TRUE(capture.WaitForCopies(1));ASSERT_TRUE(capture.WaitForBudget());
+    ASSERT_GT(capture.Mailbox().RecoveryCopiesRemaining(),0u);
+    const auto started=std::chrono::steady_clock::now();capture.source.StopIngestion();
+    EXPECT_LT(std::chrono::steady_clock::now()-started,std::chrono::milliseconds(250));
+    const auto requests=capture.requests.load();std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+    EXPECT_EQ(capture.requests.load(),requests);EXPECT_FALSE(capture.Mailbox().HasInFlight());
+    std::array<uint8_t,16> pixels{};HV_RuntimePreviewV1 info{sizeof(info),1};
+    EXPECT_EQ(capture.source.CopyPreview(0,pixels.data(),pixels.size(),&info),HV_CONTROL_NO_DATA);
 }

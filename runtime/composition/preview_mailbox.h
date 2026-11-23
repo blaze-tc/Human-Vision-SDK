@@ -53,7 +53,12 @@ public:
  bool MatchesSourceGeneration(uint64_t source,uint64_t generation,uint64_t epoch) const;
  bool HasInFlight() const;
  bool BudgetExceeded() const noexcept {return budget_exceeded_.load();}
- void SuspendLive() noexcept {budget_exceeded_=true;}
+ bool CanAttemptLive() const noexcept;
+ bool LiveSuspended() const noexcept {return live_suspended_.load();}
+ uint32_t RecoveryCopiesRemaining() const noexcept {return recovery_copies_.load();}
+ uint64_t BudgetEvents() const noexcept {return budget_events_.load();}
+ void RecordReadyDuration(uint64_t duration_us);
+ void SuspendLive() noexcept {live_suspended_=true;}
  static constexpr uint32_t BufferCount() noexcept {return 3;}
  ReadLease AcquireLatest(uint64_t after_frame);
  int CopyLatest(uint64_t after_frame,void*,uint32_t,HV_RuntimePreviewV1*);
@@ -74,6 +79,7 @@ private:
  struct Slot {std::vector<uint8_t> bytes;HV_RuntimePreviewV1 info{};State state=State::Free;std::atomic<uint32_t> readers{0};};
  static bool Valid(const HV_RuntimePreviewV1&,uint32_t) noexcept;
  bool MatchesSourceGenerationLocked(const HV_RuntimePreviewV1&) const noexcept;
+ void RecordBudgetPressureLocked() noexcept;
  void InvalidateLocked();
  void ExpireSnapshotLocked(int64_t now);
  int64_t Now() const noexcept;
@@ -87,6 +93,11 @@ private:
  uint64_t next_copy_=0,active_token_=0,invalidation_=0,copy_invalidation_=0;
  uint64_t source_id_=0,generation_=0,source_epoch_=0;
  std::atomic<bool> budget_exceeded_{false};
+ std::atomic<bool> live_suspended_{false};
+ std::atomic<uint32_t> recovery_copies_{0};
+ std::atomic<uint64_t> budget_events_{0};
+ std::atomic<int64_t> retry_after_us_{0};
+ bool active_exact_=false;
  std::atomic<uint64_t> published_{0},skipped_{0};
  std::vector<uint8_t> snapshot_;
  HV_RuntimePreviewV1 snapshot_info_{};
