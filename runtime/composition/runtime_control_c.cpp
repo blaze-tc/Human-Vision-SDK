@@ -59,11 +59,18 @@ int32_t HV_CALL Regions(HV_RuntimeControllerHandle h,const HV_Rect* regions,uint
 int32_t HV_CALL Diagnostics(HV_RuntimeControllerHandle h,char* text,uint32_t capacity) {
     if(!h)return HV_ERR_INVALID_ARGUMENT;return Guard([&]{return Controller(h)->Diagnostics(text,capacity);});
 }
-int32_t HV_CALL Preview(HV_RuntimeControllerHandle h,uint64_t,void*,uint32_t,HV_RuntimePreviewV1*) {return h?HV_CONTROL_UNSUPPORTED:HV_ERR_INVALID_ARGUMENT;}
-int32_t HV_CALL Snapshot(HV_RuntimeControllerHandle h,uint64_t* id) {if(id)*id=0;return h&&id?HV_CONTROL_UNSUPPORTED:HV_ERR_INVALID_ARGUMENT;}
+int32_t HV_CALL Preview(HV_RuntimeControllerHandle h,uint64_t after,void* bytes,uint32_t capacity,HV_RuntimePreviewV1* info) {
+    if(!h)return HV_ERR_INVALID_ARGUMENT;return Guard([&]{return Controller(h)->CopyPreview(after,bytes,capacity,info);});
+}
+int32_t HV_CALL Snapshot(HV_RuntimeControllerHandle h,uint64_t* id) {
+    if(!h)return HV_ERR_INVALID_ARGUMENT;return Guard([&]{return Controller(h)->RequestSnapshot(id);});
+}
+int32_t HV_CALL CopySnapshot(HV_RuntimeControllerHandle h,uint64_t id,void* bytes,uint32_t capacity,HV_RuntimePreviewV1* info) {
+    if(!h)return HV_ERR_INVALID_ARGUMENT;return Guard([&]{return Controller(h)->CopySnapshot(id,bytes,capacity,info);});
+}
 }
 extern "C" int32_t HV_CALL HV_QueryRuntimeControlApiV1(uint32_t version,HV_RuntimeControlApiV1* out) {
     if(!out||version!=1||out->struct_size<sizeof(*out)||out->api_version!=1)return HV_ERR_INVALID_ARGUMENT;
     *out={sizeof(*out),1,Create,Start,Source,Pause,Resume,Stop,Reconfigure,Close,Release,Copy,Status,
-        Capabilities,Stats,Observations,Submit,Regions,Diagnostics,Preview,Snapshot,Preview};return 0;
+        Capabilities,Stats,Observations,Submit,Regions,Diagnostics,Preview,Snapshot,CopySnapshot};return 0;
 }

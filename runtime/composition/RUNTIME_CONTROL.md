@@ -48,9 +48,35 @@ against every other API call.
 
 The first source binding supports native RTSP only. Windows native orientation
 changes are explicitly unsupported; Android requires the platform-selected
-hardware AVC codec. Preview/snapshot table entries return Unsupported until a
-separate owned preview mailbox is connected. Unsupported preview is not a claim
-that a native decoder lease can be borrowed across Unity frames.
+hardware AVC codec. The optional `HV_NATIVE_SOURCE_LIVE_PREVIEW` flag enables
+native-owned preview copies. The pool has three immutable buffers; readers copy
+into caller memory and never retain a decoder/analysis lease. A full or slow
+reader pool skips new preview work. A copy reservation is not retired by cancel:
+the owner must observe the actual completion before reuse.
+
+The first candidate caps live copies at5FPS, reducing them to1FPS under admission
+pressure. Windows fans out its already-owned analysis RGBA and leaves original
+coded dimensions unavailable (zero). Android requests one full visible-color
+capture from the image already admitted for analysis. It does not acquire an
+extra decoder image. The native Input image service submits analysis first and
+owns capture staging/completion independently of Unity. The conservative
+CPU-copy-call20ms/request-to-ready200ms limits suspend subsequent live copies
+when exceeded; they are not a measured GPU-copy profile or a throughput claim.
+These candidate limits still require actual device qualification.
+
+`RequestSnapshot` permits one pending next-image request. Android captures are
+confirmed only against the same source/generation/frame/configuration epoch in
+the accepted canonical journal, retrying overwritten admissions within5seconds.
+Failure/timeout never substitutes the current image. Successful CopySnapshot
+consumes the request; a null/short destination returns BUFFER_TOO_SMALL plus
+metadata. Windows reports Unsupported because the current Input API cannot
+establish original-color geometry. A source generation change invalidates both
+preview and exact identity. Native pending hardware capture remains Input-owned
+through Stop/Close; mailbox cancellation never pretends that hardware completed.
+
+StatsV3 separately reports coded source and delivered analysis dimensions. Zero
+source geometry means unavailable and is not filled from requested settings or
+from the known test fixture. Preview visible-crop size is returned with its copy.
 
 Focused checks: RuntimeControl, NativeSourceBinding and runtime_control_c_abi.
 The controlled blocked-initialization fixture checks resource ownership, not a

@@ -6,7 +6,7 @@
 #define HV_RUNTIME_STATS_V3_VERSION 3u
 typedef struct HV_RuntimeControllerOpaque* HV_RuntimeControllerHandle;
 enum { HV_CONTROL_OK=0, HV_CONTROL_BUSY=1, HV_CONTROL_NO_DATA=2,
-       HV_CONTROL_UNSUPPORTED=3, HV_CONTROL_TIMEOUT=4 };
+       HV_CONTROL_UNSUPPORTED=3, HV_CONTROL_TIMEOUT=4, HV_CONTROL_BUFFER_TOO_SMALL=5 };
 enum { HV_EXECUTION_COMPATIBLE=0, HV_EXECUTION_INDEPENDENT_PREFERRED=1,
        HV_EXECUTION_INDEPENDENT_REQUIRED=2 };
 enum { HV_CONTROL_CREATED=0, HV_CONTROL_STARTING=1, HV_CONTROL_RUNNING=2,
@@ -18,6 +18,7 @@ enum { HV_REQUEST_PENDING=0, HV_REQUEST_RUNNING=1, HV_REQUEST_SUCCEEDED=2,
 enum { HV_CAPABILITY_ASYNC_PROCESSING=1, HV_CAPABILITY_INDEPENDENT_INPUT=2,
        HV_CAPABILITY_INDEPENDENT_PIPELINE=3 };
 enum { HV_NATIVE_SOURCE_NONE=0, HV_NATIVE_SOURCE_RTSP=1 };
+enum { HV_NATIVE_SOURCE_LIVE_PREVIEW=1u };
 
 typedef struct HV_RuntimeControllerConfigV1 {
     uint32_t struct_size, api_version;
@@ -49,6 +50,8 @@ typedef struct HV_RuntimeStatsV3 {
     uint64_t native_input_frames, input_errors, runtime_errors, journal_overruns;
     int64_t clock_offset_us, clock_uncertainty_us;
     HV_RuntimeStatsV2 runtime;
+    /* Zero means unavailable; coded source and delivered analysis are distinct. */
+    uint32_t source_width, source_height, analysis_width, analysis_height;
 } HV_RuntimeStatsV3;
 typedef struct HV_RuntimeObservationV1 {
     uint32_t struct_size, api_version, kind, body_count;
@@ -61,8 +64,11 @@ typedef struct HV_RuntimeObservationReadV1 {
     uint32_t struct_size, api_version, written, reserved;
     uint64_t next_cursor, lost_count;
 } HV_RuntimeObservationReadV1;
-/* Preview is copied into caller-owned storage. It never grants a decoder lease.
-   NO_DATA/UNSUPPORTED leave ownership with the SDK. Exact snapshot is one pending. */
+/* Caller-owned top-left RGBA8, with source rotation/mirror already applied.
+   timestamp_us uses Runtime monotonic local decode observation, not sensor time.
+   No decoder lease is granted. BUFFER_TOO_SMALL fills metadata without consuming
+   the image; NO_DATA/UNSUPPORTED never substitute another frame. Exact snapshot
+   has at most one pending request and is confirmed against an accepted frame. */
 typedef struct HV_RuntimePreviewV1 {
     uint32_t struct_size, api_version, width, height, stride_bytes, rgba_bytes;
     uint64_t source_id, generation, frame_id, config_epoch;

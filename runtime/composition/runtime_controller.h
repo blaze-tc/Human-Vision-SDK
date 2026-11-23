@@ -29,6 +29,9 @@ public:
     int Stats(HV_RuntimeStatsV3*);
     int ReadObservations(uint64_t,HV_RuntimeObservationV1*,uint32_t,HV_RuntimeObservationReadV1*);
     int Diagnostics(char*,uint32_t);
+    int CopyPreview(uint64_t,void*,uint32_t,HV_RuntimePreviewV1*);
+    int RequestSnapshot(uint64_t*);
+    int CopySnapshot(uint64_t,void*,uint32_t,HV_RuntimePreviewV1*);
 private:
     struct Command {Operation operation;uint64_t id;OwnedRuntimeConfig config;OwnedSourceConfig source;};
     explicit RuntimeController(OwnedRuntimeConfig,SessionFactory);

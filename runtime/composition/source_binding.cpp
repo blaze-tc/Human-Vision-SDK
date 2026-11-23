@@ -27,7 +27,7 @@ bool String(const char* p,size_t limit,std::string& out) {
 std::atomic<uint64_t> next_source{1};
 }
 bool CopySourceConfig(const HV_RuntimeSourceV1& s,OwnedSourceConfig& out,std::string& error) {
-    if(s.struct_size<sizeof(s)||s.api_version!=1||s.kind>HV_NATIVE_SOURCE_RTSP||s.flags||s.reserved||
+    if(s.struct_size<sizeof(s)||s.api_version!=1||s.kind>HV_NATIVE_SOURCE_RTSP||(s.flags&~HV_NATIVE_SOURCE_LIVE_PREVIEW)||s.reserved||
        s.mirror_x>1||s.transport_tcp>1||s.rotation_degrees%90||s.rotation_degrees>=360||
        (s.kind&&(!s.url_utf8||!*s.url_utf8||!s.width||!s.height||s.width>4096||s.height>4096))) {
         error="Invalid native source configuration";return false;
@@ -151,19 +151,34 @@ bool NativeSourceBinding::Open(const OwnedSourceConfig& config,bool gpu_route,ui
                 auto& self=*static_cast<NativeSourceBinding*>(context);
                 self.frames_.fetch_add(1);self.generation_.store(frame.frame.generation);
                 self.frame_id_.store(frame.frame.sequence);
+                self.source_width_.store(frame.source_width);self.source_height_.store(frame.source_height);
+                self.analysis_width_.store(frame.frame.width);self.analysis_height_.store(frame.frame.height);
                 if(auto* runtime=self.runtime_.load(std::memory_order_acquire))runtime->RecordSourceArrival(false);
-            });
+            },mapping_.clock_id);
         if(!source->Initialize(error))return false;gpu_source_=std::move(source);
     }
     if(gpu_route&&!gpu_source_){error="Native GPU consumer adapter is unavailable";return false;}
     pixels_.resize(size_t(config.width)*config.height*4);
+    // Native HD capture reveals its actual visible size on first completion.
+    // Configure once before the workers; larger formats reconfigure on their
+    // preview owner only, never on the Unity consumer.
+    const auto preview_capacity=android_native_?std::max<uint32_t>(1920u*1080u*4u,static_cast<uint32_t>(pixels_.size())):static_cast<uint32_t>(pixels_.size());
+    if(!preview_.Configure(preview_capacity)){error="Cannot allocate the bounded preview mailbox";return false;}
     error.clear();return true;
 }
 bool NativeSourceBinding::StartIngestion(RuntimeSession& session,uint64_t epoch,std::string& error) {
     if(!handle_||running_.exchange(true)){error="Native source ingestion is unavailable or already active";return false;}
     runtime_.store(&session,std::memory_order_release);
-    if(gpu_source_){error.clear();return true;}
-    worker_=std::thread(&NativeSourceBinding::Run,this,&session,epoch);error.clear();return true;
+    try {
+        if(!gpu_source_)worker_=std::thread(&NativeSourceBinding::Run,this,&session,epoch);
+        if(android_native_&&api_.request_capture&&api_.copy_capture)
+            preview_worker_=std::thread(&NativeSourceBinding::PreviewLoop,this,epoch);
+    }catch(const std::exception& exception) {
+        // A second thread allocation can fail after ingestion started. Retire
+        // that first owner while the caller's Session is still alive.
+        StopIngestion();error=exception.what();return false;
+    }catch(...) {StopIngestion();error="Cannot start the native source owners";return false;}
+    error.clear();return true;
 }
 void NativeSourceBinding::SetError(const std::string& error) {
     errors_.fetch_add(1,std::memory_order_relaxed);
@@ -171,9 +186,13 @@ void NativeSourceBinding::SetError(const std::string& error) {
 }
 std::string NativeSourceBinding::LastError() const {std::lock_guard<std::mutex> lock(error_mutex_);return error_;}
 NativeSourceProgress NativeSourceBinding::Progress() const noexcept {
-    return {frames_.load(),generation_.load(),frame_id_.load(),errors_.load(),mapping_};
+    const auto* gpu=dynamic_cast<const NativeInputGpuSource*>(gpu_source_.get());
+    return {frames_.load(),generation_.load(),frame_id_.load(),errors_.load()+(gpu?gpu->ErrorCount():0),mapping_,
+        source_width_.load(),source_height_.load(),analysis_width_.load(),analysis_height_.load()};
 }
 uint32_t NativeSourceBinding::State() const noexcept {
+    if(const auto* gpu=dynamic_cast<const NativeInputGpuSource*>(gpu_source_.get()))
+        if(gpu->ErrorCount())return HV_INPUT_FAILED;
     uint32_t state=HV_INPUT_STOPPED;if(handle_&&api_.state)api_.state(handle_,&state);return state;
 }
 void NativeSourceBinding::Run(RuntimeSession* session,uint64_t epoch) {
@@ -218,12 +237,147 @@ void NativeSourceBinding::Run(RuntimeSession* session,uint64_t epoch) {
         std::string error;
         if(session->Submit(frame,envelope,error)) {
             frames_.fetch_add(1);generation_.store(info.generation);frame_id_.store(info.sequence);
+            source_width_.store(android_native_?native.source_width:0);source_height_.store(android_native_?native.source_height:0);
+            analysis_width_.store(info.width);analysis_height_.store(info.height);
+            if(!android_native_)PublishCpuPreview(info,epoch);
         }else SetError(error);
     }
 }
 void NativeSourceBinding::StopIngestion() {
     running_.store(false,std::memory_order_release);wake_.notify_all();
     if(worker_.joinable())worker_.join();
+    if(preview_worker_.joinable())preview_worker_.join();
+    runtime_.store(nullptr,std::memory_order_release);
+    preview_.Invalidate();
+}
+bool NativeSourceBinding::BuildPreviewInfo(const HV_InputFrameInfo& info,uint64_t epoch,HV_RuntimePreviewV1& out) const {
+    int64_t timestamp=0;
+    if(!info.sequence||!info.generation||!mapping_.Map(info,info.decoded_timestamp_us,timestamp)||
+       !info.width||!info.height||info.width>4096||info.height>4096||
+       uint64_t(info.stride_bytes)<uint64_t(info.width)*4||uint64_t(info.rgba_bytes)<uint64_t(info.stride_bytes)*info.height||
+       info.rgba_bytes>4096u*4096u*4u||info.row_origin!=HV_INPUT_ROW_TOP_LEFT)return false;
+    out={sizeof(out),1,info.width,info.height,info.stride_bytes,info.rgba_bytes,
+        config_.source_id,info.generation,info.sequence,epoch,timestamp};return true;
+}
+void NativeSourceBinding::ObservePreviewGeneration(uint64_t generation) {
+    const auto previous=preview_generation_.exchange(generation);
+    if(previous&&previous!=generation)preview_.Invalidate();
+}
+void NativeSourceBinding::PublishCpuPreview(const HV_InputFrameInfo& info,uint64_t epoch) {
+    if(!(config_.flags&HV_NATIVE_SOURCE_LIVE_PREVIEW))return;
+    const auto now=Now();if(now<next_cpu_preview_us_)return;next_cpu_preview_us_=now+200000;
+    HV_RuntimePreviewV1 metadata{};if(!BuildPreviewInfo(info,epoch,metadata))return;
+    ObservePreviewGeneration(info.generation);
+    PreviewMailbox::CopyTicket ticket;
+    // These bytes are already owned by the ingestion worker; no decoder or
+    // analysis credit is retained for the optional copy.
+    if(!preview_.TryBeginCopy(0,false,false,ticket))return;
+    const auto started=Now();std::memcpy(ticket.data,pixels_.data(),metadata.rgba_bytes);
+    preview_.FinishCopy(ticket,metadata,true,static_cast<uint64_t>(Now()-started));
+}
+int NativeSourceBinding::CopyPreview(uint64_t after,void* data,uint32_t capacity,HV_RuntimePreviewV1* info) {
+    return preview_.CopyLatest(after,data,capacity,info);
+}
+int NativeSourceBinding::RequestSnapshot(uint64_t* request) {
+    if(!request)return HV_ERR_INVALID_ARGUMENT;*request=0;
+    // The current Windows Input API only supplies resized analysis RGBA; it
+    // cannot establish an original-color snapshot contract.
+    if(!android_native_||!api_.request_capture||!api_.copy_capture||preview_failed_)return HV_CONTROL_UNSUPPORTED;
+    const auto result=preview_.RequestSnapshot(request);
+    if(result==0){snapshot_deadline_us_=static_cast<uint64_t>(Now())+5000000;wake_.notify_all();}
+    return result;
+}
+int NativeSourceBinding::CopySnapshot(uint64_t request,void* data,uint32_t capacity,HV_RuntimePreviewV1* info) {
+    return preview_.CopySnapshot(request,data,capacity,info);
+}
+std::string NativeSourceBinding::PreviewDiagnostics() const {
+    std::lock_guard<std::mutex> lock(error_mutex_);
+    return "preview: native-owned copies="+std::to_string(preview_.Published())+
+        " skipped="+std::to_string(preview_.Skipped())+" live_limit_fps=5 live_suspended="+
+        (preview_.BudgetExceeded()?"1":"0")+" budget=cpu-copy-20ms/request-ready-200ms-unqualified"+
+        (android_native_?" exact=next-accepted-original":" exact=unsupported-original-geometry")+
+        (preview_error_.empty()?"":" error="+preview_error_);
+}
+void NativeSourceBinding::FailPreview(const char* error) {
+    preview_failed_=true;preview_.SuspendLive();
+    if(const auto request=preview_.PendingSnapshot())preview_.CancelSnapshot(request,HV_CONTROL_UNSUPPORTED);
+    std::lock_guard<std::mutex> lock(error_mutex_);preview_error_=error;
+}
+void NativeSourceBinding::CheckSnapshot(RuntimeSession& session) {
+    uint64_t request=0;HV_RuntimePreviewV1 info{};
+    if(!preview_.SnapshotCandidate(request,info))return;
+    if(request!=snapshot_check_request_||info.frame_id!=snapshot_check_frame_) {
+        snapshot_check_request_=request;snapshot_check_frame_=info.frame_id;snapshot_check_cursor_=0;
+    }
+    bool passed=false;ObservationEntry entry;
+    for(uint32_t n=0;n<64;++n){const auto read=session.ReadObservations(snapshot_check_cursor_,&entry,1);if(!read.written)break;snapshot_check_cursor_=read.next_cursor;
+        if(entry.kind!=ObservationKind::Body||entry.envelope.source_id!=info.source_id||entry.envelope.config_epoch!=info.config_epoch)continue;
+        if(entry.envelope.generation==info.generation&&entry.envelope.frame_id==static_cast<int64_t>(info.frame_id)) {
+            preview_.ConfirmSnapshot(request,info.source_id,info.generation,info.frame_id,info.config_epoch);return;
+        }
+        if(entry.envelope.generation>info.generation||(entry.envelope.generation==info.generation&&
+           entry.envelope.frame_id>static_cast<int64_t>(info.frame_id)))passed=true;
+    }
+    // The capture was overwritten before inference admission, or its result
+    // expired from the journal. Retry this request's next exact image; never
+    // substitute an arbitrary current image.
+    if(passed)preview_.RejectSnapshotCandidate(request);
+}
+void NativeSourceBinding::PreviewLoop(uint64_t epoch) {
+    uint64_t native_request=0,capture_snapshot=0;int64_t requested_us=0,next_live_us=0,last_live_us=0;
+    PreviewMailbox::CopyTicket ticket;
+    auto retire_cpu_reservation=[&] {
+        // No GPU command writes this mailbox target. Input's pending capture
+        // owns its own staging and is retired separately by Input Close/Release.
+        if(ticket.token){preview_.FinishCopy(ticket,HV_RuntimePreviewV1{},true,0,false);ticket={};}
+    };
+    while(running_.load(std::memory_order_acquire)) {
+        const auto now=Now();auto* session=runtime_.load(std::memory_order_acquire);
+        if(session)CheckSnapshot(*session);
+        const auto pending=preview_.PendingSnapshot();
+        if(pending&&snapshot_deadline_us_&&uint64_t(now)>snapshot_deadline_us_.load())preview_.CancelSnapshot(pending);
+        if(native_request) {
+            HV_InputFrameInfo info{sizeof(info),1};const auto probe=api_.copy_capture(handle_,native_request,nullptr,0,&info);
+            if(probe==HV_INPUT_BUFFER_TOO_SMALL) {
+                HV_RuntimePreviewV1 metadata{};
+                if(!BuildPreviewInfo(info,epoch,metadata)){retire_cpu_reservation();native_request=0;FailPreview("native capture metadata/clock is invalid; capture staging remains Input-owned until source retirement");}
+                else {
+                    const auto previous=preview_generation_.load();
+                    if(previous&&previous!=info.generation){retire_cpu_reservation();ObservePreviewGeneration(info.generation);}
+                    else ObservePreviewGeneration(info.generation);
+                    if(info.rgba_bytes>ticket.capacity){retire_cpu_reservation();if(!preview_.Configure(info.rgba_bytes)){std::unique_lock<std::mutex> lock(wait_mutex_);wake_.wait_for(lock,std::chrono::milliseconds(10));continue;}}
+                    if(!ticket.token&&!preview_.TryBeginCopy(0,false,false,ticket,capture_snapshot!=0)){std::unique_lock<std::mutex> lock(wait_mutex_);wake_.wait_for(lock,std::chrono::milliseconds(10));continue;}
+                    const auto copy_started=Now();const auto copied=api_.copy_capture(handle_,native_request,ticket.data,ticket.capacity,&info);
+                    const auto copy_us=static_cast<uint64_t>(Now()-copy_started);
+                    if(copied==HV_INPUT_OK) {
+                        if(capture_snapshot&&capture_snapshot==preview_.PendingSnapshot())preview_.StoreSnapshotCandidate(capture_snapshot,metadata,ticket.data,metadata.rgba_bytes);
+                        preview_.FinishCopy(ticket,metadata,true,copy_us,(config_.flags&HV_NATIVE_SOURCE_LIVE_PREVIEW)!=0);
+                        if(Now()-requested_us>200000)preview_.SuspendLive();
+                        ticket={};native_request=0;next_live_us=Now()+200000;
+                    }else if(copied!=HV_INPUT_NO_FRAME&&copied!=HV_INPUT_BUSY){retire_cpu_reservation();native_request=0;FailPreview("native capture copy failed");}
+                }
+            }else if(probe!=HV_INPUT_NO_FRAME&&probe!=HV_INPUT_BUSY){retire_cpu_reservation();native_request=0;
+                if(probe==HV_INPUT_INVALID)preview_.Invalidate();else FailPreview("native capture preparation failed");}
+        }else {
+            uint64_t candidate_request=0;HV_RuntimePreviewV1 candidate{};
+            const auto snapshot=preview_.PendingSnapshot();
+            const bool exact=snapshot&&!preview_.SnapshotCandidate(candidate_request,candidate);
+            bool live=(config_.flags&HV_NATIVE_SOURCE_LIVE_PREVIEW)&&!preview_.BudgetExceeded()&&now>=next_live_us;
+            // A normal asynchronous frame gap is not pressure. If more than
+            // three admitted frames are outstanding, reduce optional previews
+            // to one per second; the capture still attaches only after the
+            // image owner admits and submits the next analysis frame first.
+            if(live&&session){const auto stats=session->StatsV2();const auto latest=frame_id_.load();
+                if(latest>uint64_t(std::max<int64_t>(0,stats.source_frame_id))+3&&now-last_live_us<1000000)live=false;}
+            if(!preview_failed_&&frame_id_.load()&&(exact||live)&&preview_.TryBeginCopy(0,false,false,ticket,exact)) {
+                uint64_t id=0;const auto result=api_.request_capture(handle_,&id);
+                if(result==HV_INPUT_OK){native_request=id;capture_snapshot=exact?snapshot:0;requested_us=now;if(live)last_live_us=now;}
+                else {retire_cpu_reservation();next_live_us=now+200000;}
+            }
+        }
+        std::unique_lock<std::mutex> lock(wait_mutex_);wake_.wait_for(lock,std::chrono::milliseconds(10),[this]{return !running_.load();});
+    }
+    retire_cpu_reservation();
 }
 void NativeSourceBinding::Close() {
     if(handle_){api_.close(handle_);for(;;){const auto released=api_.release(handle_);

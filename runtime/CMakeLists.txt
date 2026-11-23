@@ -46,6 +46,7 @@ endif()
 target_sources(humanvision_internal PRIVATE
     composition/session.cpp
     composition/native_input_gpu_source.cpp
+    composition/preview_mailbox.cpp
     composition/region_assignment.cpp
     host/plugin_registry.cpp
     host/runtime_host.cpp

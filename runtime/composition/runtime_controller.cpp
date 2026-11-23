@@ -206,6 +206,8 @@ int RuntimeController::Stats(HV_RuntimeStatsV3* out) {
     if(source_){const auto s=source_->Progress();out->source_id=source_->Config().source_id;
         out->generation=s.generation;out->frame_id=s.frame_id;out->native_input_frames=s.frames;
         out->input_errors=s.errors;out->clock_offset_us=s.clock.offset_us;out->clock_uncertainty_us=s.clock.uncertainty_us;
+        out->source_width=s.source_width;out->source_height=s.source_height;
+        out->analysis_width=s.analysis_width;out->analysis_height=s.analysis_height;
         if(out->state==HV_CONTROL_RUNNING){const auto input_state=source_->State();
             if(input_state==HV_INPUT_RECONNECTING)out->state=HV_CONTROL_RECONNECTING;
             else if(input_state==HV_INPUT_FAILED||input_state==HV_INPUT_STOPPED)out->state=HV_CONTROL_ERROR;
@@ -234,8 +236,23 @@ int RuntimeController::Diagnostics(char* out,uint32_t capacity) {
     std::string text=error_;if(session_)text+=(text.empty()?"":"\n")+session_->Diagnostics();
     if(source_){auto error=source_->LastError();if(error.empty()&&source_->State()==HV_INPUT_FAILED) {
             char input_error[1024]{};source_->Api().error(source_->Handle(),input_error,sizeof(input_error));error=input_error;}
-        if(!error.empty())text+="\n"+error;}
+        if(!error.empty())text+="\n"+error;text+="\n"+source_->PreviewDiagnostics();}
     if(VisibleState()==HV_CONTROL_ERROR_RETIRING)text+="\nNative owner has not retired; resources remain owned. Restart the process if its driver never returns.";
     Text(out,capacity,text);return 0;
+}
+int RuntimeController::CopyPreview(uint64_t after,void* bytes,uint32_t capacity,HV_RuntimePreviewV1* info) {
+    if(!info||info->struct_size<sizeof(*info)||info->api_version!=1)return HV_ERR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(mutex_);
+    return source_&&admission_?source_->CopyPreview(after,bytes,capacity,info):HV_CONTROL_NO_DATA;
+}
+int RuntimeController::RequestSnapshot(uint64_t* request) {
+    if(!request)return HV_ERR_INVALID_ARGUMENT;*request=0;
+    std::lock_guard<std::mutex> lock(mutex_);
+    return source_&&admission_?source_->RequestSnapshot(request):HV_CONTROL_UNSUPPORTED;
+}
+int RuntimeController::CopySnapshot(uint64_t request,void* bytes,uint32_t capacity,HV_RuntimePreviewV1* info) {
+    if(!request||!info||info->struct_size<sizeof(*info)||info->api_version!=1)return HV_ERR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(mutex_);
+    return source_&&admission_?source_->CopySnapshot(request,bytes,capacity,info):HV_CONTROL_NO_DATA;
 }
 }
