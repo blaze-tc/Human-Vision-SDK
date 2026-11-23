@@ -29,6 +29,9 @@ typedef struct HV_InputNativePoolV1 {
 } HV_InputNativePoolV1;
 typedef struct HV_InputNativeFrameV1 {
   uint32_t size, version;
+  /* pts_valid distinguishes an absent media timestamp from genuine zero (and
+     signed media timestamps). received_timestamp_us is the matched compressed
+     video packet arrival on frame.clock_id, or -1 when unavailable. */
   HV_InputFrameInfo frame;
   uint32_t slot, source_width, source_height;
   int32_t crop_left, crop_top, crop_right, crop_bottom;

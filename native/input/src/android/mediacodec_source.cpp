@@ -2,6 +2,7 @@
 #include "android_input_gpu.h"
 #include "input_vulkan_private.h"
 #include "native_vulkan_image_service.h"
+#include "native_decode_metadata.h"
 #include "input_h264_color.h"
 #include "input_frame_ring.h"
 #include "input_diagnostic_sampling.h"
@@ -62,7 +63,7 @@ void AndroidDecodedImage::CountReleaseFd() noexcept {if(release_fd>=0&&!release_
 void AndroidDecodedImage::Reset() noexcept {this->~AndroidDecodedImage();new(this)AndroidDecodedImage();}
 void AndroidDecodedImage::TakeFrom(AndroidDecodedImage& s) noexcept {
  image=std::exchange(s.image,nullptr);reader=std::exchange(s.reader,nullptr);buffer=std::exchange(s.buffer,nullptr);acquire_fd=std::exchange(s.acquire_fd,-1);image_counted=std::exchange(s.image_counted,false);
- release_fd=std::exchange(s.release_fd,-1);release_fd_counted=std::exchange(s.release_fd_counted,false);gpu_submitted=std::exchange(s.gpu_submitted,false);generation=s.generation;pts_us=s.pts_us;received_us=s.received_us;decoded_us=s.decoded_us;
+ release_fd=std::exchange(s.release_fd,-1);release_fd_counted=std::exchange(s.release_fd_counted,false);gpu_submitted=std::exchange(s.gpu_submitted,false);generation=s.generation;pts_valid=s.pts_valid;pts_us=s.pts_us;received_us=s.received_us;decoded_us=s.decoded_us;
  log_frame_details=std::exchange(s.log_frame_details,false);
  matrix=s.matrix;color_range=s.color_range;transfer=s.transfer;primaries=s.primaries;width=s.width;height=s.height;crop_left=s.crop_left;crop_top=s.crop_top;crop_right=s.crop_right;crop_bottom=s.crop_bottom;
 }
@@ -170,8 +171,8 @@ void Session::Decode() {
   AImageCropRect codec_crop{};bool codec_crop_known=false;
   int32_t visible_width=0,visible_height=0;
   unsigned old_surface_images_remaining=0;
-  AImageCropRect previous_crop{};
-  uint32_t last_color[4]{};
+  NativePacketLedger native_packets;
+  NativeSurfaceLedger native_surfaces(generation);
   InputDecodeTiming decode_timing;
   InputSurfaceReleasePacer release_pacer;
   if (production) __android_log_print(ANDROID_LOG_INFO, "HVInputGate",
@@ -198,15 +199,23 @@ void Session::Decode() {
         // The output format event can precede delivery of already released
         // buffers. Drop only the previous geometry, and only up to the reader's
         // bounded capacity; do not reinterpret it using the new coded crop.
-        old_surface_images_remaining=production&&codec_crop_known&&visible_width&&
+        old_surface_images_remaining=production&&!native&&codec_crop_known&&visible_width&&
             (codec_crop.right-codec_crop.left!=visible_width||codec_crop.bottom-codec_crop.top!=visible_height)?4:0;
         __android_log_print(ANDROID_LOG_INFO,"HVInputGate","actual_codec_crop known=%d left=%d top=%d right_exclusive=%d bottom_exclusive=%d optional_api28_getRect=%d",codec_crop_known,codec_crop.left,codec_crop.top,codec_crop.right,codec_crop.bottom,get_rect!=nullptr);
+        if(native){matrix=declared.matrix;range=declared.range;transfer=primaries=0;}
         int32_t value=0;
         if(AMediaFormat_getInt32(actual,"color-standard",&value)){auto known=value==1?2u:(value==2||value==4?1u:0u);primaries=uint32_t(value);if(known&&declared.matrix&&known!=declared.matrix){AMediaFormat_delete(actual);fail("decoder matrix conflicts with H264 VUI",AVERROR_INVALIDDATA);return;}matrix=known?known:declared.matrix;}
         if(AMediaFormat_getInt32(actual,"color-range",&value)){auto known=value==1?1u:(value==2?2u:0u);if(known&&declared.range&&known!=declared.range){AMediaFormat_delete(actual);fail("decoder range conflicts with H264 VUI",AVERROR_INVALIDDATA);return;}range=known?known:declared.range;}
         if(AMediaFormat_getInt32(actual,"color-transfer",&value))transfer=uint32_t(value); // Android codes retained; no sRGB assumption
         __android_log_print(ANDROID_LOG_INFO,"HVInputGate","actual_codec_format=%s",AMediaFormat_toString(actual));
         __android_log_print(ANDROID_LOG_INFO,"HVInputGate","resolved_color matrix=%u range=%u vui_matrix=%u vui_range=%u android_raw_standard=%u android_raw_transfer=%u vui_primaries=%u vui_transfer=%u unknown_output_color_space=0",matrix,range,declared.matrix,declared.range,primaries,transfer,declared.primaries,declared.transfer);
+        if(native){
+          const DecodedFormat format{codec_crop.left,codec_crop.top,codec_crop.right,codec_crop.bottom,
+            matrix,range,transfer,primaries,codec_crop_known};
+          generation=native_surfaces.SetFormat(format);
+          std::lock_guard<std::mutex> lock(mutex);
+          info.generation=generation;
+        }
         AMediaFormat_delete(actual); continue;
       }
       if(index<0) {
@@ -217,16 +226,29 @@ void Session::Decode() {
         break; // Preserve existing reader drain and reconnect behavior.
       }
       const int64_t dequeued_us=NowUs();
-      if (output.flags & (AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG | AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM)) {
+      const bool control_output=(output.flags&AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG) ||
+          ((output.flags&AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) && !output.size);
+      const PacketStamp packet=native && !control_output?native_packets.Take(output.presentationTimeUs):PacketStamp{};
+      if (control_output) {
         decode_timing.RecordSkippedOutput();
       } else {
         decode_timing.RecordOutput(output.presentationTimeUs, dequeued_us);
         if(first_video_output) {
-          __android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoder_first_output decoder=%s output_mode=%s reader_max_images=%d generation=%llu pts_us=%lld bytes=%d",name.c_str(),output_mode,reader_depth,(unsigned long long)generation,(long long)output.presentationTimeUs,output.size);
+          __android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoder_first_output decoder=%s output_mode=%s reader_max_images=%d generation=%llu pts_us=%lld bytes=%d",name.c_str(),output_mode,reader_depth,(unsigned long long)generation,(long long)(native?packet.pts_us:output.presentationTimeUs),output.size);
           first_video_output=false;
         }
       }
-      auto release=AMediaCodec_releaseOutputBuffer(r.codec,index,true);
+      media_status_t release;
+      if(native && !control_output){
+        // This clock is Android CLOCK_MONOTONIC. The stamp is a Surface
+        // correlation key only, independent of the original media PTS.
+        auto now_ns=std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        const auto stamp=native_surfaces.Release(now_ns,packet);
+        release=AMediaCodec_releaseOutputBufferAtTime(r.codec,index,stamp);
+      } else {
+        release=AMediaCodec_releaseOutputBuffer(r.codec,index,!native);
+      }
       if(release!=AMEDIA_OK) {fail("render hardware output Surface",release);return;}
       ++outputs_released;
       if (production) release_pacer.RecordRelease(NowUs());
@@ -244,44 +266,59 @@ void Session::Decode() {
     AHardwareBuffer_acquire(borrowed); image.buffer=borrowed;++live_ahb_references;
     int64_t ns=0;
     const auto timestamp_status=AImage_getTimestamp(image.image,&ns);
-    image.pts_us=native && (timestamp_status!=AMEDIA_OK || ns<0) ? -1 : ns/1000;
-    // Last packet arrival is an activity timestamp, NOT this image's matched
-    // packet time. The diagnostics must not call their difference decode time.
-    image.received_us=last_received_us.load(); image.decoded_us=NowUs();
+    SurfaceRecord matched{};
+    if(native){
+      if(timestamp_status!=AMEDIA_OK){
+        fail("native decoder Surface timestamp unavailable",AVERROR_INVALIDDATA);return;
+      }
+      const auto match=native_surfaces.Take(ns,matched);
+      if(match==SurfaceMatch::Obsolete)return;
+      if(match!=SurfaceMatch::Ready){
+        fail("native decoder Surface timestamp has no matching output release",AVERROR_INVALIDDATA);return;
+      }
+      image.pts_valid=matched.packet.pts_valid;
+      image.pts_us=matched.packet.pts_us;
+      image.received_us=matched.packet.received_us;
+    } else {
+      image.pts_us=ns/1000;
+      image.received_us=last_received_us.load(); // legacy demux activity
+    }
+    image.decoded_us=NowUs();
     // The color converter is enabled in production too; it is not a diagnostic
     // mode flag. Only the private non-production gate retains every frame.
     image.log_frame_details=ShouldLogInputFrame(uint64_t(decoded)+1,!production);
-    image.matrix=matrix;image.color_range=range;image.transfer=transfer;image.primaries=primaries;
+    image.matrix=native?matched.format.matrix:matrix;
+    image.color_range=native?matched.format.range:range;
+    image.transfer=native?matched.format.transfer:transfer;
+    image.primaries=native?matched.format.primaries:primaries;
     AImage_getWidth(image.image,&image.width);AImage_getHeight(image.image,&image.height);AImageCropRect crop{};
     if(AImage_getCropRect(image.image,&crop)!=AMEDIA_OK){fail("query actual decoder crop",AVERROR_INVALIDDATA);return;}
     AHardwareBuffer_Desc allocation{};AHardwareBuffer_describe(image.buffer,&allocation);
     if(decoded==0)LogRgaCapabilities(allocation);
     const bool gpu_output=production||ColorProbeEnabled();
-    if(gpu_output&&(!codec_crop_known||codec_crop.right>int64_t(allocation.width)||codec_crop.bottom>int64_t(allocation.height)||codec_crop.right-codec_crop.left!=image.width||codec_crop.bottom-codec_crop.top!=image.height)){
+    const auto frame_crop=native?AImageCropRect{matched.format.left,matched.format.top,matched.format.right,matched.format.bottom}:codec_crop;
+    const bool frame_crop_known=native?matched.format.crop_known:codec_crop_known;
+    if(gpu_output&&(!frame_crop_known||frame_crop.right>int64_t(allocation.width)||frame_crop.bottom>int64_t(allocation.height)||frame_crop.right-frame_crop.left!=image.width||frame_crop.bottom-frame_crop.top!=image.height)){
       if(old_surface_images_remaining&&image.width==visible_width&&image.height==visible_height){
         --old_surface_images_remaining;
         return;
       }
       fail("actual decoder crop unavailable or incompatible with AHB/display geometry",AVERROR_INVALIDDATA);return;
     }
-    const auto actual_crop=gpu_output?codec_crop:crop;
+    const auto actual_crop=gpu_output?frame_crop:crop;
     image.crop_left=actual_crop.left;image.crop_top=actual_crop.top;image.crop_right=actual_crop.right;image.crop_bottom=actual_crop.bottom;
-    if(production){
+    if(production && !native){
       const int32_t width=actual_crop.right-actual_crop.left,height=actual_crop.bottom-actual_crop.top;
-      const uint32_t current_color[]={matrix,range,transfer,primaries};
-      const bool native_contract_changed=native && (actual_crop.left!=previous_crop.left || actual_crop.top!=previous_crop.top ||
-          std::memcmp(last_color,current_color,sizeof(last_color))!=0);
-      if(visible_width&&(width!=visible_width||height!=visible_height||native_contract_changed)){
+      if(visible_width&&(width!=visible_width||height!=visible_height)){
         {
           std::lock_guard<std::mutex> lock(mutex);
           generation=++info.generation;
         }
         __android_log_print(ANDROID_LOG_INFO,"HVInputGate","input_decoded_geometry_changed previous=%dx%d decoded=%dx%d generation=%llu",visible_width,visible_height,width,height,(unsigned long long)generation);
       }
-      previous_crop=actual_crop; std::memcpy(last_color,current_color,sizeof(last_color));
       visible_width=width;visible_height=height;old_surface_images_remaining=0;
     }
-    image.generation=generation;
+    image.generation=native?matched.generation:generation;
     if(image.log_frame_details&&(production||ColorProbeEnabled()))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","resolved_ahb_crop left=%d top=%d right_exclusive=%d bottom_exclusive=%d ahb_width=%u ahb_height=%u aimage_rect=%d,%d,%d,%d crop_source=MediaCodec_coded_rect",actual_crop.left,actual_crop.top,actual_crop.right,actual_crop.bottom,allocation.width,allocation.height,crop.left,crop.top,crop.right,crop.bottom);
     if(image.log_frame_details&&(production||ColorProbeEnabled()))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoded_crop generation=%llu image_width=%d image_height=%d left=%d top=%d right=%d bottom=%d display_width=%d display_height=%d matrix=%u range=%u transfer=%u primaries=%u crop_metadata_domain=AImage_full_window matrix_range_domain=resolved_Android_or_H264_VUI raw_transfer_primaries_domain=AndroidMediaFormat",(unsigned long long)image.generation,image.width,image.height,crop.left,crop.top,crop.right,crop.bottom,crop.right-crop.left,crop.bottom-crop.top,matrix,range,transfer,primaries);
     if(decoded==0) __android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoder_first_image decoder=%s output_mode=%s reader_max_images=%d generation=%llu pts_us=%lld visible=%dx%d ahb=%ux%u",name.c_str(),output_mode,reader_depth,(unsigned long long)generation,(long long)image.pts_us,actual_crop.right-actual_crop.left,actual_crop.bottom-actual_crop.top,allocation.width,allocation.height);
@@ -324,9 +361,12 @@ void Session::Decode() {
   const auto reconnect=[&](const char* stage,int code){SetError(stage,code);if(SetDecoderState(HV_INPUT_RECONNECTING))__android_log_print(ANDROID_LOG_INFO,"HVInputGate","encoded_backlog_controlled_reconnect=1 wait_for_keyframe=1 stage=%s",stage);};
   while(!stop && (production||ColorProbeEnabled()||decoded<3)) {
     deadline=NowUs()+int64_t(timeout_ms)*1000;
-    status=av_read_frame(r.format,r.packet); last_received_us=NowUs();
+    status=av_read_frame(r.format,r.packet);
+    const auto read_us=NowUs();
     if(status<0) {if(production)reconnect("read compressed H264",status);else fail("read compressed H264",status);return;}
-    if(r.packet->stream_index!=stream) {av_packet_unref(r.packet);continue;}
+    const auto received_us=VideoPacketReceiveTime(status,r.packet->stream_index,stream,read_us);
+    if(received_us<0) {av_packet_unref(r.packet);continue;}
+    if(!native)last_received_us=received_us;
     ++packets_received;
     // A newly joined RTSP stream may begin inside a GOP. Concealed decoder output
     // is not a valid source image: start the hardware decoder input at a keyframe.
@@ -341,8 +381,10 @@ void Session::Decode() {
     if(!data || r.packet->size<0 || size_t(r.packet->size)>capacity) {fail("compressed access unit exceeds codec buffer",AVERROR(ENOBUFS));return;}
     std::memcpy(data,r.packet->data,r.packet->size);
     int64_t pts=r.packet->pts==AV_NOPTS_VALUE?0:av_rescale_q(r.packet->pts,r.format->streams[stream]->time_base,AVRational{1,1000000});
-    decode_timing.RecordInput(pts, r.packet->pts!=AV_NOPTS_VALUE && pts>=0, NowUs());
-    status=AMediaCodec_queueInputBuffer(r.codec,index,0,r.packet->size,pts,0); av_packet_unref(r.packet);
+    const bool pts_valid=r.packet->pts!=AV_NOPTS_VALUE;
+    const auto codec_stamp=native?native_packets.Submit(pts_valid,pts,received_us):pts;
+    decode_timing.RecordInput(codec_stamp, native || (pts_valid && pts>=0), NowUs());
+    status=AMediaCodec_queueInputBuffer(r.codec,index,0,r.packet->size,codec_stamp,0); av_packet_unref(r.packet);
     if(status!=AMEDIA_OK) {fail("submit hardware compressed H264",status);return;}
     ++inputs_queued;
     if(was_waiting)__android_log_print(ANDROID_LOG_INFO,"HVInputGate","decoder_first_keyframe_submitted=true pts_us=%lld",(long long)pts);

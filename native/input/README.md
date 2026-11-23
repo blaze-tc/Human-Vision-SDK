@@ -18,7 +18,13 @@ pending decoder image while consumers hold all slots. It converts PRIVATE YCbCr
 with the same sampler and crop shader as the Unity adapter. Output rows start at
 the top. Every publication includes its decoder generation and sequence, color
 declarations, source crop, transformed dimensions, PTS availability and local
-decoder clock. A readback-enabled source copies the identical conversion target
+decoder clock. The compressed video access unit carries its original media PTS,
+validity and local receive timestamp across decoder reordering. Unmatched packet
+timing has `pts_valid=0` and `received_timestamp_us=-1`. A genuine zero PTS
+is valid. Each dequeued picture carries the format snapshot for its own Surface
+release timestamp. The reader discards delayed pictures from an older contract,
+including changes to crop origin or color at the same visible size.
+A readback-enabled source copies the identical conversion target
 to persistent host-visible staging. Its fence and noncoherent invalidate must
 both succeed before publication.
 

@@ -1,4 +1,5 @@
 #pragma once
+#include "decoded_sampling_contract.h"
 #include "android_input_gpu.h"
 #include "input_buffer_registry.h"
 #include "input_vulkan_proc_loader.h"
@@ -404,15 +405,7 @@ inline void RecordInputConversion(InputConversionApi &api, VkDevice d,
 }
 inline ImageContract DecodedImageContract(const AndroidDecodedImage &image,
                                           const InputGpuCapabilities &c) {
-  ImageContract contract{};
-  contract.external_format = c.external_format;
-  contract.format = c.format;
-  contract.features = c.format_features;
-  contract.model = c.model;
-  contract.range = c.range;
-  contract.x_chroma = c.x_chroma;
-  contract.y_chroma = c.y_chroma;
-  std::memcpy(contract.components, c.components, sizeof(c.components));
+  auto contract = DecodedSamplingContract(c);
   AHardwareBuffer_Desc desc{};
   AHardwareBuffer_describe(image.buffer, &desc);
   contract.width = desc.width;

@@ -54,7 +54,7 @@ struct NativeVulkanImageService::State {
     info.rgba_bytes = info.stride_bytes * info.height;
     info.received_timestamp_us = active.received_us;
     info.decoded_timestamp_us = active.decoded_us;
-    info.pts_valid = active.pts_us >= 0;
+    info.pts_valid = active.pts_valid;
     info.presentation_timestamp_us = info.pts_valid ? active.pts_us : 0;
     info.clock_id = ClockId();
     info.clock_domain = HV_INPUT_CLOCK_NATIVE_MONOTONIC;

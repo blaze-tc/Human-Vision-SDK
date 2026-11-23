@@ -49,6 +49,7 @@ struct AndroidDecodedImage {
   uint32_t matrix=0,color_range=0,transfer=0,primaries=0;
   int32_t width=0,height=0,crop_left=0,crop_top=0,crop_right=0,crop_bottom=0;
   uint64_t generation = 0;
+  bool pts_valid = false;
   int64_t pts_us = 0, received_us = 0, decoded_us = 0;
   AndroidDecodedImage() = default;
   AndroidDecodedImage(const AndroidDecodedImage&) = delete;
