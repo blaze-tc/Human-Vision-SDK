@@ -50,7 +50,7 @@ private:
     struct Slot;
     struct SlotDeleter { void operator()(Slot*) const noexcept; };
     bool ParseModel(const HV_GpuBackendConfigV1&, std::string& error);
-    bool InitializeSlots(gpu::UnityVulkanBridge&, std::string& error);
+    bool InitializeSlots(gpu::ConsumerImageSource&, std::string& error);
     bool RecordRgbImport(Slot&,ncnn::VkCompute&,std::string& error);
     bool ValidateTransform(const HV_GpuFrameRefV1&, const HV_GpuImageTransformV1&,
                            const gpu::ConsumerFrame&, std::string& error) const;
@@ -61,7 +61,8 @@ private:
     std::mutex run_mutex_;
     std::unique_ptr<ncnn::Net> net_;
     const ncnn::VulkanDevice* device_ = nullptr;
-    gpu::UnityVulkanBridge* bridge_ = nullptr;
+    gpu::ConsumerImageSource* bridge_ = nullptr;
+    std::unique_ptr<gpu::BridgeConsumerImageSource> legacy_source_;
     bool gpu_instance_lease_ = false;
     bool terminal_gpu_fault_ = false;
     bool gate_mode_ = false;

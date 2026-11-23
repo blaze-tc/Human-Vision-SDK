@@ -254,7 +254,7 @@ bool AndroidSession::ParseModel(const HV_GpuBackendConfigV1& config, std::string
     } catch (const std::exception& e) { error = e.what(); return false; }
 }
 
-bool AndroidSession::InitializeSlots(gpu::UnityVulkanBridge& bridge, std::string& error) {
+bool AndroidSession::InitializeSlots(gpu::ConsumerImageSource& bridge, std::string& error) {
     if (bridge.RetainGeneration(generation_, RetainAhb) != gpu::SlotResult::Ok) {
         error = "ncnn AHB generation is not configured"; return false;
     }
@@ -364,14 +364,18 @@ bool AndroidSession::Initialize(const HV_GpuBackendConfigV1& config,
     if (!api_device.host_context) { error = "Missing ncnn Vulkan host context"; return false; }
     const auto& host = *static_cast<const HostContext*>(api_device.host_context);
     if (host.struct_size < sizeof(host) || host.api_version != HV_GPU_FRAME_API_V1 ||
-        !host.bridge || !host.unity_device.instance || !host.unity_device.physical_device) {
+        (!host.source && (!host.bridge || !host.unity_device.instance || !host.unity_device.physical_device))) {
         error = "Invalid ncnn Vulkan host context or bridge"; return false;
     }
-    bridge_ = host.bridge;
+    if(host.source)bridge_=host.source;
+    else {
+        legacy_source_=std::make_unique<gpu::BridgeConsumerImageSource>(host.bridge,gpu::QueryDeviceIdentity(host.unity_device));
+        bridge_=legacy_source_.get();
+    }
     if (!ParseModel(config, error)) return false;
     if (!gpu::AcquireNcnnGpuInstance()) { error = "ncnn Vulkan GPU instance creation failed"; return false; }
     gpu_instance_lease_ = true;
-    const auto match = gpu::MatchNcnnDevice(host.unity_device);
+    const auto match = gpu::MatchNcnnDevice(bridge_->Identity());
     if (match.status != gpu::DeviceMatchStatus::Matched ||
         !SameUuid(api_device.device_uuid, match.identity.device_uuid) ||
         !SameUuid(api_device.driver_uuid, match.identity.driver_uuid)) {
@@ -419,7 +423,7 @@ bool AndroidSession::Initialize(const HV_GpuBackendConfigV1& config,
     option_.staging_vkallocator = staging_allocator_;
     preprocess_ = std::make_unique<GpuPreprocess>();
     if (!preprocess_->Initialize(device_, option_, error)) return false;
-    if (!InitializeSlots(*host.bridge, error)) return false;
+    if (!InitializeSlots(*bridge_, error)) return false;
     if (detector_role_) {
         // VkCompute reuses its command pool/buffer. Without push descriptors
         // pinned ncnn allocates descriptor pools per reset, breaking the
@@ -446,7 +450,8 @@ bool AndroidSession::Initialize(const HV_GpuBackendConfigV1& config,
 bool AndroidSession::InitializeGate(const std::string& input_contract_json,
                                     const HostContext& host, std::string& error) {
     gate_mode_ = true;
-    bridge_ = host.bridge;
+    legacy_source_=std::make_unique<gpu::BridgeConsumerImageSource>(host.bridge,gpu::QueryDeviceIdentity(host.unity_device));
+    bridge_ = legacy_source_.get();
     if (!bridge_ || !host.unity_device.instance || !host.unity_device.physical_device) {
         error = "Gate requires configured production Unity Vulkan bridge"; return false;
     }

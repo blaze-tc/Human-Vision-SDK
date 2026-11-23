@@ -3,6 +3,7 @@
 #include "gpu/android/ahb_capabilities.h"
 #include "gpu/android/ahb_slot_ring.h"
 #include "humanvision/humanvision_android_gpu.h"
+#include "common/frame_envelope.h"
 
 #include <array>
 #include <atomic>
@@ -14,6 +15,7 @@
 namespace humanvision::gpu {
 
 class UnityVulkanBridge;
+class ConsumerImageSource;
 
 enum class BridgeResult { Ok, DroppedNoSlot, Busy, Closed, Invalid, GpuError };
 enum class SourcePreparation : uint8_t { Ready, Warmed, Unsupported };
@@ -83,6 +85,9 @@ struct UnityVulkanSlotCache {
 };
 
 struct ConsumerFrame {
+  // Internal source-neutral owner. Null keeps the legacy Unity bridge route.
+  ConsumerImageSource* producer = nullptr;
+  humanvision::runtime::FrameEnvelope source_envelope;
   SlotToken token{};
   SlotMetadata metadata{};
   uintptr_t ahb_buffer = 0;

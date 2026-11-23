@@ -45,6 +45,7 @@ endif()
 
 target_sources(humanvision_internal PRIVATE
     composition/session.cpp
+    composition/native_input_gpu_source.cpp
     composition/region_assignment.cpp
     host/plugin_registry.cpp
     host/runtime_host.cpp
@@ -115,6 +116,7 @@ target_sources(humanvision PRIVATE composition/runtime_c.cpp composition/android
 target_include_directories(humanvision_internal PRIVATE ${PROJECT_SOURCE_DIR}/third_party)
 target_include_directories(humanvision_internal PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/native/input/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 if(ANDROID)

@@ -112,9 +112,11 @@ DeviceIdentity QueryDeviceIdentity(const VulkanDeviceContext& context) {
 }
 
 DeviceMatch MatchNcnnDevice(const VulkanDeviceContext& unity) {
+    return MatchNcnnDevice(QueryDeviceIdentity(unity));
+}
+DeviceMatch MatchNcnnDevice(const DeviceIdentity& unity_identity) {
     // Never use a default-valued ncnn overload. GpuInfo queries physical devices
     // without constructing a Net or selecting an implicit VulkanDevice.
-    const auto unity_identity = QueryDeviceIdentity(unity);
     std::vector<IndexedDevice> candidates;
     if (!ncnn::get_gpu_instance()) return MatchDevice(unity_identity, candidates);
     uint32_t api = VK_MAKE_VERSION(1, 0, 0);

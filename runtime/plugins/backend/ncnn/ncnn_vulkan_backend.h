@@ -3,6 +3,7 @@
 #include "humanvision_plugin_v2.h"
 #include "humanvision_plugin_v3.h"
 #include "json/json.hpp"
+#include "gpu/android/consumer_image_source.h"
 #include <array>
 #include <string>
 #include <vector>
@@ -35,6 +36,7 @@ struct HostContext {
     uint32_t api_version = HV_GPU_FRAME_API_V1;
     gpu::VulkanDeviceContext unity_device{};
     gpu::UnityVulkanBridge* bridge = nullptr;
+    gpu::ConsumerImageSource* source = nullptr;
 };
 #endif
 }

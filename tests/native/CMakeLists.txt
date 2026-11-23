@@ -199,6 +199,8 @@ target_compile_definitions(humanvision_native_tests PRIVATE HV_TEST_PROJECT_ROOT
 target_sources(humanvision_native_tests PRIVATE
     ../runtime/test_ahb_slot_ring.cpp
     ../runtime/test_vulkan_device_identity.cpp
+    ../runtime/test_consumer_image_source.cpp
+    ../runtime/test_native_input_gpu_source.cpp
     ../runtime/test_ahb_capabilities.cpp
     ../runtime/test_unity_vulkan_bridge_contract.cpp
     ../runtime/test_plugin_abi_v2.cpp

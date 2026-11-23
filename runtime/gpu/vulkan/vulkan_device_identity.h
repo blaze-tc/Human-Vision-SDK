@@ -46,6 +46,7 @@ DeviceIdentity QueryDeviceIdentity(const VulkanDeviceContext& device);
 bool AcquireNcnnGpuInstance() noexcept;
 void ReleaseNcnnGpuInstance() noexcept;
 DeviceMatch MatchNcnnDevice(const VulkanDeviceContext& unity);
+DeviceMatch MatchNcnnDevice(const DeviceIdentity& producer);
 DeviceMatch ConfigureNcnnNet(const VulkanDeviceContext& unity, ncnn::Net& net);
 // On success the caller owns one GPU-instance lease and must release it.
 // Failure releases the lease internally.

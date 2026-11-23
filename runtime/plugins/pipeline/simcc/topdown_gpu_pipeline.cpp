@@ -314,10 +314,15 @@ struct Instance {
         }
         HV_GpuDeviceContextV1 device{};device.struct_size=sizeof(device);device.api_version=HV_GPU_FRAME_API_V1;
 #if defined(__ANDROID__)
-        gpu::VulkanDeviceContext unity{};
-        if(!gpu::UnityVulkanProducerContext(unity)){Error(error,"Unity Vulkan producer context unavailable");return false;}
-        ncnn_backend::HostContext host{};host.unity_device=unity;host.bridge=gpu::UnityVulkanProducerBridge();
-        const auto identity=gpu::QueryDeviceIdentity(unity);
+        ncnn_backend::HostContext host{};
+        auto* source=static_cast<gpu::ConsumerFrame*>(frame.opaque_slot)->producer;
+        gpu::DeviceIdentity identity{};
+        if(source){host.source=source;identity=source->Identity();}
+        else {
+            if(!gpu::UnityVulkanProducerContext(host.unity_device)){Error(error,"Unity Vulkan producer context unavailable");return false;}
+            host.bridge=gpu::UnityVulkanProducerBridge();
+            identity=gpu::QueryDeviceIdentity(host.unity_device);
+        }
         std::copy(identity.device_uuid.begin(),identity.device_uuid.end(),device.device_uuid);
         std::copy(identity.driver_uuid.begin(),identity.driver_uuid.end(),device.driver_uuid);
         device.host_context=&host;
