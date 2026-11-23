@@ -133,14 +133,15 @@ TEST(RuntimeHost, PublishesCopiedFrameEnvelopeWithTheOriginalRoi) {
     services.api_version = HV_PLUGIN_API_V1;
     ASSERT_TRUE(host.Start(registry.Find("fixture.pose", 0, error), config, services, error)) << error;
 
-    std::uint8_t pixels[16]{};
-    HV_VideoFrame frame{sizeof(frame), 2, 2, 8, HV_PIXEL_RGBA32, 65, 45000, pixels, 16};
+    std::uint8_t pixels[64]{};
+    HV_VideoFrame frame{sizeof(frame), 4, 4, 16, HV_PIXEL_RGBA32, 65, 45000, pixels, 64};
     HV_RegionOfInterestV1 roi{sizeof(roi), HV_PLUGIN_API_V1, 806, {0.25F, 0.5F, 1.25F, 1.5F}, 0, 0};
     FrameEnvelope envelope;
     envelope.source_id = 26;
     envelope.generation = 7;
     envelope.config_epoch = 50;
     envelope.region_revision = 77;
+    envelope.crop = {1, 1, 2, 2};
     envelope.source_timestamp = {45000, 44, FrameClockDomain::kInputMonotonic, FrameTimeSource::kDecoded, true};
     envelope.source_to_analysis[2] = 1.25F;
     ASSERT_TRUE(host.Submit(frame, envelope, &roi, 1u, error)) << error;
@@ -165,12 +166,58 @@ TEST(RuntimeHost, PublishesCopiedFrameEnvelopeWithTheOriginalRoi) {
     EXPECT_EQ(published.source_timestamp.domain, FrameClockDomain::kInputMonotonic);
     EXPECT_EQ(published.source_timestamp.clock_id, 44u);
     EXPECT_FLOAT_EQ(published.source_to_analysis[2], 1.25F);
-    EXPECT_EQ(published.width, 2);
+    EXPECT_EQ(published.width, 4);
+    EXPECT_EQ(published.height, 4);
+    EXPECT_EQ(published.crop.x, 1);
+    EXPECT_EQ(published.crop.y, 1);
+    EXPECT_EQ(published.crop.width, 2);
+    EXPECT_EQ(published.crop.height, 2);
     EXPECT_EQ(published.submitted.domain, FrameClockDomain::kRuntimeMonotonic);
 
     std::int64_t revision = 0;
     ASSERT_TRUE(host.CopyLatest(result, revision));
     EXPECT_EQ(revision, 77);
+}
+
+TEST(RuntimeHost, RejectsInvalidCopiedCropAndDefaultsLegacyCrop) {
+    PluginRegistry registry;
+    std::string error;
+    ASSERT_TRUE(registry.Register(Query, error));
+    RuntimeHost host;
+    HV_PipelineConfigV1 config{};
+    config.struct_size = sizeof(config);
+    config.api_version = HV_PLUGIN_API_V1;
+    config.max_bodies = 1;
+    HV_HostServicesV1 services{};
+    services.struct_size = sizeof(services);
+    services.api_version = HV_PLUGIN_API_V1;
+    ASSERT_TRUE(host.Start(registry.Find("fixture.pose", 0, error), config, services, error)) << error;
+
+    std::uint8_t pixels[64]{};
+    HV_VideoFrame frame{sizeof(frame), 4, 4, 16, HV_PIXEL_RGBA32, 1, 1000, pixels, 64};
+    for (const FrameCrop crop : {FrameCrop{-1, 1, 2, 2}, FrameCrop{1, 0, 0, 0},
+                                 FrameCrop{1, 1, 4, 2}, FrameCrop{1, 1, INT32_MAX, 1}}) {
+        FrameEnvelope envelope;
+        envelope.crop = crop;
+        EXPECT_FALSE(host.Submit(frame, envelope, nullptr, 0, error));
+    }
+
+    frame.frame_id = 2;
+    frame.timestamp_us = 2000;
+    ASSERT_TRUE(host.Submit(frame, error)) << error;
+    HV_ObservationFrameV1 result{};
+    FrameEnvelope published;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline &&
+           (!host.CopyLatest(result, published) || result.source_frame_id != 2)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_EQ(result.source_frame_id, 2);
+    EXPECT_EQ(result.sequence, 1);
+    EXPECT_EQ(published.crop.x, 0);
+    EXPECT_EQ(published.crop.y, 0);
+    EXPECT_EQ(published.crop.width, 4);
+    EXPECT_EQ(published.crop.height, 4);
 }
 
 namespace {

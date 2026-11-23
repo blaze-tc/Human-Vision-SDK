@@ -91,6 +91,10 @@ bool RuntimeHost::Submit(const HV_VideoFrame& frame, const FrameEnvelope& envelo
         error = "Frame envelope source timestamp does not match the submitted frame";
         return false;
     }
+    if (envelope.crop.IsSpecified() && !envelope.crop.FitsWithin(frame.width, frame.height)) {
+        error = "Frame envelope crop must be a positive rectangle within the submitted frame";
+        return false;
+    }
 
     metadata.envelope = envelope;
     metadata.envelope.BindCopiedFrame(frame);

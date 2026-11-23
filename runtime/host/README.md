@@ -27,6 +27,9 @@ require valid values from the same identified clock or a separately verified clo
 mapping. The internal CopyLatest overload reads the accepted observation and its
 envelope together. The C and plugin ABIs keep their existing layouts.
 
+An all-zero crop defaults to the full copied image. Submit preserves explicit
+in-bounds crops and rejects invalid rectangles before enqueueing a frame.
+
 ## Allowed dependencies
 Plugin ABI, common frame buffer/latest-frame slot, C++ standard library, Windows loader,
 vendored JSON parser and SHA-256 implementation for configuration validation only.

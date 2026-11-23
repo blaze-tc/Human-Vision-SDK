@@ -42,6 +42,16 @@ struct FrameCrop {
     std::int32_t y = 0;
     std::int32_t width = 0;
     std::int32_t height = 0;
+
+    // Only the default all-zero rectangle denotes an unspecified crop.
+    bool IsSpecified() const noexcept {
+        return x != 0 || y != 0 || width != 0 || height != 0;
+    }
+
+    bool FitsWithin(std::int32_t frame_width, std::int32_t frame_height) const noexcept {
+        return x >= 0 && y >= 0 && width > 0 && height > 0 &&
+               std::int64_t{x} + width <= frame_width && std::int64_t{y} + height <= frame_height;
+    }
 };
 
 struct FramePlane {
@@ -105,7 +115,7 @@ struct FrameEnvelope {
 
         width = frame.width;
         height = frame.height;
-        crop = {0, 0, width, height};
+        if (!crop.IsSpecified()) crop = {0, 0, width, height};
         planes = {};
         planes[0] = {0, frame.stride_bytes, BytesPerPixel(frame.pixel_format)};
         plane_count = 1;
