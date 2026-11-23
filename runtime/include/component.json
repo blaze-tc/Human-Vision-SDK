@@ -1,1 +1,19 @@
-{"id":"plugin.abi","type":"contract","version":"1.0.0","api_version":1,"capabilities":["pipeline_contract","backend_contract","semantic_observations"],"dependencies":[],"test_targets":["humanvision_plugin_c_contract","humanvision_plugin_tests"]}
+{
+  "id": "plugin.abi",
+  "type": "contract",
+  "version": "1.0.0",
+  "api_version": 1,
+  "capabilities": [
+    "pipeline_contract",
+    "backend_contract",
+    "semantic_observations",
+    "image_service_v1",
+    "optional_prepared_pipeline"
+  ],
+  "dependencies": [],
+  "test_targets": [
+    "humanvision_plugin_c_contract",
+    "humanvision_plugin_tests",
+    "humanvision_image_service_c_contract"
+  ]
+}

@@ -49,6 +49,8 @@ target_sources(humanvision_internal PRIVATE
     composition/region_assignment.cpp
     host/plugin_registry.cpp
     host/runtime_host.cpp
+    common/image_transform_contract.cpp
+    common/cpu_image_service.cpp
     host/gpu_runtime_host.cpp
     host/model_pack_manager.cpp
     host/profile_manager.cpp

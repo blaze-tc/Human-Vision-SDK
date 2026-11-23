@@ -4,6 +4,7 @@
 #include "common/frame_envelope.h"
 #include "common/pipeline_diagnostics.h"
 #include "common/completion_mailbox.h"
+#include "common/cpu_image_service.h"
 #include <thread>
 #include <array>
 #include <atomic>
@@ -22,11 +23,12 @@ public:
     void SetCompletionNotifier(void* context, void (*notify)(void*)) { completions_.Configure(context,notify); }
     bool TryTakeCompletion(Completion& completion) { return completions_.TryTake(completion); }
     ~RuntimeHost() { Stop(); }
-    bool Start(std::shared_ptr<const PluginModule>, const HV_PipelineConfigV1&, const HV_HostServicesV1&, std::string& error);
+    bool Start(std::shared_ptr<const PluginModule>, const HV_PipelineConfigV1&, const HV_HostServicesV1&, std::string& error,
+               const HV_ImageServiceApiV1* image_service=nullptr);
     // Explicit opt-in for independent/stateless pipeline instances. Config strings
     // are borrowed only during creation. One pending latest frame serves all workers.
     bool StartPool(std::shared_ptr<const PluginModule>, const std::vector<HV_PipelineConfigV1>&,
-                   const HV_HostServicesV1&, std::string& error);
+                   const HV_HostServicesV1&, std::string& error,const HV_ImageServiceApiV1* image_service=nullptr);
     bool Submit(const HV_VideoFrame&, std::string& error);
     bool Submit(const HV_VideoFrame&, const HV_RegionOfInterestV1*, uint32_t count, int64_t revision, std::string& error);
     // The submitted frame supplies the copied image layout and frame ID.
@@ -56,6 +58,8 @@ private:
     CompletionMailbox<Completion> completions_;
     mutable std::mutex lifecycle_mutex_, result_mutex_;
     std::shared_ptr<const PluginModule> module_;
+    std::unique_ptr<CpuImageService> cpu_images_;
+    HV_ImageServiceApiV1 image_service_{}; // optional external context must outlive Stop
     std::array<void*,3> instances_{};
     std::unique_ptr<FrameJobSlot> slot_;
     std::array<std::thread,3> workers_;

@@ -85,6 +85,23 @@ while callers may create more sessions. Release does not dereference factory sta
 The generic dispatcher does not retry inference on another provider after a run
 failure; provider-specific recovery remains inside the backend (currently NNAPI).
 No model/provider ID switches belong in this dispatcher.
+
+## Optional image preparation
+
+An immutable PluginModule can carry a separately queried
+`HV_PipelineImageExtensionV1`. The existing Host worker runs DescribeTransform,
+the selected image service and ProcessPrepared inside the same admitted job;
+its envelope, completion credit and publication behavior remain unchanged.
+Composition may supply any valid `HV_ImageServiceApiV1` table with a context that
+outlives Stop. The default is the bounded synchronous CPU oracle. The Host does
+not select model geometry, normalization or a vendor implementation.
+
+Legacy modules without an extension call their existing process function. Image
+support failure is explicit, and does not skip legacy model preprocessing. A
+prepared lease is always explicitly retired, also on pipeline errors/exceptions.
+Cancellation cannot free an uncompleted operation: Stop remains on its native
+owner until actual release is acknowledged, allowing the deferred controller to
+report ErrorRetiring/BUSY instead of unloading resources still used by a device.
 Profiles may explicitly disable fallback. In that mode BackendFactory passes the
 single selected plugin identity as the requested provider and stops after its first
 creation failure. RuntimeHost also copies internal pipeline metrics with each

@@ -3,6 +3,7 @@
 #include "plugins/pipeline/yolo/yolo_rgb_preprocess.h"
 #include "common/config_io.h"
 #include "common/pipeline_diagnostics.h"
+#include "common/image_transform_contract.h"
 #include "picosha2/picosha2.h"
 #include <algorithm>
 #include <array>
@@ -10,6 +11,7 @@
 #include <cmath>
 #include <cstring>
 #include <memory>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -261,6 +263,7 @@ struct Instance {
     std::vector<Axis> horizontal,vertical;
     std::array<HV_BodyObservationV1,8> observations{};
     uint64_t executions=0,attempts=0,validation_failures=0;
+    uint64_t image_contract=0;
     int capacity=0,source_width=0,source_height=0;
     bool registered=false;
     Instance(const HV_HostServicesV1& h,int limit,bool cpu_route,int model_width,int model_height)
@@ -477,6 +480,7 @@ HV_Result CreateImpl(const HV_PipelineConfigV1* config,const HV_HostServicesV1* 
 #endif
         const auto options=backend_options.dump();
         auto self=std::make_unique<Instance>(*host,config->max_bodies,cpu,model_width,model_height);
+        self->image_contract=ImageContractFingerprint(config->model_manifest_utf8,config->options_utf8);
         const HV_BackendConfigV1 backend_config{sizeof(backend_config),HV_PLUGIN_API_V1,path.c_str(),options.c_str(),provider};
         const auto status=host->create_backend(host->context,&backend_config,&self->backend,&self->session,error);
         if(status!=HV_OK)return status;
@@ -561,7 +565,49 @@ HV_Result HV_CALL Process(void* instance,const HV_PipelineInputV1* input,HV_Pipe
 const HV_PipelineApiV1 api{sizeof(api),HV_PLUGIN_API_V1,Create,Destroy,Process};
 const HV_PipelineApiV1 cpu_api{sizeof(cpu_api),HV_PLUGIN_API_V1,CreateCpu,Destroy,Process};
 const HV_PipelineApiV1 desktop_api{sizeof(desktop_api),HV_PLUGIN_API_V1,CreateDesktop,Destroy,Process};
+HV_Result HV_CALL DescribeImage(void* instance,const HV_ImageDescriptorV1* source,HV_ImageTransformPlanV1* out,HV_ErrorBufferV1* error) {
+ if(!instance||!source||source->struct_size<sizeof(*source)||source->api_version!=1||!out||out->struct_size<sizeof(*out)||out->api_version!=1){
+  Error(error,"Invalid YOLO image transform descriptor");return HV_ERR_INVALID_ARGUMENT;
+ }
+ const auto& self=*static_cast<Instance*>(instance);
+ // Source CSC/orientation can be replaced independently. Model letterbox and
+ // exactly one normalization remain in the existing pipeline/backend contract.
+ *out=IdentityImagePlan(*source,self.image_contract);
+ const auto status=ValidateImageTransform(*source,*out);
+ if(status!=HV_IMAGE_READY){Error(error,"YOLO prepared source requires a completed packed CPU image");return status==HV_IMAGE_UNSUPPORTED?HV_ERR_UNSUPPORTED_FORMAT:HV_ERR_INVALID_ARGUMENT;}
+ return HV_OK;
 }
+HV_Result HV_CALL ProcessImage(void* instance,const HV_PipelineInputV1* input,const HV_ImageTransformPlanV1* plan,
+                               const HV_PreparedImageLeaseV1* lease,HV_PipelineOutputV1* out,HV_ErrorBufferV1* error) {
+ if(out&&out->struct_size>=sizeof(*out)&&out->api_version==1)out->body_count=out->hand_count=0;
+ if(!instance||!input||input->struct_size<sizeof(*input)||input->api_version!=1||!plan||!lease||
+    plan->identity.frame_id!=input->frame.frame_id||plan->identity.timestamp_us!=input->frame.timestamp_us||
+    ValidatePreparedImage(*plan,*lease)!=HV_OK){Error(error,"YOLO prepared lease identity, completion or fingerprint mismatch");return HV_ERR_INVALID_ARGUMENT;}
+ const auto& self=*static_cast<Instance*>(instance);
+ FrameEnvelope envelope;envelope.source_id=plan->identity.source_id;envelope.generation=plan->identity.generation;
+ envelope.config_epoch=plan->identity.config_epoch;envelope.region_revision=plan->identity.region_revision;
+ const auto source=DescribeCopiedImage(input->frame,envelope);const auto expected=IdentityImagePlan(source,self.image_contract);
+ if(expected.plan_fingerprint!=plan->plan_fingerprint||lease->image.pixel_format<HV_IMAGE_RGBA8||lease->image.pixel_format>HV_IMAGE_BGR8){
+  Error(error,"YOLO prepared input must preserve this ModelPack/profile's original model preprocessing");return HV_ERR_INVALID_ARGUMENT;
+ }
+ const auto& image=lease->image;const auto& plane=image.planes[0];
+ if(image.memory_kind!=HV_IMAGE_MEMORY_CPU||image.plane_count!=1||image.row_origin!=HV_IMAGE_TOP_LEFT||
+    image.acquire_sync_fd!=-1||!plane.data||plane.offset_bytes>plane.byte_count||
+    plane.byte_count-plane.offset_bytes>uint64_t(std::numeric_limits<int32_t>::max()))return HV_ERR_INVALID_ARGUMENT;
+ auto prepared=*input;
+ prepared.frame={sizeof(HV_VideoFrame),static_cast<int32_t>(image.width),static_cast<int32_t>(image.height),
+  static_cast<int32_t>(plane.row_stride_bytes),static_cast<HV_PixelFormat>(image.pixel_format),image.identity.frame_id,image.identity.timestamp_us,
+  static_cast<const uint8_t*>(plane.data)+plane.offset_bytes,static_cast<int32_t>(plane.byte_count-plane.offset_bytes)};
+ return Process(instance,&prepared,out,error);
+}
+HV_Result QueryImage(uint32_t version,HV_PipelineImageExtensionV1* out,const char* id){
+ if(!out||version!=1||out->struct_size<sizeof(*out)||out->api_version!=1)return HV_ERR_INVALID_ARGUMENT;
+ *out={sizeof(*out),1,id,DescribeImage,ProcessImage};return HV_OK;
+}
+}
+extern "C" HV_Result HV_CALL HV_QueryYoloTensorImageExtensionV1(uint32_t version,HV_PipelineImageExtensionV1* out){return QueryImage(version,out,"pipeline.yolo.tensor");}
+extern "C" HV_Result HV_CALL HV_QueryYoloCpuImageExtensionV1(uint32_t version,HV_PipelineImageExtensionV1* out){return QueryImage(version,out,"pipeline.yolo.cpu");}
+extern "C" HV_Result HV_CALL HV_QueryYoloDesktopImageExtensionV1(uint32_t version,HV_PipelineImageExtensionV1* out){return QueryImage(version,out,"pipeline.yolo.desktop");}
 extern "C" HV_Result HV_CALL HV_QueryYoloDesktopPipelineV1(uint32_t version,HV_PluginApiV1* out) {
  if(!out||version!=HV_PLUGIN_API_V1||out->struct_size<sizeof(*out)||out->api_version!=HV_PLUGIN_API_V1)return HV_ERR_INVALID_ARGUMENT;
  *out={sizeof(*out),HV_PLUGIN_API_V1,"pipeline.yolo.desktop","0.4.0-preview.12",HV_PLUGIN_PIPELINE,HV_CAP_BODY_POSE|HV_CAP_MULTI_PERSON,8,&desktop_api,nullptr,0};return HV_OK;

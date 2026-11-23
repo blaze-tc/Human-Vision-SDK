@@ -34,3 +34,28 @@ next run/destroy. Caller owns frame/input/output view arrays. Never retain frame
 ## Common symptoms
 Calling convention mismatch, truncated tables, stale tensor pointers, cross-heap frees.
 Changing an existing field requires a new ABI version rather than silently reordering.
+
+## Optional image service and prepared pipeline extension
+
+`humanvision_image_service_v1.h` is an independent C table; it adds no fields to
+Plugin ABI1/2/3 or HostServices. An image descriptor declares memory, actual packed
+layout, completion, source/generation/frame/configuration/region identity and clock
+value. PRIVATE/opaque memory must never be guessed to be readable RGB.
+
+`HV_ImageServiceApiV1` provides QuerySupport, SubmitTransform, WaitTransform,
+CancelTransform and ReleasePrepared. Source pointers are borrowed only during
+Submit; prepared storage stays owned by its service until explicit Release.
+Cancellation is a request: a pending operation cannot release/reuse its slot until
+actual producer completion. A selected service context must outlive Host Stop,
+including a retiring device fault. The CPU oracle executes synchronously on the
+existing Host worker and owns three bounded reusable output buffers.
+
+`HV_QueryPipelineImageExtensionV1` is an optional dynamic-module symbol. Static
+composition registers each unique query against a pipeline ID before immutable
+plugin use. DescribeTransform and ProcessPrepared use the same existing pipeline
+instance and worker. A prepared lease binds plan/model-profile fingerprints,
+source identity, inverse transform and explicit normalization counts. These are
+compatibility fingerprints, not cryptographic authentication. A mismatch or
+uncompleted/cancelled lease is rejected before inference.
+
+Focused tests: `ImageServiceAbi`, `PreparedImageContract`, `image_service_c_abi`.

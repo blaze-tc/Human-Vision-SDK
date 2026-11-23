@@ -19,7 +19,28 @@ bool PluginRegistry::Register(HV_QueryPluginFn query, std::string& error) {
     return RegisterModule(query, std::make_shared<PluginModule>(), error);
 }
 
-bool PluginRegistry::RegisterModule(HV_QueryPluginFn query, std::shared_ptr<PluginModule> module, std::string& error) {
+namespace {
+bool QueryImageExtension(HV_QueryPipelineImageExtensionV1Fn query,const char* id,
+                        HV_PipelineImageExtensionV1& api,std::string& error) {
+ if(!query){error="Pipeline image extension query is missing";return false;}
+ api={};api.struct_size=sizeof(api);api.api_version=1;
+ try {if(query(1,&api)!=HV_OK){error="Pipeline image extension rejected its version";return false;}}
+ catch(...){error="Pipeline image extension query threw across C ABI";return false;}
+ if(api.struct_size<sizeof(api)||api.api_version!=1||!api.plugin_id||std::string(api.plugin_id)!=id||
+    !api.DescribeTransform||!api.ProcessPrepared){error="Pipeline image extension identity, size or callbacks are invalid";return false;}
+ return true;
+}
+}
+bool PluginRegistry::RegisterImageExtension(const std::string& id,HV_QueryPipelineImageExtensionV1Fn query,std::string& error) {
+ HV_PipelineImageExtensionV1 extension{};if(!QueryImageExtension(query,id.c_str(),extension,error))return false;
+ std::lock_guard<std::mutex> lock(mutex_);const auto entry=modules_.find(id);
+ if(entry==modules_.end()||entry->second->api.type!=HV_PLUGIN_PIPELINE){error="Image extension requires a registered pipeline: "+id;return false;}
+ if(entry->second.use_count()!=1||entry->second->has_image_extension){error="Image extension registration must precede immutable plugin use";return false;}
+ entry->second->image_extension=extension;entry->second->has_image_extension=true;error.clear();return true;
+}
+
+bool PluginRegistry::RegisterModule(HV_QueryPluginFn query, std::shared_ptr<PluginModule> module, std::string& error,
+                                   HV_QueryPipelineImageExtensionV1Fn image_query) {
     error.clear();
     if (!query) { error = "Plugin query callback is missing"; return false; }
     auto& api = module->api;
@@ -45,6 +66,10 @@ bool PluginRegistry::RegisterModule(HV_QueryPluginFn query, std::shared_ptr<Plug
             error = "Backend plugin has invalid callbacks or capabilities"; return false;
         }
     } else { error = "Unknown plugin type"; return false; }
+    if(image_query){
+        if(api.type!=HV_PLUGIN_PIPELINE||!QueryImageExtension(image_query,api.plugin_id,module->image_extension,error))return false;
+        module->has_image_extension=true;
+    }
     std::lock_guard<std::mutex> lock(mutex_);
     if (modules_.count(api.plugin_id)) { error = "Duplicate plugin id: " + std::string(api.plugin_id); return false; }
     modules_.emplace(api.plugin_id, std::move(module));
@@ -58,7 +83,8 @@ bool PluginRegistry::Load(const std::filesystem::path& path, std::string& error)
     module->library = LoadLibraryExW(path.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!module->library) { error = "Cannot load plugin library: " + std::to_string(GetLastError()); return false; }
     auto query = reinterpret_cast<HV_QueryPluginFn>(GetProcAddress(static_cast<HMODULE>(module->library), "HV_QueryPlugin"));
-    return RegisterModule(query, std::move(module), error);
+    auto image_query=reinterpret_cast<HV_QueryPipelineImageExtensionV1Fn>(GetProcAddress(static_cast<HMODULE>(module->library),"HV_QueryPipelineImageExtensionV1"));
+    return RegisterModule(query,std::move(module),error,image_query);
 #else
     (void)path; error = "Dynamic plugins are unavailable; use static registration on this platform"; return false;
 #endif

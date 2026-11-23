@@ -155,3 +155,20 @@ seven/one/empty and4:3/portrait controls, compare raw tensors and canonical sour
 coordinates, and exercise every capacity1..8. This is host correctness evidence;
 physical Android throughput remains a separate device gate. Local weights must
 not be redistributed by these tools.
+
+## Prepared image extension
+
+The CPU, desktop and tensor registrations expose separate optional image-extension
+queries. Their initial plan preserves the source's packed pixel geometry/format
+and delegates model letterbox, channel packing and exactly one normalization to
+the existing pipeline/backend. CPU image preparation may strip row padding but
+does not alter model preprocessing. RKNN's compiled normalization remains in its
+existing contract. This is a replaceable source-image stage, not a claim that
+RGA writes model tensors or shared RKNN memory.
+
+ProcessPrepared checks the current ModelPack/profile fingerprint, plan fingerprint,
+source/generation/frame/configuration/region identity, inverse transform, completed
+ownership and normalization count before running the original processing path.
+The focused real ORT test compares the complete prepared input tensor and seven
+people's decoded observations exactly against the legacy path from padded RGBA.
+Those checks establish host equivalence, not physical RK3588 performance.

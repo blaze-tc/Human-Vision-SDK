@@ -22,3 +22,18 @@ and RuntimeHost copies the metrics with the matching observation result.
 identity, core mask and initialization/input-set/execute/output-get/release times.
 The host reads generic snapshots without depending on vendor implementations.
 Counters and stage snapshots are internal and preserve the existing plugin ABI.
+
+`image_transform_contract.*` implements explicit packed-image validation, stable
+plan/profile fingerprints, inverse geometry and three-slot completion ownership.
+`cpu_image_service.*` is the reference RGB/BGR/RGBA/BGRA transform provider. It
+honors source row/pixel stride, supports crop/rotation/mirror and nearest/bilinear
+sampling, and applies mean/norm only when the plan assigns normalization to the
+service. Float RGB output is explicit; a pipeline-owned normalization stays out
+of image preparation. Unknown layouts and pending fences are Unsupported.
+
+CPU output is copied into service-owned storage. A slot's vector can grow during
+warm-up/source-size changes up to its configured maximum (default64MiB per slot),
+then is reused; no worker pool is created. `PreparedLeasePool` prevents cancelled
+pending work from releasing a slot and uses generation tokens to reject stale or
+double releases. Focused tests compare stride/rotation/normalization pixels and
+exercise pool pressure, identity mismatches and true-completion retirement.

@@ -41,3 +41,26 @@ Additive fields require size checks and a deliberate ABI version policy. Breakin
 table/layout changes require a new ABI, never reinterpret V1. V1 public C structs
 and Unity signatures remain frozen. Run plugin_c_abi, RuntimeHost, BackendFactory,
 the plugin fixture, architecture guard and package isolation before publication.
+
+## Optional image preparation protocol
+
+`runtime/include/humanvision_image_service_v1.h` adds a separate versioned C
+protocol without changing Plugin ABI1/2/3. Static plugins register a unique image
+query with `PluginRegistry::RegisterImageExtension` before a profile/Host retains
+the module. A dynamic pipeline DLL may export `HV_QueryPipelineImageExtensionV1`;
+its optional table is validated before the module is published in the registry.
+
+The pipeline's DescribeTransform owns geometry and preprocessing decisions. An
+image service executes that plan, returns a service-owned prepared lease, and
+acknowledges true completion before ProcessPrepared can consume it. Normalization
+ownership/counts, source identity, model-profile/plan fingerprints and inverse
+geometry are validated. Fingerprints detect incompatible inputs; they are not a
+security signature. A plugin may retain legacy preprocessing by requesting an
+identity image plan, as the current YOLO variants do.
+
+ReleasePrepared is mandatory even on failure or cancellation. CancelTransform
+does not prove hardware completion and cannot authorize buffer reuse. A device
+that never retires keeps the native owner and context alive; final controller
+release stays BUSY. Implementations must not convert a pending fence or opaque
+PRIVATE image into a fake completed CPU frame. Test `ImageServiceAbi`,
+`PreparedImageContract`, the C11 layout contract and existing Plugin ABI suites.

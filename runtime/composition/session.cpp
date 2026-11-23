@@ -87,6 +87,11 @@ bool RuntimeSession::Start(const std::filesystem::path& root,const std::string& 
 #if defined(_WIN32)
  if(!registry_.Register(HV_QueryYoloDesktopPipelineV1,error))return false;
 #endif
+ if(!registry_.RegisterImageExtension("pipeline.yolo.tensor",HV_QueryYoloTensorImageExtensionV1,error)||
+    !registry_.RegisterImageExtension("pipeline.yolo.cpu",HV_QueryYoloCpuImageExtensionV1,error))return false;
+#if defined(_WIN32)
+ if(!registry_.RegisterImageExtension("pipeline.yolo.desktop",HV_QueryYoloDesktopImageExtensionV1,error))return false;
+#endif
  // Optional compiled providers may be absent; profile resolution records fallback.
  std::string optional;registry_.Register(HV_QueryOrtAcceleratedPlugin,optional);registry_.Register(HV_QueryOrtXnnpackPlugin,optional);registry_.Register(HV_QueryOrtQnnPlugin,optional);
  profile_=ProfileManager(root/"profiles").Resolve(profile,capacity,registry_,ModelPackManager(root/"modelpacks"),error);

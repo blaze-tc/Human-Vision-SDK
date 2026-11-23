@@ -1,14 +1,37 @@
 #include "host/runtime_host.h"
 #include <exception>
 #include <algorithm>
+#include <chrono>
 
 namespace humanvision::runtime {
+namespace {
+bool ImageServiceValid(const HV_ImageServiceApiV1& api) noexcept {
+ return api.struct_size>=sizeof(api)&&api.api_version==1&&api.context&&api.QuerySupport&&api.SubmitTransform&&
+  api.WaitTransform&&api.CancelTransform&&api.ReleasePrepared;
+}
+// A cancellation is only a request. A faulty device may keep this native owner
+// retiring; the controller remains BUSY instead of unloading an in-use context.
+void RetirePrepared(const HV_ImageServiceApiV1& api,HV_PreparedImageLeaseV1& lease) noexcept {
+ if(!lease.lease_token)return;
+ bool cancellation_requested=false;
+ for(;;){
+  int32_t result=HV_ERR_INTERNAL;
+  try {result=api.ReleasePrepared(api.context,&lease,nullptr);}catch(...){}
+  if(result==HV_IMAGE_READY){lease.lease_token=0;return;}
+  if(!cancellation_requested){try{api.CancelTransform(api.context,&lease,nullptr);}catch(...){}cancellation_requested=true;}
+  try{api.WaitTransform(api.context,&lease,100,nullptr);}catch(...){}
+  // Providers must honor the wait timeout. Yield also prevents a broken table
+  // returning immediately from turning a retirement fault into a busy loop.
+  std::this_thread::sleep_for(std::chrono::milliseconds(1));
+ }
+}
+}
 bool RuntimeHost::Start(std::shared_ptr<const PluginModule> module, const HV_PipelineConfigV1& config,
-        const HV_HostServicesV1& services, std::string& error) {
-    return StartPool(std::move(module),{config},services,error);
+        const HV_HostServicesV1& services, std::string& error,const HV_ImageServiceApiV1* image_service) {
+    return StartPool(std::move(module),{config},services,error,image_service);
 }
 bool RuntimeHost::StartPool(std::shared_ptr<const PluginModule> module,const std::vector<HV_PipelineConfigV1>& configs,
-        const HV_HostServicesV1& services,std::string& error) {
+        const HV_HostServicesV1& services,std::string& error,const HV_ImageServiceApiV1* image_service) {
     if (!module || module->api.type != HV_PLUGIN_PIPELINE || configs.empty() || configs.size()>3 ||
         services.struct_size < sizeof(services) || services.api_version != HV_PLUGIN_API_V1) {
         error = "Invalid pipeline configuration or plugin capabilities"; return false;
@@ -42,11 +65,24 @@ bool RuntimeHost::StartPool(std::shared_ptr<const PluginModule> module,const std
     candidates.emplace_back(replacement,destroy);
     }
     std::unique_ptr<FrameJobSlot> new_slot;
-    try { new_slot = std::make_unique<FrameJobSlot>(); }
+    std::unique_ptr<CpuImageService> new_images;
+    HV_ImageServiceApiV1 image_api{};
+    try {
+        new_slot = std::make_unique<FrameJobSlot>();
+        if(module->has_image_extension){
+            const auto& extension=module->image_extension;
+            if(extension.struct_size<sizeof(extension)||extension.api_version!=1||!extension.DescribeTransform||!extension.ProcessPrepared){
+                error="Invalid optional pipeline image extension";return false;
+            }
+            if(image_service){if(!ImageServiceValid(*image_service)){error="Invalid versioned image service";return false;}image_api=*image_service;}
+            else {new_images=std::make_unique<CpuImageService>();image_api.struct_size=sizeof(image_api);image_api.api_version=1;new_images->Query(1,&image_api);}
+        }
+    }
     catch (...) { error = "Cannot allocate frame slot"; return false; }
     Stop();
     std::unique_lock<std::mutex> lock(lifecycle_mutex_);
     module_ = std::move(module); max_bodies_ = configs[0].max_bodies;
+    cpu_images_=std::move(new_images);image_service_=image_api;
     for(size_t i=0;i<candidates.size();++i)instances_[i]=candidates[i].release();
     worker_count_=uint32_t(configs.size());active_workers_=0;late_drops_=0;errors_=0;
     last_submitted_frame_=last_submitted_time_=-1;sequence_=0;
@@ -147,6 +183,7 @@ void RuntimeHost::Stop() {
     std::lock_guard<std::mutex> lock(lifecycle_mutex_);
     for(auto& instance:instances_)if(instance){try {module_->api.pipeline->destroy(instance);}catch(...){}instance=nullptr;}
     worker_count_=0;active_workers_=0;
+    image_service_={};cpu_images_.reset();
     module_.reset();
     { std::lock_guard<std::mutex> result_lock(result_mutex_); has_result_ = false; diagnostics_={}; }
 }
@@ -177,7 +214,24 @@ void RuntimeHost::Run(uint32_t index) {
         char message[1024]{};
         HV_ErrorBufferV1 buffer{sizeof(buffer), HV_PLUGIN_API_V1, message, sizeof(message)};
         HV_Result status = HV_ERR_INTERNAL;
-        try { status = module_->api.pipeline->process(instance, &input, &output, &buffer); }
+        try {
+            if(module_->has_image_extension){
+                const auto source=DescribeCopiedImage(input.frame,metadata.envelope);
+                HV_ImageTransformPlanV1 plan{};plan.struct_size=sizeof(plan);plan.api_version=1;
+                HV_PreparedImageLeaseV1 prepared{};prepared.struct_size=sizeof(prepared);prepared.api_version=1;
+                struct PreparedOwner {const HV_ImageServiceApiV1& api;HV_PreparedImageLeaseV1& lease;
+                    ~PreparedOwner(){RetirePrepared(api,lease);}} owner{image_service_,prepared};
+                status=module_->image_extension.DescribeTransform(instance,&source,&plan,&buffer);
+                if(status==HV_OK){
+                    int32_t image_status=image_service_.QuerySupport(image_service_.context,&source,&plan,&buffer);
+                    if(image_status==HV_IMAGE_READY)image_status=image_service_.SubmitTransform(image_service_.context,&source,&plan,&prepared,&buffer);
+                    if(image_status==HV_IMAGE_READY||image_status==HV_IMAGE_PENDING)
+                        image_status=image_service_.WaitTransform(image_service_.context,&prepared,1000,&buffer);
+                    if(image_status==HV_IMAGE_READY)status=module_->image_extension.ProcessPrepared(instance,&input,&plan,&prepared,&output,&buffer);
+                    else status=image_status==HV_IMAGE_UNSUPPORTED?HV_ERR_UNSUPPORTED_FORMAT:HV_ERR_INTERNAL;
+                }
+            }else status = module_->api.pipeline->process(instance, &input, &output, &buffer);
+        }
         catch (...) { ++errors_;std::lock_guard<std::mutex> lock(result_mutex_); error_ = "Pipeline processing raised an exception across C ABI"; continue; }
         message[sizeof(message)-1] = 0;
         if (status != HV_OK || output.body_count > static_cast<uint32_t>(max_bodies_) || output.hand_count > HV_MAX_PEOPLE * 2) {

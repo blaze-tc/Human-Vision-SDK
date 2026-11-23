@@ -9,7 +9,8 @@
     "dynamic_windows",
     "static_registration",
     "model_pack_validation",
-    "profile_resolution"
+    "profile_resolution",
+    "prepared_image_jobs"
   ],
   "dependencies": [
     "plugin.abi",

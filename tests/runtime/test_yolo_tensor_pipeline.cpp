@@ -3,6 +3,8 @@
 #include "plugins/pipeline/yolo/yolo_decoder.h"
 #include "plugins/backend/ort/ort_plugin.h"
 #include "common/pipeline_diagnostics.h"
+#include "common/cpu_image_service.h"
+#include "common/image_transform_contract.h"
 #include "json/json.hpp"
 #include "picosha2/picosha2.h"
 #include <filesystem>
@@ -11,6 +13,7 @@
 #include <cmath>
 #include <limits>
 #include <thread>
+
 
 void BeginNativeAllocationProbe() noexcept;
 std::size_t EndNativeAllocationProbe() noexcept;
@@ -631,4 +634,46 @@ TEST(YoloTensorPipeline, RejectsInvalidAbiAndTruncatedPixelBufferWithoutBackendR
     p.output.body_count=7;p.output.hand_count=2;
     EXPECT_EQ(p.api.pipeline->process(p.instance,nullptr,&p.output,&p.error),HV_ERR_INVALID_ARGUMENT);
     EXPECT_EQ(p.output.body_count,0u);EXPECT_EQ(p.output.hand_count,0u);p.api.pipeline->destroy(nullptr);
+}
+
+TEST(PreparedImageContract, CurrentCpuYoloProducesIdenticalTensorAndRealOutputThroughTheExtension) {
+    using namespace humanvision::runtime;
+    RealCpuBackend legacy_backend,prepared_backend;
+    Pipeline legacy,prepared;CpuVariant(legacy);CpuVariant(prepared);
+    ASSERT_EQ(CreateReal(legacy,legacy_backend),HV_OK)<<legacy.message;
+    ASSERT_EQ(CreateReal(prepared,prepared_backend),HV_OK)<<prepared.message;
+    const auto rgb=Read<uint8_t>(root/"seven/source.rgb");
+    const int stride=1024*4+13;std::vector<uint8_t> rgba(size_t(stride)*576,217);
+    for(int y=0;y<576;++y)for(int x=0;x<1024;++x){
+        for(int c=0;c<3;++c)rgba[size_t(y)*stride+x*4+c]=rgb[(size_t(y)*1024+x)*3+c];
+        rgba[size_t(y)*stride+x*4+3]=uint8_t((x+y)%256);
+    }
+    ASSERT_EQ(legacy.Process(rgba,1024,576,HV_PIXEL_RGBA32,stride),HV_OK)<<legacy.message;
+    HV_PipelineImageExtensionV1 extension{sizeof(extension),1};
+    ASSERT_EQ(HV_QueryYoloCpuImageExtensionV1(1,&extension),HV_OK);
+    HV_PipelineInputV1 input{sizeof(input),1};
+    input.frame={sizeof(HV_VideoFrame),1024,576,stride,HV_PIXEL_RGBA32,42,1234567,rgba.data(),static_cast<int32_t>(rgba.size())};
+    FrameEnvelope envelope;envelope.source_id=17;envelope.generation=4;envelope.config_epoch=8;envelope.region_revision=11;
+    auto source=DescribeCopiedImage(input.frame,envelope);
+    HV_ImageTransformPlanV1 plan{sizeof(plan),1};
+    ASSERT_EQ(extension.DescribeTransform(prepared.instance,&source,&plan,&prepared.error),HV_OK)<<prepared.message;
+    EXPECT_EQ(plan.normalization_owner,HV_IMAGE_NORMALIZE_PIPELINE);
+    CpuImageService images;HV_ImageServiceApiV1 service{sizeof(service),1};ASSERT_EQ(images.Query(1,&service),HV_OK);
+    HV_PreparedImageLeaseV1 lease{sizeof(lease),1};
+    ASSERT_EQ(service.SubmitTransform(service.context,&source,&plan,&lease,&prepared.error),HV_IMAGE_READY);
+    ASSERT_EQ(extension.ProcessPrepared(prepared.instance,&input,&plan,&lease,&prepared.output,&prepared.error),HV_OK)<<prepared.message;
+    EXPECT_EQ(legacy_backend.input,prepared_backend.input);
+    ASSERT_EQ(legacy.output.body_count,prepared.output.body_count);
+    ASSERT_EQ(legacy.output.body_count,7u);
+    EXPECT_EQ(std::memcmp(legacy.output.bodies,prepared.output.bodies,legacy.output.body_count*sizeof(HV_BodyObservationV1)),0);
+    EXPECT_EQ(lease.normalization_passes,0u);
+    const int runs=prepared_backend.runs;
+    auto stale=plan;++stale.identity.config_epoch;stale.plan_fingerprint=ImagePlanFingerprint(stale);
+    EXPECT_EQ(extension.ProcessPrepared(prepared.instance,&input,&stale,&lease,&prepared.output,&prepared.error),HV_ERR_INVALID_ARGUMENT);
+    stale=plan;++stale.contract_fingerprint;stale.plan_fingerprint=ImagePlanFingerprint(stale);
+    EXPECT_EQ(extension.ProcessPrepared(prepared.instance,&input,&stale,&lease,&prepared.output,&prepared.error),HV_ERR_INVALID_ARGUMENT);
+    auto normalized=lease;normalized.normalization_passes=normalized.image.normalization_passes=1;
+    EXPECT_EQ(extension.ProcessPrepared(prepared.instance,&input,&plan,&normalized,&prepared.output,&prepared.error),HV_ERR_INVALID_ARGUMENT);
+    EXPECT_EQ(prepared_backend.runs,runs);
+    EXPECT_EQ(service.ReleasePrepared(service.context,&lease,nullptr),HV_IMAGE_READY);
 }
