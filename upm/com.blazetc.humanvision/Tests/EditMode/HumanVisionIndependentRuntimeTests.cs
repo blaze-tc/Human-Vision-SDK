@@ -65,12 +65,27 @@ namespace HumanVision.Tests
                 new object[] { "RuntimeRequestStatusNative", 544 },
                 new object[] { "RuntimeCapabilitiesNative", 912 },
                 new object[] { "RuntimePreviewNative", 64 },
-                new object[] { "RuntimeControlTableNative", 176 }
+                new object[] { "RuntimeControlTableNative", 192 },
+                new object[] { "RuntimeSourceProgressNative", 120 },
+                new object[] { "RuntimeLiveBindingNative", 56 },
+                new object[] { "RuntimeLiveTableNative", 104 },
+                new object[] { "RuntimeLiveConfigNative", 32 },
+                new object[] { "RuntimeLiveFrameNative", 152 }
             }) {
                 var type = assembly.GetType("HumanVision.Interop." + pair[0]);
                 Assert.That(type, Is.Not.Null, "Missing additive controller binding: " + pair[0]);
                 Assert.That(Marshal.SizeOf(type), Is.EqualTo(pair[1]), type.Name);
             }
+        }
+        [Test] public void SourceProgressStreamingDoesNotDependOnClaimsOrCanonicalResults()
+        {
+            var value = new HumanVision.Interop.RuntimeSourceProgressNative {
+                SourceId = 77, Generation = 3, ConfigEpoch = 9, State = 2, DecodedFrames = 100,
+                AcquiredFrames = 99, LivePublishedFrames = 98, AnalysisPublishedFrames = 97, AnalysisClaimedFrames = 0
+            }.Managed;
+            Assert.That(value.Streaming, Is.True);
+            Assert.That(value.SourceId, Is.EqualTo(77)); Assert.That(value.Generation, Is.EqualTo(3));
+            Assert.That(value.AnalysisClaimedFrames, Is.Zero); Assert.That(value.LivePublishedFrames, Is.EqualTo(98));
         }
     }
 }

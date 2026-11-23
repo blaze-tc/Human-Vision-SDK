@@ -38,10 +38,17 @@ namespace HumanVision
         internal string ProfileId => _config.Profile;
         internal RuntimeStatsV2Native StatsV2 => _nativeV2;
         internal bool UsesIndependentInput => _control != null && _config.NativeSource != null;
+        internal bool TryGetSourceProgress(out HumanVisionSourceProgress progress) {
+            progress = default; return _control != null && _control.TryGetSourceProgress(out progress);
+        }
+        internal int AttachLivePreview(ref RuntimeLiveConfigNative config, out RuntimeLiveBindingNative binding) {
+            binding = default; return _control != null ? _control.AttachLivePreview(ref config, out binding) : RuntimeControlBindings.Unsupported;
+        }
         internal Vector2Int IndependentInputSize => _control != null && _control.TryGetStats(out var stats) && stats.NativeInputFrames > 0
             ? new Vector2Int((int)stats.AnalysisWidth, (int)stats.AnalysisHeight) : Vector2Int.zero;
-        internal Vector2Int IndependentDecodedSize => _control != null && _control.TryGetStats(out var stats)
-            ? new Vector2Int((int)stats.SourceWidth, (int)stats.SourceHeight) : Vector2Int.zero;
+        internal Vector2Int IndependentDecodedSize => TryGetSourceProgress(out var source)
+            ? new Vector2Int((int)source.SourceWidth, (int)source.SourceHeight) : _control != null && _control.TryGetStats(out var stats)
+                ? new Vector2Int((int)stats.SourceWidth, (int)stats.SourceHeight) : Vector2Int.zero;
         internal bool TryGetNativeInputState(out uint state, out ulong frames) {
             state = 0; frames = 0; if (_control == null || !_control.TryGetStats(out var stats)) return false;
             state = stats.State; frames = stats.NativeInputFrames; return true;

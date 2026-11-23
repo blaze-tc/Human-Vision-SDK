@@ -249,6 +249,7 @@ target_compile_definitions(humanvision_native_tests PRIVATE HV_YOLO_FIXTURE_ROOT
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_region_assignment.cpp)
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_runtime_control.cpp)
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_native_source_binding.cpp)
+target_sources(humanvision_native_tests PRIVATE ../runtime/test_native_live_bridge.cpp)
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_preview_mailbox.cpp)
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_preview_allocation_progress.cpp)
 add_executable(humanvision_runtime_control_c_contract ../runtime/runtime_control_c_contract.c)

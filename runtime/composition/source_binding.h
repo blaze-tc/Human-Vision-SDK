@@ -4,6 +4,7 @@
 #include "common/frame_envelope.h"
 #include "host/gpu_runtime_host.h"
 #include "composition/preview_mailbox.h"
+#include "humanvision_input_live.h"
 #include <atomic>
 #include <array>
 #include <condition_variable>
@@ -51,6 +52,8 @@ struct NativeInputApi {
     decltype(&HV_Input_ReleaseNativeFrameV1) release_native=nullptr;
     decltype(&HV_Input_RequestNativeCaptureV1) request_capture=nullptr;
     decltype(&HV_Input_CopyNativeCaptureV1) copy_capture=nullptr;
+    decltype(&HV_Input_QueryLiveApiV1) query_live=nullptr;
+    decltype(&HV_Input_GetSourceProgressV1) source_progress=nullptr;
 };
 struct NativeSourceProgress {
     uint64_t frames=0,generation=0,frame_id=0,errors=0;
@@ -80,6 +83,8 @@ public:
     int CopySnapshot(uint64_t,void*,uint32_t,HV_RuntimePreviewV1*);
     int CancelSnapshot(uint64_t);
     std::string PreviewDiagnostics() const;
+    int SourceProgress(HV_RuntimeSourceProgressV1*) const;
+    int AttachLive(const HV_RuntimeLiveConfigV1*,HV_RuntimeLiveBindingV1*);
 private:
     bool Load(const std::string&,std::string&);
     void Run(RuntimeSession*,uint64_t epoch);
@@ -93,7 +98,7 @@ private:
     OwnedSourceConfig config_;
     uint64_t epoch_=0;
     NativeInputApi api_;
-    void* library_=nullptr;
+    std::shared_ptr<void> library_;
     HV_InputHandle handle_=nullptr;
     InputClockMapping mapping_;
     std::unique_ptr<GpuConsumerSource> gpu_source_;
@@ -105,6 +110,7 @@ private:
     PreviewMailbox preview_;
     std::atomic<uint64_t> capture_rgba_bytes_{0};
     std::atomic<bool> preview_failed_{false};
+    std::atomic<bool> live_attached_{false};
     uint64_t snapshot_check_request_=0,snapshot_check_frame_=0,snapshot_check_cursor_=0;
     std::vector<uint8_t> pixels_;
     std::atomic<uint64_t> frames_{0},generation_{0},frame_id_{0},errors_{0};

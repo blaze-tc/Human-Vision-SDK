@@ -124,3 +124,56 @@ real vendor driver's permanent-hang behavior. The optional Input DLL integration
 test verifies single ingestion ownership on a disconnected source; it does not
 establish RTSP throughput. A real source/harness and physical device checks are
 separate acceptance gates.
+
+## Independent live GPU consumer
+
+The appended22nd and23rd control-table functions return source progress and
+attach a live consumer to the already-open decoder. The original168-byte and
+176-byte query prefixes, source V1 and StatsV3 layouts remain unchanged.
+Source progress comes directly from Input, including decoder generation and
+decoded/acquired/live/analysis-publication/analysis-claim counters. It is never
+derived from canonical results, claims observed by Unity, or a known fixture
+rate. An unsupported platform returns unavailable rather than measured zeroes.
+The source ID and configuration epoch belong to Runtime; decoder generation and
+frame sequence are the same values used by native CPU/GPU analysis envelopes.
+Live-publication count is not a source-frame ID. Timestamp is the Runtime
+monotonic snapshot time, not sensor time or the Input clock's elapsed value.
+
+Android live is separate from the optional CPU capture mailbox. It keeps three
+producer images and at most one actual cross-device copy in flight. A stopped
+or slow Unity consumer does not retain a decoder image or analysis publication;
+the next render opportunity claims the newest live producer. An already-in-flight
+old GPU copy must still actually complete before its resources are reusable.
+No inference result or canonical identity is required to attach/publish live.
+Preview size comes from the user's input request, independently of model size.
+
+The retained live binding wraps the Input consumer and holds a shared module
+reference. A render callback is prepared before every queued event and uses
+event ID0x48564c. The callback configuration is installed before queuing. Unity
+owns three initialized RGBA32 targets; Linear projects use RGBA8 sRGB and Gamma
+projects use RGBA8 UNORM. The Input bridge copies encoded source bytes with real
+bottom-left output, so ordinary Unity texture sampling needs no Demo shader.
+No foreign-device image is passed to CreateExternalTexture. Poll leases the
+latest actually completed target. ReleaseSlot uses target_generation plus source
+sequence, and requires actual Unity sampling/copy fences; a held matched texture
+cannot be overwritten. Queued callback refs, GPU copies and held target refs
+must retire before consumer TryRelease succeeds and the module reference drops.
+
+Stopping closes the consumer without closing analysis from its own API, pumps
+retirement events and releases targets only after proof. Source Close/Release
+waits for consumer lifetime; no publication lock is held across that wait.
+Reconnection invalidates old unread frames at source-generation admission; late
+old work can retire but cannot establish a new binding. An optional live-target
+failure is reported separately and does not retire a healthy decoder/analysis
+session. The old automatically scheduled 5Hz CPU capture is disabled when the
+Android live API is available; its on-demand exact snapshot path remains.
+The existing model reconfiguration still retires/reopens a source; this first
+live implementation does not claim decoder continuity across model switches.
+
+Managed retirement keeps each source registration until both native worker and
+managed resource proof complete. In Play mode a persistent hidden pump owns
+main-thread polling after the source object is disabled or destroyed. EditMode
+uses EditorApplication.update without creating a scene object or calling
+DontDestroyOnLoad; destroying a Play pump transfers any unproved registrations
+to that editor polling owner. Neither path marks a native copy or fence complete
+merely because a source stopped.

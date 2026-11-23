@@ -124,6 +124,13 @@ namespace HumanVision
         public bool TryGetRuntimeProgress(out HumanVisionRuntimeProgress progress) {
             progress = default; return manager != null && manager.TryGetRuntimeProgress(out progress);
         }
+        public bool TryGetSourceProgress(out HumanVisionSourceProgress progress) {
+            progress = default; bool available = manager != null && manager.TryGetSourceProgress(out progress);
+            if (available && !string.IsNullOrEmpty(PreviewError)) progress.LiveAvailable = false;
+            return available;
+        }
+        /// <summary>Optional preview-channel error; does not imply analysis/source failure.</summary>
+        public string PreviewError => source is HumanVisionNativeFrameSource native ? native.PreviewError : "";
         /// <summary>Actual native analysis transport size, or zero before its first valid input.</summary>
         public Vector2Int IndependentInputSize => manager != null ? manager.IndependentInputSize : Vector2Int.zero;
         /// <summary>当前 RTSP 码流的公开标签。标准路径分为主、辅、第三流，标签不包含登录信息。</summary>
@@ -360,7 +367,8 @@ namespace HumanVision
             try {
                 if (manager.UsesIndependentInput) {
                     var nativeSource = go.AddComponent<HumanVisionNativeFrameSource>();
-                    nativeSource.Configure(manager, candidate.PreviewEnabled, candidate.Input.Mirror); source = nativeSource;
+                    nativeSource.Configure(manager, candidate.PreviewEnabled, candidate.Input.Mirror,
+                        candidate.Input.RequestedWidth, candidate.Input.RequestedHeight); source = nativeSource;
                 } else switch (candidate.SourceKind) {
                     case InputKind.WebCamera: source = go.AddComponent<WebCameraFrameSource>(); break;
                     case InputKind.Video: source = go.AddComponent<VideoFrameSource>(); break;
@@ -495,7 +503,18 @@ namespace HumanVision
             double now = Time.realtimeSinceStartupAsDouble;
             bool freshInput = false;
             var separate = SeparateAnalysisSource;
-            if (acceptResults && manager != null && manager.UsesIndependentInput && manager.TryGetRuntimeProgress(out var progress) && progress.Streaming) {
+            if (acceptResults && manager != null && manager.UsesIndependentInput && manager.TryGetSourceProgress(out var sourceProgress) && sourceProgress.Streaming) {
+                freshInput = true;
+                if (sourceId != 0 && (sourceId != sourceProgress.SourceId || sourceGeneration != sourceProgress.Generation)) {
+                    raw?.Clear(); sampled?.Clear(); minimumSequence = ResultSequence; ResetFrameRates(now);
+                }
+                sourceId = sourceProgress.SourceId; sourceGeneration = sourceProgress.Generation;
+                // Preserve the legacy Unity-observed analysis-claim rate. True
+                // decode/live counters are exposed separately by SourceProgress.
+                if (manager.TryGetRuntimeProgress(out var admitted)) {
+                    publicationRate.Observe(checked((long)admitted.InputFrameId)); analysisPublicationRate.Observe(checked((long)admitted.InputFrameId));
+                }
+            } else if (acceptResults && manager != null && manager.UsesIndependentInput && manager.TryGetRuntimeProgress(out var progress) && progress.Streaming) {
                 freshInput = true;
                 if (sourceId != 0 && (sourceId != progress.SourceId || sourceGeneration != progress.Generation)) {
                     raw?.Clear(); sampled?.Clear(); minimumSequence = ResultSequence; ResetFrameRates(now);
@@ -702,6 +721,11 @@ namespace HumanVision
         {
             decodedSize = default;
             nativeGeneration = 0;
+            if (IsRunning && manager != null && manager.UsesIndependentInput && manager.TryGetSourceProgress(out var sourceProgress) &&
+                frame.SourceId == sourceProgress.SourceId && frame.Generation == sourceProgress.Generation) {
+                decodedSize = new Vector2Int((int)sourceProgress.SourceWidth, (int)sourceProgress.SourceHeight);
+                nativeGeneration = sourceProgress.Generation; return decodedSize.x > 0 && decodedSize.y > 0;
+            }
             if (IsRunning && manager != null && manager.UsesIndependentInput && frame.SourceId == manager.ResultSourceId && frame.Generation == manager.ResultGeneration) {
                 decodedSize = manager.IndependentDecodedSize; nativeGeneration = frame.Generation; return decodedSize.x > 0 && decodedSize.y > 0;
             }

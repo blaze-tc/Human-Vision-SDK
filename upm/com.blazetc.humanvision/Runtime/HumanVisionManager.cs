@@ -52,6 +52,13 @@ namespace HumanVision
             progress = default;
             return _session is HumanVisionRuntimeSession runtime && runtime.TryGetRuntimeProgress(out progress);
         }
+        [Preserve]
+        public bool TryGetSourceProgress(out HumanVisionSourceProgress progress) {
+            progress = default; return _session is HumanVisionRuntimeSession runtime && runtime.TryGetSourceProgress(out progress);
+        }
+        internal int AttachLivePreview(ref RuntimeLiveConfigNative config, out RuntimeLiveBindingNative binding) {
+            binding = default; return _session is HumanVisionRuntimeSession runtime ? runtime.AttachLivePreview(ref config, out binding) : RuntimeControlBindings.Unsupported;
+        }
         internal int CopyNativePreview(ulong after, IntPtr buffer, uint capacity, ref RuntimePreviewNative info) =>
             _session is HumanVisionRuntimeSession runtime ? runtime.CopyNativePreview(after, buffer, capacity, ref info) : RuntimeControlBindings.Unsupported;
         internal int RequestNativeSnapshot(out ulong request) {

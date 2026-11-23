@@ -1,5 +1,6 @@
 #pragma once
 #include "humanvision/humanvision_v2.h"
+#include "humanvision/humanvision_runtime_live.h"
 
 /* Additive control protocol. None of these handles are HV_RuntimeHandle. */
 #define HV_RUNTIME_CONTROL_VERSION 1u
@@ -100,6 +101,8 @@ typedef struct HV_RuntimeControlApiV1 {
     int32_t (HV_CALL *CopySnapshot)(HV_RuntimeControllerHandle, uint64_t, void*, uint32_t, HV_RuntimePreviewV1*);
     /* Logical cancellation never pretends an Input/GPU operation completed. */
     int32_t (HV_CALL *CancelSnapshot)(HV_RuntimeControllerHandle, uint64_t request_id);
+    int32_t (HV_CALL *GetSourceProgressV1)(HV_RuntimeControllerHandle, HV_RuntimeSourceProgressV1*);
+    int32_t (HV_CALL *AttachLivePreviewV1)(HV_RuntimeControllerHandle, const HV_RuntimeLiveConfigV1*, HV_RuntimeLiveBindingV1*);
 } HV_RuntimeControlApiV1;
 #ifdef __cplusplus
 extern "C" {

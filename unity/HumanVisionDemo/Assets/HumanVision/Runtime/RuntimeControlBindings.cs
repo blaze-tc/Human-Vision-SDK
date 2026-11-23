@@ -69,6 +69,7 @@ namespace HumanVision.Interop
         internal IntPtr CreateDeferred, RequestStart, RequestSource, RequestPause, RequestResume, RequestStop,
             RequestReconfigure, RequestClose, TryRelease, Copy, GetRequestStatus, GetCapabilities, GetStatsV3,
             ReadObservations, Submit, SetRegions, GetDiagnostics, CopyPreview, RequestSnapshot, CopySnapshot, CancelSnapshot;
+        internal IntPtr GetSourceProgressV1, AttachLivePreviewV1;
     }
     internal sealed class RuntimeControlBindings
     {
@@ -89,6 +90,8 @@ namespace HumanVision.Interop
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int PreviewFn(IntPtr handle, ulong after, IntPtr rgba, uint capacity, ref RuntimePreviewNative info);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int ObservationsFn(IntPtr handle, ulong after, IntPtr entries, uint capacity, ref RuntimeObservationReadNative read);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int CancelSnapshotFn(IntPtr handle, ulong request);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int SourceProgressFn(IntPtr handle, ref RuntimeSourceProgressNative progress);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int AttachLiveFn(IntPtr handle, ref RuntimeLiveConfigNative config, ref RuntimeLiveBindingNative binding);
         internal readonly CreateFn CreateDeferred;
         internal readonly RequestFn RequestStart, RequestClose, RequestSnapshot;
         internal readonly SourceFn RequestSource;
@@ -103,6 +106,8 @@ namespace HumanVision.Interop
         internal readonly PreviewFn CopyPreview, CopySnapshot;
         internal readonly ObservationsFn ReadObservations;
         internal readonly CancelSnapshotFn CancelSnapshot;
+        internal readonly SourceProgressFn GetSourceProgress;
+        internal readonly AttachLiveFn AttachLivePreview;
         private static RuntimeControlBindings instance;
         internal static RuntimeControlBindings Load()
         {
@@ -129,8 +134,10 @@ namespace HumanVision.Interop
             CopyPreview = Function<PreviewFn>(t.CopyPreview); RequestSnapshot = Function<RequestFn>(t.RequestSnapshot);
             CopySnapshot = Function<PreviewFn>(t.CopySnapshot);
             ReadObservations = Function<ObservationsFn>(t.ReadObservations);
-            CancelSnapshot = t.Size >= Marshal.SizeOf<RuntimeControlTableNative>() && t.CancelSnapshot != IntPtr.Zero
+            CancelSnapshot = t.Size >= 8 + 21 * IntPtr.Size && t.CancelSnapshot != IntPtr.Zero
                 ? Function<CancelSnapshotFn>(t.CancelSnapshot) : null;
+            GetSourceProgress = t.Size >= 8 + 22 * IntPtr.Size && t.GetSourceProgressV1 != IntPtr.Zero ? Function<SourceProgressFn>(t.GetSourceProgressV1) : null;
+            AttachLivePreview = t.Size >= 8 + 23 * IntPtr.Size && t.AttachLivePreviewV1 != IntPtr.Zero ? Function<AttachLiveFn>(t.AttachLivePreviewV1) : null;
         }
         private static T Function<T>(IntPtr address) where T : Delegate
         {

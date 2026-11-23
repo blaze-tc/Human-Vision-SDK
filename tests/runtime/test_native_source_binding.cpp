@@ -55,6 +55,26 @@ struct WorkerMember {using type=std::thread NativeSourceBinding::*;friend type S
 template struct SourceMemberAccess<WorkerMember,&NativeSourceBinding::preview_worker_>;
 struct LoopMember {using type=void(NativeSourceBinding::*)(uint64_t) noexcept;friend type SourceMember(LoopMember);};
 template struct SourceMemberAccess<LoopMember,&NativeSourceBinding::PreviewLoop>;
+struct EpochMember {using type=uint64_t NativeSourceBinding::*;friend type SourceMember(EpochMember);};
+template struct SourceMemberAccess<EpochMember,&NativeSourceBinding::epoch_>;
+struct SourceOnlyProgress {
+    NativeSourceBinding source;uint64_t generation=2;
+    SourceOnlyProgress(){
+        auto& config=source.*SourceMember(ConfigMember{});config.source_id=77;
+        source.*SourceMember(EpochMember{})=9;
+        source.*SourceMember(HandleMember{})=reinterpret_cast<HV_InputHandle>(this);
+        (source.*SourceMember(ApiMember{})).source_progress=Read;
+    }
+    ~SourceOnlyProgress(){source.*SourceMember(HandleMember{})=nullptr;}
+    static int HV_INPUT_CALL Read(HV_InputHandle handle,HV_InputSourceProgressV1* out){
+        const auto& self=*reinterpret_cast<SourceOnlyProgress*>(handle);
+        *out={sizeof(*out),1};out->generation=self.generation;
+        out->decoded_frames=120;out->acquired_frames=119;out->live_published_frames=118;
+        out->analysis_published_frames=117;out->analysis_claimed_frames=0;out->state=HV_INPUT_STREAMING;
+        out->source_width=1920;out->source_height=1080;out->live_width=1280;out->live_height=720;
+        out->live_available=out->live_enabled=1;return HV_INPUT_OK;
+    }
+};
 struct SlowCapture {
     NativeSourceBinding source;
     std::atomic<uint64_t> requests{0},copies{0},generation{2};
@@ -110,6 +130,21 @@ TEST(NativeSourceBinding, ClockPairHasExplicitOffsetAndUncertainty) {
     int64_t output=0;ASSERT_TRUE(map.Map(f,10100,output));EXPECT_EQ(output,20110);
     f.clock_id=43;EXPECT_FALSE(map.Map(f,10100,output));
     EXPECT_FALSE(BuildInputClockMapping(c,20020,20000,map));
+}
+TEST(NativeSourceBinding, SourceOnlyProgressExistsWithoutAnAnalysisClaimOrResult) {
+    SourceOnlyProgress fixture;HV_RuntimeSourceProgressV1 progress{sizeof(progress),1};
+    ASSERT_EQ(fixture.source.SourceProgress(&progress),HV_CONTROL_OK);
+    EXPECT_EQ(progress.source_id,77u);EXPECT_EQ(progress.config_epoch,9u);EXPECT_EQ(progress.generation,2u);
+    EXPECT_EQ(progress.decoded_frames,120u);EXPECT_EQ(progress.live_published_frames,118u);
+    EXPECT_EQ(progress.analysis_claimed_frames,0u);EXPECT_EQ(progress.source_width,1920u);EXPECT_EQ(progress.live_width,1280u);
+    EXPECT_GT(progress.timestamp_us,0);EXPECT_EQ(fixture.source.Progress().frames,0u);
+}
+TEST(NativeSourceBinding, SourceOnlyReconnectIdentityAdvancesBeforeAnyClaimOrResult) {
+    SourceOnlyProgress fixture;HV_RuntimeSourceProgressV1 first{sizeof(first),1},next{sizeof(next),1};
+    ASSERT_EQ(fixture.source.SourceProgress(&first),HV_CONTROL_OK);
+    fixture.generation=3;ASSERT_EQ(fixture.source.SourceProgress(&next),HV_CONTROL_OK);
+    EXPECT_EQ(first.source_id,next.source_id);EXPECT_EQ(first.config_epoch,next.config_epoch);
+    EXPECT_EQ(next.generation,3u);EXPECT_EQ(next.analysis_claimed_frames,0u);
 }
 TEST(NativeSourceBinding, MissingPtsIsNeverUsedAsSensorOrRuntimeClock) {
     HV_InputFrameInfo f{sizeof(f),1};f.clock_id=42;f.clock_domain=HV_INPUT_CLOCK_NATIVE_MONOTONIC;

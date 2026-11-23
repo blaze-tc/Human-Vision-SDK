@@ -33,6 +33,8 @@ public:
     int RequestSnapshot(uint64_t*);
     int CopySnapshot(uint64_t,void*,uint32_t,HV_RuntimePreviewV1*);
     int CancelSnapshot(uint64_t);
+    int SourceProgress(HV_RuntimeSourceProgressV1*);
+    int AttachLive(const HV_RuntimeLiveConfigV1*,HV_RuntimeLiveBindingV1*);
 private:
     struct Command {Operation operation;uint64_t id;OwnedRuntimeConfig config;OwnedSourceConfig source;};
     explicit RuntimeController(OwnedRuntimeConfig,SessionFactory);

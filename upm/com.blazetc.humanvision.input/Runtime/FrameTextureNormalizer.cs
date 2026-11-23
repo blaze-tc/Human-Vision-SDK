@@ -105,6 +105,35 @@ namespace HumanVision.Input
     {
         private static InputRetirementPump instance;
         private InputRetirementRegistration head;
+#if UNITY_EDITOR
+        private static InputRetirementRegistration editorHead;
+        private static bool editorSubscribed;
+        private static void WatchEditor(InputRetirementRegistration registration)
+        {
+            registration.Next = editorHead; registration.Queued = true; editorHead = registration;
+            if (editorSubscribed) return;
+            UnityEditor.EditorApplication.update += UpdateEditor;
+            editorSubscribed = true;
+        }
+        private static void UpdateEditor()
+        {
+            Poll(ref editorHead);
+            if (editorHead != null) return;
+            UnityEditor.EditorApplication.update -= UpdateEditor;
+            editorSubscribed = false;
+        }
+        private void OnDestroy()
+        {
+            if (instance == this) instance = null;
+            // A Play pump can be destroyed while native GPU/copy proof is still
+            // pending. Keep those registrations alive on the editor main thread.
+            var current = head; head = null;
+            while (current != null) {
+                var next = current.Next; current.Next = null;
+                WatchEditor(current); current = next;
+            }
+        }
+#endif
 
         private static void EnsureInstance()
         {
@@ -119,13 +148,17 @@ namespace HumanVision.Input
         internal static void Watch(InputRetirementRegistration registration)
         {
             if (registration.Queued) return;
+#if UNITY_EDITOR
+            if (!Application.isPlaying) { WatchEditor(registration); return; }
+#endif
             EnsureInstance();
             registration.Next = instance.head;
             registration.Queued = true;
             instance.head = registration;
         }
 
-        private void Update()
+        private void Update() => Poll(ref head);
+        private static void Poll(ref InputRetirementRegistration head)
         {
             InputRetirementRegistration previous = null;
             var current = head;

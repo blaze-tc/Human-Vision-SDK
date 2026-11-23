@@ -14,6 +14,12 @@ namespace HumanVision.Demo
         string Diagnostics { get; }
         int CopyPreview(ulong after, IntPtr buffer, uint capacity, ref RuntimePreviewNative info);
     }
+    internal interface INativeLiveAttachmentProvider
+    {
+        int Attach(ref RuntimeLiveConfigNative config, out RuntimeLiveBindingNative binding);
+        INativeLiveConsumerApi CreateConsumer(RuntimeLiveBindingNative binding);
+        bool TryGetSourceProgress(out HumanVisionSourceProgress progress);
+    }
     // These are regular Unity-owned CPU-upload textures. No decoder image, AHB,
     // native analysis slot or native input lease survives until a Unity frame.
     [DefaultExecutionOrder(-150)]
@@ -29,6 +35,44 @@ namespace HumanVision.Demo
         private int nextSlot, latestSlot = -1, protectedSlot = -1;
         private ulong after, boundSource, boundGeneration, boundEpoch;
         private long lastPublication;
+        private NativeLiveFrameConsumer live;
+        private string liveError = "";
+        private bool realtime;
+        private bool liveAttachPending;
+        private RuntimeLiveConfigNative liveConfig;
+        private INativeLiveAttachmentProvider liveProvider;
+        internal string PreviewError => liveError.Length > 0 ? liveError : live?.LastError ?? "";
+        internal void Configure(HumanVisionManager owner, bool preview, bool mirrored, int requestedWidth, int requestedHeight)
+        {
+            Configure(owner, preview, mirrored);
+            if (Application.platform != RuntimePlatform.Android) return;
+            ConfigureLive(new ManagerLiveAttachment(owner), preview, mirrored, requestedWidth, requestedHeight);
+        }
+        internal void ConfigureLive(INativeLiveAttachmentProvider provider, bool preview, bool mirrored, int requestedWidth, int requestedHeight)
+        {
+            liveProvider = provider; closed = false;
+            realtime = true;
+            liveConfig = new RuntimeLiveConfigNative { Size = (uint)Marshal.SizeOf<RuntimeLiveConfigNative>(), Version = 1,
+                MaxWidth = (uint)requestedWidth, MaxHeight = (uint)requestedHeight, MirrorX = mirrored ? 1u : 0u, Enabled = preview ? 1u : 0u };
+            liveAttachPending = true; TryAttachLive();
+        }
+        private void TryAttachLive()
+        {
+            if (!liveAttachPending || closed || liveProvider == null) return;
+            int result = liveProvider.Attach(ref liveConfig, out var binding);
+            if (result == RuntimeControlBindings.Busy || result == RuntimeControlBindings.NoData) return;
+            liveAttachPending = false;
+            if (result != RuntimeControlBindings.Ok) { liveError = "Realtime GPU preview unavailable (" + result + "); decoder and analysis remain active."; return; }
+            var backend = liveProvider.CreateConsumer(binding);
+            live = new NativeLiveFrameConsumer(backend, binding.SourceId, liveConfig.Enabled != 0);
+        }
+        private sealed class ManagerLiveAttachment : INativeLiveAttachmentProvider {
+            private readonly HumanVisionManager owner;
+            internal ManagerLiveAttachment(HumanVisionManager manager) { owner = manager; }
+            public int Attach(ref RuntimeLiveConfigNative config, out RuntimeLiveBindingNative binding) => owner.AttachLivePreview(ref config, out binding);
+            public INativeLiveConsumerApi CreateConsumer(RuntimeLiveBindingNative binding) => new RuntimeLivePreviewConsumer(owner, binding);
+            public bool TryGetSourceProgress(out HumanVisionSourceProgress progress) => owner.TryGetSourceProgress(out progress);
+        }
         internal void Configure(HumanVisionManager owner, bool preview, bool mirrored)
         { manager = owner; Configure(new ManagerPreviewReader(owner), preview, mirrored); }
         internal void Configure(INativePreviewReader owner, bool preview, bool mirrored)
@@ -44,6 +88,11 @@ namespace HumanVision.Demo
         }
         public InputSourceState State {
             get {
+                if (realtime && !closed) {
+                    if (live != null) return live.State;
+                    return liveProvider != null && liveProvider.TryGetSourceProgress(out var progress) ? (InputSourceState)progress.State : InputSourceState.Opening;
+                }
+                if (realtime && live != null) return live.State;
                 if (closed || reader == null) return InputSourceState.Stopped;
                 if (!reader.TryGetState(out uint state, out ulong frames)) return InputSourceState.Opening;
                 if (state == 9 || state == 10) return InputSourceState.Error;
@@ -51,8 +100,8 @@ namespace HumanVision.Demo
                 return state == 2 && frames > 0 ? InputSourceState.Streaming : InputSourceState.Opening;
             }
         }
-        public string LastError => State == InputSourceState.Error ? reader.Diagnostics : "";
-        public Texture CurrentTexture => !closed && latestSlot >= 0 ? slots[latestSlot].Texture : null;
+        public string LastError => PreviewError.Length > 0 ? PreviewError : State == InputSourceState.Error ? reader.Diagnostics : "";
+        public Texture CurrentTexture => realtime ? live?.CurrentTexture : !closed && latestSlot >= 0 ? slots[latestSlot].Texture : null;
         public void Open(HumanVisionSourceSettings settings)
         {
             if (manager == null || !manager.UsesIndependentInput || settings == null || settings.Kind != InputKind.Rtsp)
@@ -61,6 +110,7 @@ namespace HumanVision.Demo
         private void Update() => Tick();
         internal void Tick()
         {
+            if (realtime) { TryAttachLive(); live?.Tick(); return; }
             if (closed || reader == null || !previewEnabled || !reader.TryGetProgress(out var progress) || !progress.Streaming) return;
             if (boundSource != progress.SourceId || boundGeneration != progress.Generation || boundEpoch != progress.ConfigEpoch) {
                 after = 0; latestSlot = -1;
@@ -112,12 +162,14 @@ namespace HumanVision.Demo
         public bool TryGetLatestFrame(long afterFrameId, out HumanVisionTextureFrame frame)
         {
             frame = default;
+            if (realtime) return live != null && live.TryGetLatestFrame(afterFrameId, out frame);
             if (closed || latestSlot < 0 || !slots[latestSlot].Published || slots[latestSlot].Frame.FrameId <= afterFrameId) return false;
             frame = slots[latestSlot].Frame; return true;
         }
         internal bool TryGetMatchedFrame(long frameId, ulong sourceId, ulong generation, out HumanVisionTextureFrame frame)
         {
             frame = default;
+            if (realtime) return live != null && live.TryGetMatchedFrame(frameId, sourceId, generation, out frame);
             if (closed) return false;
             foreach (var slot in slots) if (slot.Published && slot.Frame.FrameId == frameId && slot.Frame.SourceId == sourceId && slot.Frame.Generation == generation) { frame = slot.Frame; return true; }
             return false;
@@ -126,6 +178,7 @@ namespace HumanVision.Demo
         // color immutable through Update/LateUpdate gaps or failed compositions.
         internal bool ProtectMatchedFrame(in HumanVisionTextureFrame frame)
         {
+            if (realtime) return live != null && live.ProtectMatchedFrame(in frame);
             if (closed) return false;
             for (int i = 0; i < slots.Length; ++i) {
                 var slot = slots[i];
@@ -137,10 +190,12 @@ namespace HumanVision.Demo
             return false;
         }
         public bool TryAcquireSourceCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease)
-        { lease = default; return false; } // this presentation consumer cannot become another ingestion owner
+        { lease = default; return realtime && live != null && live.TryAcquireSourceCopyLease(in frame, out lease); }
         public void Close()
         {
             if (closed) return; closed = true; latestSlot = protectedSlot = -1;
+            liveAttachPending = false;
+            if (realtime) { live?.Close(); return; }
             if (pinned.IsAllocated) pinned.Free(); raw = upright = null;
             foreach (var slot in slots) { if (slot.Texture != null) Destroy(slot.Texture); slot.Texture = null; slot.Published = false; }
         }

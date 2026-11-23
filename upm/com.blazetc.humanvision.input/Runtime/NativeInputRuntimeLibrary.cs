@@ -13,11 +13,14 @@ namespace HumanVision.Input
         /// <summary>Loads only the plugin/clock, not a device or stream. Call from the Unity control thread.</summary>
         public static string ResolvePath()
         {
-            if (Application.platform == RuntimePlatform.Android) return "libhumanvision_input.so";
-            if (Application.platform != RuntimePlatform.WindowsEditor && Application.platform != RuntimePlatform.WindowsPlayer)
+            if (Application.platform != RuntimePlatform.Android && Application.platform != RuntimePlatform.WindowsEditor && Application.platform != RuntimePlatform.WindowsPlayer)
                 throw new NotSupportedException("Independent native input is currently available on Windows and Android.");
+            // A Runtime-side dlopen alone does not register UnityPluginLoad.
+            // This device-free P/Invoke makes Unity initialize the Input plugin's
+            // graphics interfaces before native composition attaches live targets.
             var clock = NativeInputBindings.ClockInfo.Create();
             if (NativeInputBindings.HV_Input_QueryClock(ref clock) != 0) throw new InvalidOperationException("Native Input clock is unavailable.");
+            if (Application.platform == RuntimePlatform.Android) return "libhumanvision_input.so";
             IntPtr module = GetModuleHandleW("humanvision_input.dll");
             var path = new StringBuilder(32768);
             uint length = module == IntPtr.Zero ? 0 : GetModuleFileNameW(module, path, (uint)path.Capacity);

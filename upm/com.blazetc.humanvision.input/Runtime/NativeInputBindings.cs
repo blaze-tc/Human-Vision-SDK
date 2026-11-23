@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("HumanVision.Input.Tests")]
 [assembly: InternalsVisibleTo("HumanVision.Input.PlayMode.Tests")]
 [assembly: InternalsVisibleTo("HumanVision.Demo")]
+[assembly: InternalsVisibleTo("HumanVision.Tests.EditMode")]
 
 namespace HumanVision.Input
 {

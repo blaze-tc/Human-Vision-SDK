@@ -72,6 +72,12 @@ int32_t HV_CALL CopySnapshot(HV_RuntimeControllerHandle h,uint64_t id,void* byte
 int32_t HV_CALL CancelSnapshot(HV_RuntimeControllerHandle h,uint64_t id) {
     if(!h)return HV_ERR_INVALID_ARGUMENT;return Guard([&]{return Controller(h)->CancelSnapshot(id);});
 }
+int32_t HV_CALL SourceProgress(HV_RuntimeControllerHandle h,HV_RuntimeSourceProgressV1* out) {
+    if(!h)return HV_ERR_INVALID_ARGUMENT;return Guard([&]{return Controller(h)->SourceProgress(out);});
+}
+int32_t HV_CALL AttachLive(HV_RuntimeControllerHandle h,const HV_RuntimeLiveConfigV1* config,HV_RuntimeLiveBindingV1* out) {
+    if(!h)return HV_ERR_INVALID_ARGUMENT;return Guard([&]{return Controller(h)->AttachLive(config,out);});
+}
 }
 extern "C" int32_t HV_CALL HV_QueryRuntimeControlApiV1(uint32_t version,HV_RuntimeControlApiV1* out) {
     // The original twenty-entry prefix remains queryable. New callers can
@@ -80,6 +86,6 @@ extern "C" int32_t HV_CALL HV_QueryRuntimeControlApiV1(uint32_t version,HV_Runti
     if(!out||version!=1||out->struct_size<prefix_size||out->api_version!=1)return HV_ERR_INVALID_ARGUMENT;
     const auto bytes=std::min<uint32_t>(out->struct_size,sizeof(*out));
     const HV_RuntimeControlApiV1 api{bytes,1,Create,Start,Source,Pause,Resume,Stop,Reconfigure,Close,Release,Copy,Status,
-        Capabilities,Stats,Observations,Submit,Regions,Diagnostics,Preview,Snapshot,CopySnapshot,CancelSnapshot};
+        Capabilities,Stats,Observations,Submit,Regions,Diagnostics,Preview,Snapshot,CopySnapshot,CancelSnapshot,SourceProgress,AttachLive};
     std::memcpy(out,&api,bytes);return 0;
 }

@@ -2,6 +2,7 @@
 #include "composition/session.h"
 #include "composition/native_input_gpu_source.h"
 #include "composition/native_frame_geometry.h"
+#include "composition/native_live_bridge.h"
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -93,13 +94,15 @@ bool NativeSourceBinding::Load(const std::string& name,std::string& error) {
     // LOAD_WITH_ALTERED_SEARCH_PATH resolves transitive DLLs from the native
     // directory only when the absolute name uses Windows path separators.
     path.make_preferred();
-    library_=LoadLibraryExW(path.c_str(),nullptr,LOAD_WITH_ALTERED_SEARCH_PATH);
-    if(!library_) {error="Cannot load native Input DLL: "+std::to_string(GetLastError());return false;}
-    auto symbol=[this](const char* n){return reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(library_),n));};
+    auto loaded=LoadLibraryExW(path.c_str(),nullptr,LOAD_WITH_ALTERED_SEARCH_PATH);
+    if(!loaded) {error="Cannot load native Input DLL: "+std::to_string(GetLastError());return false;}
+    library_=std::shared_ptr<void>(loaded,[](void* p){FreeLibrary(static_cast<HMODULE>(p));});
+    auto symbol=[this](const char* n){return reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(library_.get()),n));};
 #else
-    library_=dlopen(name.c_str(),RTLD_NOW|RTLD_LOCAL);
-    if(!library_) {const char* e=dlerror();error=std::string("Cannot load native Input library: ")+(e?e:"unknown");return false;}
-    auto symbol=[this](const char* n){return dlsym(library_,n);};
+    auto loaded=dlopen(name.c_str(),RTLD_NOW|RTLD_LOCAL);
+    if(!loaded) {const char* e=dlerror();error=std::string("Cannot load native Input library: ")+(e?e:"unknown");return false;}
+    library_=std::shared_ptr<void>(loaded,[](void* p){dlclose(p);});
+    auto symbol=[this](const char* n){return dlsym(library_.get(),n);};
 #endif
 #define INPUT_SYMBOL(field,name) api_.field=reinterpret_cast<decltype(api_.field)>(symbol(name))
     INPUT_SYMBOL(open,"HV_Input_Open");INPUT_SYMBOL(close,"HV_Input_Close");
@@ -111,6 +114,7 @@ bool NativeSourceBinding::Load(const std::string& name,std::string& error) {
     INPUT_SYMBOL(wait,"HV_Input_WaitNativeFrameV1");INPUT_SYMBOL(copy_native,"HV_Input_CopyNativeRgbaV1");
     INPUT_SYMBOL(release_native,"HV_Input_ReleaseNativeFrameV1");
     INPUT_SYMBOL(request_capture,"HV_Input_RequestNativeCaptureV1");INPUT_SYMBOL(copy_capture,"HV_Input_CopyNativeCaptureV1");
+    INPUT_SYMBOL(query_live,"HV_Input_QueryLiveApiV1");INPUT_SYMBOL(source_progress,"HV_Input_GetSourceProgressV1");
 #undef INPUT_SYMBOL
     if(!api_.open||!api_.close||!api_.release||!api_.state||!api_.error||!api_.poll||!api_.copy||!api_.clock) {
         error="Native Input library lacks the required versioned input contract";return false;
@@ -311,6 +315,30 @@ int NativeSourceBinding::CopySnapshot(uint64_t request,void* data,uint32_t capac
     return preview_.CopySnapshot(request,data,capacity,info);
 }
 int NativeSourceBinding::CancelSnapshot(uint64_t request) {return preview_.CancelSnapshot(request);}
+int NativeSourceBinding::SourceProgress(HV_RuntimeSourceProgressV1* out) const {
+    if(!out||out->struct_size<sizeof(*out)||out->api_version!=1)return HV_ERR_INVALID_ARGUMENT;
+    if(!handle_||!api_.source_progress)return HV_CONTROL_UNSUPPORTED;
+    HV_InputSourceProgressV1 source{sizeof(source),1};
+    const auto result=api_.source_progress(handle_,&source);
+    if(result!=HV_INPUT_OK)return result==HV_INPUT_BUSY?HV_CONTROL_BUSY:HV_CONTROL_NO_DATA;
+    if(source.size<sizeof(source)||source.version!=1)return HV_ERR_INVALID_ARGUMENT;
+    // This identity is also used by both native CPU/GPU analysis envelopes.
+    // It is available directly from the decoder, before any claim or result.
+    *out={sizeof(*out),1,config_.source_id,source.generation,epoch_,
+        source.decoded_frames,source.acquired_frames,source.live_published_frames,
+        source.analysis_published_frames,source.analysis_claimed_frames,source.live_dropped_frames,
+        Now(),source.state,source.source_width,source.source_height,source.live_width,source.live_height,
+        source.live_enabled,source.live_available,0};
+    return HV_CONTROL_OK;
+}
+int NativeSourceBinding::AttachLive(const HV_RuntimeLiveConfigV1* config,HV_RuntimeLiveBindingV1* out) {
+    if(!config||!out||out->struct_size<sizeof(*out)||out->api_version!=1)return HV_ERR_INVALID_ARGUMENT;
+    if(!handle_||!api_.query_live)return HV_CONTROL_UNSUPPORTED;
+    HV_InputLiveApiV1 live{sizeof(live),1};if(api_.query_live(&live)!=HV_INPUT_OK)return HV_CONTROL_UNSUPPORTED;
+    const auto result=AttachNativeLiveBridge(live,handle_,*config,config_.source_id,epoch_,mapping_.offset_us,mapping_.clock_id,library_,*out);
+    if(result==HV_CONTROL_OK)live_attached_=true;
+    return result;
+}
 std::string NativeSourceBinding::PreviewDiagnostics() const {
     std::lock_guard<std::mutex> lock(error_mutex_);
     return "preview: native-owned copies="+std::to_string(preview_.Published())+
@@ -410,7 +438,7 @@ void NativeSourceBinding::PreviewLoopCore(uint64_t epoch) {
             uint64_t candidate_request=0;HV_RuntimePreviewV1 candidate{};
             const auto snapshot=preview_.PendingSnapshot();
             const bool exact=snapshot&&!preview_.SnapshotCandidate(candidate_request,candidate);
-            bool live=(config_.flags&HV_NATIVE_SOURCE_LIVE_PREVIEW)&&preview_.CanAttemptLive()&&now>=next_live_us;
+            bool live=(config_.flags&HV_NATIVE_SOURCE_LIVE_PREVIEW)&&!live_attached_&&!(android_native_&&api_.query_live)&&preview_.CanAttemptLive()&&now>=next_live_us;
             // A normal asynchronous frame gap is not pressure. If more than
             // three admitted frames are outstanding, reduce optional previews
             // to one per second; the capture still attaches only after the
@@ -443,13 +471,6 @@ void NativeSourceBinding::Close() {
         if(released!=HV_INPUT_BUSY)SetError("Native Input retirement failed; resources remain owned until process restart");
         std::this_thread::sleep_for(std::chrono::milliseconds(1));}}
     gpu_source_.reset();
-    if(library_) {
-#if defined(_WIN32)
-        FreeLibrary(static_cast<HMODULE>(library_));
-#else
-        dlclose(library_);
-#endif
-        library_=nullptr;
-    }
+    library_.reset(); // Retained live consumers keep their own module reference.
 }
 }

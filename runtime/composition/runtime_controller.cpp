@@ -217,6 +217,16 @@ int RuntimeController::Stats(HV_RuntimeStatsV3* out) {
     else if(session_)out->frame_id=static_cast<uint64_t>(std::max<int64_t>(0,out->runtime.source_frame_id));
     return 0;
 }
+int RuntimeController::SourceProgress(HV_RuntimeSourceProgressV1* out) {
+    if(!out||out->struct_size<sizeof(*out)||out->api_version!=1)return HV_ERR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(mutex_);
+    return source_?source_->SourceProgress(out):HV_CONTROL_NO_DATA;
+}
+int RuntimeController::AttachLive(const HV_RuntimeLiveConfigV1* config,HV_RuntimeLiveBindingV1* out) {
+    if(!config||!out)return HV_ERR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(mutex_);
+    return source_&&admission_?source_->AttachLive(config,out):HV_CONTROL_NO_DATA;
+}
 int RuntimeController::ReadObservations(uint64_t cursor,HV_RuntimeObservationV1* entries,uint32_t capacity,HV_RuntimeObservationReadV1* result) {
     if(!result||result->struct_size<sizeof(*result)||result->api_version!=1||(capacity&&!entries)||capacity>64)return HV_ERR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(mutex_);*result={};result->struct_size=sizeof(*result);result->api_version=1;result->next_cursor=cursor;

@@ -40,6 +40,24 @@ TEST(RuntimeControl, RejectsWrongSizeAndVersionWithoutWritingTail) {
     EXPECT_EQ(HV_QueryRuntimeControlApiV1(99,&api),HV_ERR_INVALID_ARGUMENT);
     api.struct_size=8;EXPECT_EQ(HV_QueryRuntimeControlApiV1(1,&api),HV_ERR_INVALID_ARGUMENT);
 }
+TEST(RuntimeControl, SourceProgressAndLivePreviewAppendToTheExistingTwentyOneEntryTable) {
+    struct ExtendedQuery {
+        uint32_t size,version;
+        void* preserved[21];
+        void* source_progress;
+        void* attach_live;
+    } query{sizeof(ExtendedQuery),1};
+    ASSERT_EQ(HV_QueryRuntimeControlApiV1(1,reinterpret_cast<HV_RuntimeControlApiV1*>(&query)),HV_CONTROL_OK);
+    ASSERT_NE(query.source_progress,nullptr)<<"Source progress must not require a model result or native analysis claim";
+    ASSERT_NE(query.attach_live,nullptr)<<"A retained live consumer must attach to the existing decoder";
+    EXPECT_EQ(query.size,sizeof(query));
+}
+TEST(RuntimeControl, OldTwentyOneEntryQueryKeepsCancellationWithoutWritingSourceTail) {
+    HV_RuntimeControlApiV1 api{};api.struct_size=uint32_t(offsetof(HV_RuntimeControlApiV1,GetSourceProgressV1));api.api_version=1;
+    auto sentinel=reinterpret_cast<decltype(api.GetSourceProgressV1)>(uintptr_t(0x1234));api.GetSourceProgressV1=sentinel;
+    ASSERT_EQ(HV_QueryRuntimeControlApiV1(1,&api),HV_CONTROL_OK);
+    EXPECT_EQ(api.struct_size,176u);EXPECT_NE(api.CancelSnapshot,nullptr);EXPECT_EQ(api.GetSourceProgressV1,sentinel);
+}
 TEST(RuntimeControl, CreateDeferredDoesNotLoadMissingModelsOrDevices) {
     const auto api=Api();auto config=Config("Z:/missing-runtime-no-io");
     HV_RuntimeControllerHandle h=nullptr;char error[512]{};

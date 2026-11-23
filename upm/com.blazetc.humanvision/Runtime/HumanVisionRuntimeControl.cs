@@ -149,6 +149,25 @@ namespace HumanVision
                 return true;
             }
         }
+        internal bool TryGetSourceProgress(out HumanVisionSourceProgress progress)
+        {
+            lock (gate) {
+                progress = default;
+                if (released || closeRequested || api.GetSourceProgress == null) return false;
+                var value = new RuntimeSourceProgressNative { Size = (uint)Marshal.SizeOf<RuntimeSourceProgressNative>(), Version = 1 };
+                int result = api.GetSourceProgress(controller, ref value);
+                if (result == RuntimeControlBindings.NoData || result == RuntimeControlBindings.Unsupported || result == RuntimeControlBindings.Busy) return false;
+                Check(result, "native source progress"); progress = value.Managed; return true;
+            }
+        }
+        internal int AttachLivePreview(ref RuntimeLiveConfigNative config, out RuntimeLiveBindingNative binding)
+        {
+            lock (gate) {
+                binding = new RuntimeLiveBindingNative { Size = (uint)Marshal.SizeOf<RuntimeLiveBindingNative>(), Version = 1 };
+                return released || closeRequested || api.AttachLivePreview == null ? RuntimeControlBindings.Unsupported
+                    : api.AttachLivePreview(controller, ref config, ref binding);
+            }
+        }
         internal bool TryGetCanonicalIdentity(long frameId, long sequence, out RuntimeObservationHeaderNative identity)
         {
             lock (gate) {
