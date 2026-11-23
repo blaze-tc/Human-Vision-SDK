@@ -12,6 +12,21 @@ Start/Stop are serialized control operations. Submit and CopyLatest can run conc
 Coherent semantic observations with original source frame/time, dropped-frame count,
 and actionable initialization/processing errors. Stop invalidates the current output.
 
+## Copied-frame ownership and clocks
+The Host copies caller pixels and ROI values before Submit returns. The latest pending
+slot holds one complete job. A worker takes the pixels and its fixed-size
+`FrameEnvelope` under the same lock. Replacing a pending job cannot change another
+worker's active frame or its region revision. The worker returns its old pixel
+allocation to the slot when taking another job, which reuses capacity at steady size.
+
+Internal callers can supply source identity, generation, configuration epoch, ROI
+revision, timestamps and the source-to-analysis transform. The Host records the
+actual copied image layout and its local monotonic submit time. Legacy timestamps
+keep their original value and have an unspecified clock domain. Time differences
+require valid values from the same identified clock or a separately verified clock
+mapping. The internal CopyLatest overload reads the accepted observation and its
+envelope together. The C and plugin ABIs keep their existing layouts.
+
 ## Allowed dependencies
 Plugin ABI, common frame buffer/latest-frame slot, C++ standard library, Windows loader,
 vendored JSON parser and SHA-256 implementation for configuration validation only.
@@ -34,7 +49,7 @@ These checks run during initialization, not on the frame-processing hot path.
 Model files and configuration strings remain data; Host has no decoder/provider switch.
 
 ## Focused tests
-`pwsh -File tools/test/run_native_tests.ps1 -Filter 'PluginRegistry|RuntimeHost|plugin_c_abi'`
+`pwsh -File tools/test/run_native_tests.ps1 -Filter 'FrameEnvelope|LatestFrameSlot|PluginRegistry|RuntimeHost|PluginAbi|api_contract|plugin_c_abi'`
 
 ## How to add/replace an implementation
 Implement the versioned query API in a plugin. Register its query statically, or load

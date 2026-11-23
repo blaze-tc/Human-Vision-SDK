@@ -38,6 +38,7 @@ HV_Result HV_CALL Process(void*, const HV_PipelineInputV1* in, HV_PipelineOutput
     out->bodies[0].struct_size = sizeof(HV_BodyObservationV1);
     out->bodies[0].api_version = HV_PLUGIN_API_V1;
     out->bodies[0].confidence = .9F;
+    if (in->roi_count != 0) out->bodies[0].bbox_px = in->rois[0].bbox_px;
     auto& joint = out->bodies[0].joints[HV_CANONICAL_HEAD];
     joint.struct_size = sizeof(joint); joint.api_version = HV_API_VERSION_040;
     joint.valid = 1; joint.x_norm = .5F; joint.observation_timestamp_us = in->frame.timestamp_us;
@@ -116,6 +117,60 @@ TEST(RuntimeHost, ReleasesPartialInstanceWhenCreateViolatesExceptionContract) {
     throw_after_create=false;
     EXPECT_EQ(destroyed.load(),before+1);
     EXPECT_NE(error.find("exception"),std::string::npos);
+}
+
+TEST(RuntimeHost, PublishesCopiedFrameEnvelopeWithTheOriginalRoi) {
+    PluginRegistry registry;
+    std::string error;
+    ASSERT_TRUE(registry.Register(Query, error));
+    RuntimeHost host;
+    HV_PipelineConfigV1 config{};
+    config.struct_size = sizeof(config);
+    config.api_version = HV_PLUGIN_API_V1;
+    config.max_bodies = 1;
+    HV_HostServicesV1 services{};
+    services.struct_size = sizeof(services);
+    services.api_version = HV_PLUGIN_API_V1;
+    ASSERT_TRUE(host.Start(registry.Find("fixture.pose", 0, error), config, services, error)) << error;
+
+    std::uint8_t pixels[16]{};
+    HV_VideoFrame frame{sizeof(frame), 2, 2, 8, HV_PIXEL_RGBA32, 65, 45000, pixels, 16};
+    HV_RegionOfInterestV1 roi{sizeof(roi), HV_PLUGIN_API_V1, 806, {0.25F, 0.5F, 1.25F, 1.5F}, 0, 0};
+    FrameEnvelope envelope;
+    envelope.source_id = 26;
+    envelope.generation = 7;
+    envelope.config_epoch = 50;
+    envelope.region_revision = 77;
+    envelope.source_timestamp = {45000, 44, FrameClockDomain::kInputMonotonic, FrameTimeSource::kDecoded, true};
+    envelope.source_to_analysis[2] = 1.25F;
+    ASSERT_TRUE(host.Submit(frame, envelope, &roi, 1u, error)) << error;
+    envelope = {};
+    roi.bbox_px.x = 1.75F;
+
+    HV_ObservationFrameV1 result{};
+    FrameEnvelope published;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && !host.CopyLatest(result, published)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_EQ(result.source_frame_id, 65);
+    EXPECT_EQ(result.source_timestamp_us, 45000);
+    ASSERT_EQ(result.body_count, 1u);
+    EXPECT_FLOAT_EQ(result.bodies[0].bbox_px.x, 0.25F);
+    EXPECT_EQ(published.frame_id, 65);
+    EXPECT_EQ(published.source_id, 26u);
+    EXPECT_EQ(published.generation, 7u);
+    EXPECT_EQ(published.config_epoch, 50u);
+    EXPECT_EQ(published.region_revision, 77);
+    EXPECT_EQ(published.source_timestamp.domain, FrameClockDomain::kInputMonotonic);
+    EXPECT_EQ(published.source_timestamp.clock_id, 44u);
+    EXPECT_FLOAT_EQ(published.source_to_analysis[2], 1.25F);
+    EXPECT_EQ(published.width, 2);
+    EXPECT_EQ(published.submitted.domain, FrameClockDomain::kRuntimeMonotonic);
+
+    std::int64_t revision = 0;
+    ASSERT_TRUE(host.CopyLatest(result, revision));
+    EXPECT_EQ(revision, 77);
 }
 
 namespace {

@@ -41,8 +41,8 @@ bool RuntimeHost::StartPool(std::shared_ptr<const PluginModule> module,const std
     }
     candidates.emplace_back(replacement,destroy);
     }
-    std::unique_ptr<LatestFrameSlot> new_slot;
-    try { new_slot = std::make_unique<LatestFrameSlot>(); }
+    std::unique_ptr<FrameJobSlot> new_slot;
+    try { new_slot = std::make_unique<FrameJobSlot>(); }
     catch (...) { error = "Cannot allocate frame slot"; return false; }
     Stop();
     std::unique_lock<std::mutex> lock(lifecycle_mutex_);
@@ -65,17 +65,42 @@ bool RuntimeHost::Submit(const HV_VideoFrame& frame, std::string& error) {
     return Submit(frame,nullptr,0,0,error);
 }
 bool RuntimeHost::Submit(const HV_VideoFrame& frame,const HV_RegionOfInterestV1* rois,uint32_t count,int64_t revision,std::string& error) {
+    FrameEnvelope envelope;
+    envelope.region_revision = revision;
+    return Submit(frame, envelope, rois, count, error);
+}
+
+bool RuntimeHost::Submit(const HV_VideoFrame& frame, const FrameEnvelope& envelope,
+                         const HV_RegionOfInterestV1* rois, uint32_t count, std::string& error) {
     std::lock_guard<std::mutex> lock(lifecycle_mutex_);
-    if (!running_) { error = "Runtime Host is stopped"; return false; }
-    if(count>16||(count&&!rois)){error="Invalid ROI count";return false;}
-    if(worker_count_>1&&(frame.frame_id<=last_submitted_frame_||frame.timestamp_us<=last_submitted_time_)){
-        error="Pipeline pool requires increasing source frame and timestamp";return false;
+    if (!running_) {
+        error = "Runtime Host is stopped";
+        return false;
     }
+    FrameJobMetadata metadata;
+    if (count > metadata.rois.size() || (count != 0 && !rois)) {
+        error = "Invalid ROI count";
+        return false;
+    }
+    if (worker_count_ > 1 &&
+        (frame.frame_id <= last_submitted_frame_ || frame.timestamp_us <= last_submitted_time_)) {
+        error = "Pipeline pool requires increasing source frame and timestamp";
+        return false;
+    }
+    if (envelope.source_timestamp.valid && envelope.source_timestamp.microseconds != frame.timestamp_us) {
+        error = "Frame envelope source timestamp does not match the submitted frame";
+        return false;
+    }
+
+    metadata.envelope = envelope;
+    metadata.envelope.BindCopiedFrame(frame);
+    metadata.roi_count = count;
+    if (count != 0) std::copy_n(rois, count, metadata.rois.begin());
     FrameSubmitStatus status;
-    if(!slot_->Submit(frame,status,error))return false;
-    last_submitted_frame_=frame.frame_id;last_submitted_time_=frame.timestamp_us;
-    auto& meta=metadata_[uint64_t(frame.frame_id)%64];meta.frame=frame.frame_id;meta.time=frame.timestamp_us;meta.revision=revision;meta.count=count;
-    if(count)std::copy_n(rois,count,meta.rois.begin());return true;
+    if (!slot_->Submit(frame, metadata, status, error)) return false;
+    last_submitted_frame_ = frame.frame_id;
+    last_submitted_time_ = frame.timestamp_us;
+    return true;
 }
 
 bool RuntimeHost::CopyLatest(HV_ObservationFrameV1& out) const {
@@ -84,7 +109,17 @@ bool RuntimeHost::CopyLatest(HV_ObservationFrameV1& out) const {
 bool RuntimeHost::CopyLatest(HV_ObservationFrameV1& out,int64_t& revision) const {
     std::lock_guard<std::mutex> lock(result_mutex_);
     if (!has_result_) return false;
-    out = result_; revision=result_revision_;return true;
+    out = result_;
+    revision = result_envelope_.region_revision;
+    return true;
+}
+
+bool RuntimeHost::CopyLatest(HV_ObservationFrameV1& out, FrameEnvelope& envelope) const {
+    std::lock_guard<std::mutex> lock(result_mutex_);
+    if (!has_result_) return false;
+    out = result_;
+    envelope = result_envelope_;
+    return true;
 }
 
 int64_t RuntimeHost::DroppedFrames() const {
@@ -112,11 +147,9 @@ void RuntimeHost::Stop() {
 
 void RuntimeHost::Run(uint32_t index) {
     FrameBuffer frame;
+    FrameJobMetadata metadata;
     auto* instance=instances_[index];
-    while (slot_->WaitTake(frame)) {
-        Metadata metadata;
-        {std::lock_guard<std::mutex> lock(lifecycle_mutex_);metadata=metadata_[uint64_t(frame.frame_id)%64];}
-        if(metadata.frame!=frame.frame_id||metadata.time!=frame.timestamp_us)continue;
+    while (slot_->WaitTake(frame, metadata)) {
         ++active_workers_;
         struct BusyReset {std::atomic<uint32_t>& value;~BusyReset(){--value;}} reset{active_workers_};
         HV_ObservationFrameV1 next{};
@@ -125,7 +158,8 @@ void RuntimeHost::Run(uint32_t index) {
         input.struct_size = sizeof(input); input.api_version = HV_PLUGIN_API_V1;
         input.frame = {sizeof(HV_VideoFrame), frame.width, frame.height, frame.stride_bytes,
             frame.pixel_format, frame.frame_id, frame.timestamp_us, frame.bytes.data(), static_cast<int32_t>(frame.bytes.size())};
-        input.rois=metadata.count?metadata.rois.data():nullptr;input.roi_count=metadata.count;
+        input.rois = metadata.roi_count ? metadata.rois.data() : nullptr;
+        input.roi_count = metadata.roi_count;
         HV_PipelineOutputV1 output{};
         output.struct_size = sizeof(output); output.api_version = HV_PLUGIN_API_V1;
         output.bodies = next.bodies; output.body_capacity = max_bodies_;
@@ -151,7 +185,11 @@ void RuntimeHost::Run(uint32_t index) {
             ++late_drops_;continue;
         }
         next.sequence=++sequence_;
-        result_ = next;diagnostics_=diagnostics;result_revision_=metadata.revision;has_result_ = true; error_.clear();
+        result_ = next;
+        result_envelope_ = metadata.envelope;
+        diagnostics_ = diagnostics;
+        has_result_ = true;
+        error_.clear();
     }
 }
 }
