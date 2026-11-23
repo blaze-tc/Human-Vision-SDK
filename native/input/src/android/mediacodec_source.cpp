@@ -4,6 +4,7 @@
 #include "native_vulkan_image_service.h"
 #include "native_decode_metadata.h"
 #include "input_h264_color.h"
+#include "input_dimensions.h"
 #include "input_frame_ring.h"
 #include "input_diagnostic_sampling.h"
 #include "input_decode_timing.h"
@@ -123,11 +124,24 @@ void Session::Decode() {
   for(unsigned i=0;i<r.format->nb_streams;++i) if(r.format->streams[i]->codecpar->codec_type==AVMEDIA_TYPE_VIDEO) {stream=i;break;}
   if(stream<0 || r.format->streams[stream]->codecpar->codec_id!=AV_CODEC_ID_H264) {fail("RTSP stream must be H264",AVERROR_INVALIDDATA);return;}
   auto* params=r.format->streams[stream]->codecpar;
+  int initial_width=params->width,initial_height=params->height;
+  if(!max_width && params->extradata_size>0) {
+    int visible_w=0,visible_h=0;
+    if(ParseH264Geometry(params->extradata,size_t(params->extradata_size),visible_w,visible_h)) {
+      initial_width=visible_w;initial_height=visible_h;
+    }
+  }
+  uint32_t decoder_width=0,decoder_height=0;
+  if(!ResolveInputDecoderHint(max_width,max_height,
+      initial_width>0?uint32_t(initial_width):0,initial_height>0?uint32_t(initial_height):0,
+      decoder_width,decoder_height)) {
+    fail("original-size decoder requires valid H264 source geometry up to 4096 per axis",AVERROR_INVALIDDATA);return;
+  }
   H264Color declared{};bool valid_sps=ParseH264Color(params->extradata,params->extradata_size>0?size_t(params->extradata_size):0,declared);
   if((production||ColorProbeEnabled())&&params->extradata_size>0&&!valid_sps){fail("H264 SPS color contract malformed or unsupported",AVERROR_INVALIDDATA);return;}
   __android_log_print(ANDROID_LOG_INFO,"HVInputGate","source_h264_vui valid_sps=%d present=%d matrix=%u range=%u matrix_code=%u primaries=%u transfer=%u demux_av_colorspace=%d demux_av_range=%d metadata_domain=H264_SPS_VUI",valid_sps,declared.present,declared.matrix,declared.range,declared.matrix_code,declared.primaries,declared.transfer,params->color_space,params->color_range);
   ANativeWindow* window=nullptr;
-  status=AImageReader_newWithUsage(max_width,max_height,AIMAGE_FORMAT_PRIVATE,AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE,reader_depth,&r.reader);
+  status=AImageReader_newWithUsage(decoder_width,decoder_height,AIMAGE_FORMAT_PRIVATE,AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE,reader_depth,&r.reader);
   if(status==AMEDIA_OK)status=AImageReader_getWindow(r.reader,&window);
   if(status!=AMEDIA_OK) {fail("PRIVATE GPU sampled ImageReader",status);return;}
   if(production||ColorProbeEnabled()) {
@@ -146,8 +160,8 @@ void Session::Decode() {
   r.configuration=AMediaFormat_new();
   if(!r.codec || !r.configuration) {fail("create selected hardware AVC codec",AVERROR_DECODER_NOT_FOUND);return;}
   AMediaFormat_setString(r.configuration,AMEDIAFORMAT_KEY_MIME,"video/avc");
-  AMediaFormat_setInt32(r.configuration,AMEDIAFORMAT_KEY_WIDTH,max_width);
-  AMediaFormat_setInt32(r.configuration,AMEDIAFORMAT_KEY_HEIGHT,max_height);
+  AMediaFormat_setInt32(r.configuration,AMEDIAFORMAT_KEY_WIDTH,decoder_width);
+  AMediaFormat_setInt32(r.configuration,AMEDIAFORMAT_KEY_HEIGHT,decoder_height);
   if(params->extradata_size>0) AMediaFormat_setBuffer(r.configuration,"csd-0",params->extradata,params->extradata_size);
   status=AMediaCodec_configure(r.codec,r.configuration,window,nullptr,0);
   if(status!=AMEDIA_OK) {fail("configure hardware PRIVATE Surface",status);return;}

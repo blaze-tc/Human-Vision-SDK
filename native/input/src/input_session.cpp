@@ -1,4 +1,5 @@
 #include "input_internal.h"
+#include "input_dimensions.h"
 #include "humanvision_input_native.h"
 #include "humanvision_input_live.h"
 #include <cstdio>
@@ -139,8 +140,8 @@ static int OpenInput(const HV_InputOptions *o, HV_InputHandle *out,
     return HV_INPUT_INVALID;
   *out = nullptr;
   if (!Valid(o) || !o->url || std::strncmp(o->url, "rtsp://", 7) != 0 ||
-      o->max_width < 1 || o->max_height < 1 || o->max_width > 4096 ||
-      o->max_height > 4096 || o->timeout_ms < 100 || o->timeout_ms > 60000 ||
+      !hvinput::ValidInputBounds(o->max_width, o->max_height) ||
+      o->timeout_ms < 100 || o->timeout_ms > 60000 ||
       o->reconnect_delay_ms > 60000 || o->transport_tcp > 1)
     return HV_INPUT_INVALID;
   try {

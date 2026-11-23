@@ -11,11 +11,17 @@ typedef struct HV_InputLiveConsumerOpaque *HV_InputLiveHandle;
 typedef void (HV_INPUT_CALL *HV_InputLiveRenderEvent)(int event_id, void *consumer);
 typedef struct HV_InputLiveConfigV1 {
   uint32_t size, version;
+  /* Paired zero preserves the actual visible crop after rotation, not the
+     coded AHB extent or model size. Positive bounds are an explicit resize.
+     Original extents beyond 4096/axis and allocation failures report an error;
+     they are never replaced by a smaller purported original frame. */
   uint32_t max_width, max_height, rotation_degrees, mirror_x, enabled, reserved;
 } HV_InputLiveConfigV1;
 typedef struct HV_InputLiveGeometryV1 {
   uint32_t size, version;
   uint64_t generation;
+  /* source_* is the coded AHB allocation extent; width/height is the actual
+     visible-crop texture extent after the configured rotation. */
   uint32_t source_width, source_height, width, height;
   uint32_t rotation_degrees, mirror_x;
 } HV_InputLiveGeometryV1;
@@ -43,6 +49,7 @@ typedef struct HV_InputSourceProgressV1 {
   uint64_t generation, decoded_frames, acquired_frames, live_published_frames;
   uint64_t analysis_published_frames, analysis_claimed_frames, live_dropped_frames;
   int64_t timestamp_us; /* Input monotonic clock, not sensor/Runtime time. */
+  /* source_* is coded allocation geometry; live_* is actual visible output. */
   uint32_t state, source_width, source_height, live_width, live_height;
   uint32_t live_enabled, live_available, reserved;
 } HV_InputSourceProgressV1;

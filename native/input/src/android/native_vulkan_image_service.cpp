@@ -56,9 +56,17 @@ struct NativeVulkanImageService::State {
       if(closing)break;
       const auto config=live_config;const auto revision=live_revision;
       NativeLiveFit fit{};
-      bool live=config.enabled&&live_error.empty()&&FitNativeLive(
-        uint32_t(pending.crop_right-pending.crop_left),uint32_t(pending.crop_bottom-pending.crop_top),
-        config.rotation_degrees,config.max_width,config.max_height,fit);
+      bool live=false;
+      if(config.enabled&&live_error.empty()) {
+        live=FitNativeLive(uint32_t(pending.crop_right-pending.crop_left),
+          uint32_t(pending.crop_bottom-pending.crop_top),config.rotation_degrees,
+          config.max_width,config.max_height,fit);
+        if(!live) {
+          live_error="Original live visible extent exceeds supported 4096 per axis; no reduced preview was published";
+          live_available=false;
+          live_slots.Invalidate();
+        }
+      }
       const bool resize=live&&(gpu.LiveWidth()!=fit.width||gpu.LiveHeight()!=fit.height);
       if(resize) {
         live_slots.Invalidate();
@@ -298,11 +306,9 @@ int NativeVulkanImageService::Release(uint32_t i, uint64_t gen, uint64_t seq) {
 int NativeVulkanImageService::ConfigureLive(const HV_InputLiveConfigV1& config,
                                             std::string& error) {
   if(config.size<sizeof(config)||config.version!=1||config.reserved||
-     !config.max_width||!config.max_height||config.max_width>4096||config.max_height>4096||
-     uint64_t(config.max_width)*config.max_height>1920u*1080u||config.enabled>1||config.mirror_x>1||
-     (config.rotation_degrees!=0&&config.rotation_degrees!=90&&
-      config.rotation_degrees!=180&&config.rotation_degrees!=270)) {
-    error="Native live requires V1, bounded1080p geometry and a supported rotation/mirror";
+     !ValidNativeLiveOptions(config.max_width,config.max_height,config.rotation_degrees,
+                             config.mirror_x,config.enabled,config.reserved)) {
+    error="Native live requires V1, paired zero original bounds or positive bounds up to 4096, and supported rotation/mirror";
     return HV_INPUT_INVALID;
   }
   auto& s=*state_;std::lock_guard<std::mutex> lock(s.mutex);

@@ -1,6 +1,7 @@
 #include "humanvision_input_live.h"
 #include "input_internal.h"
 #include "live_bridge_state.h"
+#include "native_live_contract.h"
 #include <algorithm>
 #include <array>
 #include <cstdio>
@@ -16,9 +17,8 @@
 
 namespace {
 template<class T> bool Valid(const T* p){return p&&p->size==sizeof(T)&&p->version==1;}
-bool ConfigValid(const HV_InputLiveConfigV1* p){return Valid(p)&&p->max_width&&p->max_height&&p->max_width<=4096&&p->max_height<=4096&&
- uint64_t(p->max_width)*p->max_height<=1920u*1080u&&p->enabled<=1&&p->mirror_x<=1&&!p->reserved&&
- (p->rotation_degrees==0||p->rotation_degrees==90||p->rotation_degrees==180||p->rotation_degrees==270);}
+bool ConfigValid(const HV_InputLiveConfigV1* p){return Valid(p)&&hvinput::ValidNativeLiveOptions(
+ p->max_width,p->max_height,p->rotation_degrees,p->mirror_x,p->enabled,p->reserved);}
 }
 #ifdef __ANDROID__
 struct HV_InputLiveConsumerOpaque {

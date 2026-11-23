@@ -1,4 +1,5 @@
 #include "input_internal.h"
+#include "input_dimensions.h"
 #include <algorithm>
 namespace hvinput {
 void Session::Publish(AVFrame *frame, SwsContext *&scaler, AVRational time_base,
@@ -7,10 +8,15 @@ void Session::Publish(AVFrame *frame, SwsContext *&scaler, AVRational time_base,
     SetError("invalid decoded geometry", AVERROR_INVALIDDATA);
     return;
   }
-  double scale = std::min(1.0, std::min(double(max_width) / frame->width,
-                                        double(max_height) / frame->height));
-  int width = std::max(1, int(frame->width * scale)),
-      height = std::max(1, int(frame->height * scale));
+  uint32_t output_width = 0, output_height = 0;
+  if (!FitInputDimensions(uint32_t(frame->width), uint32_t(frame->height),
+                          max_width, max_height, output_width, output_height)) {
+    SetError("original RGBA visible extent exceeds supported 4096 per axis", AVERROR(ENOSYS));
+    SetDecoderState(HV_INPUT_FAILED);
+    stop = true;
+    return;
+  }
+  const int width = int(output_width), height = int(output_height);
   scaler = sws_getCachedContext(scaler, frame->width, frame->height,
                                 static_cast<AVPixelFormat>(frame->format),
                                 width, height, AV_PIX_FMT_RGBA, SWS_BILINEAR,

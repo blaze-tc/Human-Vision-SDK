@@ -42,6 +42,9 @@ enum {
 typedef struct HV_InputOptions {
   uint32_t size, version;
   const char *url;
+  /* Paired zero preserves the source's visible resolution (up to 4096/axis).
+     Positive bounds explicitly request legacy reduced output. Partial zero is
+     invalid. Android uses real H264 dimensions for positive decoder hints. */
   uint32_t max_width, max_height, timeout_ms, reconnect_delay_ms, transport_tcp;
 } HV_InputOptions;
 typedef struct HV_InputFrameInfo {

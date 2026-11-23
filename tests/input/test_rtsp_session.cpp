@@ -174,6 +174,8 @@ void ColorContractAdvancesGeneration();
 void PrimariesOnlyChangeAdvancesGeneration();
 void ClosingWaitsForCopy();
 void LegacyRtspAbi();
+void OriginalResolutionOptions();
+void OriginalResolutionFrames();
 int main(int argc, char **argv) {
   try {
     CHECK(argc == 2);
@@ -186,7 +188,11 @@ int main(int argc, char **argv) {
       ErrorsRedactCredentials();
     else if (n == "VersionAndClock")
       VersionAndClock();
+    else if (n == "OriginalResolutionOptions")
+      OriginalResolutionOptions();
 #ifdef HV_INPUT_POLICY_TESTS
+    else if (n == "OriginalResolutionFrames")
+      OriginalResolutionFrames();
     else if (n == "ColorContractAdvancesGeneration")
       ColorContractAdvancesGeneration();
     else if (n == "PrimariesOnlyChangeAdvancesGeneration")
@@ -208,8 +214,66 @@ int main(int argc, char **argv) {
     return 1;
   }
 }
+void OriginalResolutionOptions() {
+  auto url = std::string("rtsp://127.0.0.1:1/test");
+  auto options = Options(url);
+  HV_InputHandle source = nullptr;
+  options.max_width = options.max_height = 0;
+  CHECK(HV_Input_Open(&options, &source) == HV_INPUT_OK);
+  CHECK(source != nullptr);
+  Retire(source);
+  options.max_height = 1080;
+  source = nullptr;
+  CHECK(HV_Input_Open(&options, &source) == HV_INPUT_INVALID && source == nullptr);
+  options.max_width = 1920; options.max_height = 0;
+  CHECK(HV_Input_Open(&options, &source) == HV_INPUT_INVALID && source == nullptr);
+}
 #ifdef HV_INPUT_POLICY_TESTS
 #include "input_internal.h"
+void OriginalResolutionFrames() {
+  HV_InputSessionOpaque session;
+  session.max_width = session.max_height = 0;
+  session.info.generation = 1;
+  SwsContext* converter = nullptr;
+  for (auto dimensions : {std::array<int,2>{1920,1080}, std::array<int,2>{3840,2160}}) {
+    AVFrame* frame = av_frame_alloc(); CHECK(frame);
+    frame->width = dimensions[0]; frame->height = dimensions[1];
+    frame->format = AV_PIX_FMT_RGBA;
+    CHECK(av_frame_get_buffer(frame, 32) == 0);
+    const std::array<uint8_t,4> first{19,37,61,255}, last{151,173,197,255};
+    std::memcpy(frame->data[0], first.data(), 4);
+    std::memcpy(frame->data[0] + (frame->height-1)*frame->linesize[0] + (frame->width-1)*4, last.data(), 4);
+    session.Publish(frame, converter, AVRational{1,1000}, 1);
+    CHECK(session.info.width == uint32_t(frame->width) && session.info.height == uint32_t(frame->height));
+    CHECK(session.info.stride_bytes == uint32_t(frame->width)*4);
+    CHECK(session.latest.size() == size_t(frame->width)*frame->height*4);
+    CHECK(std::memcmp(session.latest.data(), first.data(), 4) == 0);
+    CHECK(std::memcmp(session.latest.data()+session.latest.size()-4, last.data(),4) == 0);
+    av_frame_free(&frame);
+  }
+  // Positive legacy bounds still explicitly request a reduced image.
+  session.max_width=512; session.max_height=288;
+  AVFrame* frame=av_frame_alloc(); CHECK(frame);
+  frame->width=1920; frame->height=1080; frame->format=AV_PIX_FMT_RGBA;
+  CHECK(av_frame_get_buffer(frame,32)==0);
+  session.Publish(frame,converter,AVRational{1,1000},2);
+  CHECK(session.info.width==512 && session.info.height==288);
+  av_frame_free(&frame); sws_freeContext(converter);
+  session.max_width=session.max_height=0;
+  frame=av_frame_alloc(); CHECK(frame);
+  frame->width=7680;frame->height=4320;frame->format=AV_PIX_FMT_RGBA;
+  converter=nullptr;
+  session.Publish(frame,converter,AVRational{1,1000},3);
+  CHECK(session.stop && session.state==HV_INPUT_FAILED);
+  CHECK(session.error.find("original RGBA visible extent exceeds")!=std::string::npos);
+  CHECK(converter==nullptr); // No allocation or replacement with reduced pixels.
+  HV_InputSessionOpaque closing;
+  closing.max_width=closing.max_height=0;
+  closing.stop=true;closing.state=HV_INPUT_CLOSING;
+  closing.Publish(frame,converter,AVRational{1,1000},4);
+  CHECK(closing.state==HV_INPUT_CLOSING); // Late decoder errors cannot undo Close.
+  av_frame_free(&frame);
+}
 using PixelPattern = std::array<uint8_t, 16>;
 void SetPixels(AVFrame *frame, const PixelPattern &pattern) {
   for (int row = 0; row < 2; ++row)

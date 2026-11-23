@@ -25,6 +25,26 @@ int main() {
   CHECK(!CanConfigureNativeLiveMetadata(false,true,false,true,false));
   CHECK(!CanConfigureNativeLiveMetadata(false,true,false,false,true));
   NativeLiveFit fit{};
+  // Zero bounds mean the actual visible crop, never a model or 1080p cap.
+  CHECK(FitNativeLive(1920,1080,0,0,0,fit) && fit.width==1920 && fit.height==1080);
+  CHECK(FitNativeLive(3840,2160,0,0,0,fit) && fit.width==3840 && fit.height==2160);
+  CHECK(FitNativeLive(4096,2160,0,0,0,fit) && fit.width==4096 && fit.height==2160);
+  CHECK(FitNativeLive(1920,1080,90,0,0,fit) && fit.width==1080 && fit.height==1920);
+  CHECK(!FitNativeLive(7680,4320,0,0,0,fit)); // Explicit unsupported; never downsample original mode.
+  CHECK(!FitNativeLive(1920,1080,0,1920,0,fit));
+  CHECK(ValidNativeLiveOptions(0,0,0,0,1,0));
+  CHECK(ValidNativeLiveOptions(3840,2160,0,0,1,0));
+  CHECK(ValidNativeLiveOptions(4096,2160,90,1,1,0));
+  CHECK(!ValidNativeLiveOptions(0,1080,0,0,1,0));
+  CHECK(!ValidNativeLiveOptions(5000,3000,0,0,1,0));
+  CHECK(!ValidNativeLiveOptions(0,0,45,0,1,0));
+  CHECK(!ValidNativeLiveOptions(0,0,0,0,1,1));
+  uint32_t decoder_width=0,decoder_height=0;
+  CHECK(ResolveInputDecoderHint(0,0,1920,1080,decoder_width,decoder_height) && decoder_width==1920 && decoder_height==1080);
+  CHECK(ResolveInputDecoderHint(0,0,3840,2160,decoder_width,decoder_height) && decoder_width==3840 && decoder_height==2160);
+  CHECK(ResolveInputDecoderHint(512,288,1920,1080,decoder_width,decoder_height) && decoder_width==512 && decoder_height==288);
+  CHECK(!ResolveInputDecoderHint(0,0,0,0,decoder_width,decoder_height));
+  CHECK(!ResolveInputDecoderHint(0,1080,1920,1080,decoder_width,decoder_height));
   CHECK(FitNativeLive(1920,1080,0,1920,1080,fit) && fit.width==1920 && fit.height==1080);
   CHECK(FitNativeLive(3840,2160,0,1920,1080,fit) && fit.width==1920 && fit.height==1080);
   CHECK(FitNativeLive(1920,1080,90,1920,1080,fit) && fit.width==607 && fit.height==1080);

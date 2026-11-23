@@ -1,5 +1,27 @@
 # Independent input native plugin
 
+## Original source resolution
+
+Paired `max_width=max_height=0` in `HV_InputOptions` preserves the decoded
+visible source size. Positive bounds keep the legacy explicit resize behavior;
+a partial zero is invalid. Windows converts the actual frame to RGBA without
+spatial scaling in original mode. Android initializes its ImageReader/codec
+with real H.264 source geometry from the same RTSP session (SPS/codec parameters),
+never zero or a fabricated one-pixel hint. Missing/unsupported geometry fails
+with an actionable error. No second decoder or CPU-plane readback is introduced.
+
+`HV_InputLiveConfigV1` uses the same paired-zero convention for independent live
+preview. It samples the actual visible crop, then applies the declared rotation;
+coded AHB padding (for example 1920x1088 around a 1920x1080 image) is not preview
+content. This mode keeps 3840x2160 and 4096x2160 output at their source size, while
+the separately configured analysis lane may remain 512x288. The API supports a
+maximum 4096 pixels per output axis; larger original images report unsupported
+rather than being silently reduced. Actual device format/extent/allocation
+failures are reported through the live error channel and disable live availability,
+without stopping a healthy analysis lane. The three live targets and scratch image
+still require their full real allocations and observed GPU fences. Host tests
+establish geometry/ownership contracts, not 4K hardware performance acceptance.
+
 ## Independent live GPU preview (candidate 2026-11-23)
 
 `include/humanvision_input_live.h` adds a versioned function table without
