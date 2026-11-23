@@ -172,6 +172,16 @@ namespace HumanVision.Input
             }
             return false;
         }
+        internal void ReleaseMatchedFrame(in HumanVisionTextureFrame frame) {
+            if (protectedSlot < 0 || frame.SourceId != sourceId) return;
+            var slot = slots[protectedSlot];
+            if (slot.Sequence == 0 || slot.Frame.FrameId != frame.FrameId || slot.Frame.Generation != frame.Generation ||
+                slot.Frame.ResourceToken != frame.ResourceToken || slot.Texture != frame.Texture) return;
+            // Dropping presentation retention is not GPU completion. The normal
+            // release path must observe a new sampling fence and all copy leases.
+            slot.FenceArmed = false;
+            protectedSlot = -1;
+        }
         internal bool TryAcquireSourceCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease) {
             lease = default;
             if (stopping || failed || retiringTargets || frame.SourceId != sourceId) return false;

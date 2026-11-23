@@ -211,6 +211,15 @@ namespace HumanVision.Demo
             }
             return false;
         }
+        internal void ReleaseMatchedFrame(in HumanVisionTextureFrame frame)
+        {
+            if (realtime) { live?.ReleaseMatchedFrame(in frame); return; }
+            if (closed || protectedSlot < 0) return;
+            var slot = slots[protectedSlot];
+            if (slot.Published && slot.Texture == frame.Texture && slot.Frame.ResourceToken == frame.ResourceToken &&
+                slot.Frame.FrameId == frame.FrameId && slot.Frame.SourceId == frame.SourceId && slot.Frame.Generation == frame.Generation)
+                protectedSlot = -1;
+        }
         public bool TryAcquireSourceCopyLease(in HumanVisionTextureFrame frame, out SourceCopyLease lease)
         { lease = default; return realtime && live != null && live.TryAcquireSourceCopyLease(in frame, out lease); }
         public void Close()

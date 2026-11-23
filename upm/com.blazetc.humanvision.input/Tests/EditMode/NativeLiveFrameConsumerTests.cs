@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using HumanVision.Input;
 using NUnit.Framework;
 using UnityEngine;
@@ -9,16 +10,17 @@ namespace HumanVision.Input.Tests
 {
 public sealed class NativeLiveFrameConsumerTests
 {
-private sealed class Fence:ILiveSamplingFence,ISourceCopyFence {internal bool Complete=true;public void Arm(){}public bool IsComplete=>Complete;}
+private sealed class Fence:ILiveSamplingFence,ISourceCopyFence {internal bool Complete=true;internal int Arms;public void Arm(){++Arms;}public bool IsComplete=>Complete;}
 private sealed class Backend:INativeLiveConsumerApi {
  internal ulong SourceSequence,Generation=1,Target,Clock=42;internal uint Color=1;internal int BindCount,CloseCount,Pumps,Callbacks;internal bool DeferCallbacks;internal bool Retiring,Closed,Released,FailBind;
  internal readonly bool[] Held=new bool[3],Ready=new bool[3];internal readonly NativeLiveTextureFrame[] Frames=new NativeLiveTextureFrame[3];internal int next;
+ internal readonly List<ulong> ReleasedSequences=new List<ulong>();
  public InputSourceState State=>InputSourceState.Streaming;public string LastError=>"";
  public bool TryGetGeometry(out NativeLiveGeometry g){g=new NativeLiveGeometry{Generation=Generation,SourceWidth=1920,SourceHeight=1080,Width=2,Height=2};return true;}
  public int BindTargets(IntPtr[] textures,uint width,uint height,ulong token){BindCount++;Target=token;Retiring=false;for(int i=0;i<3;i++)Ready[i]=false;return FailBind?-3:0;}
  internal void Produce(int count=1){for(int n=0;n<count;n++){SourceSequence++;if(Target==0||Retiring||Closed)continue;for(int k=0;k<3;k++){int i=(next+k)%3;if(Held[i])continue;Frames[i]=new NativeLiveTextureFrame{Sequence=SourceSequence,Generation=Generation,TargetGeneration=Target,Slot=(uint)i,Width=2,Height=2,SourceWidth=1920,SourceHeight=1080,ClockId=Clock,DecodedTimestampUs=(long)SourceSequence*100,PresentationTimestampUs=-1,RowOrigin=0,ColorSpace=Color};Ready[i]=true;next=(i+1)%3;break;}}}
  public bool TryPoll(ulong after,out NativeLiveTextureFrame frame){frame=default;int pick=-1;for(int i=0;i<3;i++)if(Ready[i]&&!Held[i]&&Frames[i].Sequence>after&&(pick<0||Frames[i].Sequence>Frames[pick].Sequence))pick=i;if(pick<0)return false;frame=Frames[pick];Held[pick]=true;Ready[pick]=false;return true;}
- public int ReleaseSlot(uint slot,ulong token,ulong sequence){if(!Held[slot]||Frames[slot].TargetGeneration!=token||Frames[slot].Sequence!=sequence)return -1;Held[slot]=false;return 0;}
+ public int ReleaseSlot(uint slot,ulong token,ulong sequence){if(!Held[slot]||Frames[slot].TargetGeneration!=token||Frames[slot].Sequence!=sequence)return -1;Held[slot]=false;ReleasedSequences.Add(sequence);return 0;}
  public int RetireTargets(){Retiring=true;for(int i=0;i<3;i++)Ready[i]=false;return 0;}
  public bool TargetsRetired=>Retiring&&!Held[0]&&!Held[1]&&!Held[2];
  public int Close(){CloseCount++;Closed=true;return 0;}public bool TryRelease(){if(!TargetsRetired||Callbacks>0)return false;Released=true;return true;}
@@ -60,6 +62,50 @@ private sealed class Backend:INativeLiveConsumerApi {
  [Test] public void CopyAndSamplingFencesDelayTargetReleaseAndClose()
  {
   var b=new Backend();var f=new[]{new Fence(),new Fence(),new Fence()};var c=Consumer(b,f);c.Tick();c.Tick();c.TryGetLatestFrame(-1,out var first);Check(c.TryAcquireSourceCopyLease(in first,out var lease),"no copy lease");var copy=NewFence(false);lease.RetireAfter(copy);for(int i=0;i<6;i++)c.Tick();for(int i=0;i<3;i++)f[i].Complete=false;c.Close();c.Tick();Check(c.Pending&&!b.Released,"unproved close released");copy.Complete=true;for(int i=0;i<3;i++)f[i].Complete=true;c.Tick();Check(!c.Pending&&b.Released,"proved close did not retire");
+ }
+
+ [Test] public void ClearingMatchedProtectionWaitsForSamplingAndQueuedCopyBeforeReturningSlot()
+ {
+  var backend=new Backend();var sampling=new[]{new Fence(),new Fence(),new Fence()};
+  var consumer=Consumer(backend,sampling);consumer.Tick();consumer.Tick();
+  Assert.That(consumer.TryGetLatestFrame(-1,out var photo),Is.True);
+  Assert.That(consumer.ProtectMatchedFrame(in photo),Is.True);
+  int index=Array.FindIndex(backend.Frames,x=>x.Sequence==(ulong)photo.FrameId);
+  Assert.That(consumer.TryAcquireSourceCopyLease(in photo,out var copy),Is.True);
+  var copyFence=NewFence(false);copy.RetireAfter(copyFence);
+  for(int i=0;i<6;i++)consumer.Tick();
+  sampling[index].Complete=false;ReleaseMatchedProtection(consumer,in photo);
+  for(int i=0;i<3;i++)consumer.Tick();
+  Assert.That(sampling[index].Arms,Is.GreaterThan(0),"Cleared presentation must re-arm GPU sampling retirement.");
+  Assert.That(backend.ReleasedSequences.Contains((ulong)photo.FrameId),Is.False);
+  sampling[index].Complete=true;consumer.Tick();
+  Assert.That(backend.ReleasedSequences.Contains((ulong)photo.FrameId),Is.False,"A queued copy still owns the pixels.");
+  copyFence.Complete=true;consumer.Tick();
+  Assert.That(backend.ReleasedSequences.Contains((ulong)photo.FrameId),Is.True,"Finished photo retention must return its live target without restarting input.");
+  Assert.That(consumer.TryGetLatestFrame(photo.FrameId,out _),Is.True);
+ }
+
+ [Test] public void ClearingAnOldPhotoCannotUnprotectItsReplacementOrANewGeneration()
+ {
+  var backend=new Backend();var consumer=Consumer(backend);consumer.Tick();consumer.Tick();
+  consumer.TryGetLatestFrame(-1,out var old);Assert.That(consumer.ProtectMatchedFrame(in old),Is.True);
+  for(int i=0;i<3;i++)consumer.Tick();consumer.TryGetLatestFrame(-1,out var replacement);
+  Assert.That(consumer.ProtectMatchedFrame(in replacement),Is.True);
+  ReleaseMatchedProtection(consumer,in old);for(int i=0;i<6;i++)consumer.Tick();
+  Assert.That(backend.ReleasedSequences.Contains((ulong)replacement.FrameId),Is.False);
+  backend.Generation=2;for(int i=0;i<5;i++)consumer.Tick();
+  Assert.That(consumer.TryGetLatestFrame(-1,out var nextGeneration),Is.True);
+  Assert.That(consumer.ProtectMatchedFrame(in nextGeneration),Is.True);
+  ReleaseMatchedProtection(consumer,in replacement);for(int i=0;i<6;i++)consumer.Tick();
+  Assert.That(backend.ReleasedSequences.Contains((ulong)nextGeneration.FrameId),Is.False);
+ }
+
+ private static void ReleaseMatchedProtection(NativeLiveFrameConsumer consumer,in HumanVisionTextureFrame frame)
+ {
+  // Missing retirement notification on the previous implementation leaves the
+  // target pinned; keep that version runnable for a behavioral RED regression.
+  typeof(NativeLiveFrameConsumer).GetMethod("ReleaseMatchedFrame",BindingFlags.Instance|BindingFlags.NonPublic)
+   ?.Invoke(consumer,new object[]{frame});
  }
 
  [Test] public void PreviewDisabledDoesNotStopSourceOrAllocateTargets()

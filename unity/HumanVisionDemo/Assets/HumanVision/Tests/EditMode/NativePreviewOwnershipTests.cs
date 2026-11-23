@@ -115,6 +115,37 @@ namespace HumanVision.Tests
                 Assert.That(source.CurrentTexture, Is.Null); Assert.That(source.State, Is.EqualTo(InputSourceState.Streaming));
             } finally { DestroySource(owner, source); }
         }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ClearingRuntimePresentationReturnsItsMatchedSourceProtection(bool disableComponent)
+        {
+            var owner = new GameObject("finished exact presentation"); owner.SetActive(false);
+            var sdk = owner.AddComponent<HumanVisionSdk>();
+            var source = owner.AddComponent<HumanVisionNativeFrameSource>();
+            var view = owner.AddComponent<HumanVisionRuntimeView>();
+            source.Configure(new Reader(), true, false);
+            _ = InputMonotonicClock.NowUs; Thread.Sleep(10);
+            try {
+                source.Tick(); Assert.That(source.TryGetLatestFrame(-1, out var photo), Is.True);
+                typeof(HumanVisionSdk).GetField("source", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(sdk, source);
+                typeof(HumanVisionRuntimeView).GetProperty("Sdk").SetValue(view, sdk);
+                view.PresentationMode = HumanVisionRuntimePresentationMode.MatchedColor;
+                Publish(source, photo);
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                typeof(HumanVisionRuntimeView).GetField("published", flags).SetValue(view, true);
+                typeof(HumanVisionRuntimeView).GetField("current", flags).SetValue(view,
+                    new HumanVisionPresentedFrame(photo.SourceId, photo.Generation, photo.FrameId, photo.FrameId, 1, 1, 0, photo.Texture, null));
+                // The old view did not remember which source frame it protected.
+                typeof(HumanVisionRuntimeView).GetField("currentInput", flags)?.SetValue(view, photo);
+                var protectedSlot = typeof(HumanVisionNativeFrameSource).GetField("protectedSlot", flags);
+                Assert.That((int)protectedSlot.GetValue(source), Is.GreaterThanOrEqualTo(0));
+                if (disableComponent) typeof(HumanVisionRuntimeView).GetMethod("OnDisable", flags).Invoke(view, null);
+                else view.PresentationMode = HumanVisionRuntimePresentationMode.Disabled;
+                Assert.That((int)protectedSlot.GetValue(source), Is.EqualTo(-1),
+                    "A cleared or disabled exact view must stop retaining a live preview slot.");
+            } finally { DestroySource(owner, source); }
+        }
         private static void DestroySource(GameObject owner, HumanVisionNativeFrameSource source)
         {
             var slots = (Array)typeof(HumanVisionNativeFrameSource).GetField("slots", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(source);

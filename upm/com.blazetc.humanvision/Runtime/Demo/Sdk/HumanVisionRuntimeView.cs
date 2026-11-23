@@ -49,6 +49,7 @@ namespace HumanVision
         [SerializeField] private Camera offscreenCamera;
         private HumanVisionRuntimeDrawing drawing;
         private HumanVisionPresentedFrame current;
+        private HumanVisionTextureFrame currentInput;
         private VideoPlayerFrameSource currentBridge;
         private long currentRevision;
         private double lastComposedAt;
@@ -234,6 +235,7 @@ namespace HumanVision
                 sequence, Sdk.SourceTimestampUs, count, color, drawing.Target);
             if (!Sdk.ProtectRuntimeViewColor(in input)) { ClearFrame(false); return; }
             current = next;
+            currentInput = input;
             currentBridge = Sdk.FrameBridge;
             currentRevision = Sdk.RecognitionRevision;
             currentWidth = input.Width;
@@ -248,8 +250,9 @@ namespace HumanVision
 
         private void ClearFrame(bool release)
         {
+            Sdk?.ReleaseRuntimeViewColor(in currentInput);
             if (published || release && drawing?.Target != null) drawing?.Clear(release);
-            current = default; currentBridge = null; published = pairAvailable = false;
+            current = default; currentInput = default; currentBridge = null; published = pairAvailable = false;
         }
 
         private void OnDisable() => ClearFrame(true);

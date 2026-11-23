@@ -213,6 +213,10 @@ namespace HumanVision
         }
         internal bool ProtectRuntimeViewColor(in HumanVisionTextureFrame frame) =>
             !(source is HumanVisionNativeFrameSource native) || native.ProtectMatchedFrame(in frame);
+        internal void ReleaseRuntimeViewColor(in HumanVisionTextureFrame frame)
+        {
+            if (source is HumanVisionNativeFrameSource native) native.ReleaseMatchedFrame(in frame);
+        }
         // 必须与当前会话返回的身体/关节观测时间使用同一时钟域。
         private long NowUs => manager != null && manager.UsesRuntimeProfile && !manager.UsesAndroidGpuFrames
             ? HumanVision.Interop.RuntimeBindings.HV_RuntimeClockUs()
