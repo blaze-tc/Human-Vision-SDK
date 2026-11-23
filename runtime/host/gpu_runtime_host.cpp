@@ -138,6 +138,7 @@ void GpuRuntimeHost::Run(uint32_t index) {
         // pipeline calls remain independent. A source need not have multi-consumer
         // publication bookkeeping of its own.
         std::unique_lock<std::mutex> admission(source_claim_mutex_);
+        if (!AcceptingFrames()) break;
         const auto dropped = source_.ClaimDropped(frame);
         if (dropped == gpu::SlotResult::Ok) {
             ++superseded_ready_drops_;
@@ -146,6 +147,12 @@ void GpuRuntimeHost::Run(uint32_t index) {
         }
         const auto claimed = source_.Claim(frame);
         admission.unlock();
+        // A blocking claim can return a leased frame after Stop closes admission.
+        if (!AcceptingFrames()) {
+            if (frame.claimed && !source_.DrainUnsubmitted(frame) && frame.claimed)
+                source_.Quarantine(frame);
+            break;
+        }
         if (claimed != gpu::SlotResult::Ok) {
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
             continue;

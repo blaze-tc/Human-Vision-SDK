@@ -20,6 +20,7 @@ using namespace humanvision::gpu;
 namespace {
 struct FakeSource final : GpuConsumerSource {
     std::atomic<int> claims{0}, retires{0}, quarantines{0};
+    std::function<void()> before_ready_claim;
     uint32_t concurrency=1;void SetConcurrency(uint32_t count) noexcept override {concurrency=count;}
     std::atomic<bool> ready{false};
     bool stale_token = false;
@@ -35,6 +36,7 @@ struct FakeSource final : GpuConsumerSource {
     SlotResult Claim(ConsumerFrame& frame) noexcept override {
         if(quarantines.load())return SlotResult::Closed;
         if (ready.exchange(false)) {
+            if (before_ready_claim) before_ready_claim();
             if(capture_steady_us==0)capture_steady_us=std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count()-5000;
             SlotToken prepared{};
@@ -63,13 +65,18 @@ struct FakeSource final : GpuConsumerSource {
     }
     SlotResult Retire(ConsumerFrame& frame) noexcept override {
         if (!frame.claimed || frame.producer_fd.HasPayload() || !frame.ncnn_role_complete) return SlotResult::Invalid;
+        return ReturnSlot(frame);
+    }
+    SlotResult ReturnSlot(ConsumerFrame& frame) noexcept {
         if(ring.Transition(frame.token,AhbSlotState::InferenceRunning,AhbSlotState::ConsumerReleasePending)!=SlotResult::Ok ||
            ring.RetireConsumer(frame.token,CompletionProof::GpuQuiescent)!=SlotResult::Ok)return SlotResult::Invalid;
         frame.claimed = false; ++retires; return SlotResult::Ok;
     }
     void Quarantine(ConsumerFrame& frame) noexcept override { frame.claimed = false; ++quarantines; }
     bool DrainUnsubmitted(ConsumerFrame& frame) noexcept override {
-        frame.producer_fd.Reset(); frame.ncnn_role_complete = true; return Retire(frame) == SlotResult::Ok;
+        if (!frame.claimed || frame.producer_fd.State() != SyncPayloadState::AlreadySignaled) return false;
+        frame.producer_fd.Reset();
+        return ReturnSlot(frame) == SlotResult::Ok;
     }
     uint64_t Generation() const noexcept override { return ring.Generation(); }
     uint32_t Width() const noexcept override { return 320; }
@@ -471,6 +478,35 @@ TEST(RuntimeGpuComposition, V3ErrorsDoNotPublishOrFallback) {
     EXPECT_FALSE(host.CopyLatest(observation,revision));
     EXPECT_NE(host.LastError().find("run failed"),std::string::npos);
     host.Stop(); EXPECT_EQ(source.claims,1); EXPECT_EQ(source.retires,1);
+}
+
+TEST(RuntimeGpuComposition, StopDrainsFrameReturnedByBlockedClaimWithoutStartingInference) {
+    FakeSource source;
+    FakePipeline pipeline;
+    active = &pipeline;
+    GpuRuntimeHost host(source);
+    std::promise<void> entered;
+    auto claim_started = entered.get_future();
+    bool saw_stop = false;
+    source.before_ready_claim = [&] {
+        entered.set_value();
+        saw_stop = Await([&] { return !host.AcceptingFrames(); });
+    };
+    source.ready = true;
+    HV_PipelineConfigV1 config{sizeof(config), HV_PLUGIN_API_V1, 2};
+    HV_HostServicesV3 services{};
+    std::string error;
+    ASSERT_TRUE(host.Start(Module(), services, config, error)) << error;
+    EXPECT_EQ(claim_started.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+    host.Stop();
+    EXPECT_TRUE(saw_stop);
+    EXPECT_EQ(source.claims.load(), 1);
+    EXPECT_EQ(pipeline.processes.load(), 0);
+    EXPECT_EQ(source.retires.load(), 1);
+    EXPECT_EQ(source.quarantines.load(), 0);
+    SlotSnapshot slot{};
+    ASSERT_EQ(source.ring.Inspect(0, slot), SlotResult::Ok);
+    EXPECT_EQ(slot.state, AhbSlotState::Free);
 }
 
 TEST(RuntimeGpuComposition, StopAndRestartDrainClaimedSlotsExactlyOnce) {

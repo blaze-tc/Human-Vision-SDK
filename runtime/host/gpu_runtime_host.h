@@ -77,6 +77,7 @@ public:
     // Busy means executing the pipeline call (includes its waits), not hardware utilization.
     uint32_t WorkerCount() const noexcept { return worker_count_.load(); }
     uint32_t ActiveWorkers() const noexcept { return active_workers_.load(); }
+    bool AcceptingFrames() const noexcept { return running_.load(); }
     void Stop();
 private:
     void Run(uint32_t index);
