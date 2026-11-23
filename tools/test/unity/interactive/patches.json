@@ -1,0 +1,201 @@
+{
+  "version": 1,
+  "patches": [
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptance.cs",
+      "before": "5eaa91fdcacc640045ed5fce882f73523b3b70ac1c691ff2e40cba270a40afd5",
+      "after": "9b8d8ba6eadc76e5632a783a26fb425db7321376102336a98cfc3d32bb69a46b",
+      "replacements": [
+        [
+          "GUI.Label(new Rect(45, 674, 145, 33), \"区域数量\", body);",
+          "GUI.Label(new Rect(45, 674, 145, 33), \"人数上限\", body);"
+        ],
+        [
+          "if (showRegions && recognition != null) DrawRegions(image);",
+          "if (showRegions && recognition != null && recognition.UseRegions) DrawRegions(image);"
+        ],
+        [
+          "#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            if (!TryReadThermalAddress(out string address)) yield break;",
+          "#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            if (!automatedFixture) { yield return ConnectInteractive(requestedRecognition); yield break; }\n            if (!TryReadThermalAddress(out string address)) yield break;"
+        ],
+        [
+          "            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);\n            try { options.Validate(); }\n            catch (ArgumentException error) { status = error.Message; yield break; }",
+          "            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);\n            try {\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                ConfigureInteractiveOptions(options);\n#endif\n                options.Validate();\n            }\n            catch (ArgumentException error) { status = error.Message; yield break; }"
+        ],
+        [
+          "            maxBodies = recognition.MaxBodies;\n            nextBackendAt = 0;",
+          "            maxBodies = recognition.MaxBodies;\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            RememberInteractiveConfiguration();\n#endif\n            nextBackendAt = 0;"
+        ],
+        [
+          "            if (lines.Length != 2 || !int.TryParse(lines[1], out seconds)) return false;\n            address = lines[0];",
+          "            if ((lines.Length != 2 && lines.Length != 3) || !int.TryParse(lines[1], out seconds)) return false;\n            manualFixture = lines.Length == 3 && string.Equals(lines[2].Trim(), \"manual\", StringComparison.OrdinalIgnoreCase);\n            if (lines.Length == 3 && !manualFixture) return false;\n            address = lines[0];"
+        ],
+        [
+          "        private static ModelInputQuality QualityForCompute(bool android, HumanVisionAccelerationMode mode, ModelInputQuality quality) =>\n            android && mode == HumanVisionAccelerationMode.Cpu ? ModelInputQuality.Low : quality;",
+          "        private static ModelInputQuality QualityForCompute(bool android, HumanVisionAccelerationMode mode, ModelInputQuality quality) => quality;"
+        ],
+        [
+          "            RefreshLivePreview(activeSdk);\n            pair = default;",
+          "            RefreshLivePreview(activeSdk);\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            TrackVisiblePreview();\n#endif\n            pair = default;"
+        ],
+        [
+          "            telemetry.Observe(updateStart, activeSdk, actualBackend, paired, pair, visibleJoints, visibleBones, validSkeletonFps);",
+          "            telemetry.Observe(updateStart, activeSdk, actualBackend, paired, pair, visibleJoints, visibleBones, validSkeletonFps,\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                previewFps\n#else\n                -1\n#endif\n            );"
+        ],
+        [
+          "            inputLine = hasInput && live != null\n                ? $\"探测 {FormatResolution(streamSelection.Size)} · 实际解码 {FormatResolution(displayedDecodedSize)} · 预览 {input.Width}×{input.Height}{sizeWarning}\"\n                : \"等待当前码流画面\";",
+          "            inputLine = hasInput && live != null\n                ? $\"{startup.SourceKind} · 预览 {input.Width}×{input.Height} · 输入 #{input.FrameId} · 解码 {FormatResolution(displayedDecodedSize)}{sizeWarning}\"\n                : startup.PreviewEnabled ? \"等待当前输入\" : \"预览已关闭，识别可继续\";"
+        ],
+        [
+          "                GUI.Label(new Rect(1188, 24, 224, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n\n#if UNITY_EDITOR",
+          "                GUI.Label(new Rect(1188, 24, 224, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawInteractiveHeader();\n#endif\n\n#if UNITY_EDITOR"
+        ],
+        [
+          "                if (GUI.Button(new Rect(993, 674, 403, 33), \"拍照（精确同帧）\", button)) Run(TakeExactPhoto());",
+          "                if (GUI.Button(new Rect(993, 674, 403, 33), CanTakePhoto ? \"拍照（精确同帧）\" :\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                    PhotoUnavailableReason(),\n#else\n                    \"等待可拍照输入\",\n#endif\n                    button)) Run(TakeExactPhoto());"
+        ],
+        [
+          "                if (capacityMenuOpen) DrawCapacityMenu();\n            } finally {",
+          "                if (capacityMenuOpen) DrawCapacityMenu();\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                DrawBasicOptions();\n#endif\n            } finally {"
+        ],
+        [
+          "                bool canMeasure = automatedFixture || HasManualQuality(startup.AccelerationMode, ModelInputQuality.Low) &&\n                    startup.InputQuality == ModelInputQuality.Low;",
+          "                bool canMeasure = startup.SourceKind == InputKind.Rtsp && (automatedFixture ||\n                    HasManualQuality(startup.AccelerationMode, ModelInputQuality.Low) && startup.InputQuality == ModelInputQuality.Low);"
+        ],
+        [
+          "        private void DrawThermalAddress()\n        {\n            GUI.Label",
+          "        private void DrawThermalAddress()\n        {\n            if (!automatedFixture) { DrawInteractiveAddress(); return; }\n            GUI.Label"
+        ]
+      ]
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceControls.cs",
+      "before": "88dd8c5059c0f1b294e5c22831a9e63dee52b8b1234315c37dee55b097d54efc",
+      "after": "05a7656d525d8a94208e0ec9eedd7baae820a4b90ba1d097fd026ed6044f529d",
+      "replacements": [
+        [
+          "        private IEnumerator PrepareManualChoices()\n        {\n            status",
+          "        private IEnumerator PrepareManualChoices()\n        {\n            PrepareInteractiveState();\n            status"
+        ],
+        [
+          "                if (mode == HumanVisionAccelerationMode.Neural && !neuralDevice) continue;",
+          "                if (mode == HumanVisionAccelerationMode.Neural && !neuralDevice) {\n                    backendReasons[(int)mode] = IsAndroid ? \"当前设备未通过NPU能力检测\" : \"Windows 不支持 NPU\";\n                    continue;\n                }"
+        ],
+        [
+          "                if (!string.IsNullOrEmpty(available.Error)) continue;\n                int index = (int)mode;\n                installedQualities[index] = available.Choices;\n                installedModes[index] = available.Choices.Length > 0 ||\n                    IsAndroid && mode == HumanVisionAccelerationMode.Cpu && available.RuntimeProfile == \"android-cpu-nohands\";",
+          "                int index = (int)mode;\n                if (!string.IsNullOrEmpty(available.Error)) { backendReasons[index] = available.Error; continue; }\n                installedQualities[index] = available.Choices;\n                bool modelsPresent = available.Choices.Length > 0 ||\n                    IsAndroid && mode == HumanVisionAccelerationMode.Cpu && available.RuntimeProfile == \"android-cpu-nohands\";\n                if (!modelsPresent) { backendReasons[index] = \"该后端模型未安装\"; continue; }\n                yield return ProbeManualBackend(mode, requested);\n                if (view.Sdk.State != HumanVisionSdkState.Stopped || view.Sdk.IsInitialized) {\n                    status = backendReasons[index]; yield break;\n                }"
+        ],
+        [
+          "            status = \"选择分析设备与模型等级，再连接相机\";\n        }",
+          "            SetExpectedProfile(startup);\n            status = \"选择输入、分析设备与模型等级，再连接；基础配置可编辑人数、区域和显示\";\n            if (manualFixture || autoConnect) yield return Connect();\n        }"
+        ],
+        [
+          "            if (IsAndroid && mode == HumanVisionAccelerationMode.Cpu) return quality == ModelInputQuality.Low;\n            return installedQualities[(int)mode].Any(item => item.Quality == quality);",
+          "            var choices = installedQualities[(int)mode];\n            if (IsAndroid && mode == HumanVisionAccelerationMode.Cpu && (choices == null || choices.Length == 0)) return quality == ModelInputQuality.Low;\n            return choices != null && choices.Any(item => item.Quality == quality);"
+        ],
+        [
+          "            if (automatedFixture || IsAndroid && startup.AccelerationMode == HumanVisionAccelerationMode.Cpu) return FixedModelInput;",
+          "            if (automatedFixture) return FixedModelInput;"
+        ],
+        [
+          "            string tier = options.InputQuality.ToString().ToLowerInvariant();",
+          "            string tier = options.InputQuality == ModelInputQuality.UltraLow ? \"ultra-low\" : options.InputQuality.ToString().ToLowerInvariant();"
+        ],
+        [
+          "                    expectedProfile = \"android-cpu-nohands\";",
+          "                    expectedProfile = installedQualities[(int)mode]?.FirstOrDefault(item => item.Quality == options.InputQuality)?.ProfileId ?? \"android-cpu-nohands\";"
+        ],
+        [
+          "            if (IsAndroid && mode == HumanVisionAccelerationMode.Cpu) {\n                GUI.Label(new Rect(532, 65, 390, 30), \"固定低档 512×288\", small);\n            } else {\n                DrawManualQuality(new Rect(532, 64, 130, 32), mode, ModelInputQuality.Low, \"低\");\n                DrawManualQuality(new Rect(669, 64, 130, 32), mode, ModelInputQuality.Medium, \"中\");\n                DrawManualQuality(new Rect(806, 64, 124, 32), mode, ModelInputQuality.High, \"高\");\n                GUI.enabled = true;\n            }",
+          "            var choices = installedQualities[(int)mode];\n            if (IsAndroid && mode == HumanVisionAccelerationMode.Cpu && (choices == null || choices.Length == 0)) {\n                GUI.Label(new Rect(532, 65, 390, 30), \"固定低档 · 尺寸以当前模型合同为准\", small);\n            } else if (choices != null) {\n                float width = choices.Length > 3 ? 94 : 127;\n                for (int i = 0; i < choices.Length; i++) {\n                    var quality = choices[i].Quality;\n                    string label = quality == ModelInputQuality.Low ? \"低\" : quality == ModelInputQuality.Medium ? \"中\" : quality == ModelInputQuality.High ? \"高\" : \"超低\";\n                    DrawManualQuality(new Rect(532 + i * (width + 7), 64, width, 32), mode, quality, label);\n                }\n                GUI.enabled = true;\n            }"
+        ],
+        [
+          "            GUI.enabled = !operating && model != null;",
+          "            GUI.enabled = !operating && installedModes[(int)mode] && model != null;"
+        ]
+      ]
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptancePreview.cs",
+      "before": "d98f358b4087600c34febb9e85af52dc4bce9c42df1f57fcd123a0cff49ce919",
+      "after": "cbc45933f7faa165c0dd7272c556883ec1360b2872cd1385f4261429e886ee07",
+      "replacements": [
+        [
+          "GUI.Label(screen, \"等待当前码流\", badge);",
+          "GUI.Label(screen, startup != null && !startup.PreviewEnabled ? \"预览已关闭（识别可继续）\" : \"等待当前输入\", badge);"
+        ],
+        [
+          "            live = hasInput ? input.Texture : null;",
+          "            if (startup != null && !startup.PreviewEnabled) hasInput = false;\n            live = hasInput ? input.Texture : null;"
+        ],
+        [
+          "        private bool CanTakePhoto => !photoCaptureActive && hasInput && view != null &&\n            view.SupportsMatchedFrames && SystemInfo.supportsAsyncGPUReadback;",
+          "        private bool CanTakePhoto {\n            get {\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n                return PhotoUnavailableReason() == \"可用\";\n#else\n                return !photoCaptureActive && hasInput && view != null && view.SupportsMatchedFrames && SystemInfo.supportsAsyncGPUReadback;\n#endif\n            }\n        }"
+        ],
+        [
+          "            if (hasInput && showSkeleton && (!matchedPreviewRequested || fullscreenPreview)) liveSkeleton.Sample(sdk, in input);",
+          "            liveSkeleton.Configure(recognition);\n            if (hasInput && showSkeleton && (!matchedPreviewRequested || fullscreenPreview)) liveSkeleton.Sample(sdk, in input);"
+        ]
+      ],
+      "upgrades": [
+        {
+          "before": "012c54a75a1cb17d88540976d3ed1996c51205f72d4c979e9c14a22b132dfe7b",
+          "replacements": [
+            [
+              "            if (hasInput && showSkeleton && (!matchedPreviewRequested || fullscreenPreview)) liveSkeleton.Sample(sdk, in input);",
+              "            liveSkeleton.Configure(recognition);\n            if (hasInput && showSkeleton && (!matchedPreviewRequested || fullscreenPreview)) liveSkeleton.Sample(sdk, in input);"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimeAcceptanceTelemetry.cs",
+      "before": "c6e0e11c0ba6dd4d6e14b038aa4af893bdf9bbdbb887e7d9965dc48963503f9d",
+      "after": "49b218c9b0f972de9554b6f03c0b1ee78eb40de3bd657e96a0890e2eabdd4a14",
+      "replacements": [
+        [
+          "            int joints, int bones, double validSkeletonFps)",
+          "            int joints, int bones, double validSkeletonFps, double livePreviewFps = -1)"
+        ],
+        [
+          "            PerformanceLine = $\"游戏 {fps:F1} FPS / {averageFrame:F1} ms  |  预览 {inputFps:F1}  |  新识别 {freshFps:F1} FPS{validRate}  |  同帧骨骼 {skeletonFps:F1} FPS  |  配对 {pairedFps:F1} FPS\";",
+          "            string inputRate = sdk != null && sdk.IsRunning ? inputFps.ToString(\"F1\") : \"未知\";\n            string previewRate = livePreviewFps >= 0 ? livePreviewFps.ToString(\"F1\") : \"未知\";\n            string resultRate = sdk != null && sdk.HasFreshResult ? freshFps.ToString(\"F1\") : \"未知\";\n            PerformanceLine = $\"游戏 {fps:F1} FPS / {averageFrame:F1} ms  |  输入 {inputRate}  |  预览 {previewRate}  |  新结果 {resultRate} FPS{validRate}  |  同帧配对 {pairedFps:F1} FPS\";"
+        ],
+        [
+          "            StageLine = $\"SDK 预处理 {stats.DetectionMs:F1} ms  ·  推理 {stats.PoseMs:F1} ms  ·  后处理 {stats.TrackingMs:F1} ms  ·  结果年龄 {(ageMs >= 0 ? ageMs.ToString(\"F1\") + \" ms\" : \"—\")}\";",
+          "            StageLine = sdk != null && sdk.IsInitialized && sdk.ResultSequence > 0\n                ? $\"SDK 预处理 {stats.DetectionMs:F1} ms  ·  推理 {stats.PoseMs:F1} ms  ·  后处理 {stats.TrackingMs:F1} ms  ·  结果年龄 {(ageMs >= 0 ? ageMs.ToString(\"F1\") + \" ms\" : \"未知\")} · {sdk.RuntimeProfile}\"\n                : \"SDK尚无有效结果，阶段耗时和结果年龄未知\";"
+        ]
+      ]
+    }
+  ],
+  "payloads": [
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceInteractive.cs",
+      "payload": "RuntimePrefabAcceptanceInteractive.cs",
+      "sha256": "09e15c3c0d4c7c9cb084977da0be21a1534d86a6968de630fbaf27b4d2387b88",
+      "previous_sha256": [
+        "9421fd7d346783ba59cacd32e2b034b513d39c9fcc2f2cdcc44d6d6050e2e0d1",
+        "44c50dbe0e7ed6c54ce9cb2989da488eb9c79c4ccc1d8b2fddbd7d8de074fde7",
+        "c0714e821c0ab2aa85333160085bdf960ba885329b2b9a5e1e30fd38f49efd9a",
+        "c76e493bb48a1fd286d1a4441c9eb9328b807f6539e036afb16ab35764c7850e"
+      ]
+    },
+    {
+      "path": "Assets/HumanVision/Tests/EditMode/RuntimePrefabInteractiveAcceptanceTests.cs",
+      "payload": "RuntimePrefabInteractiveAcceptanceTests.cs",
+      "sha256": "9bbfe1f9c420e95f32c5eb9bb5376273c6677e1dd02a2bf3dfe518c38096d56f",
+      "previous_sha256": [
+        "a30a6a74af73cf6b843ac9ac22647e4aafe0f203dc04f50c01556be5be02b75a",
+        "4cca6b7e869150623ef5b19d528956a71c5a731861d1a4585d4e3454e16969a3",
+        "e0c92e1d3f682d53277d9f68e7c729f7e3d02c8e78b07a1eb0d8bebba1df8029",
+        "6bcbcbe8f871f342203a892225c145a90b0db16c53ff120e5df9336f91e98534"
+      ]
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceEditorVerification.cs",
+      "payload": "RuntimePrefabAcceptanceEditorVerification.cs",
+      "sha256": "68dd34ba3e7aef863efed1b8cc07e9da6596c9cab3d036409b076837b7c9c98f"
+    }
+  ]
+}
