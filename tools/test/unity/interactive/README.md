@@ -109,3 +109,21 @@ The getter reports id/action/result/busy/sdkState/error and
 redacted uiStatus/uiStatusChanged without returning an input address. `accepted`
 means dispatched, not completed. Wait for busy=false, then inspect actual SDK
 state, error, UI status and runtime diagnostics before judging acceptance.
+
+The rate HUD distinguishes native source decoding, visible Texture updates,
+native analysis admission and native result completion. Source rates use real
+cumulative counters from `TryGetSourceProgress`; admission/completion use the
+corresponding runtime counters. They are never inferred from jumps in frame IDs
+or from the number of Unity updates. The retained `input_fps` log field remains
+the older main-thread observation rate; `input_observed_fps` names that meaning
+explicitly. New source/Texture/claim/completion log fields are separate. Missing
+source measurements display unknown, and a new source/generation/model epoch
+rebaselines its applicable rate window. The pure counter contract is runnable:
+
+```powershell
+py -3.13 -B tools/test/run_runtime_counter_rate_contract.py --output out/counter-rate-check
+```
+
+`--legacy` deliberately tests the old observation counter against the new source
+rate contract and is expected to fail; that counter retains its original purpose.
+These unit checks do not replace real source/Texture/device measurements.

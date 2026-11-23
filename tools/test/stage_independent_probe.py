@@ -52,6 +52,7 @@ def main():
         Path("Assets/Editor/RuntimePrefabIndependentEditorRestart.cs"): (source / "RuntimePrefabIndependentEditorRestart.cs").read_bytes(),
         Path("Assets/Editor/RuntimePrefabIndependentTestRecorder.cs"): (source / "RuntimePrefabIndependentTestRecorder.cs").read_bytes(),
         Path("Assets/Editor/RuntimePrefabIndependentInspect.cs"): (source / "RuntimePrefabIndependentInspect.cs").read_bytes(),
+        Path("Assets/Editor/RuntimePrefabRealtimeTestBatch.cs"): (source / "RuntimePrefabRealtimeTestBatch.cs").read_bytes(),
     }
     receipt = {"project": str(root), "applied": args.apply, "files": []}
     for relative, payload in payloads.items():
