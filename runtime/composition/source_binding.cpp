@@ -1,6 +1,7 @@
 #include "composition/source_binding.h"
 #include "composition/session.h"
 #include "composition/native_input_gpu_source.h"
+#include "composition/native_frame_geometry.h"
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -153,7 +154,7 @@ bool NativeSourceBinding::Open(const OwnedSourceConfig& config,bool gpu_route,ui
 #endif
     if(gpu_route) {
         auto source=std::make_unique<NativeInputGpuSource>(handle_,
-            NativeInputGpuApi{api_.device,api_.pool,api_.acquire,api_.release_native},mapping_.offset_us,
+            NativeInputGpuApi{api_.device,api_.pool,api_.acquire,api_.release_native,api_.wait},mapping_.offset_us,
             config_.source_id,epoch,this,[](void* context,const HV_InputNativeFrameV1& frame) {
                 auto& self=*static_cast<NativeSourceBinding*>(context);
                 self.capture_rgba_bytes_.store(NativeCaptureBytes(frame));
@@ -243,6 +244,7 @@ void NativeSourceBinding::Run(RuntimeSession* session,uint64_t epoch) {
         if(copied==HV_INPUT_NO_FRAME)continue;
         if(!layout||copied!=HV_INPUT_OK){SetError("Native Input RGBA frame contract/copy failed");continue;}
         auto envelope=EnvelopeForNativeFrame(info,mapping_,config_.source_id,epoch);
+        if(android_native_&&!BindNativeImageGeometry(native,envelope)){SetError("Native Input source geometry is invalid");continue;}
         if(!envelope.source_timestamp.valid){SetError("Native Input frame clock identity changed without remapping");continue;}
         HV_VideoFrame frame{sizeof(frame),static_cast<int32_t>(info.width),static_cast<int32_t>(info.height),
             static_cast<int32_t>(info.stride_bytes),HV_PIXEL_RGBA32,static_cast<int64_t>(info.sequence),

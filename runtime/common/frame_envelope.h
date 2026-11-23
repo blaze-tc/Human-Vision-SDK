@@ -90,6 +90,14 @@ struct FrameEnvelope {
     FrameColorRange color_range = FrameColorRange::kUnspecified;
     std::int32_t rotation_degrees = 0;
     bool mirrored = false;
+    // The delivered image above is already oriented RGBA. Keep the decoded
+    // source contract separately so a downstream consumer never applies it twice.
+    std::int32_t source_width = 0, source_height = 0;
+    FrameCrop source_crop;
+    std::int32_t applied_rotation_degrees = 0;
+    bool applied_mirror_x = false, source_geometry_valid = false;
+    std::uint32_t source_matrix_raw = 0, source_range_raw = 0;
+    std::uint32_t source_transfer_raw = 0, source_primaries_raw = 0;
     // Row-major 2x3 affine transform, identity when there is no known transform.
     std::array<float, 6> source_to_analysis{1.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F};
     std::uintptr_t buffer_token = 0;

@@ -10,6 +10,7 @@ struct NativeInputGpuApi {
  int (HV_INPUT_CALL *pool)(HV_InputHandle,HV_InputNativePoolV1*)=nullptr;
  int (HV_INPUT_CALL *acquire)(HV_InputHandle,uint64_t,HV_InputNativeFrameV1*)=nullptr;
  int (HV_INPUT_CALL *release)(HV_InputHandle,uint32_t,uint64_t,uint64_t)=nullptr;
+ int (HV_INPUT_CALL *wait)(HV_InputHandle,uint64_t,uint32_t,HV_InputNativeFrameV1*)=nullptr;
 };
 class NativeInputGpuSource final : public GpuConsumerSource, public gpu::ConsumerImageSource {
 public:

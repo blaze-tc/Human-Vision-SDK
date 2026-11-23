@@ -1,4 +1,5 @@
 #include "composition/native_input_gpu_source.h"
+#include "composition/native_frame_geometry.h"
 #include <algorithm>
 #include <chrono>
 #include <limits>
@@ -25,7 +26,7 @@ bool NativeInputGpuSource::Initialize(std::string& error){
 gpu::SlotResult NativeInputGpuSource::Claim(gpu::ConsumerFrame& out) noexcept {
  if(quarantined_||failed_)return gpu::SlotResult::Closed;
  HV_InputNativeFrameV1 frame{};frame.size=sizeof(frame);frame.version=1;
- const auto status=api_.acquire(input_,sequence_,&frame);
+ const auto status=api_.wait?api_.wait(input_,sequence_,50,&frame):api_.acquire(input_,sequence_,&frame);
  if(status==HV_INPUT_NO_FRAME||status==HV_INPUT_BUSY)return gpu::SlotResult::NoReady;
  if(status!=HV_INPUT_OK){++errors_;failed_=true;return gpu::SlotResult::Closed;}
  out={};out.claimed=true;out.producer=this;
@@ -47,12 +48,19 @@ gpu::SlotResult NativeInputGpuSource::Claim(gpu::ConsumerFrame& out) noexcept {
  auto& envelope=out.source_envelope;
  envelope.source_id=source_id_;envelope.generation=frame.frame.generation;envelope.frame_id=static_cast<int64_t>(frame.frame.sequence);envelope.config_epoch=epoch_;
  envelope.source_timestamp={decoded+offset_,1,FrameClockDomain::kRuntimeMonotonic,FrameTimeSource::kDecoded,true};
+ const auto claimed_us=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+ envelope.submitted={claimed_us,1,FrameClockDomain::kRuntimeMonotonic,FrameTimeSource::kSubmitted,true};
  envelope.decoded={decoded,frame.frame.clock_id,FrameClockDomain::kInputMonotonic,FrameTimeSource::kDecoded,true};
  envelope.received={frame.frame.received_timestamp_us,frame.frame.clock_id,FrameClockDomain::kInputMonotonic,FrameTimeSource::kReceived,frame.frame.received_timestamp_us>=0};
  envelope.presentation={frame.frame.presentation_timestamp_us,0,FrameClockDomain::kMediaPresentation,FrameTimeSource::kPresentation,frame.frame.pts_valid!=0};
  envelope.width=static_cast<int32_t>(pool_.width);envelope.height=static_cast<int32_t>(pool_.height);envelope.crop={0,0,envelope.width,envelope.height};
  envelope.format=HV_PIXEL_RGBA32;envelope.plane_count=1;envelope.planes[0]={0,static_cast<int32_t>(pool_.width*4),4};
  envelope.color_matrix=FrameColorMatrix::kRgb;envelope.color_range=FrameColorRange::kFull;envelope.completion=FrameCompletion::kReady;
+ if(!BindNativeImageGeometry(frame,envelope)){
+  ++errors_;failed_=true;
+  if(RetireConsumer(out,gpu::CompletionProof::GpuQuiescent)!=gpu::SlotResult::Ok)QuarantineConsumer(out);
+  return gpu::SlotResult::Invalid;
+ }
  sequence_=frame.frame.sequence;generation_=frame.frame.generation;
  if(frame.slot>=3||!frame.frame.generation||!sequence_||
     frame.hardware_buffer!=pool_.hardware_buffers[frame.slot]||frame.frame.width!=pool_.width||frame.frame.height!=pool_.height){
