@@ -205,6 +205,62 @@ namespace HumanVisionAcceptance
             Application.targetFrameRate = fps;
         }
 
+        partial void DrawSidebarChoices(float width, ref float y, ref bool handled)
+        {
+            handled = true;
+            DrawSidebarText("分析设备", width, ref y, true);
+            float third = (width - 16) / 3;
+            DrawManualMode(new Rect(0, y, third, 36), HumanVisionAccelerationMode.Cpu, "CPU");
+            DrawManualMode(new Rect(third + 8, y, third, 36), HumanVisionAccelerationMode.Graphics, "GPU");
+            DrawManualMode(new Rect((third + 8) * 2, y, third, 36), HumanVisionAccelerationMode.Neural, "NPU");
+            GUI.enabled = true; y += 46;
+            DrawSidebarText(BackendReason(startup.AccelerationMode), width, ref y);
+            DrawSidebarText("模型等级", width, ref y, true);
+            DrawManualQuality(new Rect(0, y, third, 36), startup.AccelerationMode, ModelInputQuality.Low, "低");
+            DrawManualQuality(new Rect(third + 8, y, third, 36), startup.AccelerationMode, ModelInputQuality.Medium, "中");
+            DrawManualQuality(new Rect((third + 8) * 2, y, third, 36), startup.AccelerationMode, ModelInputQuality.High, "高");
+            GUI.enabled = true; y += 46;
+            if (HasManualQuality(startup.AccelerationMode, ModelInputQuality.UltraLow)) {
+                DrawManualQuality(new Rect(0, y, width, 36), startup.AccelerationMode, ModelInputQuality.UltraLow, "超低");
+                GUI.enabled = true; y += 44;
+            }
+            GUI.enabled = !operating && interactive != null && !automatedFixture;
+            if (GUI.Button(new Rect(0, y, width, 36), "基础配置 / 输入源 / 保存读取", button)) OpenBasicOptions();
+            GUI.enabled = true; y += 48;
+            DrawSidebarText($"输入源：{startup.SourceKind}", width, ref y, true);
+            GUI.enabled = !operating;
+            var address = new Rect(0, y, width - 78, 36);
+            rtspUrl = startup.SourceKind == InputKind.Rtsp && !showAddress
+                ? GUI.PasswordField(address, rtspUrl, '*', field) : GUI.TextField(address, rtspUrl, field);
+            if (GUI.Button(new Rect(width - 70, y, 70, 36), showAddress ? "隐藏" : "显示", button)) showAddress = !showAddress;
+            y += 44;
+            GUI.enabled = !operating && (automatedFixture || HasManualQuality(startup.AccelerationMode, startup.InputQuality));
+            if (GUI.Button(new Rect(0, y, width, 36), "连接 / 应用输入", selected)) Run(Connect());
+            GUI.enabled = true; y += 44;
+            if (automatedFixture) {
+                GUI.enabled = !operating;
+                if (GUI.Button(new Rect(0, y, width, 36), useRequestedStream ? "固定所填码流" : "自动选流", button)) useRequestedStream = !useRequestedStream;
+                GUI.enabled = true; y += 44;
+            }
+            if (campaignRunning) {
+                GUI.enabled = !campaignCancelled;
+                if (GUI.Button(new Rect(0, y, width, 36), "取消一键测试", button)) { campaignCancelled = true; status = "正在结束当前测试步骤…"; }
+            } else {
+                bool canMeasure = startup.SourceKind == InputKind.Rtsp && (automatedFixture ||
+                    HasManualQuality(startup.AccelerationMode, ModelInputQuality.Low) && startup.InputQuality == ModelInputQuality.Low);
+                GUI.enabled = !operating && canMeasure;
+                if (GUI.Button(new Rect(0, y, width, 36), canMeasure ? "一键测试" : "低档可一键测试", button)) Run(RunThermalCampaign());
+            }
+            GUI.enabled = true; y += 44;
+            if (GUI.Button(new Rect(0, y, width, 36), "导出 JSONL / 复制路径", button)) {
+                diagnostics.Export(); if (!string.IsNullOrEmpty(diagnostics.ExportPath)) GUIUtility.systemCopyBuffer = diagnostics.ExportPath; status = diagnostics.Status;
+            }
+            y += 50;
+        }
+        partial void DrawSidebarModal() { DrawBasicOptions(); }
+        partial void SidebarPhotoReason(ref string reason) { reason = PhotoUnavailableReason(); }
+        partial void ObserveSidebarPreview() { var displayed = default(HumanVisionPresentedFrame); RecordDrawnPreview(live, in displayed); }
+
         private void DrawInteractiveHeader()
         {
             if (automatedFixture) return;
@@ -362,13 +418,15 @@ namespace HumanVisionAcceptance
             widthText = GUI.TextField(new Rect(168, 177, 110, 28), widthText, field);
             heightText = GUI.TextField(new Rect(290, 177, 110, 28), heightText, field);
             inputFpsText = GUI.TextField(new Rect(412, 177, 110, 28), inputFpsText, field);
-            GUI.Label(new Rect(24, 217, 540, 26), "请求尺寸不等于模型尺寸；视频使用源尺寸。", small);
+            GUI.Label(new Rect(24, 217, 540, 26), data.SourceKind == InputKind.Rtsp ? "原图模式使用当前 RTSP 地址，不自动切换码流。" : "请求尺寸不等于模型尺寸；视频使用源尺寸。", small);
             bool independentWindows = !IsAndroid && data.SourceKind == InputKind.Rtsp && interactive.Execution != HumanVisionExecutionPolicy.CompatibleUnityInput;
             GUI.enabled = !independentWindows;
             mode.Mirror = GUI.Toggle(new Rect(24, 254, 150, 28), mode.Mirror, "水平镜像");
             GUI.enabled = true;
             data.RtspTcp = GUI.Toggle(new Rect(180, 254, 130, 28), data.RtspTcp, "RTSP TCP");
+            GUI.enabled = data.SourceKind != InputKind.Rtsp;
             data.AutoSelectRtspStream = GUI.Toggle(new Rect(320, 254, 238, 28), data.AutoSelectRtspStream, "自动选择同通道码流");
+            GUI.enabled = true;
             if (independentWindows) GUI.Label(new Rect(24, 285, 540, 25), "Windows独立输入暂不支持镜像；兼容模式可验证镜像。", small);
             GUI.Label(new Rect(24, 320, 100, 26), "执行方式", small);
             DrawExecutionChoice(new Rect(134, 316, 128, 32), HumanVisionExecutionPolicy.CompatibleUnityInput, "兼容输入");

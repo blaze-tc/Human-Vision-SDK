@@ -13,7 +13,7 @@ namespace HumanVision
         public HumanVisionSdkConfiguration Recognition = new HumanVisionSdkConfiguration();
         /// <summary>选择摄像头、视频或 RTSP。</summary>
         public InputKind SourceKind = InputKind.WebCamera;
-        /// <summary>当前输入的采集请求和地址；采集尺寸不是模型尺寸。</summary>
+        /// <summary>当前输入的采集请求和地址；RTSP 普通彩色预览使用所填码流原始可见尺寸，模型输入另行处理。</summary>
         public DemoModeSettings Input = new DemoModeSettings();
         /// <summary>RTSP 使用 TCP；关闭后使用 UDP。</summary>
         public bool RtspTcp = true;
@@ -21,7 +21,7 @@ namespace HumanVision
         public HumanVisionExecutionPolicy ExecutionPolicy = HumanVisionExecutionPolicy.CompatibleUnityInput;
         /// <summary>Best-effort native preview is optional and never owns the analysis input.</summary>
         public bool PreviewEnabled = true;
-        /// <summary>连接前探测已知同通道 RTSP 地址，以请求尺寸为上限选择最清晰的可用码流。默认按原地址连接。</summary>
+        /// <summary>保留的选流偏好。SDK 普通 RTSP 原图预览始终使用显式填写的码流地址，不静默替换为较小子码流。</summary>
         public bool AutoSelectRtspStream;
         /// <summary>Windows 默认 CPU；关闭时使用已有 GPU 配置。</summary>
         public bool UseWindowsCpu = true;
@@ -34,7 +34,7 @@ namespace HumanVision
         public string RuntimeRoot = "";
         /// <summary>默认初始化后打开输入；关闭可只准备 Runtime，然后手动配置输入。</summary>
         public bool OpenInputOnInitialize = true;
-        /// <summary>Limit the recognition transport to the selected model size while preserving the source publication for display.</summary>
+        /// <summary>Limit supported internal recognition transports to model size; public RTSP color/live output remains source-original.</summary>
         public bool UseModelSizedAnalysisInput;
         /// <summary>等待输入进入 Streaming 的最长时间，单位秒。</summary>
         [Min(1)] public float InputOpenTimeoutSeconds = 15;
@@ -68,7 +68,12 @@ namespace HumanVision
         internal HumanVisionSourceSettings ToSourceSettings()
         {
             var value = Input.ToSourceSettings(SourceKind);
-            if (value is RtspSourceSettings rtsp) rtsp.Transport = RtspTcp ? RtspTransport.Tcp : RtspTransport.Udp;
+            if (value is RtspSourceSettings rtsp) {
+                rtsp.Transport = RtspTcp ? RtspTransport.Tcp : RtspTransport.Udp;
+                // SDK public color/live textures preserve this stream's original
+                // visible size. Positive custom Input-package caps remain available.
+                rtsp.RequestedWidth = rtsp.RequestedHeight = 0;
+            }
             return value;
         }
     }

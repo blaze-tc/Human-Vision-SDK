@@ -8,10 +8,11 @@ namespace HumanVision.Tests
     public sealed class NativeLiveAttachmentTests
     {
         private sealed class Provider : INativeLiveAttachmentProvider, INativeLiveConsumerApi {
-            internal int Calls, BusyUntil = 2, Creates;
+            internal int Calls, BusyUntil = 2, Creates, Failure;
+            internal uint Width, Height;
             public int Attach(ref RuntimeLiveConfigNative config, out RuntimeLiveBindingNative binding) {
-                binding = new RuntimeLiveBindingNative { SourceId = 77 };
-                return ++Calls <= BusyUntil ? RuntimeControlBindings.Busy : RuntimeControlBindings.Ok;
+                binding = new RuntimeLiveBindingNative { SourceId = 77 }; Width = config.MaxWidth; Height = config.MaxHeight;
+                return ++Calls <= BusyUntil ? RuntimeControlBindings.Busy : Failure;
             }
             public INativeLiveConsumerApi CreateConsumer(RuntimeLiveBindingNative binding) { ++Creates; return this; }
             public bool TryGetSourceProgress(out HumanVisionSourceProgress progress) { progress = new HumanVisionSourceProgress { SourceId = 77, Generation = 1, Streaming = true, State = 2, DecodedFrames = 100 }; return true; }
@@ -34,6 +35,22 @@ namespace HumanVision.Tests
                 Assert.That(provider.Calls,Is.EqualTo(3));Assert.That(provider.Creates,Is.EqualTo(1));
                 Assert.That(source.PreviewError,Is.Empty);Assert.That(source.State,Is.EqualTo(InputSourceState.Streaming));
             } finally { source.Close();source.Tick();Object.DestroyImmediate(go); }
+        }
+        [Test] public void OriginalLiveZeroBoundsReachTheExistingDecoderUnchanged() {
+            var go = new GameObject("original live attach"); var source = go.AddComponent<HumanVisionNativeFrameSource>(); var provider = new Provider { BusyUntil = 0 };
+            try {
+                source.ConfigureLive(provider, false, false, 0, 0);
+                Assert.That(provider.Width, Is.Zero); Assert.That(provider.Height, Is.Zero); Assert.That(provider.Creates, Is.EqualTo(1));
+            } finally { source.Close(); source.Tick(); Object.DestroyImmediate(go); }
+        }
+        [Test] public void UnsupportedOriginalPreviewReportsErrorWithoutStoppingHealthyAnalysis() {
+            var go = new GameObject("unsupported original preview"); var source = go.AddComponent<HumanVisionNativeFrameSource>();
+            var provider = new Provider { BusyUntil = 0, Failure = RuntimeControlBindings.Unsupported };
+            try {
+                source.ConfigureLive(provider, true, false, 0, 0); source.Tick();
+                Assert.That(source.PreviewError, Does.Contain("Original-resolution")); Assert.That(source.PreviewError, Does.Contain("analysis remain active"));
+                Assert.That(source.State, Is.EqualTo(InputSourceState.Streaming)); Assert.That(provider.Calls, Is.EqualTo(1)); Assert.That(source.CurrentTexture, Is.Null);
+            } finally { source.Close(); source.Tick(); Object.DestroyImmediate(go); }
         }
         [Test] public void CloseCancelsPendingAttachWithoutReopeningTheSource() {
             var go = new GameObject("live attach cancel"); var source = go.AddComponent<HumanVisionNativeFrameSource>(); var provider = new Provider { BusyUntil = int.MaxValue };

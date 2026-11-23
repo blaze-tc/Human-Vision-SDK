@@ -142,7 +142,7 @@ namespace HumanVision.Input
                     Url = url, MaxWidth = (uint)settings.RequestedWidth, MaxHeight = (uint)settings.RequestedHeight,
                     TimeoutMs = (uint)timeout, ReconnectDelayMs = (uint)delay, TransportTcp = 1 };
                 int result = NativeInputBindings.HV_Input_Open(ref options, out handle);
-                if (result != 0) throw new InvalidOperationException("RTSP GPU initialization failed (" + result + "); a prior input owner may still be retiring.");
+                if (result != 0) throw new InvalidOperationException(settings.RequestedWidth == 0 ? "Original-resolution RTSP GPU output is unavailable (" + result + "); install an Input plugin supporting source-size 0/0." : "RTSP GPU initialization failed (" + result + "); a prior input owner may still be retiring.");
             } finally { Marshal.FreeHGlobal(url); }
             renderEvent = NativeInputBindings.HV_Input_GetRenderEventFunc();
             maximumWidth = settings.RequestedWidth; maximumHeight = settings.RequestedHeight;
@@ -309,14 +309,19 @@ namespace HumanVision.Input
             CloseTimelines(); InputRetirementPump.Watch(registration);
         }
         /// <summary>
-        /// 本地发布尺寸按请求上限等比缩小，不拉伸、不放大；整除最多舍去不足一个像素。
+        /// 0/0 使用解码可见原尺寸；显式正上限等比缩小、不拉伸、不放大；整除最多舍去不足一个像素。
         /// 请求 640×480 而源为 16:9 时输出 640×360，关节与预览共享该输出坐标系。
         /// 使用整数比例比较，避免浮点舍入把标准 16:9 分辨率变成少一像素的尺寸。
         /// </summary>
         internal static Vector2Int SelectOutputSize(int sourceWidth, int sourceHeight, int maximumWidth, int maximumHeight)
         {
-            if (sourceWidth < 1 || sourceHeight < 1 || maximumWidth < 1 || maximumHeight < 1)
-                throw new ArgumentOutOfRangeException(nameof(sourceWidth), "RTSP source and requested output dimensions must be positive.");
+            if (sourceWidth < 1 || sourceHeight < 1 || !RtspFrameSource.ValidOutputBounds(maximumWidth, maximumHeight))
+                throw new ArgumentOutOfRangeException(nameof(sourceWidth), "RTSP source dimensions must be positive; output bounds must be 0/0 or a positive pair.");
+            if (maximumWidth == 0) {
+                if (sourceWidth > 4096 || sourceHeight > 4096)
+                    throw new InvalidOperationException("Original-resolution RTSP preview exceeds the supported 4096-pixel per-edge texture capability; no smaller preview was substituted.");
+                return new Vector2Int(sourceWidth, sourceHeight);
+            }
             int w = Math.Min(sourceWidth, maximumWidth), h = Math.Min(sourceHeight, maximumHeight);
             if ((long)w * sourceHeight <= (long)h * sourceWidth)
                 h = Math.Max(1, (int)((long)sourceHeight * w / sourceWidth));

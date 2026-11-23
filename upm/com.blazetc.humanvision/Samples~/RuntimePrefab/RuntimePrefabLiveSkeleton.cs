@@ -4,108 +4,53 @@ using UnityEngine;
 
 namespace HumanVisionAcceptance
 {
-    // Writes only the sampled points and lines onto the visible preview.
+    // Reads valid SDK 2D coordinates in Update; draws ordinary points and lines.
     internal sealed class RuntimePrefabLiveSkeleton
     {
         private const int Capacity = 8;
         private const int JointCount = RuntimeSkeletonReader.JointCount;
-        private const double PoseHoldSeconds = .18;
         private static readonly int[] Parents = ReadParents();
         private readonly Vector2[,] points = new Vector2[Capacity, JointCount];
         private readonly bool[,] valid = new bool[Capacity, JointCount];
         private readonly bool[] visible = new bool[Capacity];
-        private readonly Vector2[] newPoints = new Vector2[JointCount];
-        private readonly bool[] newValid = new bool[JointCount];
-        private (ulong source, ulong generation, int width, int height, int rotation, bool mirrored, FrameRowOrigin rowOrigin) binding;
-        private bool bindingConfirmed;
-        private double lastVisibleAt = double.NegativeInfinity;
 
         internal int VisibleBodies { get; private set; }
         internal int VisibleJoints { get; private set; }
         internal int VisibleBones { get; private set; }
 
-        internal void Sample(HumanVisionSdk sdk, in HumanVisionTextureFrame preview)
+        internal void Sample(HumanVisionSdk sdk)
         {
-            if (sdk == null || sdk.InputState != InputSourceState.Streaming) {
-                Clear();
-                return;
-            }
-            var nextBinding = (preview.SourceId, preview.Generation, preview.Width, preview.Height,
-                preview.AppliedRotationDegrees, preview.AppliedMirrorX, preview.RowOrigin);
-            if (nextBinding != binding) {
-                Clear();
-                binding = nextBinding;
-            }
-
-            double now = Time.realtimeSinceStartupAsDouble;
-            if (!sdk.HasFreshResult) {
-                Expire(now);
-                return;
-            }
-            // A new source/generation needs one corroborating analysis frame.
-            // A borrowed latest texture can pause while an accepted pose remains valid.
-            if (!bindingConfirmed) {
-                bindingConfirmed = sdk.TryGetAnalysisInputFrame(-1, out var analysis) &&
-                    analysis.SourceId == preview.SourceId && analysis.Generation == preview.Generation &&
-                    analysis.AppliedRotationDegrees == preview.AppliedRotationDegrees &&
-                    analysis.AppliedMirrorX == preview.AppliedMirrorX;
-                if (!bindingConfirmed) return;
-            }
-            if (sdk.GetUsersCount() == 0) {
-                ClearGeometry();
-                return;
-            }
-
-            int capacity = Mathf.Min(Capacity, sdk.GetMaxBodies());
-            bool foundGeometry = false;
+            ClearGeometry();
+            if (sdk == null) return;
+            // Ordinary business Update reads the latest valid SDK coordinates.
+            // The SDK applies confidence, source identity and body/hand age limits.
+            // No preview texture, new result event or matching frame is required.
+            int capacity = System.Math.Min(Capacity, sdk.GetMaxBodies());
             for (int slot = 0; slot < capacity; slot++) {
-                if (!sdk.TryGetSampledBodyByIndex(slot, out var body)) continue;
-                int usableJoints = 0;
+                int count = 0;
                 for (int joint = 0; joint < JointCount; joint++) {
-                    var position = body.CanonicalJoints[joint].Position;
-                    Vector2 uv = position.Normalized;
-                    newValid[joint] = position.Valid && uv.x >= 0 && uv.x <= 1 && uv.y >= 0 && uv.y <= 1;
-                    newPoints[joint] = uv;
-                    if (newValid[joint]) ++usableJoints;
+                    bool accepted = sdk.TryGetJointNormalizedPosition(slot, (HumanVisionCanonicalJointId)joint, out var uv);
+                    valid[slot, joint] = accepted && uv.x >= 0 && uv.x <= 1 && uv.y >= 0 && uv.y <= 1;
+                    points[slot, joint] = uv;
+                    if (valid[slot, joint]) ++count;
                 }
-                if (usableJoints == 0) continue;
-                if (!foundGeometry) {
-                    ClearGeometry();
-                    foundGeometry = true;
-                }
+                if (count == 0) continue;
                 visible[slot] = true;
                 ++VisibleBodies;
-                VisibleJoints += usableJoints;
-                for (int joint = 0; joint < JointCount; joint++) {
-                    points[slot, joint] = newPoints[joint];
-                    valid[slot, joint] = newValid[joint];
-                }
+                VisibleJoints += count;
                 for (int joint = 0; joint < JointCount; joint++) {
                     int parent = Parents[joint];
                     if (parent >= 0 && valid[slot, joint] && valid[slot, parent] &&
                         points[slot, joint] != points[slot, parent]) ++VisibleBones;
                 }
             }
-            if (foundGeometry) lastVisibleAt = now;
-            else Expire(now);
         }
 
-        internal void Clear()
-        {
-            binding = default;
-            bindingConfirmed = false;
-            ClearGeometry();
-        }
-
-        private void Expire(double now)
-        {
-            if (now - lastVisibleAt >= PoseHoldSeconds) ClearGeometry();
-        }
+        internal void Clear() => ClearGeometry();
 
         private void ClearGeometry()
         {
             VisibleBodies = VisibleJoints = VisibleBones = 0;
-            lastVisibleAt = double.NegativeInfinity;
             System.Array.Clear(visible, 0, visible.Length);
         }
 

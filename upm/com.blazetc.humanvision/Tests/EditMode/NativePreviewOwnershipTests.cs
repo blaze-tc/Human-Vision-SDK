@@ -14,22 +14,26 @@ namespace HumanVision.Tests
     {
         private sealed class Reader : INativePreviewReader
         {
-            internal ulong FrameId = 1;
+            internal ulong FrameId = 1, Generation = 9, Epoch = 3;
+            internal bool ProgressAvailable = true;
+            internal int ProgressReads, PixelCopies, Failure;
             public string Diagnostics => "";
             public bool TryGetProgress(out HumanVisionRuntimeProgress progress) {
-                progress = new HumanVisionRuntimeProgress { SourceId = 7, Generation = 9, ConfigEpoch = 3, Streaming = true, State = 2, InputFrameId = FrameId, NativeInputFrames = FrameId };
-                return true;
+                ++ProgressReads;
+                progress = new HumanVisionRuntimeProgress { SourceId = 7, Generation = Generation, ConfigEpoch = Epoch, Streaming = true, State = 2, InputFrameId = FrameId, NativeInputFrames = FrameId };
+                return ProgressAvailable;
             }
             public bool TryGetState(out uint state, out ulong frames) { state = 2; frames = FrameId; return true; }
             public int CopyPreview(ulong after, IntPtr buffer, uint capacity, ref RuntimePreviewNative info) {
+                if (Failure != 0) return Failure;
                 if (FrameId <= after) return RuntimeControlBindings.NoData;
                 info.Width = info.Height = 2; info.StrideBytes = 8; info.RgbaBytes = 16;
-                info.SourceId = 7; info.Generation = 9; info.ConfigEpoch = 3; info.FrameId = FrameId; info.TimestampUs = RuntimeBindings.HV_RuntimeClockUs();
+                info.SourceId = 7; info.Generation = Generation; info.ConfigEpoch = Epoch; info.FrameId = FrameId; info.TimestampUs = RuntimeBindings.HV_RuntimeClockUs();
                 if (buffer == IntPtr.Zero || capacity < 16) return RuntimeControlBindings.BufferTooSmall;
                 byte[] pixels = new byte[16];
                 Color32 color = FrameId == 1 ? (Color32)Color.red : FrameId % 2 == 0 ? (Color32)Color.green : (Color32)Color.blue;
                 for (int i = 0; i < 16; i += 4) { pixels[i] = color.r; pixels[i + 1] = color.g; pixels[i + 2] = color.b; pixels[i + 3] = 255; }
-                Marshal.Copy(pixels, 0, buffer, pixels.Length); return 0;
+                ++PixelCopies; Marshal.Copy(pixels, 0, buffer, pixels.Length); return 0;
             }
         }
 
@@ -76,6 +80,51 @@ namespace HumanVision.Tests
                 UnityEngine.Object.DestroyImmediate(owner);
             }
         }
+        [Test] public void CpuLivePublishesWithoutCanonicalProgressAndSkipsDuplicatePixelUploads()
+        {
+            var owner = new GameObject("source-only original preview"); var source = owner.AddComponent<HumanVisionNativeFrameSource>();
+            var reader = new Reader { ProgressAvailable = false }; source.Configure(reader, true, false);
+            _ = InputMonotonicClock.NowUs; Thread.Sleep(10);
+            try {
+                source.Tick(); Assert.That(source.TryGetLatestFrame(-1, out var frame), Is.True);
+                for (int i = 0; i < 5; ++i) source.Tick();
+                Assert.That(reader.ProgressReads, Is.Zero, "Color publication cannot wait for a result journal identity.");
+                Assert.That(reader.PixelCopies, Is.EqualTo(1), "An unchanged latest frame needs only a metadata probe.");
+                Assert.That(frame.Generation, Is.EqualTo(9));
+            } finally { DestroySource(owner, source); }
+        }
+        [Test] public void CpuLiveNoticesNewGenerationWithRestartedSequenceWithoutAResult()
+        {
+            var owner = new GameObject("new source generation without results"); var source = owner.AddComponent<HumanVisionNativeFrameSource>();
+            var reader = new Reader { FrameId = 50, ProgressAvailable = false }; source.Configure(reader, true, false);
+            _ = InputMonotonicClock.NowUs; Thread.Sleep(10);
+            try {
+                source.Tick(); Assert.That(source.TryGetLatestFrame(-1, out var first), Is.True);
+                reader.Generation = 10; reader.FrameId = 1; source.Tick();
+                Assert.That(source.TryGetLatestFrame(-1, out var next), Is.True);
+                Assert.That(next.Generation, Is.EqualTo(10)); Assert.That(next.FrameId, Is.EqualTo(1));
+                Assert.That(source.TryGetMatchedFrame(first.FrameId, first.SourceId, first.Generation, out _), Is.False);
+            } finally { DestroySource(owner, source); }
+        }
+        [Test] public void UnsupportedOriginalCpuPreviewReportsErrorWithoutClosingAnalysisInput()
+        {
+            var owner = new GameObject("unsupported native original preview"); var source = owner.AddComponent<HumanVisionNativeFrameSource>();
+            var reader = new Reader { ProgressAvailable = false, Failure = RuntimeControlBindings.Unsupported }; source.Configure(reader, true, false);
+            try {
+                source.Tick(); Assert.That(source.PreviewError, Does.Contain("Original-resolution"));
+                Assert.That(source.CurrentTexture, Is.Null); Assert.That(source.State, Is.EqualTo(InputSourceState.Streaming));
+            } finally { DestroySource(owner, source); }
+        }
+        private static void DestroySource(GameObject owner, HumanVisionNativeFrameSource source)
+        {
+            var slots = (Array)typeof(HumanVisionNativeFrameSource).GetField("slots", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(source);
+            foreach (var slot in slots) {
+                var field = slot.GetType().GetField("Texture", BindingFlags.Instance | BindingFlags.NonPublic);
+                var texture = (Texture)field.GetValue(slot); if (texture != null) UnityEngine.Object.DestroyImmediate(texture); field.SetValue(slot, null);
+            }
+            UnityEngine.Object.DestroyImmediate(owner);
+        }
+
         private static void Publish(HumanVisionNativeFrameSource source, HumanVisionTextureFrame frame)
         {
             // Before the fix RuntimeView published directly, with no slot owner.

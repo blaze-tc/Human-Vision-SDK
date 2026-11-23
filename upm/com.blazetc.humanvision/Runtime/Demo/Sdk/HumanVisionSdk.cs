@@ -130,7 +130,13 @@ namespace HumanVision
             return available;
         }
         /// <summary>Optional preview-channel error; does not imply analysis/source failure.</summary>
-        public string PreviewError => source is HumanVisionNativeFrameSource native ? native.PreviewError : "";
+        public string PreviewError {
+            get {
+                string error = source is HumanVisionNativeFrameSource native ? native.PreviewError :
+                    source is RtspFrameSource rtsp && rtsp.State == InputSourceState.Error ? rtsp.LastError : "";
+                return string.IsNullOrEmpty(error) ? "" : "Original-resolution RTSP preview is unavailable: " + error;
+            }
+        }
         /// <summary>Actual native analysis transport size, or zero before its first valid input.</summary>
         public Vector2Int IndependentInputSize => manager != null ? manager.IndependentInputSize : Vector2Int.zero;
         /// <summary>当前 RTSP 码流的公开标签。标准路径分为主、辅、第三流，标签不包含登录信息。</summary>
@@ -268,31 +274,16 @@ namespace HumanVision
             if (contract == null) yield break;
             RtspStreamSelector.Selection stream = default;
             if (candidate.OpenInputOnInitialize && candidate.SourceKind == InputKind.Rtsp) {
-                Uri requestedUri = new Uri(candidate.Input.RtspUrl);
-                stream = new RtspStreamSelector.Selection(requestedUri, default, "requested_stream");
-                if (candidate.AutoSelectRtspStream && candidate.RtspTcp) {
-                    var bounds = new Vector2Int(candidate.Input.RequestedWidth, candidate.Input.RequestedHeight);
-                    var probe = Task.Run(() => RtspStreamSelector.Select(requestedUri, bounds, RtspStreamSelector.Probe));
-                    while (!probe.IsCompleted && token == operation && isActiveAndEnabled) yield return null;
-                    if (token != operation || !isActiveAndEnabled) yield break;
-                    if (probe.Status == TaskStatus.RanToCompletion) stream = probe.Result;
-                    else {
-                        _ = probe.Exception;
-                        stream = new RtspStreamSelector.Selection(requestedUri, default, "probe_error_requested_stream");
-                    }
-                }
+                stream = OriginalRtspStream(candidate);
             }
             var nativeConfig = new HumanVisionConfig { RuntimeRoot = root, Profile = contract.ProfileId, MaxBodies = candidate.Recognition.MaxBodies };
             bool independent = candidate.ExecutionPolicy != HumanVisionExecutionPolicy.CompatibleUnityInput &&
                 candidate.SourceKind == InputKind.Rtsp && candidate.OpenInputOnInitialize;
             if (independent) {
                 try {
-                    var analysis = new Vector2Int(candidate.Input.RequestedWidth, candidate.Input.RequestedHeight);
-                    if (candidate.UseModelSizedAnalysisInput && contract.DetectorWidth == 0)
-                        analysis = AnalysisRenderTextureGeometry.CalculateTargetSize(analysis.x, analysis.y, contract.PoseWidth, contract.PoseHeight);
-                    // The existing ultra-low graph consumes the reviewed 512x288 transport and applies its own model resize.
-                    if (candidate.UseModelSizedAnalysisInput && contract.PoseWidth == 384 && contract.PoseHeight == 224)
-                        analysis = new Vector2Int(512, 288);
+                    var analysis = IndependentSourceSize(Application.platform == RuntimePlatform.Android,
+                        candidate.UseModelSizedAnalysisInput, new Vector2Int(candidate.Input.RequestedWidth, candidate.Input.RequestedHeight),
+                        contract.DetectorWidth, contract.PoseWidth, contract.PoseHeight);
                     nativeConfig.ExecutionPolicy = candidate.ExecutionPolicy;
                     nativeConfig.NativeSource = new HumanVisionNativeSourceConfiguration {
                         Library = NativeInputRuntimeLibrary.ResolvePath(), Url = stream.Address?.AbsoluteUri ?? candidate.Input.RtspUrl,
@@ -340,7 +331,9 @@ namespace HumanVision
                 manager.AdoptPreparedSession(nativeConfig, prepared); initialized = true;
             } else initialized = manager.TryInitialize(nativeConfig);
             if (!initialized) {
-                string error = manager.LastError; yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); yield break;
+                string error = manager.LastError;
+                if (independent && Application.platform != RuntimePlatform.Android) error = "Original-resolution RTSP input is unavailable: " + error;
+                yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); yield break;
             }
             double runtimeDeadline = Time.realtimeSinceStartupAsDouble + 120;
             string runtimeFailure = "";
@@ -349,6 +342,7 @@ namespace HumanVision
             if (token != operation || !isActiveAndEnabled) yield break;
             if (!manager.PollRuntimeInitialization(out runtimeFailure)) {
                 string error = string.IsNullOrEmpty(runtimeFailure) ? "Native runtime did not finish initialization within its observation deadline; retirement remains owned." : runtimeFailure;
+                if (independent && Application.platform != RuntimePlatform.Android) error = "Original-resolution RTSP input is unavailable: " + error;
                 yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); yield break;
             }
             activeContract = contract;
@@ -419,8 +413,26 @@ namespace HumanVision
                 Initialized?.Invoke();
             }
             else { string error = string.IsNullOrEmpty(source?.LastError) ? "输入未在规定时间内进入流送状态。" : source.LastError;
+                if (candidate.SourceKind == InputKind.Rtsp) error = "Original-resolution RTSP input is unavailable: " + error;
                 yield return StopSdk(); State = HumanVisionSdkState.Error; Error(error); }
         }
+        // Public RTSP color uses the current user-selected stream at its visible
+        // source size. Requested capture/model bounds must not pick a smaller URL.
+        internal static RtspStreamSelector.Selection OriginalRtspStream(HumanVisionSdkOptions candidate) =>
+            new RtspStreamSelector.Selection(new Uri(candidate.Input.RtspUrl), default, "requested_source_original");
+
+        internal static Vector2Int IndependentSourceSize(bool android, bool modelSized, Vector2Int requested,
+            int detectorWidth, int poseWidth, int poseHeight)
+        {
+            if (!android) return Vector2Int.zero; // Native source-original mode, not a 1920 cap.
+            var analysis = requested;
+            if (modelSized && detectorWidth == 0)
+                analysis = AnalysisRenderTextureGeometry.CalculateTargetSize(requested.x, requested.y, poseWidth, poseHeight);
+            // Preserve the reviewed Android ultra-low transport; live is separate.
+            if (modelSized && poseWidth == 384 && poseHeight == 224) analysis = new Vector2Int(512, 288);
+            return analysis;
+        }
+
         /// <summary>异步提交完整配置；true 表示请求已接受，不表示输入已成功启动。等待 Busy=false 后检查 IsRunning。</summary>
         public bool TryApplyConfiguration(HumanVisionSdkOptions requested)
         {
@@ -549,7 +561,9 @@ namespace HumanVision
             } else sampled?.Clear();
             RefreshIdentityEvents();
             if (State == HumanVisionSdkState.Running && source?.State == InputSourceState.Error) {
-                string message = source.LastError; BeginStop(); State = HumanVisionSdkState.Error; Error(message);
+                string message = source.LastError;
+                if (source is RtspFrameSource || source is HumanVisionNativeFrameSource) message = "Original-resolution RTSP input is unavailable: " + message;
+                BeginStop(); State = HumanVisionSdkState.Error; Error(message);
             }
         }
         private static bool IsFreshPublication(in HumanVisionTextureFrame frame, long nowUs, double maxAgeUs)

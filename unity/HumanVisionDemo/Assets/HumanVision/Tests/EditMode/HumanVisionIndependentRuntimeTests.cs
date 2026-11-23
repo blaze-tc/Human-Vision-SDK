@@ -56,6 +56,39 @@ namespace HumanVision.Tests
                 Assert.False((bool)method.Invoke(manager, args), "An absent native counter must not be reported as a measured zero.");
             } finally { UnityEngine.Object.DestroyImmediate(owner); }
         }
+        [TestCase(false, true, 1920, 1080, 0, 512, 288, 0, 0)]
+        [TestCase(false, true, 3840, 2160, 0, 960, 544, 0, 0)]
+        [TestCase(false, false, 640, 480, 0, 512, 288, 0, 0)]
+        [TestCase(true, true, 1920, 1080, 0, 512, 288, 512, 288)]
+        [TestCase(true, true, 3840, 2160, 0, 384, 224, 512, 288)]
+        [TestCase(true, false, 1920, 1080, 0, 512, 288, 1920, 1080)]
+        [TestCase(true, true, 1280, 720, 640, 256, 192, 1280, 720)]
+        public void IndependentSourceOriginalDoesNotChangeAndroidAnalysisTransport(bool android, bool modelSized,
+            int width, int height, int detectorWidth, int poseWidth, int poseHeight, int expectedWidth, int expectedHeight)
+        {
+            Assert.That(HumanVisionSdk.IndependentSourceSize(android, modelSized, new Vector2Int(width, height),
+                detectorWidth, poseWidth, poseHeight), Is.EqualTo(new Vector2Int(expectedWidth, expectedHeight)));
+        }
+        [Test] public void SdkRtspColorUsesOriginalSourceWithoutMutatingRequestedAnalysisSettings()
+        {
+            var options = new HumanVisionSdkOptions { SourceKind = InputKind.Rtsp, AutoSelectRtspStream = true, RtspTcp = false };
+            options.Input.RequestedWidth = 640; options.Input.RequestedHeight = 360;
+            options.Input.RtspUrl = "rtsp://127.0.0.1:554/camera/substream";
+            var source = (RtspSourceSettings)options.ToSourceSettings();
+            Assert.That(source.RequestedWidth, Is.Zero); Assert.That(source.RequestedHeight, Is.Zero);
+            Assert.That(options.Input.RequestedWidth, Is.EqualTo(640)); Assert.That(options.Input.RequestedHeight, Is.EqualTo(360));
+            Assert.That(source.Transport, Is.EqualTo(RtspTransport.Udp));
+            var stream = HumanVisionSdk.OriginalRtspStream(options);
+            Assert.That(stream.Address.OriginalString, Is.EqualTo(options.Input.RtspUrl), "The explicit source URL is not replaced by a lower-load substream.");
+        }
+        [TestCase(InputKind.WebCamera)] [TestCase(InputKind.Video)]
+        public void NonRtspCaptureRequestsRemainUnchanged(InputKind kind)
+        {
+            var options = new HumanVisionSdkOptions { SourceKind = kind };
+            options.Input.RequestedWidth = 640; options.Input.RequestedHeight = 480;
+            var source = options.ToSourceSettings();
+            Assert.That(source.RequestedWidth, Is.EqualTo(640)); Assert.That(source.RequestedHeight, Is.EqualTo(480));
+        }
         [Test] public void DeferredControlLayoutsMatchTheSeparateNativeHandleProtocol()
         {
             var assembly = typeof(HumanVisionManager).Assembly;

@@ -46,7 +46,7 @@ namespace HumanVision.Demo
         {
             Configure(owner, preview, mirrored);
             if (Application.platform != RuntimePlatform.Android) return;
-            ConfigureLive(new ManagerLiveAttachment(owner), preview, mirrored, requestedWidth, requestedHeight);
+            ConfigureLive(new ManagerLiveAttachment(owner), preview, mirrored, 0, 0);
         }
         internal void ConfigureLive(INativeLiveAttachmentProvider provider, bool preview, bool mirrored, int requestedWidth, int requestedHeight)
         {
@@ -62,7 +62,7 @@ namespace HumanVision.Demo
             int result = liveProvider.Attach(ref liveConfig, out var binding);
             if (result == RuntimeControlBindings.Busy || result == RuntimeControlBindings.NoData) return;
             liveAttachPending = false;
-            if (result != RuntimeControlBindings.Ok) { liveError = "Realtime GPU preview unavailable (" + result + "); decoder and analysis remain active."; return; }
+            if (result != RuntimeControlBindings.Ok) { liveError = "Original-resolution GPU preview unavailable (" + result + "); install an Input plugin supporting source-original output. Decoder and analysis remain active."; return; }
             var backend = liveProvider.CreateConsumer(binding);
             live = new NativeLiveFrameConsumer(backend, binding.SourceId, liveConfig.Enabled != 0);
         }
@@ -111,29 +111,45 @@ namespace HumanVision.Demo
         internal void Tick()
         {
             if (realtime) { TryAttachLive(); live?.Tick(); return; }
-            if (closed || reader == null || !previewEnabled || !reader.TryGetProgress(out var progress) || !progress.Streaming) return;
-            if (boundSource != progress.SourceId || boundGeneration != progress.Generation || boundEpoch != progress.ConfigEpoch) {
-                after = 0; latestSlot = -1;
+            if (closed || reader == null || !previewEnabled) return;
+            try { TickCpuPreview(); }
+            catch (Exception error) {
+                liveError = "Original-resolution preview unavailable: " + error.Message;
+                previewEnabled = false; latestSlot = -1;
                 foreach (var slot in slots) slot.Published = false;
-                boundSource = progress.SourceId; boundGeneration = progress.Generation; boundEpoch = progress.ConfigEpoch;
+                // Preview allocation/upload failure does not close decoder/inference.
             }
+        }
+        private void TickCpuPreview()
+        {
+            if (!reader.TryGetState(out uint state, out _) || state != 2) return;
+            // Metadata-first (no pixels copied) notices a new source/generation even
+            // when its sequence restarts. It never waits for a canonical result.
             var info = new RuntimePreviewNative { Size = (uint)Marshal.SizeOf<RuntimePreviewNative>(), Version = 1 };
-            IntPtr address = pinned.IsAllocated ? pinned.AddrOfPinnedObject() : IntPtr.Zero;
-            int status = reader.CopyPreview(after, address, raw == null ? 0u : (uint)raw.Length, ref info);
-            if (status == RuntimeControlBindings.NoData || status == RuntimeControlBindings.Unsupported || status == RuntimeControlBindings.Busy) return;
-            if (status == RuntimeControlBindings.BufferTooSmall) {
-                if (info.Width == 0 || info.Height == 0 || info.Width > 4096 || info.Height > 4096 ||
-                    info.StrideBytes < info.Width * 4 || info.RgbaBytes > 64u * 1024u * 1024u ||
-                    info.RgbaBytes < (ulong)info.StrideBytes * info.Height) return;
+            int status = reader.CopyPreview(0, IntPtr.Zero, 0, ref info);
+            if (status == RuntimeControlBindings.NoData || status == RuntimeControlBindings.Busy) return;
+            if (status == RuntimeControlBindings.Unsupported)
+                throw new NotSupportedException("Native original-size preview is not supported by this Runtime/Input plugin.");
+            if (status != RuntimeControlBindings.BufferTooSmall)
+                throw new InvalidOperationException("Native original-resolution preview query failed (" + status + "). " + reader.Diagnostics);
+            if (!ValidPreview(info))
+                throw new InvalidOperationException("Native original-resolution preview metadata or geometry is unsupported; no smaller texture was substituted.");
+            bool sameIdentity = info.SourceId == boundSource && info.Generation == boundGeneration && info.ConfigEpoch == boundEpoch;
+            if (sameIdentity && info.FrameId <= after) return;
+            if (raw == null || info.RgbaBytes > raw.Length) {
                 if (pinned.IsAllocated) pinned.Free();
                 raw = new byte[info.RgbaBytes]; upright = new byte[checked(info.Width * info.Height * 4)];
                 pinned = GCHandle.Alloc(raw, GCHandleType.Pinned);
-                status = reader.CopyPreview(after, pinned.AddrOfPinnedObject(), (uint)raw.Length, ref info);
             }
-            if (status != 0 || raw == null || info.RgbaBytes > raw.Length || info.SourceId != boundSource ||
-                info.Generation != boundGeneration || info.ConfigEpoch != boundEpoch || info.FrameId <= after ||
-                info.Width == 0 || info.Height == 0 || info.StrideBytes < info.Width * 4 ||
-                info.RgbaBytes < (ulong)info.StrideBytes * info.Height) return;
+            status = reader.CopyPreview(0, pinned.AddrOfPinnedObject(), (uint)raw.Length, ref info);
+            if (status != RuntimeControlBindings.Ok || !ValidPreview(info) || info.RgbaBytes > raw.Length) return;
+            sameIdentity = info.SourceId == boundSource && info.Generation == boundGeneration && info.ConfigEpoch == boundEpoch;
+            if (sameIdentity && info.FrameId <= after) return;
+            if (!sameIdentity) {
+                after = 0; latestSlot = -1;
+                foreach (var slot in slots) slot.Published = false;
+                boundSource = info.SourceId; boundGeneration = info.Generation; boundEpoch = info.ConfigEpoch;
+            }
             long nativeNow = RuntimeBindings.HV_RuntimeClockUs(), inputNow = InputMonotonicClock.NowUs;
             long age = nativeNow - info.TimestampUs;
             if (age < 0 || age > inputNow || info.FrameId > long.MaxValue) return;
@@ -159,6 +175,12 @@ namespace HumanVision.Demo
             target.Published = true; latestSlot = writable; nextSlot = (writable + 1) % slots.Length;
             after = info.FrameId; lastPublication = publication;
         }
+        private static bool ValidPreview(RuntimePreviewNative info) =>
+            info.SourceId != 0 && info.Generation != 0 && info.ConfigEpoch != 0 && info.FrameId != 0 && info.FrameId <= long.MaxValue &&
+            info.Width > 0 && info.Height > 0 && info.Width <= 4096 && info.Height <= 4096 &&
+            info.StrideBytes >= info.Width * 4 && info.RgbaBytes <= 64u * 1024u * 1024u &&
+            info.RgbaBytes >= (ulong)info.StrideBytes * info.Height;
+
         public bool TryGetLatestFrame(long afterFrameId, out HumanVisionTextureFrame frame)
         {
             frame = default;

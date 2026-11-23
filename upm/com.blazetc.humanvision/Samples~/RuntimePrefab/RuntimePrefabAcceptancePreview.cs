@@ -15,13 +15,28 @@ namespace HumanVisionAcceptance
         private bool fullscreenCrop;
         private bool photoCaptureActive;
 
+        private void DrawUnifiedPreviewCard(Rect left, Rect right)
+        {
+            var card = right;
+            DrawCard(card, "实时预览 · 骨骼与识别区域", live, inputLine, showRegions: true, drawSkeleton: showSkeleton);
+            DrawFullscreenButton(card);
+        }
+
+        private void DrawPreviewImage(Rect image, Texture texture, bool showRegions, bool drawSkeleton, float strokeWidth = 2)
+        {
+            if (texture != null) DrawCameraImage(image, texture);
+            if (showRegions && recognition != null && recognition.UseRegions) DrawRegions(image);
+            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);
+        }
+
         private void RefreshLivePreview(HumanVisionSdk sdk)
         {
             input = default;
             hasInput = sdk != null && sdk.InputState == InputSourceState.Streaming &&
                 sdk.TryGetInputFrame(-1, out input) && input.Texture != null && input.Width > 0 && input.Height > 0;
+            if (startup != null && !startup.PreviewEnabled) hasInput = false;
             live = hasInput ? input.Texture : null;
-            if (hasInput && showSkeleton) liveSkeleton.Sample(sdk, in input);
+            if (showSkeleton) liveSkeleton.Sample(sdk);
             else liveSkeleton.Clear();
         }
 
@@ -37,10 +52,11 @@ namespace HumanVisionAcceptance
 
         private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)
         {
-            float extraSide = Mathf.Max(0, (Screen.width / scale - 1440f) * .5f);
-            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width + extraSide, LiveCard.height);
-            right = new Rect(PoseCard.x, PoseCard.y, PoseCard.width + extraSide, PoseCard.height);
-            controls = new Rect(28 - extraSide, 624, 1384 + extraSide * 2, 205);
+            float availableWidth = Screen.safeArea.width > 0 ? Screen.safeArea.width : Screen.width;
+            float extraSide = Mathf.Max(0, (availableWidth / scale - 1440f) * .5f);
+            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width, LiveCard.height);
+            right = new Rect(PoseCard.x - extraSide, PoseCard.y, PoseCard.width + extraSide * 2, PoseCard.height);
+            controls = left;
         }
 
         private void SetFullscreenPreview(bool enabled)
@@ -59,9 +75,11 @@ namespace HumanVisionAcceptance
                 var safeArea = Screen.safeArea;
                 if (safeArea.width <= 0 || safeArea.height <= 0) safeArea = screen;
                 float scale = Mathf.Clamp(Mathf.Min(safeArea.width / 470f, safeArea.height / 720f), .55f, 2);
-                if (live != null) {
-                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, live.width, live.height, fullscreenCrop);
-                    DrawCameraImage(image, live, showSkeleton, 2 * scale);
+                if (live != null || showSkeleton || recognition != null && recognition.UseRegions) {
+                    int width = live != null ? live.width : 1280;
+                    int height = live != null ? live.height : 720;
+                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);
+                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);
                 } else {
                     GUI.Label(screen, "等待当前码流", badge);
                 }
@@ -85,7 +103,7 @@ namespace HumanVisionAcceptance
             if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);
         }
 
-        private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, 365);
+        private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));
 
         private Material previewColorMaterial;
 

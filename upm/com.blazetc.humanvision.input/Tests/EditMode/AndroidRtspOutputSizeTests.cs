@@ -34,6 +34,15 @@ namespace HumanVision.Input.Tests
             Assert.That(output.y, Is.InRange(1, Math.Min(height, maximumHeight)));
         }
 
+        [TestCase(1920, 1080)] [TestCase(3840, 2160)] [TestCase(4096, 2160)] [TestCase(1080, 1920)]
+        public void ZeroPairKeepsTheVisibleSourceSize(int width, int height)
+        { Assert.That(Select(width, height, 0, 0), Is.EqualTo(new Vector2Int(width, height))); }
+        [Test] public void OriginalSizeBeyondCapabilityFailsRatherThanShrinking()
+        { Assert.Throws<InvalidOperationException>(() => Select(7680, 4320, 0, 0)); }
+        [TestCase(0, 0, true)] [TestCase(640, 480, true)] [TestCase(0, 720, false)] [TestCase(1280, 0, false)] [TestCase(-1, -1, false)]
+        public void OnlyACompleteZeroPairRequestsOriginalSize(int width, int height, bool expected)
+        { Assert.That(RtspFrameSource.ValidOutputBounds(width, height), Is.EqualTo(expected)); }
+
         [TestCase(0, 720, 1280, 720)]
         [TestCase(1280, 0, 1280, 720)]
         [TestCase(1280, 720, 0, 720)]

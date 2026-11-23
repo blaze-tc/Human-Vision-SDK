@@ -186,9 +186,9 @@ namespace HumanVision.Input
             int timeout = rtsp == null ? 5000 : rtsp.OpenTimeoutMs;
             int delay = rtsp == null ? 500 : rtsp.ReconnectDelayMs;
             if (!Uri.TryCreate(settings.Location, UriKind.Absolute, out var uri) || uri.Scheme != "rtsp" ||
-                settings.RequestedWidth < 1 || settings.RequestedWidth > 4096 || settings.RequestedHeight < 1 || settings.RequestedHeight > 4096 ||
+                !ValidOutputBounds(settings.RequestedWidth, settings.RequestedHeight) ||
                 timeout < 100 || timeout > 60000 || delay < 0 || delay > 60000)
-            { State = InputSourceState.Error; LastError = "Use a valid rtsp:// address, dimensions 1–4096, timeout 100–60000ms and reconnect delay 0–60000ms."; return; }
+            { State = InputSourceState.Error; LastError = "Use a valid rtsp:// address, dimensions 0/0 (source original) or 1–4096, timeout 100–60000ms and reconnect delay 0–60000ms."; return; }
             if (UsesAndroidSource) {
                 try {
                     if (rtsp != null && rtsp.Transport != RtspTransport.Tcp) throw new InvalidOperationException("Android RTSP currently supports H.264 over TCP only.");
@@ -227,7 +227,7 @@ namespace HumanVision.Input
                         Url = pointer, MaxWidth = (uint)settings.RequestedWidth, MaxHeight = (uint)settings.RequestedHeight,
                         TimeoutMs = (uint)timeout, ReconnectDelayMs = (uint)delay, TransportTcp = rtsp == null || rtsp.Transport == RtspTransport.Tcp ? 1u : 0u };
                     if (NativeInputBindings.HV_Input_Open(ref options, out handle) != 0)
-                        throw new InvalidOperationException("RTSP input initialization failed; check native plugin ABI and settings.");
+                        throw new InvalidOperationException(settings.RequestedWidth == 0 ? "Original-resolution RTSP output is unavailable; install an Input plugin supporting source-size 0/0." : "RTSP input initialization failed; check native plugin ABI and settings.");
                 } finally { Marshal.FreeHGlobal(pointer); }
                 nativeSequence = nativeGeneration = 0; previousState = uint.MaxValue;
             } catch (DllNotFoundException) { Fail("Install humanvision_input.dll and its qualified FFmpeg dependency DLLs for Windows x64."); }
@@ -236,6 +236,9 @@ namespace HumanVision.Input
             catch (Exception ex) { Fail(ex is InvalidOperationException ? ex.Message : "RTSP input initialization failed."); }
 #endif
         }
+        internal static bool ValidOutputBounds(int width, int height) =>
+            width == 0 && height == 0 || width >= 1 && width <= 4096 && height >= 1 && height <= 4096;
+
         private void OpenAndroidWhenReady()
         {
             if (androidOpenRequested) {
