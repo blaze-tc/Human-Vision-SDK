@@ -101,6 +101,21 @@ def verify_runtime_symbols(sdk_imports, ort_exports, rknn_exports):
     _require(not missing, "Missing RKNN vendor exports: " + ", ".join(sorted(missing)))
 
 
+def validate_candidate_closure(library, dependencies, packaged_directories,
+                               system_directories, dynamic_symbols, needed):
+    # The shared resolver searches the staged directory. It must never follow
+    # a back-edge to that directory's older SDK instead of the explicit candidate.
+    def checked_dependencies(path, names):
+        _require("libhumanvision.so" not in names,
+                 "Unsupported SDK dependency back-edge to libhumanvision.so: " + str(path))
+        return names
+
+    return closure.validate_dynamic_closure(
+        library, checked_dependencies(library, dependencies), packaged_directories,
+        system_directories, dynamic_symbols,
+        lambda path: checked_dependencies(path, needed(path)))
+
+
 def write_audits(output, documents):
     output = Path(output)
     _require(not output.exists() and not output.is_symlink(),
@@ -173,7 +188,7 @@ def audit_candidate(ndk, library, plugin_directory):
         _require("ELF64" in header and re.search(r"Machine:\s+AArch64\b", header),
                  "Packaged dependency is not ELF64 AArch64: " + name)
         try:
-            counts[name] = closure.validate_dynamic_closure(
+            counts[name] = validate_candidate_closure(
                 path, needed(path), [plugins], [system], dynamic, needed)
         except AssertionError as error:
             raise AuditError(str(error)) from error

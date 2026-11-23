@@ -165,6 +165,56 @@ class AndroidCandidateAuditTests(unittest.TestCase):
         }, {})
         self.assertEqual(1, count)
 
+    def _candidate_graph(self, *, nested_back_edge=False, direct_back_edge=False):
+        candidate_dir = self.root / "candidate"
+        plugin = self.root / "plugins"
+        system = self.root / "api26"
+        for directory in (candidate_dir, plugin, system):
+            directory.mkdir()
+        candidate = candidate_dir / "libhumanvision.so"
+        old_sdk = plugin / "libhumanvision.so"
+        dependency = plugin / "libdep.so"
+        for path in (candidate, old_sdk, dependency):
+            path.touch()
+        has_back_edge = nested_back_edge or direct_back_edge
+        symbols = {
+            candidate: ({"new_entry"}, {"old_only_api"} if has_back_edge else {"dependency_api"}),
+            old_sdk: ({"old_only_api"}, set()),
+            dependency: ({"dependency_api"}, set()),
+        }
+        edges = {dependency: ["libhumanvision.so"] if nested_back_edge else []}
+        dependencies = ["libhumanvision.so"] if direct_back_edge else ["libdep.so"]
+        return (candidate, dependencies, [plugin], [system],
+                lambda path: symbols[Path(path)],
+                lambda path: edges.get(Path(path), []))
+
+    def test_legacy_closure_can_use_old_staged_sdk_to_supply_missing_candidate_import(self):
+        # The new candidate imports old_only_api but does not export it. A
+        # transitive DT_NEEDED reaches the old SDK in the plugin directory and
+        # the original helper incorrectly accepts that object's export.
+        arguments = self._candidate_graph(nested_back_edge=True)
+        self.assertEqual(1, self.audit.closure.validate_dynamic_closure(*arguments))
+
+    def test_candidate_closure_rejects_transitive_back_edge_to_old_staged_sdk(self):
+        arguments = self._candidate_graph(nested_back_edge=True)
+        validate = getattr(self.audit, "validate_candidate_closure",
+                           self.audit.closure.validate_dynamic_closure)
+        with self.assertRaises(self.audit.AuditError):
+            validate(*arguments)
+
+    def test_candidate_closure_rejects_direct_back_edge_to_old_staged_sdk(self):
+        arguments = self._candidate_graph(direct_back_edge=True)
+        validate = getattr(self.audit, "validate_candidate_closure",
+                           self.audit.closure.validate_dynamic_closure)
+        with self.assertRaises(self.audit.AuditError):
+            validate(*arguments)
+
+    def test_candidate_closure_accepts_graph_without_sdk_back_edge(self):
+        arguments = self._candidate_graph()
+        validate = getattr(self.audit, "validate_candidate_closure",
+                           self.audit.closure.validate_dynamic_closure)
+        self.assertEqual(1, validate(*arguments))
+
     def documents(self):
         return {name: {"abi": "arm64-v8a", "api_level": 26,
                        "local_evaluation_only": True,
