@@ -76,6 +76,10 @@ metadata is checked again before mailbox growth. Buffer replacement is
 transactional: failure after partial allocation leaves the complete old pool
 unchanged. Optional allocation/growth failure disables preview and records a
 diagnostic; it neither fails source initialization nor escapes its owner thread.
+Allocation, zeroing and disposal of replaced storage run outside the admission
+mutex. A short commit rechecks capacity/source epochs and all active owners.
+An unchanged-capacity call is a no-op even with readers or an in-flight writer;
+it neither retires that owner nor prevents the other free slots from being used.
 
 `RequestSnapshot` permits one pending next-image request. Android captures are
 confirmed only against the same source/generation/frame/configuration epoch in

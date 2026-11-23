@@ -82,6 +82,8 @@ private:
  mutable std::mutex mutex_;
  std::array<Slot,3> slots_;
  uint32_t latest_=3,active_slot_=3,capacity_=0;
+ bool allocation_pending_=false;
+ uint64_t capacity_epoch_=0;
  uint64_t next_copy_=0,active_token_=0,invalidation_=0,copy_invalidation_=0;
  uint64_t source_id_=0,generation_=0,source_epoch_=0;
  std::atomic<bool> budget_exceeded_{false};

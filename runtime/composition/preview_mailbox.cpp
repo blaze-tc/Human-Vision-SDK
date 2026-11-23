@@ -25,23 +25,50 @@ PreviewMailbox::ConfigureResult PreviewMailbox::ConfigureCandidate(uint32_t byte
 }
 PreviewMailbox::ConfigureResult PreviewMailbox::ConfigureDetailed(uint32_t bytes) noexcept {
  if(!bytes||bytes>4096u*4096u*4u)return ConfigureResult::Invalid;
+ // This storage (including replaced old buffers after a commit) is destroyed
+ // outside every admission lock, even on an early return or allocation error.
+ std::array<std::vector<uint8_t>,4> replacement;
+ bool owns_allocation=false;
+ uint32_t previous_capacity=0;
+ uint64_t previous_epoch=0,previous_invalidation=0,previous_source=0,previous_generation=0,previous_source_epoch=0;
  try {
-  std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);
-  if(!lock||active_token_||snapshot_writing_||snapshot_readers_)return ConfigureResult::Busy;
-  for(const auto& slot:slots_)if(slot.readers)return ConfigureResult::Busy;
-  if(bytes==capacity_)return ConfigureResult::Ready;
-  // Build all replacements before changing any currently readable buffer.
-  // Failure after one or more allocations preserves the entire old pool.
-  std::array<std::vector<uint8_t>,4> replacement;
+  {
+   std::unique_lock<std::mutex> lock(mutex_,std::try_to_lock);
+   if(!lock)return ConfigureResult::Busy;
+   // A no-op neither replaces storage nor needs any current reader/writer to
+   // retire. The other slots remain usable while a prior image is borrowed.
+   if(bytes==capacity_)return ConfigureResult::Ready;
+   if(allocation_pending_||active_token_||snapshot_writing_||snapshot_readers_)return ConfigureResult::Busy;
+   for(const auto& slot:slots_)if(slot.readers)return ConfigureResult::Busy;
+   allocation_pending_=owns_allocation=true;
+   previous_capacity=capacity_;previous_epoch=capacity_epoch_;previous_invalidation=invalidation_;
+   previous_source=source_id_;previous_generation=generation_;previous_source_epoch=source_epoch_;
+  }
+  // Allocating and initializing optional HD storage must not serialize native
+  // source admission. Keep one allocation transaction, but release its mutex.
+  bool allocated=true;
   for(auto& buffer:replacement) {
    if(allocation_.allocate)allocation_.allocate(allocation_.context,buffer,bytes);
    else buffer.resize(bytes);
-   if(buffer.size()<bytes)return ConfigureResult::AllocationFailure;
+   if(buffer.size()<bytes){allocated=false;break;}
   }
-  for(uint32_t i=0;i<3;++i){slots_[i].bytes.swap(replacement[i]);slots_[i].state=State::Free;}
-  snapshot_.swap(replacement[3]);capacity_=bytes;latest_=3;snapshot_candidate_=snapshot_confirmed_=false;
+  {
+   std::lock_guard<std::mutex> lock(mutex_);allocation_pending_=owns_allocation=false;
+   if(!allocated)return ConfigureResult::AllocationFailure;
+   // Input, readers and a real in-flight copy could all advance while memory
+   // was allocated. Never replace their owners or commit an obsolete epoch.
+   if(capacity_!=previous_capacity||capacity_epoch_!=previous_epoch||invalidation_!=previous_invalidation||
+      source_id_!=previous_source||generation_!=previous_generation||source_epoch_!=previous_source_epoch||
+      active_token_||snapshot_writing_||snapshot_readers_)return ConfigureResult::Busy;
+   for(const auto& slot:slots_)if(slot.readers)return ConfigureResult::Busy;
+   for(uint32_t i=0;i<3;++i){slots_[i].bytes.swap(replacement[i]);slots_[i].state=State::Free;}
+   snapshot_.swap(replacement[3]);capacity_=bytes;++capacity_epoch_;latest_=3;snapshot_candidate_=snapshot_confirmed_=false;
+  }
   return ConfigureResult::Ready;
- }catch(...) {return ConfigureResult::AllocationFailure;}
+ }catch(...) {
+  if(owns_allocation)try{std::lock_guard<std::mutex> lock(mutex_);allocation_pending_=false;}catch(...) {}
+  return ConfigureResult::AllocationFailure;
+ }
 }
 bool PreviewMailbox::TryBeginCopy(uint32_t free_credits,bool additional,bool analysis_pending,CopyTicket& out,bool exact) {
  out={};
