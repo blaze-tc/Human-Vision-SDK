@@ -5,6 +5,11 @@ target_compile_features(hv_video_benchmark PRIVATE cxx_std_17)
 target_link_libraries(hv_video_benchmark PRIVATE HumanVision::Core)
 set_target_properties(hv_video_benchmark PROPERTIES CXX_EXTENSIONS OFF)
 
+add_executable(hv_independent_runtime independent_runtime_harness.cpp)
+target_compile_features(hv_independent_runtime PRIVATE cxx_std_17)
+target_link_libraries(hv_independent_runtime PRIVATE HumanVision::Core)
+set_target_properties(hv_independent_runtime PROPERTIES CXX_EXTENSIONS OFF)
+
 if(MSVC)
     target_compile_options(hv_video_benchmark PRIVATE /W4 /permissive-)
 endif()

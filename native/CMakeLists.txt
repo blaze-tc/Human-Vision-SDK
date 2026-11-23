@@ -139,6 +139,8 @@ set_target_properties(humanvision PROPERTIES
     OUTPUT_NAME humanvision)
 
 if(MSVC)
+    # Freeze historic ordinal imports while appending additive entry points.
+    target_sources(humanvision PRIVATE src/core/humanvision_windows.def)
     target_compile_options(humanvision_internal PRIVATE /W4 /permissive-)
     target_compile_options(humanvision PRIVATE /W4 /permissive-)
 endif()
