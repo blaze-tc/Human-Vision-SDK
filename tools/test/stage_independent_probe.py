@@ -50,6 +50,8 @@ def main():
         Path("Assets/Resources/IndependentAcceptanceLoad.shader"): (source / "IndependentAcceptanceLoad.shader").read_bytes(),
         Path("Assets/Editor/RuntimePrefabIndependentApkBuild.cs"): (source / "RuntimePrefabIndependentApkBuild.cs").read_bytes(),
         Path("Assets/Editor/RuntimePrefabIndependentEditorRestart.cs"): (source / "RuntimePrefabIndependentEditorRestart.cs").read_bytes(),
+        Path("Assets/Editor/RuntimePrefabIndependentTestRecorder.cs"): (source / "RuntimePrefabIndependentTestRecorder.cs").read_bytes(),
+        Path("Assets/Editor/RuntimePrefabIndependentInspect.cs"): (source / "RuntimePrefabIndependentInspect.cs").read_bytes(),
     }
     receipt = {"project": str(root), "applied": args.apply, "files": []}
     for relative, payload in payloads.items():
