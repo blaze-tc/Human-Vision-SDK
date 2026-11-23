@@ -76,10 +76,10 @@ bool GpuRuntimeHost::StartPool(std::shared_ptr<const GpuPluginModuleV3> module,
     // creation failure destroys candidates and preserves the previous host.
     Stop();module_=std::move(module);capacity_=config.max_bodies;
     for(uint32_t i=0;i<count;++i)instances_[i]=candidates[i].release();
-    superseded_ready_drops_=0;pose_job_drops_=0;import_errors_=0;active_workers_=0;
+    superseded_ready_drops_=0;pose_job_drops_=0;import_errors_=0;active_workers_=0;errors_=0;
     {std::lock_guard<std::mutex> lock(result_mutex_);
      latest_={};result_revision_=0;sequence_=0;latest_generation_=0;has_result_=false;error_.clear();}
-    source_.SetConcurrency(count);worker_count_=count;running_=true;
+    source_.SetConcurrency(count);worker_count_=count;running_=true;completions_.Start();
     try{for(uint32_t i=0;i<count;++i)workers_[i]=std::thread(&GpuRuntimeHost::Run,this,i);}
     catch(...){Stop();error="Cannot start V3 GPU worker pool";return false;}
     error.clear(); return true;
@@ -118,6 +118,7 @@ PipelineDiagnostics GpuRuntimeHost::Diagnostics() const {
 }
 void GpuRuntimeHost::Stop() {
     running_ = false;
+    completions_.Stop();
     for(auto& worker:workers_)if(worker.joinable())worker.join();
     for(auto& instance:instances_)if(instance){try{module_->api.gpu_pipeline->destroy(instance);}catch(...){}instance=nullptr;}
     worker_count_=0;active_workers_=0;source_.SetConcurrency(1);
@@ -128,6 +129,10 @@ void GpuRuntimeHost::Stop() {
 void GpuRuntimeHost::Run(uint32_t index) {
     auto* instance=instances_[index];
     while (running_) {
+        if(!completions_.Reserve())break;
+        bool completion_published=false;
+        struct CreditReset{CompletionMailbox<Completion>& queue;bool& published;
+            ~CreditReset(){if(!published)queue.Cancel();}} credit{completions_,completion_published};
         gpu::ConsumerFrame frame;
         // Source admission is short and serialized; the expensive per-instance
         // pipeline calls remain independent. A source need not have multi-consumer
@@ -147,10 +152,13 @@ void GpuRuntimeHost::Run(uint32_t index) {
         }
         const auto revision = revision_.load();
         const auto generation = frame.metadata.generation;
+        const auto source_id=frame.metadata.source_id,config_epoch=frame.metadata.config_epoch;
+        const auto source_envelope=frame.producer?frame.source_envelope:FrameEnvelope{};
         if (!frame.claimed || !frame.ahb_buffer || !generation ||
             frame.token.generation != generation ||
             frame.token.frame_id != frame.metadata.frame_id ||
             generation != source_.Generation() || frame.metadata.timestamp_us < 0) {
+            if(generation==source_.Generation())++errors_;
             if (frame.claimed && !source_.DrainUnsubmitted(frame) && frame.claimed) source_.Quarantine(frame);
             std::lock_guard<std::mutex> lock(result_mutex_);
             error_ = "GPU bridge claimed an invalid or stale frame lease";
@@ -182,6 +190,7 @@ void GpuRuntimeHost::Run(uint32_t index) {
             next.v1.struct_size > sizeof(next) ||
             next.v1.api_version != HV_PLUGIN_API_V1) {
             ++pose_job_drops_;
+            if(status!=HV_OK||!retired||generation==source_.Generation())++errors_;
             if(status!=HV_OK && std::strstr(text,"import"))++import_errors_;
             std::lock_guard<std::mutex> lock(result_mutex_);
             error_ = !retired ? "V3 GPU completion unproven; source generation quarantined" :
@@ -191,7 +200,7 @@ void GpuRuntimeHost::Run(uint32_t index) {
         }
         // Serialize publication only. Model calls run concurrently on independent
         // instances; a late older completion cannot roll tracking/preview backward.
-        std::lock_guard<std::mutex> publish(publication_mutex_);
+        std::unique_lock<std::mutex> publish(publication_mutex_);
         if(worker_count_>1 && (revision!=revision_.load()||generation<latest_generation_||
            (generation==latest_generation_&&has_result_&&input.v1.frame_id<=latest_.v1.source_frame_id))){++pose_job_drops_;continue;}
         next.v1.sequence = ++sequence_;
@@ -203,10 +212,29 @@ void GpuRuntimeHost::Run(uint32_t index) {
             error_="GPU observation rejected by composition; inspect runtime error for provenance/revision";
             continue;
         }
-        std::lock_guard<std::mutex> lock(result_mutex_);
-        latest_ = next; latest_generation_=generation; result_revision_ = revision;
-        capture_steady_us_ = input.capture_steady_us;
-        has_result_ = true; error_.clear();
+        {
+            std::lock_guard<std::mutex> lock(result_mutex_);
+            latest_ = next; latest_generation_=generation; result_revision_ = revision;
+            capture_steady_us_ = input.capture_steady_us;
+            has_result_ = true; error_.clear();
+        }
+        Completion completion;
+        completion.frame=next;
+        completion.envelope=source_envelope;
+        auto& envelope=completion.envelope;
+        envelope.source_id=source_id;envelope.config_epoch=config_epoch;
+        envelope.generation=generation;envelope.frame_id=input.v1.frame_id;
+        envelope.region_revision=revision;
+        envelope.width=input.v1.width;envelope.height=input.v1.height;
+        envelope.crop={0,0,input.v1.width,input.v1.height};
+        envelope.format=HV_PIXEL_RGBA32;envelope.completion=FrameCompletion::kReady;
+        if(!envelope.source_timestamp.valid)
+            envelope.source_timestamp={input.v1.timestamp_us,0,FrameClockDomain::kUnspecified,FrameTimeSource::kCaller,true};
+        envelope.submitted={input.capture_steady_us,1,FrameClockDomain::kRuntimeMonotonic,FrameTimeSource::kSubmitted,input.capture_steady_us>0};
+        CopyPipelineDiagnostics(instance,completion.diagnostics);
+        publish.unlock();
+        completions_.Publish(completion);
+        completion_published=true;
     }
 }
 

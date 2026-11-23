@@ -357,19 +357,23 @@ TEST(StatsV2, RejectsOldJointAndClockBeforePublicSnapshot) {
     ASSERT_TRUE(runtime.Start(files.root,"android-ncnn-vulkan",1,error,QueryFixtureGpu,&source))<<error;
     source.frame_id=1;source.ready=true;
     ASSERT_TRUE(Await([&]{return source.retires.load()>=1;}));
+    ASSERT_TRUE(Await([&]{return runtime.LastError().find("joint provenance")!=std::string::npos;}));
     HV_RuntimeStatsV1 v1{};EXPECT_EQ(runtime.Copy(0,v1).count,0u);
     EXPECT_EQ(v1.source_frame_id,0);
     EXPECT_EQ(runtime.StatsV2().fresh_observation_frames,0u);
     EXPECT_NE(runtime.LastError().find("joint provenance"),std::string::npos);
+    EXPECT_EQ(runtime.ErrorCount(),1u);
     fake.stale_joint=false;source.frame_id=2;source.timestamp_us=1'033'000;
     source.capture_steady_us=std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count()-20'000'000;
     source.ready=true;ASSERT_TRUE(Await([&]{return source.retires.load()>=2;}));
+    ASSERT_TRUE(Await([&]{return runtime.LastError().find("incompatible native clock")!=std::string::npos;}));
     EXPECT_EQ(runtime.Copy(0,v1).count,0u);
     EXPECT_EQ(v1.source_frame_id,0);
     EXPECT_EQ(runtime.StatsV2().fresh_observation_frames,0u);
     EXPECT_NE(runtime.LastError().find("incompatible native clock"),std::string::npos);
     EXPECT_GE(runtime.StatsV2().pose_job_drops,2u);
+    for(int i=0;i<10;++i)EXPECT_EQ(runtime.ErrorCount(),2u);
     active=nullptr;
 }
 
@@ -380,6 +384,7 @@ TEST(StatsV2, RejectsNonfinitePoseTimingBeforePublicSnapshot) {
     ASSERT_TRUE(runtime.Start(files.root,"android-ncnn-vulkan",1,error,QueryFixtureGpu,&source))<<error;
     source.frame_id=1;source.ready=true;
     ASSERT_TRUE(Await([&]{return source.retires.load()>=1;}));
+    ASSERT_TRUE(Await([&]{return runtime.LastError().find("incompatible native clock")!=std::string::npos;}));
     HV_RuntimeStatsV1 v1{};EXPECT_EQ(runtime.Copy(0,v1).count,0u);
     EXPECT_EQ(v1.source_frame_id,0);
     EXPECT_EQ(runtime.StatsV2().fresh_observation_frames,0u);

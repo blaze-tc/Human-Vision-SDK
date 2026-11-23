@@ -3,6 +3,7 @@
 #include "core/latest_frame_slot.h"
 #include "common/frame_envelope.h"
 #include "common/pipeline_diagnostics.h"
+#include "common/completion_mailbox.h"
 #include <thread>
 #include <array>
 #include <atomic>
@@ -13,6 +14,13 @@ namespace humanvision::runtime {
  * Stop joins inference and therefore is not a per-frame operation. */
 class RuntimeHost {
 public:
+    struct Completion {
+        HV_ObservationFrameV1 frame{};
+        FrameEnvelope envelope;
+        PipelineDiagnostics diagnostics{};
+    };
+    void SetCompletionNotifier(void* context, void (*notify)(void*)) { completions_.Configure(context,notify); }
+    bool TryTakeCompletion(Completion& completion) { return completions_.TryTake(completion); }
     ~RuntimeHost() { Stop(); }
     bool Start(std::shared_ptr<const PluginModule>, const HV_PipelineConfigV1&, const HV_HostServicesV1&, std::string& error);
     // Explicit opt-in for independent/stateless pipeline instances. Config strings
@@ -32,6 +40,7 @@ public:
     bool CopyLatest(HV_ObservationFrameV1&,int64_t& revision) const;
     bool CopyLatest(HV_ObservationFrameV1&, FrameEnvelope&) const;
     int64_t DroppedFrames() const;
+    uint64_t ErrorCount() const noexcept { return errors_.load(std::memory_order_relaxed); }
     std::string LastError() const;
     PipelineDiagnostics Diagnostics() const;
     void Stop();
@@ -44,6 +53,7 @@ private:
     using FrameJobSlot = LatestFrameSlotWithMetadata<FrameJobMetadata>;
 
     void Run(uint32_t index);
+    CompletionMailbox<Completion> completions_;
     mutable std::mutex lifecycle_mutex_, result_mutex_;
     std::shared_ptr<const PluginModule> module_;
     std::array<void*,3> instances_{};
@@ -57,6 +67,7 @@ private:
     std::string error_;
     std::atomic<uint32_t> active_workers_{0},worker_count_{0};
     std::atomic<int64_t> late_drops_{0};
+    std::atomic<uint64_t> errors_{0};
     int64_t last_submitted_frame_=-1,last_submitted_time_=-1,sequence_=0;
 };
 }

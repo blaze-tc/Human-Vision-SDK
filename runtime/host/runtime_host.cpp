@@ -48,11 +48,12 @@ bool RuntimeHost::StartPool(std::shared_ptr<const PluginModule> module,const std
     std::unique_lock<std::mutex> lock(lifecycle_mutex_);
     module_ = std::move(module); max_bodies_ = configs[0].max_bodies;
     for(size_t i=0;i<candidates.size();++i)instances_[i]=candidates[i].release();
-    worker_count_=uint32_t(configs.size());active_workers_=0;late_drops_=0;
+    worker_count_=uint32_t(configs.size());active_workers_=0;late_drops_=0;errors_=0;
     last_submitted_frame_=last_submitted_time_=-1;sequence_=0;
     slot_ = std::move(new_slot);
     { std::lock_guard<std::mutex> result_lock(result_mutex_); has_result_ = false; result_ = {}; diagnostics_={}; error_.clear(); }
     running_ = true;
+    completions_.Start();
     try { for(uint32_t i=0;i<configs.size();++i)workers_[i]=std::thread(&RuntimeHost::Run,this,i); }
     catch (...) {
         lock.unlock();Stop();
@@ -141,6 +142,7 @@ PipelineDiagnostics RuntimeHost::Diagnostics() const {
 
 void RuntimeHost::Stop() {
     { std::lock_guard<std::mutex> lock(lifecycle_mutex_); running_ = false; if (slot_) slot_->Stop(); }
+    completions_.Stop();
     for(auto& worker:workers_)if(worker.joinable())worker.join();
     std::lock_guard<std::mutex> lock(lifecycle_mutex_);
     for(auto& instance:instances_)if(instance){try {module_->api.pipeline->destroy(instance);}catch(...){}instance=nullptr;}
@@ -153,7 +155,11 @@ void RuntimeHost::Run(uint32_t index) {
     FrameBuffer frame;
     FrameJobMetadata metadata;
     auto* instance=instances_[index];
-    while (slot_->WaitTake(frame, metadata)) {
+    while (completions_.Reserve()) {
+        bool completion_published=false;
+        struct CreditReset {CompletionMailbox<Completion>& queue;bool& published;
+            ~CreditReset(){if(!published)queue.Cancel();}} credit{completions_,completion_published};
+        if(!slot_->WaitTake(frame, metadata))break;
         ++active_workers_;
         struct BusyReset {std::atomic<uint32_t>& value;~BusyReset(){--value;}} reset{active_workers_};
         HV_ObservationFrameV1 next{};
@@ -172,9 +178,10 @@ void RuntimeHost::Run(uint32_t index) {
         HV_ErrorBufferV1 buffer{sizeof(buffer), HV_PLUGIN_API_V1, message, sizeof(message)};
         HV_Result status = HV_ERR_INTERNAL;
         try { status = module_->api.pipeline->process(instance, &input, &output, &buffer); }
-        catch (...) { std::lock_guard<std::mutex> lock(result_mutex_); error_ = "Pipeline processing raised an exception across C ABI"; continue; }
+        catch (...) { ++errors_;std::lock_guard<std::mutex> lock(result_mutex_); error_ = "Pipeline processing raised an exception across C ABI"; continue; }
         message[sizeof(message)-1] = 0;
         if (status != HV_OK || output.body_count > static_cast<uint32_t>(max_bodies_) || output.hand_count > HV_MAX_PEOPLE * 2) {
+            ++errors_;
             std::lock_guard<std::mutex> lock(result_mutex_);
             error_ = *message ? message : "Pipeline returned an error or invalid output count"; continue;
         }
@@ -184,16 +191,20 @@ void RuntimeHost::Run(uint32_t index) {
         next.preprocess_ms = output.preprocess_ms; next.inference_ms = output.inference_ms; next.postprocess_ms = output.postprocess_ms;
         PipelineDiagnostics diagnostics{};CopyPipelineDiagnostics(instance,diagnostics);
         diagnostics.accepted_detection_count=next.body_count;
-        std::lock_guard<std::mutex> lock(result_mutex_);
-        if(worker_count_>1&&has_result_&&(next.source_frame_id<=result_.source_frame_id||next.source_timestamp_us<=result_.source_timestamp_us)){
-            ++late_drops_;continue;
+        {
+            std::lock_guard<std::mutex> lock(result_mutex_);
+            if(worker_count_>1&&has_result_&&(next.source_frame_id<=result_.source_frame_id||next.source_timestamp_us<=result_.source_timestamp_us)){
+                ++late_drops_;continue;
+            }
+            next.sequence=++sequence_;
+            result_ = next;
+            result_envelope_ = metadata.envelope;
+            diagnostics_ = diagnostics;
+            has_result_ = true;
+            error_.clear();
         }
-        next.sequence=++sequence_;
-        result_ = next;
-        result_envelope_ = metadata.envelope;
-        diagnostics_ = diagnostics;
-        has_result_ = true;
-        error_.clear();
+        completions_.Publish({next,metadata.envelope,diagnostics});
+        completion_published=true;
     }
 }
 }

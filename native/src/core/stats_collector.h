@@ -48,6 +48,9 @@ public:
                  bool detector_keyframe = false, std::uint32_t posed_people = 0,
                  bool clock_domain_prevalidated = false);
     void Sample(std::int64_t frame_id, std::int64_t sampled_us = 0);
+    // A new admitted source generation may restart frame IDs. Preserve totals
+    // and rate history, but compare identity only within the current epoch.
+    void BeginSourceEpoch();
     HV_RuntimeStatsV2 Snapshot(std::int64_t now_us = 0,
         std::uint32_t provenance = HV_CAPTURE_PROVENANCE_UNKNOWN) const;
 private:

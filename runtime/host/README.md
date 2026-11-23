@@ -30,6 +30,16 @@ envelope together. The C and plugin ABIs keep their existing layouts.
 An all-zero crop defaults to the full copied image. Submit preserves explicit
 in-bounds crops and rejects invalid rectangles before enqueueing a frame.
 
+## Completion handoff
+Composition may install a native completion notifier while a Host is stopped.
+The Host reserves one of three completion credits before admitting inference.
+Each successful completion owns its observation, envelope and pipeline diagnostics;
+`TryTakeCompletion` copies that record and returns the credit. The notifier runs
+after Host locks are released and only wakes the existing Session coordinator.
+Full completion storage pauses native job admission; a Unity reader is never part
+of this handoff. Stop wakes credit waiters before joining producers. Standalone
+Hosts without a notifier keep the existing latest-result copy behavior.
+
 ## Allowed dependencies
 Plugin ABI, common frame buffer/latest-frame slot, C++ standard library, Windows loader,
 vendored JSON parser and SHA-256 implementation for configuration validation only.

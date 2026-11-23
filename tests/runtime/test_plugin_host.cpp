@@ -45,6 +45,9 @@ HV_Result HV_CALL Process(void*, const HV_PipelineInputV1* in, HV_PipelineOutput
     return HV_OK;
 }
 const HV_PipelineApiV1 pipeline{sizeof(HV_PipelineApiV1), HV_PLUGIN_API_V1, Create, Destroy, Process};
+HV_Result HV_CALL FailProcess(void*,const HV_PipelineInputV1*,HV_PipelineOutputV1*,HV_ErrorBufferV1*) {
+    return HV_ERR_INTERNAL;
+}
 HV_Result HV_CALL Query(uint32_t version, HV_PluginApiV1* out) {
     if (version != HV_PLUGIN_API_V1 || !out || out->struct_size < sizeof(*out)) return HV_ERR_INVALID_ARGUMENT;
     *out = {sizeof(*out), HV_PLUGIN_API_V1, "fixture.pose", "1.0.0", HV_PLUGIN_PIPELINE,
@@ -64,6 +67,26 @@ TEST(PluginRegistry, RejectsInvalidAndDuplicateWithoutReplacingGoodEntry) {
     EXPECT_TRUE(registry.Find("fixture.pose",HV_CAP_BODY_POSE,error));
     EXPECT_FALSE(registry.Find("fixture.pose",HV_CAP_HAND_POSE,error));
     EXPECT_FALSE(registry.Find("missing",0,error));
+}
+
+TEST(RuntimeHost, NativeErrorCounterCountsFailuresOnceWithoutConsumerPolling) {
+    PluginRegistry registry;std::string error;
+    ASSERT_TRUE(registry.Register(Query,error));
+    auto module=std::make_shared<PluginModule>();
+    module->api=registry.Find("fixture.pose",HV_CAP_BODY_POSE,error)->api;
+    const HV_PipelineApiV1 failing{sizeof(failing),HV_PLUGIN_API_V1,Create,Destroy,FailProcess};
+    module->api.pipeline=&failing;
+    HV_PipelineConfigV1 config{sizeof(config),HV_PLUGIN_API_V1,1,0,"{}",".","{}"};
+    HV_HostServicesV1 services{sizeof(services),HV_PLUGIN_API_V1};
+    RuntimeHost host;ASSERT_TRUE(host.Start(module,config,services,error))<<error;
+    std::array<uint8_t,12> pixels{};
+    HV_VideoFrame frame{sizeof(frame),2,2,6,HV_PIXEL_RGB24,1,1000,pixels.data(),int32_t(pixels.size())};
+    ASSERT_TRUE(host.Submit(frame,error))<<error;
+    const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+    while(host.LastError().empty()&&std::chrono::steady_clock::now()<deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    ASSERT_FALSE(host.LastError().empty());
+    for(int i=0;i<10;++i)EXPECT_EQ(host.ErrorCount(),1u);
 }
 #if defined(HV_TEST_PLUGIN_PATH)
 TEST(PluginRegistry, DynamicLibraryLifetimeFollowsBorrowedModule) {

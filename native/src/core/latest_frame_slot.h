@@ -82,6 +82,17 @@ public:
         return true;
     }
 
+    // A coordinator waiting on several native event sources must not block on
+    // input alone. Uses the same atomic pixel/metadata handoff as WaitTake.
+    bool TryTake(FrameBuffer& destination, Metadata& metadata) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!has_pending_) return false;
+        std::swap(destination, pending_);
+        metadata = pending_metadata_;
+        has_pending_ = false;
+        return true;
+    }
+
     void Stop() {
         {
             std::lock_guard<std::mutex> lock(mutex_);

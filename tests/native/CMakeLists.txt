@@ -166,6 +166,7 @@ endif()
 
 add_executable(humanvision_plugin_tests ../runtime/test_plugin_host.cpp)
 target_sources(humanvision_plugin_tests PRIVATE ../runtime/test_frame_envelope.cpp)
+target_sources(humanvision_plugin_tests PRIVATE ../runtime/test_observation_journal.cpp)
 target_link_libraries(humanvision_plugin_tests PRIVATE HumanVision::Internal GTest::gtest_main)
 target_include_directories(humanvision_plugin_tests PRIVATE ${PROJECT_SOURCE_DIR}/runtime ${PROJECT_SOURCE_DIR}/runtime/include ${PROJECT_SOURCE_DIR}/third_party)
 target_compile_definitions(humanvision_plugin_tests PRIVATE HV_TEST_PROJECT_ROOT="${PROJECT_SOURCE_DIR}")

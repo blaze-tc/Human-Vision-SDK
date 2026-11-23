@@ -170,3 +170,88 @@ TEST(RuntimeSession, MissingSemanticProfileFailsWithActionableError) {
  HV_RuntimeConfigV1 config{sizeof(config),HV_API_VERSION_040,HV_TEST_PROJECT_ROOT,"missing",1,0};HV_RuntimeHandle handle=nullptr;char error[1024]{};
  EXPECT_NE(HV_RuntimeCreate(&config,&handle,error,sizeof(error)),HV_OK);EXPECT_EQ(handle,nullptr);EXPECT_NE(std::string(error).find("Profile missing"),std::string::npos);
 }
+
+TEST(RuntimeSession, LastCompletionPublishesWithoutPolling) {
+ RuntimeSession session;std::string error;
+ ASSERT_TRUE(session.Start(HV_TEST_PROJECT_ROOT,"cpu",1,error))<<error;
+ auto pixels=humanvision::test::ReadBytes(HV_TEST_RAW_IMAGE_PATH);
+ auto frame=humanvision::test::MakeBgrFrame(pixels,218,346,901,HV_RuntimeClockUs());
+ ASSERT_TRUE(session.Submit(frame,error))<<error;
+ // Diagnostics is read-only. No more input, Copy or Stats call may drive the
+ // semantic merge of this last completed inference.
+ const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(12);
+ bool published=false;
+ while(std::chrono::steady_clock::now()<deadline){
+  if(session.Diagnostics().find("Raw observation bodies=1")!=std::string::npos){published=true;break;}
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+ }
+ ASSERT_TRUE(published)<<session.LastError();
+ const auto measured=session.StatsV2();
+ EXPECT_EQ(measured.fresh_observation_frames,1u);
+ EXPECT_EQ(measured.source_frame_id,901);
+}
+
+TEST(RuntimeSession, NoUnityConsumerStillPublishes) {
+ RuntimeSession session;std::string error;
+ ASSERT_TRUE(session.Start(HV_TEST_PROJECT_ROOT,"cpu",1,error))<<error;
+ auto pixels=humanvision::test::ReadBytes(HV_TEST_RAW_IMAGE_PATH);
+ auto frame=humanvision::test::MakeBgrFrame(pixels,218,346,902,HV_RuntimeClockUs());
+ ASSERT_TRUE(session.Submit(frame,error))<<error;
+ // This intentionally supplies no consumer call until the model has completed.
+ std::this_thread::sleep_for(std::chrono::seconds(3));
+ EXPECT_NE(session.Diagnostics().find("Raw observation bodies=1"),std::string::npos);
+}
+
+namespace {
+bool WaitBodyPublication(RuntimeSession& session,uint64_t cursor,ObservationEntry& entry){
+ const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(12);
+ while(std::chrono::steady_clock::now()<deadline){
+  const auto read=session.ReadObservations(cursor,&entry,1);
+  if(read.written){cursor=read.next_cursor;if(entry.kind==ObservationKind::Body)return true;}
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+ }
+ return false;
+}
+}
+
+TEST(RuntimeSession, SamplingDoesNotIncrementFresh) {
+ RuntimeSession session;std::string error;
+ ASSERT_TRUE(session.Start(HV_TEST_PROJECT_ROOT,"cpu",1,error))<<error;
+ auto pixels=humanvision::test::ReadBytes(HV_TEST_RAW_IMAGE_PATH);
+ auto frame=humanvision::test::MakeBgrFrame(pixels,218,346,903,HV_RuntimeClockUs());
+ ASSERT_TRUE(session.Submit(frame,error))<<error;
+ auto entry=std::make_unique<ObservationEntry>();
+ ASSERT_TRUE(WaitBodyPublication(session,0,*entry))<<session.LastError();
+ ASSERT_EQ(entry->body_count,1u);EXPECT_EQ(entry->envelope.frame_id,903);
+ const auto cursor=entry->sequence;
+ for(int i=0;i<30;++i){HV_RuntimeStatsV1 ignored{};session.Copy(HV_RuntimeClockUs(),ignored);}
+ EXPECT_EQ(session.StatsV2().fresh_observation_frames,1u);
+ EXPECT_EQ(session.ReadObservations(cursor,entry.get(),1).written,0u);
+ session.Stop();session.Stop();EXPECT_EQ(session.ErrorCount(),0u);
+}
+
+TEST(RuntimeSession, SourceEpochPublishesRestartedIdsWithOriginalEnvelope) {
+ RuntimeSession session;std::string error;
+ ASSERT_TRUE(session.Start(HV_TEST_PROJECT_ROOT,"cpu",1,error))<<error;
+ auto pixels=humanvision::test::ReadBytes(HV_TEST_RAW_IMAGE_PATH);
+ FrameEnvelope envelope;envelope.source_id=31;envelope.generation=4;envelope.config_epoch=8;
+ envelope.crop={10,20,100,100};envelope.rotation_degrees=90;
+ auto frame=humanvision::test::MakeBgrFrame(pixels,218,346,904,HV_RuntimeClockUs());
+ ASSERT_TRUE(session.Submit(frame,envelope,error))<<error;
+ auto entry=std::make_unique<ObservationEntry>();
+ ASSERT_TRUE(WaitBodyPublication(session,0,*entry))<<session.LastError();
+ EXPECT_EQ(entry->envelope.source_id,31u);EXPECT_EQ(entry->envelope.generation,4u);
+ EXPECT_EQ(entry->envelope.config_epoch,8u);EXPECT_EQ(entry->envelope.crop.x,10);
+ EXPECT_EQ(entry->envelope.rotation_degrees,90);EXPECT_EQ(entry->body_count,1u);
+ const auto cursor=entry->sequence;
+ envelope.generation=5;envelope.config_epoch=9;
+ frame.frame_id=1;frame.timestamp_us=HV_RuntimeClockUs();
+ ASSERT_TRUE(session.Submit(frame,envelope,error))<<error;
+ ASSERT_TRUE(WaitBodyPublication(session,cursor,*entry))<<session.LastError();
+ EXPECT_EQ(entry->envelope.frame_id,1);EXPECT_EQ(entry->envelope.generation,5u);
+ EXPECT_EQ(entry->envelope.config_epoch,9u);EXPECT_EQ(entry->body_count,1u);
+ EXPECT_EQ(session.StatsV2().fresh_observation_frames,2u);
+ EXPECT_EQ(session.StatsV2().source_frame_id,1);
+ envelope.generation=4;
+ EXPECT_FALSE(session.Submit(frame,envelope,error));EXPECT_NE(error.find("expired"),std::string::npos);
+}

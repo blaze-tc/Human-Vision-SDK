@@ -104,6 +104,12 @@ bool StatsCollectorV2::Publish(const std::int64_t frame_id, const std::uint32_t 
     return true;
 }
 
+void StatsCollectorV2::BeginSourceEpoch() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    last_frame_=last_capture_=0;
+    stats_.source_frame_id=stats_.capture_timestamp_us=stats_.publication_timestamp_us=0;
+}
+
 void StatsCollectorV2::Sample(const std::int64_t frame_id, const std::int64_t sampled_us) {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto time=sampled_us==0?std::chrono::duration_cast<std::chrono::microseconds>(

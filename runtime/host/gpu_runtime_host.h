@@ -1,6 +1,8 @@
 #pragma once
 #include "host/backend_factory.h"
 #include "common/pipeline_diagnostics.h"
+#include "common/completion_mailbox.h"
+#include "common/frame_envelope.h"
 #include "gpu/android/unity_vulkan_bridge.h"
 #include <atomic>
 #include <memory>
@@ -45,6 +47,13 @@ private:
 
 class GpuRuntimeHost {
 public:
+    struct Completion {
+        HV_GpuObservationFrameV3 frame{};
+        FrameEnvelope envelope;
+        PipelineDiagnostics diagnostics{};
+    };
+    void SetCompletionNotifier(void* context, void (*notify)(void*)) { completions_.Configure(context,notify); }
+    bool TryTakeCompletion(Completion& completion) { return completions_.TryTake(completion); }
     using ObservationSink = bool (*)(void*,const HV_GpuObservationFrameV3&,int64_t,int64_t);
     explicit GpuRuntimeHost(GpuConsumerSource& source) : source_(source) {}
     ~GpuRuntimeHost() { Stop(); }
@@ -60,6 +69,7 @@ public:
     uint64_t SupersededReadyDrops() const noexcept { return superseded_ready_drops_.load(); }
     uint64_t PoseJobDrops() const noexcept { return pose_job_drops_.load(); }
     uint64_t ImportErrors() const noexcept { return import_errors_.load(); }
+    uint64_t ErrorCount() const noexcept { return errors_.load(std::memory_order_relaxed); }
     void SetObservationSink(void* context,ObservationSink sink) noexcept { sink_context_=context;sink_=sink; }
     void SetRevision(int64_t revision) noexcept { revision_.store(revision); }
     // Busy means executing the pipeline call (includes its waits), not hardware utilization.
@@ -68,6 +78,7 @@ public:
     void Stop();
 private:
     void Run(uint32_t index);
+    CompletionMailbox<Completion> completions_;
     GpuConsumerSource& source_;
     std::shared_ptr<const GpuPluginModuleV3> module_;
     std::array<void*,3> instances_{};
@@ -79,6 +90,7 @@ private:
     std::atomic<int64_t> revision_{0};
     std::atomic<uint64_t> superseded_ready_drops_{0}, pose_job_drops_{0};
     std::atomic<uint64_t> import_errors_{0};
+    std::atomic<uint64_t> errors_{0};
     void* sink_context_=nullptr;
     ObservationSink sink_=nullptr;
     mutable std::mutex result_mutex_;

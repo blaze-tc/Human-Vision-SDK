@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/frame_buffer.h"
+#include "humanvision/humanvision_types.h"
 
 #include <array>
 #include <chrono>
@@ -22,6 +22,7 @@ enum class FrameTimeSource : std::uint8_t {
     kReceived,
     kDecoded,
     kSubmitted,
+    kPublished,
 };
 
 struct FrameTime {
@@ -117,7 +118,9 @@ struct FrameEnvelope {
         height = frame.height;
         if (!crop.IsSpecified()) crop = {0, 0, width, height};
         planes = {};
-        planes[0] = {0, frame.stride_bytes, BytesPerPixel(frame.pixel_format)};
+        const auto pixel_stride=frame.pixel_format==HV_PIXEL_RGB24||frame.pixel_format==HV_PIXEL_BGR24?3:
+            frame.pixel_format==HV_PIXEL_RGBA32||frame.pixel_format==HV_PIXEL_BGRA32?4:0;
+        planes[0] = {0, frame.stride_bytes, pixel_stride};
         plane_count = 1;
         format = frame.pixel_format;
         format_modifier = 0;
