@@ -110,6 +110,7 @@ Windows 原生 RTSP 将解码后的 CPU 图像直接提交给现有后端；Andr
 旧 ABI 会话没有这些计数时返回 false。`IndependentInputSize` 是实际分析图像尺寸；`RtspDecodedInputSize` 单独返回可用的原始解码尺寸，未知时为零。
 
 预览是独立的可丢帧消费者，不持有原生解码图像或分析槽；关闭预览不会停止识别。精确图像与骨骼只有 source、generation、frame、epoch 匹配时才返回，
+原生分析缓冲未提供为 Unity 纹理时，`TryGetAnalysisInputFrame` 返回 false，使用 `IndependentInputSize` 查询实际分析尺寸；高清预览不会冒充分析图。
 暂缺时不拿当前画面替代。停止请求不会在 Unity 线程等待原生退出；`StopSdk()` 等待真实退役。驱动未完成时保持资源所有权，
 可从 `RuntimeDiagnostics` 查看退役状态，不能强制卸载库或把超时当作完成。
 

@@ -182,14 +182,14 @@ namespace HumanVision
         }
         internal long RecognitionRevision => revision;
         internal bool HasNewEmptySplitPreviewResult(long sequence) =>
-            acceptedSequence > sequence && !CaptureAnalysisRuntimeViewFrames && SeparateAnalysisSource != null &&
+            acceptedSequence > sequence && !CaptureAnalysisRuntimeViewFrames && (SeparateAnalysisSource != null || source is HumanVisionNativeFrameSource) &&
             manager != null && acceptedSequence == manager.ResultSequence && manager.BodyCount == 0 && HasFreshResult;
         internal bool TryGetRuntimeViewResult(out HumanVisionTextureFrame input, out Texture color, out long inputFrameId)
         {
             color = null; inputFrameId = -1;
             if (source is HumanVisionNativeFrameSource native) {
                 TryGetInputFrame(-1, out input);
-                if (!HasFreshResult || manager == null || acceptedSequence != manager.ResultSequence ||
+                if (CaptureAnalysisRuntimeViewFrames || !HasFreshResult || manager == null || acceptedSequence != manager.ResultSequence ||
                     !native.TryGetMatchedFrame(manager.SourceFrameId, manager.ResultSourceId, manager.ResultGeneration, out var matched)) return false;
                 input = matched; color = matched.Texture; inputFrameId = matched.FrameId; return true;
             }
@@ -709,6 +709,8 @@ namespace HumanVision
         public bool TryGetAnalysisInputFrame(long afterFrameId, out HumanVisionTextureFrame frame)
         {
             frame = default;
+            // Native analysis is owned by the native pipeline, not this HD preview consumer.
+            if (source is HumanVisionNativeFrameSource) return false;
             return IsRunning && TryGetRecognitionSourceFrame(afterFrameId, out frame);
         }
         /// <summary>Copies recent RTSP analysis texture and readback timings on the Unity thread.</summary>
