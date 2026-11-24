@@ -577,13 +577,28 @@
           ]
         }
       ]
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceDiagnostics.cs",
+      "before": "96b7730c057dd36acafd4acde09200eba4aa3e3a55787acb26faee4ae3520446",
+      "after": "93b4cf444da05186f78ec159be243e9be15ab8b7806dfbf500ddf122ee4b10f4",
+      "replacements": [
+        [
+          "        private int previousUnityFrame, droppedMessages;",
+          "        private int previousUnityFrame, droppedMessages, exportSequence;"
+        ],
+        [
+          "        private void Flush()\n        {\n            nextFlush = clock.Elapsed.TotalSeconds + 5;\n            try { writer?.Flush(); }\n            catch (IOException) { Status = \"诊断日志保存失败\"; }\n        }\n\n        internal bool Export()\n        {\n            if (!EnsureStarted()) return false;\n            DrainMessages();\n            Flush();\n            ExportPath = SessionPath;\n#if UNITY_ANDROID && !UNITY_EDITOR\n            if (TryExportToDownloads(SessionPath, out string path)) {\n                ExportPath = path;\n                Status = \"已导出 · Download/HumanVisionLogs\";\n                Debug.Log(\"HV_RT_DIAGNOSTICS export=\" + ExportPath);\n                return true;\n            }\n            Status = \"公共导出不可用 · 日志已保存在应用目录\";\n            Debug.LogWarning(\"HV_RT_DIAGNOSTICS \" + Status + \" path=\" + SessionPath);\n            return false;\n#else\n            Status = \"诊断日志已保存在应用目录\";\n            return File.Exists(ExportPath);\n#endif\n        }\n\n#if UNITY_ANDROID && !UNITY_EDITOR\n",
+          "        private bool Flush()\n        {\n            nextFlush = clock.Elapsed.TotalSeconds + 5;\n            try { writer?.Flush(); return true; }\n            catch (IOException) { Status = \"诊断日志保存失败\"; return false; }\n        }\n\n        internal bool Export()\n        {\n            ExportPath = \"\";\n            if (!EnsureStarted()) return false;\n            DrainMessages();\n            if (!Flush()) return false;\n#if UNITY_ANDROID && !UNITY_EDITOR\n            if (TryExportToDownloads(SessionPath, out string path)) {\n                ExportPath = path;\n                Status = \"已导出 · Download/HumanVisionLogs\";\n                Debug.Log(\"HV_RT_DIAGNOSTICS export=\" + ExportPath);\n                return true;\n            }\n#endif\n            if (!TryExportToAppDirectory()) return false;\n#if UNITY_ANDROID && !UNITY_EDITOR\n            Status = \"公共导出不可用 · 日志快照已保存在应用目录\";\n#else\n            Status = \"日志快照已保存在应用目录\";\n#endif\n            Debug.Log(\"HV_RT_DIAGNOSTICS export=\" + ExportPath);\n            return true;\n        }\n\n        private bool TryExportToAppDirectory()\n        {\n            string name = Path.GetFileNameWithoutExtension(SessionPath) + \"-export-\" +\n                (++exportSequence).ToString(CultureInfo.InvariantCulture) + \".jsonl\";\n            string path = Path.Combine(Path.GetDirectoryName(SessionPath), name);\n            bool created = false;\n            try {\n                using (var source = new FileStream(SessionPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))\n                using (var destination = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {\n                    created = true;\n                    source.CopyTo(destination);\n                }\n                ExportPath = path;\n                return true;\n            } catch (Exception error) when (error is IOException || error is UnauthorizedAccessException) {\n                if (created) {\n                    try { File.Delete(path); }\n                    catch (Exception cleanup) when (cleanup is IOException || cleanup is UnauthorizedAccessException) { }\n                }\n                Status = \"诊断快照导出失败 · \" + error.GetType().Name;\n                Debug.LogWarning(\"HV_RT_DIAGNOSTICS \" + Status);\n                return false;\n            }\n        }\n\n#if UNITY_ANDROID && !UNITY_EDITOR\n"
+        ]
+      ]
     }
   ],
   "payloads": [
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceInteractive.cs",
       "payload": "RuntimePrefabAcceptanceInteractive.cs",
-      "sha256": "ad637f6e6e90c1c7a7baa891d8de6bcf56030cad18f6925f3ec54a4d28dea828",
+      "sha256": "c04c6ebeafa1304b7323893eef61e98ca1a94a090f43391c41a7fe06a1958c07",
       "previous_sha256": [
         "9421fd7d346783ba59cacd32e2b034b513d39c9fcc2f2cdcc44d6d6050e2e0d1",
         "44c50dbe0e7ed6c54ce9cb2989da488eb9c79c4ccc1d8b2fddbd7d8de074fde7",
@@ -592,24 +607,32 @@
         "09e15c3c0d4c7c9cb084977da0be21a1534d86a6968de630fbaf27b4d2387b88",
         "7f9c4d1e065e48a16b085e54f10bd773f247b25e27eea0aad6de571148d7e95a",
         "77bbcbc31e4021593b65c6c35adebeabc062e0252f084bce393cb390041dd66b",
-        "7c3c20acfea8226a35f0baf8aae4eb2d12cafe8a415623e60d6c875c3e4cfc77"
+        "7c3c20acfea8226a35f0baf8aae4eb2d12cafe8a415623e60d6c875c3e4cfc77",
+        "ad637f6e6e90c1c7a7baa891d8de6bcf56030cad18f6925f3ec54a4d28dea828"
       ]
     },
     {
       "path": "Assets/HumanVision/Tests/EditMode/RuntimePrefabInteractiveAcceptanceTests.cs",
       "payload": "RuntimePrefabInteractiveAcceptanceTests.cs",
-      "sha256": "9bbfe1f9c420e95f32c5eb9bb5376273c6677e1dd02a2bf3dfe518c38096d56f",
+      "sha256": "39e23e0c7306d6d42493c58cf262d404ac4d3a354b0e49e9750453a8e1d14958",
       "previous_sha256": [
         "a30a6a74af73cf6b843ac9ac22647e4aafe0f203dc04f50c01556be5be02b75a",
         "4cca6b7e869150623ef5b19d528956a71c5a731861d1a4585d4e3454e16969a3",
         "e0c92e1d3f682d53277d9f68e7c729f7e3d02c8e78b07a1eb0d8bebba1df8029",
-        "6bcbcbe8f871f342203a892225c145a90b0db16c53ff120e5df9336f91e98534"
+        "6bcbcbe8f871f342203a892225c145a90b0db16c53ff120e5df9336f91e98534",
+        "9bbfe1f9c420e95f32c5eb9bb5376273c6677e1dd02a2bf3dfe518c38096d56f",
+        "212e66e210e9c990c237a452c8e412948156a29b7a498472664117fbc5fb1327",
+        "deebd9785d3cdae9855b19bde8af3cabdd0e676381ac487487e548907bdbec66",
+        "0fac869ed5fed6026b15422d398c1b94f717d5692a09a3be2220533180988a46"
       ]
     },
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceEditorVerification.cs",
       "payload": "RuntimePrefabAcceptanceEditorVerification.cs",
-      "sha256": "68dd34ba3e7aef863efed1b8cc07e9da6596c9cab3d036409b076837b7c9c98f"
+      "sha256": "f82df4b68c2e3d10eb1ec2e54ef6e6d8213d34f5e654382119337e5cb7f50710",
+      "previous_sha256": [
+        "68dd34ba3e7aef863efed1b8cc07e9da6596c9cab3d036409b076837b7c9c98f"
+      ]
     },
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimeCounterRateWindow.cs",
@@ -619,11 +642,12 @@
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceSidebar.cs",
       "payload": "RuntimePrefabAcceptanceSidebar.cs",
-      "sha256": "9236d6f762ae0ef9427ce8575d6516ecc6f68495853133180c43dd243769ca3e",
+      "sha256": "0b86f914095908e88a06d41cdc9bddfa456ecab0565faa6ae4a4e953326cb2de",
       "previous_sha256": [
         "d94217cee68441cedd9522ecda56a692621adbea3105c99c75f19687266224ef",
         "ba84c88fb101dd8cfabbb5b19e3639874be6f950e12ed6007d2c3840a3207913",
-        "350580d0bda86b1051c9c10a0b93e5f1c688601e34dbd8de6aa157feb4f108aa"
+        "350580d0bda86b1051c9c10a0b93e5f1c688601e34dbd8de6aa157feb4f108aa",
+        "9236d6f762ae0ef9427ce8575d6516ecc6f68495853133180c43dd243769ca3e"
       ]
     }
   ]

@@ -14,7 +14,7 @@ namespace HumanVisionAcceptance
         [Serializable]
         private sealed class EditorCommandReport
         {
-            public string id, action, result = "idle", sdkState, error, uiStatus;
+            public string id, action, result = "idle", sdkState, error, uiStatus, exportPath, exportStatus;
             public bool busy, uiStatusChanged;
         }
 
@@ -41,6 +41,8 @@ namespace HumanVisionAcceptance
                 editorCommandReport.sdkState = view == null ? "Unloaded" : view.Sdk.State.ToString();
                 editorCommandReport.uiStatus = diagnostics.Redact(status ?? "");
                 editorCommandReport.uiStatusChanged = !string.Equals(editorCommandInitialStatus, status, StringComparison.Ordinal);
+                editorCommandReport.exportPath = diagnosticExportPath ?? "";
+                editorCommandReport.exportStatus = diagnosticExportStatus ?? "";
                 string runtimeError = view == null ? null : view.Sdk.LastError;
                 if (editorCommandReport.result == "accepted") editorCommandReport.error = diagnostics.Redact(runtimeError ?? "");
                 return JsonUtility.ToJson(editorCommandReport);
@@ -53,7 +55,8 @@ namespace HumanVisionAcceptance
                     editorCommandReport.action = command.Action;
                     if (!Application.isPlaying) throw new ArgumentException("Verification commands require Play mode.");
                     if (automatedFixture) throw new ArgumentException("Verification commands require interactive mode.");
-                    if (operating) throw new ArgumentException("The existing SDK operation is busy; wait before sending another command.");
+                    if (operating && command.Action != "collect_logs")
+                        throw new ArgumentException("The existing SDK operation is busy; wait before sending another command.");
                     if (interactive == null || startup == null) throw new ArgumentException("Interactive preparation is not complete.");
                     if (basicOptionsOpen) throw new ArgumentException("Close the basic settings draft before verification commands.");
                     editorCommandInitialStatus = status;
@@ -98,6 +101,9 @@ namespace HumanVisionAcceptance
                     break;
                 case "fullscreen": SetFullscreenPreview(command.Enabled); break;
                 case "connect": ValidateEditorConnection(); Run(Connect()); break;
+                case "collect_logs":
+                    if (string.IsNullOrEmpty(CollectDiagnosticLogs())) throw new ArgumentException(diagnosticExportStatus);
+                    break;
                 case "stop":
                     if (view == null) throw new ArgumentException("The SDK is already unloaded.");
                     Run(StopRuntime()); break;
@@ -241,6 +247,7 @@ namespace HumanVisionAcceptance
                         throw new ArgumentException("Display confidence must be 0–1 and result ages must be positive.");
                     break;
                 case "connect": case "stop": case "restart": case "unload": case "save": case "load":
+                case "collect_logs":
                     allowed = Array.Empty<string>(); break;
                 default: throw new ArgumentException("Unknown verification action.");
             }

@@ -18,6 +18,10 @@ namespace HumanVisionAcceptance
         private float sidebarContentHeight = 1600;
         private GUIStyle sidebarTextStyle;
         private readonly GUIContent sidebarContent = new GUIContent();
+#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)
+        private string diagnosticExportPath;
+        private string diagnosticExportStatus;
+#endif
 
         private void DrawControlSidebar(Rect area)
         {
@@ -25,7 +29,9 @@ namespace HumanVisionAcceptance
             float logHeight = Mathf.Clamp(area.height * .36f, 220, 320);
             var viewport = new Rect(area.x + 14, area.y + 12, area.width - 28, area.height - logHeight - 32);
             var logPanel = new Rect(area.x + 10, area.yMax - logHeight - 10, area.width - 20, logHeight);
-            var logViewport = new Rect(logPanel.x + 4, logPanel.y + 8, logPanel.width - 8, logPanel.height - 16);
+            const float logHeaderHeight = 46;
+            var logViewport = new Rect(logPanel.x + 4, logPanel.y + logHeaderHeight,
+                logPanel.width - 8, logPanel.height - logHeaderHeight - 8);
             float width = viewport.width - 22;
             sidebarScroll = GUI.BeginScrollView(viewport, sidebarScroll,
                 new Rect(0, 0, width, Mathf.Max(viewport.height, sidebarContentHeight)), false, true);
@@ -38,12 +44,21 @@ namespace HumanVisionAcceptance
                 sidebarContentHeight = y + 16;
             } finally { GUI.EndScrollView(); GUI.enabled = true; }
             Box(logPanel, Inset);
+            GUI.Label(new Rect(logPanel.x + 12, logPanel.y + 8, logPanel.width - 156, 32), "实时状态 / 日志", body);
+#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)
+            if (GUI.Button(new Rect(logPanel.xMax - 140, logPanel.y + 7, 130, 34), "一键采集日志", button))
+                CollectDiagnosticLogs();
+#endif
             width = logViewport.width - 22;
             sidebarLogScroll = GUI.BeginScrollView(logViewport, sidebarLogScroll,
                 new Rect(0, 0, width, Mathf.Max(logViewport.height, sidebarLogContentHeight)), false, true);
             try {
                 float y = 0;
-                DrawSidebarText("实时状态 / 日志", width, ref y, true);
+#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)
+                DrawSidebarText(diagnosticExportStatus, width, ref y);
+                if (!string.IsNullOrEmpty(diagnosticExportPath))
+                    DrawSidebarText("日志路径：" + diagnosticExportPath, width, ref y);
+#endif
                 DrawSidebarText(telemetry.PerformanceLine, width, ref y);
                 if (view != null) {
                     string previewError = view.Sdk.PreviewError;
@@ -60,6 +75,24 @@ namespace HumanVisionAcceptance
                 sidebarLogContentHeight = y + 16;
             } finally { GUI.EndScrollView(); GUI.enabled = true; }
         }
+
+#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)
+        private string CollectDiagnosticLogs()
+        {
+            var sdk = view != null ? view.Sdk : null;
+            diagnostics.Mark(thermalPhase, "manual_log_collection", NativePreviewBounds, status, sdk);
+            bool exported = diagnostics.Export();
+            string path = diagnostics.ExportPath;
+            diagnosticExportPath = exported || System.IO.File.Exists(path) ? path : "";
+            diagnosticExportStatus = diagnostics.Status;
+            if (!string.IsNullOrEmpty(diagnosticExportPath)) {
+                GUIUtility.systemCopyBuffer = diagnosticExportPath;
+                diagnosticExportStatus += " · 路径已复制";
+            }
+            sidebarLogScroll = Vector2.zero;
+            return diagnosticExportPath;
+        }
+#endif
 
         private void DrawSidebarText(string text, float width, ref float y, bool section = false)
         {
@@ -93,11 +126,6 @@ namespace HumanVisionAcceptance
             GUI.enabled = true; y += 48;
             DrawSidebarText("更多输入与识别参数由 SDK 配置资产设置。", width, ref y);
             DrawSidebarMeasurement(width, ref y);
-            if (GUI.Button(new Rect(0, y, width, 36), "导出 JSONL / 复制路径", button)) {
-                diagnostics.Export(); if (!string.IsNullOrEmpty(diagnostics.ExportPath)) GUIUtility.systemCopyBuffer = diagnostics.ExportPath;
-                status = diagnostics.Status;
-            }
-            y += 50;
         }
 
         private void DrawSidebarRuntimeActions(float width, ref float y)

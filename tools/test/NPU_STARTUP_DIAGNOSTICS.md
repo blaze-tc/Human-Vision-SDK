@@ -2,6 +2,12 @@
 
 本工具对应业务故障说明：`E:/UnityProject/YS-Sensory game project/Sensory-Game-2021.3.45/Logs/HumanVisionAarStartup-20261124/给SDK工程的回归定位与修改说明.md`。只定位 SDK 自有验收程序的启动路径，不改业务工程、不替换正式 tarball、不自动发布。Windows 参数/编译检查和非 RK3588 设备上的拒绝结果不能算 RK3588 通过。
 
+## 从 Demo 界面采集
+
+在普通 RuntimePrefabAcceptance 界面的左侧「实时状态 / 日志」面板点击「一键采集日志」。尚未连接、连接失败或正在识别时均可使用。每次点击会生成一份 JSONL 快照，记录点击时的 SDK 和输入状态，在面板显示实际保存路径并复制到剪贴板。RTSP 地址在诊断日志中脱敏。
+
+Android 优先将快照写入「下载 / HumanVisionLogs」，公共目录不可用时保存到应用目录。若应用在按钮可用前就退出，按下文在启动前开始采集 logcat，并保留故障堆栈。
+
 ## 入口与隔离条件
 
 `RuntimeIndependentAcceptanceProbe.cs` 原来已有 `hv_independent_execution=native|compatible` 和 `hv_independent_preview_off=true|false`，足以配置执行策略/预览，但普通 RPA 会先检测多个后端，且自动 fixture 限于 loopback。不能拿该预检过程当作一次独立的 Neural 冷启动。

@@ -3,6 +3,7 @@ using System;
 using System.Linq;
 using System.Reflection;
 using System.Collections;
+using System.IO;
 using HumanVision;
 using HumanVision.Demo;
 using HumanVision.Input;
@@ -178,10 +179,53 @@ namespace HumanVision.Tests
             catch (TargetInvocationException error) { throw error.InnerException; }
         }
 
+        [Test] public void CollectDiagnosticLogsBeforeConnectingWritesAndCopiesStableSnapshots()
+        {
+            object owner = Owner(InputKind.Rtsp);
+            Assert.That(Get(owner, "view"), Is.Null);
+            const string connectionFailure = "连接失败 rtsp://operator:sample-secret@camera.invalid/stream";
+            Set(owner, "status", connectionFailure);
+            var collect = DemoType.GetMethod("CollectDiagnosticLogs", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(collect, Is.Not.Null, "The log panel must offer a collection action before the SDK connects.");
+            var diagnostics = (IDisposable)Get(owner, "diagnostics");
+            var sessionPath = diagnostics.GetType().GetProperty("SessionPath");
+            string previousClipboard = GUIUtility.systemCopyBuffer;
+            string path = null, nextPath = null, livePath = null;
+            try {
+                path = (string)collect.Invoke(owner, null);
+                Assert.That(path, Is.Not.Null.And.Not.Empty);
+                livePath = (string)sessionPath.GetValue(diagnostics);
+                Assert.That(path, Is.Not.EqualTo(livePath),
+                    "Sharing a still-open session file can expose an incomplete JSON line.");
+                Assert.That(File.Exists(path), Is.True);
+                Assert.That(GUIUtility.systemCopyBuffer, Is.EqualTo(path));
+                string log = File.ReadAllText(path);
+                Assert.That(log, Does.Contain("\"kind\":\"session\"").And.Contain("manual_log_collection"));
+                Assert.That(log, Does.Contain("连接失败 [RTSP address]").And.Not.Contain("sample-secret"));
+                Assert.That(Get(owner, "diagnosticExportPath"), Is.EqualTo(path));
+                Assert.That(Get(owner, "status"), Is.EqualTo(connectionFailure));
+                Assert.That(Get(owner, "view"), Is.Null);
+
+                Set(owner, "status", "第二次采集");
+                nextPath = (string)collect.Invoke(owner, null);
+                Assert.That(nextPath, Is.Not.Null.And.Not.Empty.And.Not.EqualTo(path));
+                Assert.That(Get(owner, "diagnosticExportPath"), Is.EqualTo(nextPath));
+                Assert.That(GUIUtility.systemCopyBuffer, Is.EqualTo(nextPath));
+                Assert.That(File.ReadAllText(nextPath), Does.Contain("第二次采集"));
+                Assert.That(File.ReadAllText(path), Is.EqualTo(log));
+            } finally {
+                GUIUtility.systemCopyBuffer = previousClipboard;
+                diagnostics.Dispose();
+                foreach (string file in new[] { path, nextPath, livePath }.Distinct())
+                    if (File.Exists(file)) File.Delete(file);
+            }
+        }
+
         [TestCase("{\"action\":\"compute\",\"mode\":\"gpu\",\"quality\":\"high\"}", "compute")]
         [TestCase("{\"action\":\"source\",\"kind\":\"video\",\"address\":\"C:/fixtures/Exercise-11.mp4\"}", "source")]
         [TestCase("{\"action\":\"fps\",\"value\":15}", "fps")]
         [TestCase("{\"action\":\"connect\"}", "connect")]
+        [TestCase("{\"action\":\"collect_logs\"}", "collect_logs")]
         [TestCase("{\"action\":\"stop\"}", "stop")]
         [TestCase("{\"action\":\"restart\"}", "restart")]
         [TestCase("{\"action\":\"unload\"}", "unload")]

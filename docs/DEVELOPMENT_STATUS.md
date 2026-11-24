@@ -1,3 +1,11 @@
+## 2026-11-24 验收 Demo 一键采集日志
+
+RuntimePrefabAcceptance 左侧日志面板固定显示「一键采集日志」。复用会话诊断，采集时记录脱敏的当前状态和 SDK 错误，输出独立 JSONL 快照，展示路径并复制。Android 优先输出至下载目录，回退至应用目录保存快照。[使用说明](../tools/test/NPU_STARTUP_DIAGNOSTICS.md)
+
+- Unity Skills 8091 的快照回归在旧实现 1 项失败，更新后交互回归 59/59。Play 模式通过同一按钮处理函数导出 Stopped、Error、Running 三种状态，三份 JSONL 均可完整解析，后续采集未改动先前文件。SDK 错误仍显示在原状态区。
+- 保存的本机样本地址端口 `18573` 无监听，Unity 实跑进入 Error 并记录连接超时。以 FFprobe 核验 `18584` 为 H.264 1920×1080 后，在 Play 会话重新应用该地址，Unity 到达 Streaming，纹理帧 1180→1252，4 人骨骼持续绘制。证据位于 `out/demo-log-button-20261124/`。
+- Android 验收 APK `npu-startup-logs-20261124` 构建 0 错误、0 警告。SHA-256 为 `fa098576bd1423a1001c2185519304376ea69a31e2a2cc1a8d56cb408fc3094e`。包内核对了按钮与导出实现、9 个原生库和 74 项资源。此轮 APK 的按钮真机运行待验。
+
 ## 2026-11-24 本地候选：RK3588 宿主启动回归
 
 基于 `v0.4.0` 的 `codex/npu-android-startup` 候选。Android Input 校验 Unity Vulkan device 和 loader 上下文，限制旧设备代次的 live 资源访问，关闭预览时跳过 live 桥挂接。RuntimePrefabAcceptance 增加显式 Neural/Low A/B/C 冷启动和实际配置、SO 映射、首输入／预览／结果观测。[故障定位与验证](reports/2026-11-24-rk3588-npu-startup-regression.md) · [诊断命令](../tools/test/NPU_STARTUP_DIAGNOSTICS.md)

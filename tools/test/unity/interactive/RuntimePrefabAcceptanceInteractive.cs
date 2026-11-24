@@ -252,10 +252,6 @@ namespace HumanVisionAcceptance
                 if (GUI.Button(new Rect(0, y, width, 36), canMeasure ? "一键测试" : "低档可一键测试", button)) Run(RunThermalCampaign());
             }
             GUI.enabled = true; y += 44;
-            if (GUI.Button(new Rect(0, y, width, 36), "导出 JSONL / 复制路径", button)) {
-                diagnostics.Export(); if (!string.IsNullOrEmpty(diagnostics.ExportPath)) GUIUtility.systemCopyBuffer = diagnostics.ExportPath; status = diagnostics.Status;
-            }
-            y += 50;
         }
         partial void DrawSidebarModal() { DrawBasicOptions(); }
         partial void SidebarPhotoReason(ref string reason) { reason = PhotoUnavailableReason(); }
