@@ -4,7 +4,7 @@
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptance.cs",
       "before": "5eaa91fdcacc640045ed5fce882f73523b3b70ac1c691ff2e40cba270a40afd5",
-      "after": "c5ee48e790627d158bbe09a20c867045047485e2787c4563b284c52ec0c130b4",
+      "after": "e065013ebac4cbe9233602bc6ea662eefa1d6e35afaefaac7b9e9aa34679da56",
       "replacements": [
         [
           "GUI.Label(new Rect(45, 674, 145, 33), \"区域数量\", body);",
@@ -109,6 +109,18 @@
         [
           "new Rect(card.x + 16, card.y + 418, card.width - 32, 34), detail,",
           "new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail,"
+        ],
+        [
+          "        private string status = \"填入设备可访问的 RTSP 地址，然后点击连接\";\n",
+          "        private string status = \"打开输入连接，选择 RTSP 或本地相机\";\n"
+        ],
+        [
+          "        private void OnDestroy()\n        {\n",
+          "        private void OnDestroy()\n        {\n            DisposeAcceptanceUi();\n"
+        ],
+        [
+          "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n\n",
+          "        private void LateUpdate() => RenderAcceptanceUi();\n\n"
         ]
       ],
       "upgrades": [
@@ -158,6 +170,18 @@
             [
               "new Rect(card.x + 16, card.y + 418, card.width - 32, 34), detail,",
               "new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail,"
+            ],
+            [
+              "        private string status = \"填入设备可访问的 RTSP 地址，然后点击连接\";\n",
+              "        private string status = \"打开输入连接，选择 RTSP 或本地相机\";\n"
+            ],
+            [
+              "        private void OnDestroy()\n        {\n",
+              "        private void OnDestroy()\n        {\n            DisposeAcceptanceUi();\n"
+            ],
+            [
+              "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n\n",
+              "        private void LateUpdate() => RenderAcceptanceUi();\n\n"
             ]
           ]
         },
@@ -203,6 +227,18 @@
             [
               "new Rect(card.x + 16, card.y + 418, card.width - 32, 34), detail,",
               "new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail,"
+            ],
+            [
+              "        private string status = \"填入设备可访问的 RTSP 地址，然后点击连接\";\n",
+              "        private string status = \"打开输入连接，选择 RTSP 或本地相机\";\n"
+            ],
+            [
+              "        private void OnDestroy()\n        {\n",
+              "        private void OnDestroy()\n        {\n            DisposeAcceptanceUi();\n"
+            ],
+            [
+              "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n\n",
+              "        private void LateUpdate() => RenderAcceptanceUi();\n\n"
             ]
           ]
         },
@@ -228,6 +264,18 @@
             [
               "new Rect(card.x + 16, card.y + 418, card.width - 32, 34), detail,",
               "new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail,"
+            ],
+            [
+              "        private string status = \"填入设备可访问的 RTSP 地址，然后点击连接\";\n",
+              "        private string status = \"打开输入连接，选择 RTSP 或本地相机\";\n"
+            ],
+            [
+              "        private void OnDestroy()\n        {\n",
+              "        private void OnDestroy()\n        {\n            DisposeAcceptanceUi();\n"
+            ],
+            [
+              "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n\n",
+              "        private void LateUpdate() => RenderAcceptanceUi();\n\n"
             ]
           ]
         },
@@ -249,6 +297,35 @@
             [
               "new Rect(card.x + 16, card.y + 418, card.width - 32, 34), detail,",
               "new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail,"
+            ],
+            [
+              "        private string status = \"填入设备可访问的 RTSP 地址，然后点击连接\";\n",
+              "        private string status = \"打开输入连接，选择 RTSP 或本地相机\";\n"
+            ],
+            [
+              "        private void OnDestroy()\n        {\n",
+              "        private void OnDestroy()\n        {\n            DisposeAcceptanceUi();\n"
+            ],
+            [
+              "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n\n",
+              "        private void LateUpdate() => RenderAcceptanceUi();\n\n"
+            ]
+          ]
+        },
+        {
+          "before": "c5ee48e790627d158bbe09a20c867045047485e2787c4563b284c52ec0c130b4",
+          "replacements": [
+            [
+              "        private string status = \"填入设备可访问的 RTSP 地址，然后点击连接\";\n",
+              "        private string status = \"打开输入连接，选择 RTSP 或本地相机\";\n"
+            ],
+            [
+              "        private void OnDestroy()\n        {\n",
+              "        private void OnDestroy()\n        {\n            DisposeAcceptanceUi();\n"
+            ],
+            [
+              "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n\n",
+              "        private void LateUpdate() => RenderAcceptanceUi();\n\n"
             ]
           ]
         }
@@ -304,7 +381,7 @@
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptancePreview.cs",
       "before": "d98f358b4087600c34febb9e85af52dc4bce9c42df1f57fcd123a0cff49ce919",
-      "after": "90328f1f1b0d8f98ee08085c04040b7bb4b71009a66a1427e93f98c02ce84502",
+      "after": "45ab748767f02ba13352dfc76f2d8982935ae4ab7ac7da0eb129b983aae8d658",
       "replacements": [
         [
           "GUI.Label(screen, \"等待当前码流\", badge);",
@@ -353,6 +430,10 @@
         [
           "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, 365);",
           "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));"
+        ],
+        [
+          "            if (Event.current.type != EventType.Repaint || !hasInput) return;\n",
+          "            if (!hasInput) return;\n"
         ]
       ],
       "upgrades": [
@@ -394,6 +475,10 @@
             [
               "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, 365);",
               "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));"
+            ],
+            [
+              "            if (Event.current.type != EventType.Repaint || !hasInput) return;\n",
+              "            if (!hasInput) return;\n"
             ]
           ]
         },
@@ -431,6 +516,10 @@
             [
               "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, 365);",
               "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));"
+            ],
+            [
+              "            if (Event.current.type != EventType.Repaint || !hasInput) return;\n",
+              "            if (!hasInput) return;\n"
             ]
           ]
         },
@@ -456,6 +545,10 @@
             [
               "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, 365);",
               "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));"
+            ],
+            [
+              "            if (Event.current.type != EventType.Repaint || !hasInput) return;\n",
+              "            if (!hasInput) return;\n"
             ]
           ]
         },
@@ -473,6 +566,19 @@
             [
               "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, 365);",
               "private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));"
+            ],
+            [
+              "            if (Event.current.type != EventType.Repaint || !hasInput) return;\n",
+              "            if (!hasInput) return;\n"
+            ]
+          ]
+        },
+        {
+          "before": "90328f1f1b0d8f98ee08085c04040b7bb4b71009a66a1427e93f98c02ce84502",
+          "replacements": [
+            [
+              "            if (Event.current.type != EventType.Repaint || !hasInput) return;\n",
+              "            if (!hasInput) return;\n"
             ]
           ]
         }
@@ -581,7 +687,7 @@
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceDiagnostics.cs",
       "before": "96b7730c057dd36acafd4acde09200eba4aa3e3a55787acb26faee4ae3520446",
-      "after": "93b4cf444da05186f78ec159be243e9be15ab8b7806dfbf500ddf122ee4b10f4",
+      "after": "35882d10b054ec815440376569ce6f2b770e65e1ff7981bfbf63adad17c9411f",
       "replacements": [
         [
           "        private int previousUnityFrame, droppedMessages;",
@@ -590,6 +696,59 @@
         [
           "        private void Flush()\n        {\n            nextFlush = clock.Elapsed.TotalSeconds + 5;\n            try { writer?.Flush(); }\n            catch (IOException) { Status = \"诊断日志保存失败\"; }\n        }\n\n        internal bool Export()\n        {\n            if (!EnsureStarted()) return false;\n            DrainMessages();\n            Flush();\n            ExportPath = SessionPath;\n#if UNITY_ANDROID && !UNITY_EDITOR\n            if (TryExportToDownloads(SessionPath, out string path)) {\n                ExportPath = path;\n                Status = \"已导出 · Download/HumanVisionLogs\";\n                Debug.Log(\"HV_RT_DIAGNOSTICS export=\" + ExportPath);\n                return true;\n            }\n            Status = \"公共导出不可用 · 日志已保存在应用目录\";\n            Debug.LogWarning(\"HV_RT_DIAGNOSTICS \" + Status + \" path=\" + SessionPath);\n            return false;\n#else\n            Status = \"诊断日志已保存在应用目录\";\n            return File.Exists(ExportPath);\n#endif\n        }\n\n#if UNITY_ANDROID && !UNITY_EDITOR\n",
           "        private bool Flush()\n        {\n            nextFlush = clock.Elapsed.TotalSeconds + 5;\n            try { writer?.Flush(); return true; }\n            catch (IOException) { Status = \"诊断日志保存失败\"; return false; }\n        }\n\n        internal bool Export()\n        {\n            ExportPath = \"\";\n            if (!EnsureStarted()) return false;\n            DrainMessages();\n            if (!Flush()) return false;\n#if UNITY_ANDROID && !UNITY_EDITOR\n            if (TryExportToDownloads(SessionPath, out string path)) {\n                ExportPath = path;\n                Status = \"已导出 · Download/HumanVisionLogs\";\n                Debug.Log(\"HV_RT_DIAGNOSTICS export=\" + ExportPath);\n                return true;\n            }\n#endif\n            if (!TryExportToAppDirectory()) return false;\n#if UNITY_ANDROID && !UNITY_EDITOR\n            Status = \"公共导出不可用 · 日志快照已保存在应用目录\";\n#else\n            Status = \"日志快照已保存在应用目录\";\n#endif\n            Debug.Log(\"HV_RT_DIAGNOSTICS export=\" + ExportPath);\n            return true;\n        }\n\n        private bool TryExportToAppDirectory()\n        {\n            string name = Path.GetFileNameWithoutExtension(SessionPath) + \"-export-\" +\n                (++exportSequence).ToString(CultureInfo.InvariantCulture) + \".jsonl\";\n            string path = Path.Combine(Path.GetDirectoryName(SessionPath), name);\n            bool created = false;\n            try {\n                using (var source = new FileStream(SessionPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))\n                using (var destination = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {\n                    created = true;\n                    source.CopyTo(destination);\n                }\n                ExportPath = path;\n                return true;\n            } catch (Exception error) when (error is IOException || error is UnauthorizedAccessException) {\n                if (created) {\n                    try { File.Delete(path); }\n                    catch (Exception cleanup) when (cleanup is IOException || cleanup is UnauthorizedAccessException) { }\n                }\n                Status = \"诊断快照导出失败 · \" + error.GetType().Name;\n                Debug.LogWarning(\"HV_RT_DIAGNOSTICS \" + Status);\n                return false;\n            }\n        }\n\n#if UNITY_ANDROID && !UNITY_EDITOR\n"
+        ],
+        [
+          "        private DeviceHardwareSampler hardware;\n",
+          "        private DeviceHardwareSampler hardware;\n        private HardwareSample displayedTemperatureSample;\n"
+        ],
+        [
+          "        public string SessionPath { get; private set; } = \"\";\n",
+          "        public string SessionPath { get; private set; } = \"\";\n        internal string TemperatureLine { get; private set; } = RuntimePrefabTemperatureLine.Unavailable;\n"
+        ],
+        [
+          "            }, \"sample\", phase);\n            SampleWindows(sample,",
+          "            }, \"sample\", phase);\n            if (!ReferenceEquals(sample.hardware, displayedTemperatureSample)) {\n                displayedTemperatureSample = sample.hardware;\n                TemperatureLine = RuntimePrefabTemperatureLine.Format(displayedTemperatureSample);\n            }\n            SampleWindows(sample,"
+        ]
+      ],
+      "upgrades": [
+        {
+          "before": "93b4cf444da05186f78ec159be243e9be15ab8b7806dfbf500ddf122ee4b10f4",
+          "replacements": [
+            [
+              "        private DeviceHardwareSampler hardware;\n",
+              "        private DeviceHardwareSampler hardware;\n        private HardwareSample displayedTemperatureSample;\n"
+            ],
+            [
+              "        public string SessionPath { get; private set; } = \"\";\n",
+              "        public string SessionPath { get; private set; } = \"\";\n        internal string TemperatureLine { get; private set; } = RuntimePrefabTemperatureLine.Unavailable;\n"
+            ],
+            [
+              "            }, \"sample\", phase);\n            SampleWindows(sample,",
+              "            }, \"sample\", phase);\n            if (!ReferenceEquals(sample.hardware, displayedTemperatureSample)) {\n                displayedTemperatureSample = sample.hardware;\n                TemperatureLine = RuntimePrefabTemperatureLine.Format(displayedTemperatureSample);\n            }\n            SampleWindows(sample,"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabLiveSkeleton.cs",
+      "before": "d960a2c861560a87d5da6c7f2cd959383cf0f0ba8d875f4909c39c88a9f72271",
+      "after": "ed942b21712b3fb80674243afbb8ba66e69a0fb80be9088ead8a767bb8ef8bad",
+      "replacements": [
+        [
+          "        internal void Clear() => ClearGeometry();",
+          "        internal bool HasBody(int slot) => visible[slot];\n\n        internal bool TryGetPoint(int slot, int joint, out Vector2 point)\n        {\n            bool tracked = visible[slot] && valid[slot, joint];\n            point = tracked ? points[slot, joint] : default;\n            return tracked;\n        }\n\n        internal void Clear() => ClearGeometry();"
+        ]
+      ]
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/DeviceSysfsTelemetry.cs",
+      "before": "00723c638abaee8a1fd5abf8df97e638e93fd1b6356b2aed3c39b53b50664337",
+      "after": "c0c126e2bbd0781c704992f14c8bca31f186ef52b90a0ca76fcc4c8df579aa6a",
+      "replacements": [
+        [
+          "                    string lower = type.ToLowerInvariant();\n                    if (lower.Contains(\"gpu\")) sample.gpuTemperatureC = Math.Max(sample.gpuTemperatureC, value.temperatureC);\n                    if (lower.Contains(\"npu\")) sample.npuTemperatureC = Math.Max(sample.npuTemperatureC, value.temperatureC);\n                    if (lower.Contains(\"cpu\") || lower.Contains(\"bigcore\") || lower.Contains(\"littlecore\") || lower.Contains(\"soc\"))\n                        sample.cpuTemperatureC = Math.Max(sample.cpuTemperatureC, value.temperatureC);\n",
+          "                    switch (RuntimePrefabTemperatureLine.Identify(type)) {\n                        case RuntimePrefabTemperatureLine.SensorKind.Cpu:\n                            sample.cpuTemperatureC = Math.Max(sample.cpuTemperatureC, value.temperatureC);\n                            break;\n                        case RuntimePrefabTemperatureLine.SensorKind.Gpu:\n                            sample.gpuTemperatureC = Math.Max(sample.gpuTemperatureC, value.temperatureC);\n                            break;\n                        case RuntimePrefabTemperatureLine.SensorKind.Npu:\n                            sample.npuTemperatureC = Math.Max(sample.npuTemperatureC, value.temperatureC);\n                            break;\n                    }\n"
         ]
       ]
     }
@@ -649,6 +808,54 @@
         "350580d0bda86b1051c9c10a0b93e5f1c688601e34dbd8de6aa157feb4f108aa",
         "9236d6f762ae0ef9427ce8575d6516ecc6f68495853133180c43dd243769ca3e"
       ]
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabSceneSkeleton.cs",
+      "payload": "RuntimePrefabSceneSkeleton.cs",
+      "sha256": "d66e93a9bc36d194c1cc4d1ffbe77c7f1675955568a7c78620d307f215556de7"
+    },
+    {
+      "path": "Assets/HumanVision/Tests/EditMode/RuntimePrefabSceneSkeletonTests.cs",
+      "payload": "RuntimePrefabSceneSkeletonTests.cs",
+      "sha256": "9563fb6968b9b49b53134d4df94afb92d9cd3811366671c5419d9860cae5ea54",
+      "previous_sha256": [
+        "e8c1823f449b9755b42788d890d0d5ea1c4fd8f0219a3461db5b9749f029f655"
+      ]
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabTemperatureLine.cs",
+      "payload": "RuntimePrefabTemperatureLine.cs",
+      "sha256": "47f3e7f3c969c7bb3c151603dd1ab0f0fb0a6f3dda51f130c57d70b425d156f2"
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimeAcceptanceUi.cs",
+      "payload": "RuntimeAcceptanceUi.cs",
+      "sha256": "3ebc5db129cf1012a36c0a0f53bdd1423cfce0b61f727fc0da3af4373485b881"
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceUgui.cs",
+      "payload": "RuntimePrefabAcceptanceUgui.cs",
+      "sha256": "be9fc42c8239d8471d3c82c9e84ecc07afff5491cee601f4196703545464aaf9"
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceAdvancedUi.cs",
+      "payload": "RuntimePrefabAcceptanceAdvancedUi.cs",
+      "sha256": "01914373f4ce280cff590e86ae6059b0932181314e113503599c0719f2bf34ca"
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceConnectionUi.cs",
+      "payload": "RuntimePrefabAcceptanceConnectionUi.cs",
+      "sha256": "fc18c3794b6edb075f5bb01c4287e884da8df5964698490f460249fbe67fc94c"
+    },
+    {
+      "path": "Assets/HumanVision/Tests/EditMode/RuntimePrefabPresentationAcceptanceTests.cs",
+      "payload": "RuntimePrefabPresentationAcceptanceTests.cs",
+      "sha256": "f85588644c0e0785ed6e51b695cf259c07f5f4efdf9eee5fcc99befb1a961a9b"
+    },
+    {
+      "path": "Assets/HumanVision/Tests/EditMode/RuntimePrefabConnectionUiTests.cs",
+      "payload": "RuntimePrefabConnectionUiTests.cs",
+      "sha256": "1c20562b71fa8226be2d177b3fe6d5b6af98a2637039c967a3b6847168a0bda6"
     }
   ]
 }

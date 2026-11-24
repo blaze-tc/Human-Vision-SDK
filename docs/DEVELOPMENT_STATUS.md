@@ -1,3 +1,14 @@
+## 2026-11-24 验收 Demo UGUI、输入切换与场景骨骼
+
+RuntimePrefabAcceptance 在 Play Mode 创建 UGUI Canvas，左侧保留输入、推理和日志控件，右侧显示一个原分辨率预览。「输入连接」提供 RTSP 和本地相机两个标签，各自保留草稿。连接沿用同一个 SDK 会话，取消草稿时当前输入继续工作。日志面板底部显示有来源的设备温度，读不到时显示「不可读」。
+
+Demo 仍在 `Update` 读取 SDK 关节坐标。独立正交相机只渲染骨骼层，骨骼和关节是 `Live Skeleton Scene/Body N` 下可在 Scene 选中的 GameObject 和 LineRenderer。UGUI 在同一原图上叠加相机输出，等比和裁切使用一致的几何与 UV。
+
+- Unity Skills 8091 的 UGUI 用例先失败后通过。输入弹窗、骨骼相机、UGUI 结构三个新用例和 59 个既有交互用例全部通过。Unity Mono 温度合同 7/7，直接读点回归 15/15，Android 条件编译通过。
+- 8091 Play 实跑本机样本 RTSP 18584，原图 1920×1080，输入帧 1551→1624，四人，94 个点和 89 条线。Game View 确认 UGUI、骨骼叠层和固定温度底栏，Unity Skills 选中实时线条 `Live Skeleton Scene/Body 3/Bones/ElbowRight - WristRight`。证据在 `out/demo-ugui-20261124/`。
+- Android 验收 APK `ugui-input-scene-bones-20261124` 构建 0 错误、0 警告，SHA-256 `f9051cfbc9f6b7b2b10904434fc1b38dc468ddd81dbd8044696b0c59be0f2ee1`。包内核对 UGUI、输入弹窗、骨骼和温度代码，以及 9 个原生库及 74 项资源。
+- Windows 当前未取得可归属的 CPU、GPU、NPU 或电池温度。实体相机、安卓传感器读数与 RK3588 联合运行仍需设备验证。
+
 ## 2026-11-24 验收 Demo 一键采集日志
 
 RuntimePrefabAcceptance 左侧日志面板固定显示「一键采集日志」。复用会话诊断，采集时记录脱敏的当前状态和 SDK 错误，输出独立 JSONL 快照，展示路径并复制。Android 优先输出至下载目录，回退至应用目录保存快照。[使用说明](../tools/test/NPU_STARTUP_DIAGNOSTICS.md)
