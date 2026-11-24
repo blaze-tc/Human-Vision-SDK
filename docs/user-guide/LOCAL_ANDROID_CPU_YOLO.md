@@ -1,3 +1,10 @@
+# 0.4.0 正式版的本地 Android 配套
+
+先安装同一标签v0.4.0的Input 0.1.0。公共SDK 0.4.0为RKNN-OFF构建；完整CPU/GPU/NPU资料使用本次配套的完整私有替代SDK，版本与package id仍为0.4.0/com.blazetc.humanvision。
+UPM用该完整SDK的tgz替换Git SDK依赖；离线使用配套SDK unitypackage。两种安装方式选一种，不在仍生效的UPM SDK旁叠加Assets SDK/native。对应manifest必须核对Input、SDK、ORT、vendor和模型索引哈希。
+普通RTSP颜色Texture保持当前URL的实际可见原图，不再使用旧1920上限或自动切低码流。明确Analysis图仍按模型准备。原生RTSP独立执行使用ExecutionPolicy，实际取点每Update读取SDK坐标。
+本次本地资源仅本地交付，不上传公共Release；RK3588/RGA/持续帧率与完整手部资格不因正式版本号而视为通过。下文均为旧版本部署历史，不把preview.17补充包混入0.4.0。
+
 # 本地 Android CPU / GPU / NPU 部署
 
 ## preview.17 RK3588 NPU 三档本地资源

@@ -1,3 +1,21 @@
+# v0.4.0 正式版
+
+SDK0.4.0 / Input0.1.0统一使用v0.4.0，用户已授权合并main、上传并发布正式版。原生/managed/API保持兼容。公开Android SDK为RKNN-OFF，完整RKNN-ON SDK和私有模型/vendor仍本地交付，不能上传GitHub。
+
+发布入口是tools/package/release-040-authority.json，固定两包全部文件、GUID和native字节。安装Input后再SDK，验收两unitypackage与tgz/UPM真实导入和Windows模型初始化。维护报告见[0.4.0发布说明](../reports/2026-11-24-v040-release.md)。
+
+```powershell
+py -3 tools/package/package_release_snapshot.py --authority tools/package/release-040-authority.json --verify-only
+py -3 tools/package/check_input_package.py --root upm/com.blazetc.humanvision.input
+py -3 tools/maintenance/check_architecture_boundaries.py
+py -3 tools/maintenance/generate_component_catalog.py --check
+py -3 tools/test/verify_upm_git_newlines.py
+py -3 -m unittest discover -s tools/package -p test_package_release_snapshot.py
+py -3 tools/package/package_release_snapshot.py --authority tools/package/release-040-authority.json --output out/releases/v0.4.0-final
+```
+
+最后验证冻结后从最终main提交构建八个公共附件；推送main及带注释v0.4.0标签。先创建draft Release、上传并下载逐一核对SHA，再设置draft=false、prerelease=false、latest=true。不得force-push或覆盖已有标签，保留所有缓存、工作树和用户修改。设备性能与模型分发资格仍单独报告。以下版本保留历史流程。
+
 # v0.4.0-preview.17 Android RTSP 首帧与独立预览
 
 SDK `0.4.0-preview.17` 和 Input `0.1.0-preview.10` 使用同一 Git 标签。先安装 Input，再安装 SDK。发布包含 HLK-AL00 AVC 首帧修复、Runtime Prefab 实时骨骼预览与精确同帧拍照，以及可用匹配本地资源启用的 Android 超低档。

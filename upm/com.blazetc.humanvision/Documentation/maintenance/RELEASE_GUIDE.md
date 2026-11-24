@@ -1,3 +1,21 @@
+# v0.4.0 正式版
+
+SDK0.4.0 / Input0.1.0统一使用v0.4.0，用户已授权合并main、上传并发布正式版。原生/managed/API保持兼容。公开Android SDK为RKNN-OFF，完整RKNN-ON SDK和私有模型/vendor仍本地交付，不能上传GitHub。
+
+发布入口是tools/package/release-040-authority.json，固定两包全部文件、GUID和native字节。安装Input后再SDK，验收两unitypackage与tgz/UPM真实导入和Windows模型初始化。维护报告见[0.4.0发布说明](../reports/2026-11-24-v040-release.md)。
+
+```powershell
+py -3 tools/package/package_release_snapshot.py --authority tools/package/release-040-authority.json --verify-only
+py -3 tools/package/check_input_package.py --root upm/com.blazetc.humanvision.input
+py -3 tools/maintenance/check_architecture_boundaries.py
+py -3 tools/maintenance/generate_component_catalog.py --check
+py -3 tools/test/verify_upm_git_newlines.py
+py -3 -m unittest discover -s tools/package -p test_package_release_snapshot.py
+py -3 tools/package/package_release_snapshot.py --authority tools/package/release-040-authority.json --output out/releases/v0.4.0-final
+```
+
+最后验证冻结后从最终main提交构建八个公共附件；推送main及带注释v0.4.0标签。先创建draft Release、上传并下载逐一核对SHA，再设置draft=false、prerelease=false、latest=true。不得force-push或覆盖已有标签，保留所有缓存、工作树和用户修改。设备性能与模型分发资格仍单独报告。以下版本保留历史流程。
+
 # v0.4.0-preview.17 Android RTSP 首帧与独立预览
 
 SDK `0.4.0-preview.17` 和 Input `0.1.0-preview.10` 使用同一 Git 标签。先安装 Input，再安装 SDK。发布包含 HLK-AL00 AVC 首帧修复、Runtime Prefab 实时骨骼预览与精确同帧拍照，以及可用匹配本地资源启用的 Android 超低档。
@@ -87,6 +105,37 @@ py -3.13 tools/package/package_release_snapshot.py --authority tools/package/rel
 ```
 
 核对远端主线后快进，使用 annotated tag 指向最终提交。在 draft prerelease 上传并下载核验八个附件的 SHA-256，再发布。
+
+# v0.4.0-preview.12 Windows YOLO
+
+使用 `tools/package/release-preview12-authority.json` 生成八个标准附件。公开验收媒体只使用 DancingTest。
+Editor 与 Player 的 Windows CPU、DirectML 各验证三个档位，核对实际后端、模型和区域配对。
+升级验证同时检查离线包、Git UPM 与原有本地 Android 资源索引。详见[本轮报告](../reports/2026-11-08-preview12-windows-yolo.md)。
+
+# v0.4.0-preview.11 发布
+
+SDK 0.4.0-preview.11 / Input 0.1.0-preview.6。包含项目级启动配置、可选 Runtime Prefab Acceptance 和 Android 共用输入调度。以 `tools/package/release-preview11-authority.json` 从最终 Git 提交生成八个标准附件，核对 Git UPM 及 Input-first 离线安装。公开验收媒体只使用 DancingTest。Release 共九件附件，包含一段 DancingTest GIF。原生导出、Editor 安装和 Android 真机五人验证见[本轮报告](../reports/2026-11-08-preview11-runtime-input.md)。
+
+本地双模式资源使用与新版 Input 哈希相符的私有补充包。公共附件按原有评估和分发边界生成。
+
+# v0.4.0-preview.10 发布
+
+SDK 0.4.0-preview.10 / Input 0.1.0-preview.5。Runtime Prefab 在左侧输入预览绘制识别区域，
+并按对应 index 在右侧重绘骨骼。使用 `tools/package/release-preview10-authority.json` 校验并从最终提交生成八个附件。
+确认 Package Manager 两个 Samples 和离线包的 Input-first 导入，播放 Exercise2 RTSP 验证自定义区域和空区域。
+校验远端 Git 标签提交及 GitHub 草稿的八个附件大小、SHA-256 后发布 prerelease。
+# v0.4.0-preview.9 发布
+
+SDK 0.4.0-preview.9 / Input 0.1.0-preview.5。Unity Package Manager 提供 SDK Settings 和 Runtime Prefab，
+离线样例归入 Assets/HumanVision/Samples。以 `tools/package/release-preview9-authority.json` 验证并生成
+最终提交对应的八个附件。原生库、输入包和模型按 preview.8 哈希校验。
+
+运行架构、公共 API、打包工具、Git 包换行、Windows SDK 测试和样例实际导入检查。
+核验 Runtime Prefab 的 RTSP 配对以及保存区域按 index 读取。OnePlus 短测是本地验收 APK 的设备记录，
+见[发布验证](../reports/2026-11-06-runtime-prefab-preview9.md)。
+
+核对远端 main 后快进并推送 annotated tag。在 draft prerelease 上传标准附件并复下载核对 SHA-256，
+验证 tag 的 Git UPM 安装和两份 unitypackage 的 Input-first 导入，再发布为 prerelease。
 
 # v0.4.0-preview.8 发布
 

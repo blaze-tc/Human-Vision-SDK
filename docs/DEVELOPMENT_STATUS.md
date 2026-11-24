@@ -1,4 +1,10 @@
-## 2026-11-24 当前活动：原图 Texture、Update 取点与左右布局已本地验证
+## 2026-11-24 当前版本：SDK 0.4.0 / Input 0.1.0 正式发布范围
+
+用户已明确授权将本轮修改合并main、上传GitHub并发布正式版，使用同一标签v0.4.0。当前代码与包范围见[发布说明](reports/2026-11-24-v040-release.md)，已完成的正式包检查、旧Windows39导出/ordinal修复及真实双包导入见[发布验证](reports/2026-11-24-v040-publication-verification.md)。SDK原生新全量578/578、Input66/66、本轮Unity150/150及专项真实导入验证通过；公开Android为RKNN-OFF，完整CPU/NPU替代SDK仍本地交付。跨栏王仅提供[升级提示词](integrations/HURDLE_KING_SDK_040_UPGRADE_PROMPT.md)，没有修改或发布业务AAR。
+
+以下按时间保留发布前候选记录；各段“本地未发布”及临时RTSP有效时间描述属于当时状态，不替代v0.4.0的最终标签/源快照与远端Release核验。RK3588/RGA、长期热机、业务联合GPU负载与每人30完整骨骼目标仍单独验收。
+
+## 2026-11-24 发布前候选：原图 Texture、Update 取点与左右布局本地验证
 
 本轮唯一活动仍为用户批准的SDK独立运行及Human-Vision-SDK-Test验收。普通业务在Update直接读取有效骨骼坐标；Demo只保留一个右侧预览，左侧选项与固定日志分别滚动。用户随后再次要求普通RTSP颜色Texture使用解码可见原尺寸；对应SDK／Input修正均已实现，旧C ABI布局与模型保持兼容。
 

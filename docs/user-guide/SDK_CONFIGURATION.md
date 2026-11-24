@@ -1,8 +1,8 @@
 # ScriptableObject 配置与统一 API
 
-适用版本：SDK **0.4.0-preview.17** / Input **0.1.0-preview.10**。Android CPU/NPU 完整资源安装见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)；公共附件范围见[安装说明](../UPM_INSTALLATION.md)。
+适用版本：SDK **0.4.0** / Input **0.1.0**。Android CPU/NPU 完整资源安装见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)；公共附件范围见[安装说明](../UPM_INSTALLATION.md)。
 这是当前版本的接入说明；历史 Release 的验证结果不自动适用于本次变更。
-下文“原生独立运行候选”仅适用于 2026-11-23 的本地未发布候选及其配套原生库，不表示已发布 preview.17 包已包含该能力。
+下文原生独立运行能力自0.4.0提供，必须使用配套Input 0.1.0与SDK原生库。默认兼容输入模式保持原有选择，原生RTSP通过ExecutionPolicy显式启用。
 
 ## 最小接入
 
@@ -68,14 +68,14 @@ yield return sdk.Initialize(request);
 | `RtspTcp` | 默认 TCP，false 为 UDP | 重新初始化 |
 | `ExecutionPolicy` | 默认 `CompatibleUnityInput`；原生 RTSP 可选 `IndependentPreferred` / `IndependentRequired` | 完整重新初始化 |
 | `PreviewEnabled` | 默认 true；独立路径可关闭预览而继续采集、识别和发布 | 完整重新初始化 |
-| `AutoSelectRtspStream` | 默认关闭。启用后在 RTSP/TCP 接入时探测同通道的宇视 H.264 码流尺寸 | 打开 RTSP 时 |
+| `AutoSelectRtspStream` | 默认关闭。原图SDK路径保持输入URL，不自动切码流；低层显式选流能力仅供专门调用者使用 | 打开 RTSP 时 |
 | `UseModelSizedAnalysisInput` | 默认关闭；兼容路径保留 Android RTSP 分路合同，原生 RTSP 路径可按已选模型限制分析传输尺寸；不改变模型档位 | 重新初始化 |
 | `InputOpenTimeoutSeconds` | 默认 15 秒；APK 视频首次缓存另有有界准备等待 | 初始化 |
 | `RuntimeRoot` | 留空自动准备安装资源 | 初始化 |
 | `OpenInputOnInitialize` | 默认 true；false 只准备 Runtime，成功为 Ready | 初始化 |
 | `ScreenTarget` / `WorldPlane` / `WorldPlaneSize` | 显示图像矩形 / 世界映射平面及大小 | 总控属性，可运行时修改 |
 
-相机尺寸是硬件请求；RTSP 尺寸是解码后的本地输出上限；视频按源文件尺寸播放。
+相机尺寸是硬件请求；普通SDK RTSP颜色Texture使用实际解码后的可见原尺寸，请求宽高不再限制其预览；明确Analysis图像和显式正尺寸低层Input请求保留各自语义；视频按源文件尺寸播放。
 这些设置与模型分析尺寸不同。Android GPU 的低/中/高通常为 512×288、640×384、960×576；
 CPU 和 NPU 必须以当前模型包的能力说明为准。NPU 仅支持已接入的 RK3588 路线，
 不能在 OnePlus 上验证 RK3588 NPU；不支持的模式会报错，不静默切换。
@@ -84,9 +84,9 @@ CPU 的人数上限不切换模型。Vulkan 保留低/中/高三个原模型，N
 Windows CPU 与 DirectML 使用同一套 YOLOv8n-pose 权重。低、中、高分别为 512×288、640×384、960×576。模型准备使用 SDK 随附的图结构与现有 NCNN 权重。Android 私有资源见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)。
 旧代码直接创建 `HumanVisionSdkOptions` 时仍须注意 `UseWindowsCpu` 兼容开关；推荐从资产创建副本。
 
-### 原生独立运行候选
+### 原生独立运行
 
-本次独立运行改造仍是本地候选，须安装配套的 SDK 和 Input 原生库；不更改旧项目的默认输入模式。
+0.4.0提供原生RTSP独立运行模式，须安装配套的SDK和Input原生库；不自动改变旧项目的执行策略。
 本地验收和候选库替换步骤见[独立运行验收](../maintenance/INDEPENDENT_RUNTIME_ACCEPTANCE.md)。
 
 ```csharp
@@ -119,9 +119,7 @@ RGA 是后续可替换的图像服务优化，不是 NPU 获得独立输入和 w
 精确同帧暂缺时不拿当前画面替代。停止请求不会在 Unity 线程等待原生退出；`StopSdk()` 等待真实退役。驱动未完成时保持资源所有权，
 可从 `RuntimeDiagnostics` 查看退役状态，不能强制卸载库或把超时当作完成。
 
-Windows 原生预览复制的是已准备好的分析尺寸 RGBA，并非原始分辨率高清图；它按来源帧到达逐帧尝试有界三槽复制，不再固定为 5 FPS，槽位或拷贝预算不足时跳过预览。
-Android 原色高清 live preview 仍采用保守准入：最多 5 FPS，压力下可降至 1 FPS，慢拷贝可暂停后续预览；可选高清预览/抓拍另有 `1920×1080×4` 字节上限。
-这些值尚未经过目标设备资格验证，也没有改变原兼容路径的默认预览合同；基础 Demo 的当前候选仍须在 Unity 中实测画面和骨骼。
+Windows普通RTSP预览按实际首帧与尺寸变化配置原图缓冲，先探测元数据并避免同一帧重复像素上传。Android从同decoder提供独立有界live与analysis出口，实时Texture经GPU桥及真实fence交接，不走旧5Hz CPU高清复制。普通RTSP颜色接口在兼容和独立模式均保持实际可见原尺寸，与模型等级无关；当前每轴4096为软件上限，设备导入/分配不支持时明确报错，不静默缩图。
 Android 图像服务目前仍让分析和可选高清抓拍共用一次提交的完成 fence；长抓拍或该提交失败仍可能影响分析。独立预览缓冲已隔离 Unity 慢读者，
 尚不能据此承诺高清预览对识别零影响。实际设备的像素、延迟、热机吞吐及 RGA/RKNN 路线需要分别验收。
 
@@ -135,14 +133,14 @@ var options = configuration.CreateOptionsForInput(InputKind.Rtsp, rtspAddress);
 options.Input.RequestedWidth = 1920;
 options.Input.RequestedHeight = 1080;
 options.InputQuality = ModelInputQuality.Low;
-options.AutoSelectRtspStream = true;
+options.AutoSelectRtspStream = false; // 原图模式保持填写的码流URL
 options.UseModelSizedAnalysisInput = true;
 yield return sdk.Initialize(options);
 ```
 
 配置为 RK3588 NPU 时使用 `HumanVisionAccelerationMode.Neural` 和匹配的本地资源。Android RTSP 在 GPU 或 NPU 模型为 `512×288` 时可从同一解码帧分出预览和识别，识别提交无需等待预览发布。其他档位沿用其原有输入路径。
 
-自动选流支持宇视 `/media/video1` 到 `/media/video3`，以及相同通道的 `/unicast/cN/s0/live` 到 `/unicast/cN/s2/live`。SDK 选尺寸上限以内像素数最高的可用 H.264 码流。只有 4K 可用时仍解码 4K，预览等比缩到上限以内。未知地址格式沿用给定地址。选流只在打开输入时执行，输入和账号配置保存在原选项中。
+普通SDK RTSP原图路径不自动选择低码流，即使旧配置保留AutoSelectRtspStream也保持填写的URL。需要子码流时直接填写它的地址。Input低层显式RtspStreamSelector仍可由专门调用者探测宇视通道；该工具的正尺寸缩放能力不代表普通SDK颜色Texture会缩小。
 
 `SelectedRtspStreamLabel` 和 `SelectedRtspStreamSize` 记录选择与探测值。`RtspDecodedInputSize` 是 Android 实际解码尺寸，预览尺寸可从 `TryGetInputFrame` 读取。分别用 `InputPublicationFps`、`AnalysisInputPublicationFps` 和 `FreshResultFps` 检查预览、识别供帧与新结果。叠画使用同帧图像，业务动作可独立消费 `ResultUpdated`。
 

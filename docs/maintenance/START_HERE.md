@@ -4,7 +4,7 @@ Application integration documentation: [Chinese user guide](../user-guide/README
 contains a code-first walkthrough for a new Unity project, Start initialization,
 skeleton result examples, API semantics and SDK platform evidence. Start with
 [configuration and API](../user-guide/SDK_CONFIGURATION.md). The public Release
-is preview.17. The matching local Android CPU/NPU resources have their own
+is SDK 0.4.0 / Input 0.1.0. The matching local Android CPU/NPU resources have their own
 [deployment guide](../user-guide/LOCAL_ANDROID_CPU_YOLO.md) and verification report.
 Historical measurements do not establish acceptance of a later build.
 
@@ -32,4 +32,4 @@ part of a maintenance change. [Release guide](RELEASE_GUIDE.md) owns publication
 
 ## 2026-11-23 SDK 独立运行本地候选
 
-[设计](../superpowers/specs/2026-11-23-sdk-independent-runtime-design.md)与[分阶段计划](../superpowers/plans/2026-11-23-sdk-independent-runtime-plan.md)已获用户批准，通用原生调度、完成驱动发布、增量控制API和RTSP自主输入已实现，保留Unity异步输入兼容模式。RK3588的RGA仍是可选、待设备验证的图像服务优化。[MediaPipeUnityPlugin核查](../reports/2026-11-23-mediapipe-async-runtime-analysis.md)说明借鉴依据；[Windows验收记录](../reports/2026-11-23-sdk-independent-runtime-acceptance.md)之后，用户恢复安装授权，[Android实时Texture与业务取点报告](../reports/2026-11-23-android-realtime-live-acceptance.md)记录OnePlus实测、失败候选及范围限制。本轮未发布。
+[设计](../superpowers/specs/2026-11-23-sdk-independent-runtime-design.md)与[分阶段计划](../superpowers/plans/2026-11-23-sdk-independent-runtime-plan.md)已获用户批准，通用原生调度、完成驱动发布、增量控制API和RTSP自主输入已实现，保留Unity异步输入兼容模式。RK3588的RGA仍是可选、待设备验证的图像服务优化。[MediaPipeUnityPlugin核查](../reports/2026-11-23-mediapipe-async-runtime-analysis.md)说明借鉴依据；[Windows验收记录](../reports/2026-11-23-sdk-independent-runtime-acceptance.md)之后，用户恢复安装授权，[Android实时Texture与业务取点报告](../reports/2026-11-23-android-realtime-live-acceptance.md)记录OnePlus实测、失败候选及范围限制。本轮正式发布记录见[0.4.0报告](../reports/2026-11-24-v040-release.md)。

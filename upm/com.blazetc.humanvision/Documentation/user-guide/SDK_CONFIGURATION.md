@@ -1,14 +1,15 @@
 # ScriptableObject 配置与统一 API
 
-适用版本：SDK **0.4.0-preview.17** / Input **0.1.0-preview.10**。Android CPU/NPU 完整资源安装见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)；公共附件范围见[安装说明](../UPM_INSTALLATION.md)。
+适用版本：SDK **0.4.0** / Input **0.1.0**。Android CPU/NPU 完整资源安装见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)；公共附件范围见[安装说明](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.0/docs/UPM_INSTALLATION.md)。
 这是当前版本的接入说明；历史 Release 的验证结果不自动适用于本次变更。
+下文原生独立运行能力自0.4.0提供，必须使用配套Input 0.1.0与SDK原生库。默认兼容输入模式保持原有选择，原生RTSP通过ExecutionPolicy显式启用。
 
 ## 最小接入
 
 从 **HumanVision → Create Default SDK Configuration** 创建或选中项目启动资产 `Assets/Resources/HumanVisionSdkConfiguration.asset`。Project 右键 **Create → Human Vision → SDK Configuration** 可创建单独的场景预设。
 配置图像尺寸、模型等级、CPU/GPU/NPU、人数和区域。地址可以留空，在初始化代码中提供。
 菜单 **HumanVision → Create SDK** 创建总控并绑定预设。选中的预设优先，随后查找项目默认资产。也可以给空物体添加 `HumanVisionSdk`，关闭 `InitializeOnStart`，或直接使用
-[完整脚本](examples/HumanVisionGameplayExample.cs)（自动补齐总控）。
+[完整脚本](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.0/docs/user-guide/examples/HumanVisionGameplayExample.cs)（自动补齐总控）。
 
 ```csharp
 using System.Collections;
@@ -65,14 +66,16 @@ yield return sdk.Initialize(request);
 | `MaximumHandAgeMilliseconds` | 手关节 200 ms；不是人体新结果帧率 | 应用识别配置 |
 | `Input.Mirror` | 水平镜像；骨骼映射同步处理 | 重新初始化 |
 | `RtspTcp` | 默认 TCP，false 为 UDP | 重新初始化 |
-| `AutoSelectRtspStream` | 默认关闭。启用后在 RTSP/TCP 接入时探测同通道的宇视 H.264 码流尺寸 | 打开 RTSP 时 |
-| `UseModelSizedAnalysisInput` | 默认关闭。启用后允许 Android RTSP 的 GPU/NPU 低档从解码帧独立生成模型输入 | 重新初始化 |
+| `ExecutionPolicy` | 默认 `CompatibleUnityInput`；原生 RTSP 可选 `IndependentPreferred` / `IndependentRequired` | 完整重新初始化 |
+| `PreviewEnabled` | 默认 true；独立路径可关闭预览而继续采集、识别和发布 | 完整重新初始化 |
+| `AutoSelectRtspStream` | 默认关闭。原图SDK路径保持输入URL，不自动切码流；低层显式选流能力仅供专门调用者使用 | 打开 RTSP 时 |
+| `UseModelSizedAnalysisInput` | 默认关闭；兼容路径保留 Android RTSP 分路合同，原生 RTSP 路径可按已选模型限制分析传输尺寸；不改变模型档位 | 重新初始化 |
 | `InputOpenTimeoutSeconds` | 默认 15 秒；APK 视频首次缓存另有有界准备等待 | 初始化 |
 | `RuntimeRoot` | 留空自动准备安装资源 | 初始化 |
 | `OpenInputOnInitialize` | 默认 true；false 只准备 Runtime，成功为 Ready | 初始化 |
 | `ScreenTarget` / `WorldPlane` / `WorldPlaneSize` | 显示图像矩形 / 世界映射平面及大小 | 总控属性，可运行时修改 |
 
-相机尺寸是硬件请求；RTSP 尺寸是解码后的本地输出上限；视频按源文件尺寸播放。
+相机尺寸是硬件请求；普通SDK RTSP颜色Texture使用实际解码后的可见原尺寸，请求宽高不再限制其预览；明确Analysis图像和显式正尺寸低层Input请求保留各自语义；视频按源文件尺寸播放。
 这些设置与模型分析尺寸不同。Android GPU 的低/中/高通常为 512×288、640×384、960×576；
 CPU 和 NPU 必须以当前模型包的能力说明为准。NPU 仅支持已接入的 RK3588 路线，
 不能在 OnePlus 上验证 RK3588 NPU；不支持的模式会报错，不静默切换。
@@ -81,6 +84,48 @@ CPU 的人数上限不切换模型。Vulkan 保留低/中/高三个原模型，N
 Windows CPU 与 DirectML 使用同一套 YOLOv8n-pose 权重。低、中、高分别为 512×288、640×384、960×576。模型准备使用 SDK 随附的图结构与现有 NCNN 权重。Android 私有资源见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)。
 旧代码直接创建 `HumanVisionSdkOptions` 时仍须注意 `UseWindowsCpu` 兼容开关；推荐从资产创建副本。
 
+### 原生独立运行
+
+0.4.0提供原生RTSP独立运行模式，须安装配套的SDK和Input原生库；不自动改变旧项目的执行策略。
+本地验收和候选库替换步骤见[独立运行验收](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.0/docs/maintenance/INDEPENDENT_RUNTIME_ACCEPTANCE.md)。
+
+```csharp
+var request = configuration.CreateOptionsForInput(InputKind.Rtsp, rtspAddress);
+request.ExecutionPolicy = HumanVisionExecutionPolicy.IndependentRequired;
+request.UseModelSizedAnalysisInput = true;
+request.PreviewEnabled = true; // 测识别自主性时可关闭
+yield return sdk.Initialize(request);
+if (!sdk.IsRunning) Debug.LogError(sdk.LastError);
+
+if (sdk.TryGetRuntimeProgress(out var progress))
+    Debug.Log($"{progress.CapabilityLevel}: {progress.ActualBackend}, native fresh={progress.NativeFreshFrames}");
+```
+
+Windows 原生 RTSP 将解码后的 CPU 图像直接提交给现有 CPU 或 DirectML 后端。Android 原生 RTSP 使用独立 Vulkan 图像服务，供 GPU 或经原生 staging 回读供 CPU/NPU。
+RGA 是后续可替换的图像服务优化，不是 NPU 获得独立输入和 worker 的前提。`UsesGpuImageService` 与 `ActualBackend` 分开报告；选择 NPU 不代表图像处理完全不使用 GPU。
+这些路线复用同一调度、完成发布和结果读取合同；独立线程、独立逻辑设备/队列不提供 GPU 算力硬隔离，相同设备上的带宽、功耗和散热竞争仍然存在。
+
+`IndependentRequired` 当前要求 RTSP 并开启 `OpenInputOnInitialize`。VideoPlayer、WebCamTexture 和游戏纹理继续使用异步兼容入口；
+`IndependentPreferred` 在这些来源上保留兼容驱动，不能据此宣称输入已脱离 Unity。原生 RTSP 启动错误会明确报告，不会暗中启动第二个 Unity 解码器。
+
+独立模式的初始化只排队控制请求，模型、设备和网络启动在原生控制线程执行。`ResultUpdated` 仍在 Unity 主线程通知；主线程停顿期间，
+界面和事件不会更新，原生采集、推理及 canonical 发布可继续前进。`TryGetRuntimeProgress` 直接查询原生累计计数，重复读取或采样不增加新结果。
+旧 ABI 会话没有这些计数时返回 false，不能把 unavailable 当作测得的零。`SubmittedAnalysisInputSize` 是实际已送入识别的分析图像尺寸；
+`AnalysisInputSize` 是模型合同尺寸，二者可能不同。`RtspDecodedInputSize` 单独返回可用的原始解码尺寸，未知时为零。
+
+预览是独立的可丢帧消费者，不持有原生解码图像或分析槽；关闭预览不会停止识别。基础 Demo 的实时叠加将当前预览与同一来源身份下最新仍有效的骨骼显示在一起，两者可能来自不同帧；
+精确同帧模式则要求图像与骨骼的 source、generation、frame、epoch 全部匹配，二者须分别验收。
+原生分析缓冲未提供为 Unity 纹理时，`TryGetAnalysisInputFrame` 返回 false，使用 `SubmittedAnalysisInputSize` 查询实际分析尺寸；高清预览不会冒充分析图。
+精确同帧暂缺时不拿当前画面替代。停止请求不会在 Unity 线程等待原生退出；`StopSdk()` 等待真实退役。驱动未完成时保持资源所有权，
+可从 `RuntimeDiagnostics` 查看退役状态，不能强制卸载库或把超时当作完成。
+
+Windows普通RTSP预览按实际首帧与尺寸变化配置原图缓冲，先探测元数据并避免同一帧重复像素上传。Android从同decoder提供独立有界live与analysis出口，实时Texture经GPU桥及真实fence交接，不走旧5Hz CPU高清复制。普通RTSP颜色接口在兼容和独立模式均保持实际可见原尺寸，与模型等级无关；当前每轴4096为软件上限，设备导入/分配不支持时明确报错，不静默缩图。
+Android 图像服务目前仍让分析和可选高清抓拍共用一次提交的完成 fence；长抓拍或该提交失败仍可能影响分析。独立预览缓冲已隔离 Unity 慢读者，
+尚不能据此承诺高清预览对识别零影响。实际设备的像素、延迟、热机吞吐及 RGA/RKNN 路线需要分别验收。
+
+`NativeFreshFrames` 统计不同的已发布原生观察，包含明确无人结果；`NativeInputFrames` 统计原生接纳输入，`InputFrameId` 与 canonical `FrameId` 分开保存。
+Unity 的 `ResultUpdated`/显示帧率受主线程消费频率限制。三者都不能替代逐人完整骨骼帧率；1–8 人、真实双手关键点和逐人 30 FPS 的产品目标仍需单独证明。
+
 ### Android RTSP 低档
 
 ```csharp
@@ -88,14 +133,14 @@ var options = configuration.CreateOptionsForInput(InputKind.Rtsp, rtspAddress);
 options.Input.RequestedWidth = 1920;
 options.Input.RequestedHeight = 1080;
 options.InputQuality = ModelInputQuality.Low;
-options.AutoSelectRtspStream = true;
+options.AutoSelectRtspStream = false; // 原图模式保持填写的码流URL
 options.UseModelSizedAnalysisInput = true;
 yield return sdk.Initialize(options);
 ```
 
 配置为 RK3588 NPU 时使用 `HumanVisionAccelerationMode.Neural` 和匹配的本地资源。Android RTSP 在 GPU 或 NPU 模型为 `512×288` 时可从同一解码帧分出预览和识别，识别提交无需等待预览发布。其他档位沿用其原有输入路径。
 
-自动选流支持宇视 `/media/video1` 到 `/media/video3`，以及相同通道的 `/unicast/cN/s0/live` 到 `/unicast/cN/s2/live`。SDK 选尺寸上限以内像素数最高的可用 H.264 码流。只有 4K 可用时仍解码 4K，预览等比缩到上限以内。未知地址格式沿用给定地址。选流只在打开输入时执行，输入和账号配置保存在原选项中。
+普通SDK RTSP原图路径不自动选择低码流，即使旧配置保留AutoSelectRtspStream也保持填写的URL。需要子码流时直接填写它的地址。Input低层显式RtspStreamSelector仍可由专门调用者探测宇视通道；该工具的正尺寸缩放能力不代表普通SDK颜色Texture会缩小。
 
 `SelectedRtspStreamLabel` 和 `SelectedRtspStreamSize` 记录选择与探测值。`RtspDecodedInputSize` 是 Android 实际解码尺寸，预览尺寸可从 `TryGetInputFrame` 读取。分别用 `InputPublicationFps`、`AnalysisInputPublicationFps` 和 `FreshResultFps` 检查预览、识别供帧与新结果。叠画使用同帧图像，业务动作可独立消费 `ResultUpdated`。
 
@@ -130,6 +175,8 @@ yield return sdk.Initialize(options);
 | `GetColorImageWidth/Height()` | 实际纹理尺寸；无图像为 0 |
 | `TryGetInputFrame(afterId, out frame)` | 最新不同预览帧及来源身份/时间/尺寸；换源后重置 afterId=-1 |
 | `InputPublicationFps` / `FreshResultFps` / `Stats` | 输入发布率 / 新结果率 / 阶段统计；不等于逐人完整骨骼 FPS |
+| `TryGetRuntimeProgress(out progress)` | 查询已有原生累计计数、当前 source/generation/epoch、实际图像服务/后端及能力级别；读取不推进推理，旧 ABI 无该数据时返回 false |
+| `SubmittedAnalysisInputSize` / `RtspDecodedInputSize` | 实际分析传输尺寸 / 可用的原始解码尺寸；未知尺寸为零，不以请求值或高清预览尺寸代填 |
 | `State/Busy/IsInitialized/IsRunning/HasFreshResult` | 生命周期与结果时效 |
 | `ResultSequence/SourceFrameId/SourceTimestampUs/ResultAgeMilliseconds` | 原始结果序号及实际来源时序；不要与 Unity 渲染帧号混淆 |
 

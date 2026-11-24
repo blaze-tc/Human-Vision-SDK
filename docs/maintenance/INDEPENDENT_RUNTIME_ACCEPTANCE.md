@@ -1,9 +1,11 @@
+> 历史验收流程：本文件保留2026-11-23早期候选的协议和步骤。0.4.0正式版已改为普通RTSP原图、独立live/analysis与真实源帧率；下文Windows小图、Android 5Hz及早期函数表描述不作为当前行为。以[当前接入](../user-guide/UNITY_RUNTIME_PREFAB.md)、[0.4.0发布](../reports/2026-11-24-v040-release.md)及[最新设备报告](../reports/2026-11-23-android-realtime-live-acceptance.md)为准。
+
 # SDK 独立运行候选的本地验收
 
 适用范围：2026-11-23 本地未发布候选。使用 `Human-Vision-SDK-Test` 的既有
 `Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptance.unity`；不要用公共样例覆盖这个工程的私有 partial 扩展。
 当前活动状态和最终证据以 [DEVELOPMENT_STATUS](../DEVELOPMENT_STATUS.md) 为准。
-接口用法见[配置说明](../user-guide/SDK_CONFIGURATION.md#原生独立运行候选)，原生所有权见[控制合同](../../runtime/composition/RUNTIME_CONTROL.md)。
+接口用法见[配置说明](../user-guide/SDK_CONFIGURATION.md#原生独立运行)，原生所有权见[控制合同](../../runtime/composition/RUNTIME_CONTROL.md)。
 
 ## 验证什么
 
