@@ -1,11 +1,38 @@
 {
   "abi": "arm64-v8a",
+  "api26_strong_imports": 1813,
   "api_level": 26,
+  "audit_tool_sha256": "2243520ce75344656289344c57190e664f851a981348ae628d6863d56cb283ef",
+  "audited_utc": "2026-11-24T00:28:12.909928+00:00",
+  "availability": "Unavailable in the public RKNN-OFF SDK; install the matching private replacement SDK.",
+  "closure_strong_imports_by_object": {
+    "libavcodec.so": 597,
+    "libavformat.so": 1241,
+    "libavutil.so": 95,
+    "libhumanvision.so": 1813,
+    "libhumanvision_input.so": 1390,
+    "libonnxruntime.so": 202,
+    "libswresample.so": 136,
+    "libswscale.so": 138
+  },
   "device_performance_verified": false,
   "distribution_qualified": false,
   "local_evaluation_only": true,
-  "native_sha256": "66e47badc6ded527c7db5e1d4b1245137d31af6dc11f4dc0266a7e1fa82c5b52",
-  "rknn_tensor_symbols_verified": true,
-  "rknn_vendor_symbols": 12,
-  "runtime_sha256": "07a8398be5caed21a1998ffa313e0425bb9e76b154a8dbbc667d71722c009351"
+  "native_sha256": "fb18d3e0efd915bf14ca93beebc478d292b5a81687ac29dec64aa5f93670ad77",
+  "packaged_sha256": {
+    "libavcodec.so": "6808f8e77223680a1e2ac195178032300e55d950dede4aa2fa91009987d96296",
+    "libavformat.so": "cb9b15ab4c136d40d67b32fbf31f4c155c150e7d43c37174307503595905abd7",
+    "libavutil.so": "92136c3c0535b9817f6f72d45d272476ac83d5211785c7e1f06f7ec65954d9ef",
+    "libhumanvision.so": "fb18d3e0efd915bf14ca93beebc478d292b5a81687ac29dec64aa5f93670ad77",
+    "libhumanvision_input.so": "d53c66fb39cdcbd2f50972f86c38f7095e6851096810e1d11f5706b12118fc86",
+    "libonnxruntime.so": "cd1285f8955f3abcb0127d1ffaf1e5da7893d2547872a831b4717c0bfe388328",
+    "libswresample.so": "8cadca3419da79d3919a9498bee8619696b15faba03cf43bbcfda0a1aec7b5a3",
+    "libswscale.so": "aaae7e3a11b68c0306056fa3d463d94069d250f9a1f83dd1f67a5e9074d17aff"
+  },
+  "requires_private_addon": true,
+  "rknn_android_vendor_compiled": false,
+  "rknn_tensor_symbols_verified": false,
+  "rknn_vendor_symbols": 0,
+  "runtime_sha256": "07a8398be5caed21a1998ffa313e0425bb9e76b154a8dbbc667d71722c009351",
+  "vendor_runtime_packaged": false
 }

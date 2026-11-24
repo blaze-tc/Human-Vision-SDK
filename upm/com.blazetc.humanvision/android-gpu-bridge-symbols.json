@@ -1,11 +1,11 @@
 {
   "abi": "arm64-v8a",
-  "api26_strong_imports": 506,
+  "api26_strong_imports": 1813,
   "api_level": 26,
   "device_performance_verified": false,
   "distribution_qualified": false,
   "gpu_gate": false,
   "local_evaluation_only": true,
-  "native_sha256": "66e47badc6ded527c7db5e1d4b1245137d31af6dc11f4dc0266a7e1fa82c5b52",
+  "native_sha256": "fb18d3e0efd915bf14ca93beebc478d292b5a81687ac29dec64aa5f93670ad77",
   "ncnn_vulkan_symbols_verified": true
 }
