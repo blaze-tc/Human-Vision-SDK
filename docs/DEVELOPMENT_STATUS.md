@@ -7,7 +7,7 @@ Demo 仍在 `Update` 读取 SDK 关节坐标。独立正交相机只渲染骨骼
 - Unity Skills 8091 的 UGUI 用例先失败后通过。输入弹窗、骨骼相机、UGUI 结构三个新用例和 59 个既有交互用例全部通过。Unity Mono 温度合同 7/7，直接读点回归 15/15，Android 条件编译通过。
 - 8091 Play 实跑本机样本 RTSP 18584，原图 1920×1080，输入帧 1551→1624，四人，94 个点和 89 条线。Game View 确认 UGUI、骨骼叠层和固定温度底栏，Unity Skills 选中实时线条 `Live Skeleton Scene/Body 3/Bones/ElbowRight - WristRight`。证据在 `out/demo-ugui-20261124/`。
 - Android 验收 APK `ugui-input-scene-bones-20261124` 构建 0 错误、0 警告，SHA-256 `f9051cfbc9f6b7b2b10904434fc1b38dc468ddd81dbd8044696b0c59be0f2ee1`。包内核对 UGUI、输入弹窗、骨骼和温度代码，以及 9 个原生库及 74 项资源。
-- Windows 当前未取得可归属的 CPU、GPU、NPU 或电池温度。实体相机、安卓传感器读数与 RK3588 联合运行仍需设备验证。
+- Windows Play 从 RTSP 切到实际 HP Wide Vision HD Camera，UGUI 得到 1280×720、输入帧 25，SDK 为 Running 且错误为空。随后停止相机。Windows 当前未取得可归属的 CPU、GPU、NPU 或电池温度。安卓相机、传感器读数与 RK3588 联合运行仍需设备验证。
 
 ## 2026-11-24 验收 Demo 一键采集日志
 
