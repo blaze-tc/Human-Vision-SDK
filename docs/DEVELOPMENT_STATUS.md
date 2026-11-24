@@ -1,3 +1,14 @@
+## 2026-11-24 RuntimePrefabAcceptance 场景直连和手动 RTSP
+
+保留独立验收工程中的既有 `HumanVisionRuntime`。UGUI 界面、两个弹窗、EventSystem、骨骼相机和 8 组骨骼点线已保存在场景中，控制器以 Inspector 序列化引用按职责分组。编辑器装配工具复用已有 Runtime 实例，并拒绝包含多个 RuntimeView 的场景。普通运行只绑定事件、驱动已引用的控件和更新骨骼形状。
+
+Demo 控制器、输入面板、设置面板、场景骨骼、日志与 Editor 装配分工明确。移除了已退役的 IMGUI 绘制入口和相应布局代码。卸载时释放 SDK 会话，保留场景中供下次连接使用的引用。
+
+Unity Skills 实际按钮复现了本机旧样本 `18573` 无有效服务、原图输入超时。同一按钮使用可达的 `18584` 取得 RTSP 流。手动连接只在 SDK 成功后保存输入，失败保留上次成功设置；本机地址失败时显示对应端口。测试证据位于 `out/demo-scene-wiring-20261124/`。
+
+- Unity Skills 8092 从「输入连接」修改并提交地址。第一次进入 Running 后保存 `18584`，退出并重新进入 Play 后，弹窗自动读到该地址，再按同一个按钮进入 Running。原图为 1920×1080，Game View 确认场景骨骼覆盖在预览上。最后回到编辑模式，选中场景控制器。
+- 最终场景有 1 个 SDK RuntimeView 实例、1 个 Demo Canvas 和 504 个预建骨骼点线组件。新场景引用先失败后通过。最后 Unity EditMode 64/64，stage 校验 16/16，Editor、Android、测试程序集和装配菜单均通过本地编译。
+
 ## 2026-11-24 验收 Demo UGUI、输入切换与场景骨骼
 
 RuntimePrefabAcceptance 在 Play Mode 创建 UGUI Canvas，左侧保留输入、推理和日志控件，右侧显示一个原分辨率预览。「输入连接」提供 RTSP 和本地相机两个标签，各自保留草稿。连接沿用同一个 SDK 会话，取消草稿时当前输入继续工作。日志面板底部显示有来源的设备温度，读不到时显示「不可读」。

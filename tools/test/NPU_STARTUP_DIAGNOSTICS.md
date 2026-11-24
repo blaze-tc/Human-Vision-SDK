@@ -4,7 +4,9 @@
 
 ## 从 Demo 界面采集
 
-普通 RuntimePrefabAcceptance 在左栏通过「输入连接」打开 UGUI 弹窗。RTSP 页填写完整地址并选择传输或执行配置。本地相机页可以刷新设备、选设备和设置请求尺寸、帧率与镜像。选择「应用并连接」生效，识别和配置保存使用「识别与显示设置」。
+普通 RuntimePrefabAcceptance 在左栏通过「输入连接」打开 UGUI 弹窗。RTSP 页填写完整地址并选择传输或执行配置。本地相机页可以刷新设备、选设备和设置请求尺寸、帧率与镜像。选择「应用并连接」，SDK 成功后保存该输入，下次打开会读取。识别参数和手动保存草稿在「识别与显示设置」里。
+
+在编辑模式可直接调整场景内的界面和骨骼层级。将 Canvas、控件、相机和现有 `HumanVisionRuntime` 拖到 `Runtime Prefab Acceptance` 的分组字段。初始场景装配菜单是「Human Vision / Acceptance / Prepare Scene References」。
 
 在普通 RuntimePrefabAcceptance 界面的左侧「实时状态 / 日志」面板点击「一键采集日志」。尚未连接、连接失败或正在识别时均可使用。每次点击会生成一份 JSONL 快照，记录点击时的 SDK 和输入状态，在面板显示实际保存路径并复制到剪贴板。RTSP 地址在诊断日志中脱敏。
 

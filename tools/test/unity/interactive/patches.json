@@ -4,7 +4,7 @@
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptance.cs",
       "before": "5eaa91fdcacc640045ed5fce882f73523b3b70ac1c691ff2e40cba270a40afd5",
-      "after": "e065013ebac4cbe9233602bc6ea662eefa1d6e35afaefaac7b9e9aa34679da56",
+      "after": "64902097d1c5f76e6e7bfbd83fe1c4386ddda9f2c36608e69f0ad4355d60f1fe",
       "replacements": [
         [
           "GUI.Label(new Rect(45, 674, 145, 33), \"区域数量\", body);",
@@ -121,6 +121,102 @@
         [
           "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n\n",
           "        private void LateUpdate() => RenderAcceptanceUi();\n\n"
+        ],
+        [
+          "        private static readonly Color Highlight = new Color(.22f,.91f,1);\n        private static readonly Color Background = new Color(.048f,.071f,.105f);\n        private static readonly Color Panel = new Color(.088f,.123f,.173f);\n        private static readonly Color Inset = new Color(.025f,.042f,.063f);\n        private static readonly Color Dim = new Color(.67f,.75f,.85f);\n        private const int MaxCapacity = 8;\n        private const float CapacityRowHeight = 32;\n        private static readonly Rect CapacityButton = new Rect(181, 674, 205, 33);\n        private static readonly Rect CapacityMenu = new Rect(CapacityButton.x, CapacityButton.y - MaxCapacity * CapacityRowHeight - 10,\n            CapacityButton.width, MaxCapacity * CapacityRowHeight + 6);\n        private static readonly Rect LiveCard = new Rect(28, 86, 480, 752);\n        private static readonly Rect PoseCard = new Rect(528, 86, 884, 752);\n\n",
+          ""
+        ],
+        [
+          "        private HumanVisionRuntimeView view;",
+          "        private const int MaxCapacity = 8;\n\n        private HumanVisionRuntimeView view;"
+        ],
+        [
+          "        private Font uiFont;\n        private GUIStyle heading, title, body, small, warning, field, button, selected, badge;\n",
+          ""
+        ],
+        [
+          "private bool paired, hasInput, operating, capacityMenuOpen;",
+          "private bool paired, hasInput, operating;"
+        ],
+        [
+          "campaignRunning, campaignCancelled, showAddress, useRequestedStream",
+          "campaignRunning, campaignCancelled, useRequestedStream"
+        ],
+        [
+          "            showAddress = false;\n",
+          ""
+        ],
+        [
+          "        private void Start()\n        {\n",
+          "        private void Start()\n        {\n            if (sceneRuntimeView == null)\n            {\n                Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);\n                enabled = false;\n                return;\n            }\n            if (!BindAcceptanceUi())\n            {\n                enabled = false;\n                return;\n            }\n\n            ApplySceneFont();\n"
+        ],
+        [
+          "            if (uiFont != null) Destroy(uiFont);",
+          "            DisposeSceneFont();"
+        ],
+        [
+          "                view = HumanVisionRuntimeView.Create();",
+          "                view = sceneRuntimeView;"
+        ],
+        [
+          "        private IEnumerator Initialize(HumanVisionSdkOptions options)\n        {\n            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);",
+          "        private IEnumerator Initialize(HumanVisionSdkOptions options)\n        {\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            bool saveInput = rememberConnectedInput;\n            rememberConnectedInput = false;\n#endif\n            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);"
+        ],
+        [
+          "                status = diagnostics.Redact(status);\n#endif\n                yield break;\n            }\n            startup = view.Sdk.Configuration;",
+          "                status = diagnostics.Redact(status);\n                if (saveInput && options.SourceKind == InputKind.Rtsp &&\n                    Uri.TryCreate(options.Input.RtspUrl, UriKind.Absolute, out var address) && address.IsLoopback)\n                {\n                    int port = address.Port > 0 ? address.Port : 554;\n                    status += \" · 本机 RTSP 端口 \" + port + \"，请检查样本流是否运行。\";\n                }\n#endif\n                yield break;\n            }\n            startup = view.Sdk.Configuration;"
+        ],
+        [
+          "            telemetry.Reset();\n            status = \"输入已连接\";\n        }\n",
+          "            telemetry.Reset();\n            status = \"输入已连接\";\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            if (saveInput)\n                SaveConnectedInput();\n#endif\n        }\n"
+        ],
+        [
+          "        private void DrawModelButton(Rect rect, ModelInputQuality quality, string label)\n        {\n            if (GUI.Button(rect, label, startup.InputQuality == quality ? selected : button))\n                SelectCompute(startup.AccelerationMode, quality);\n        }\n\n        private void DrawBackendButton(Rect rect, HumanVisionAccelerationMode mode, string label)\n        {\n            if (GUI.Button(rect, label, startup.AccelerationMode == mode ? selected : button))\n                SelectCompute(mode, startup.InputQuality);\n        }\n\n",
+          ""
+        ],
+        [
+          "            var previous = view;\n            previous.FramePresented -= CountPresented;\n            yield return previous.Unload();\n            view = null;\n            status = \"已卸载；点击连接重新创建\";",
+          "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";"
+        ],
+        [
+          "\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n        private void DrawThermalControls()\n        {\n            if (automatedFixture)\n                GUI.Label(new Rect(30, 65, 865, 30), $\"预览最高 1920×1080  |  骨骼输入 512×288  |  {routeLabel}\", body);\n            else DrawManualChoices();\n            if (campaignRunning) {\n                GUI.enabled = !campaignCancelled;\n                if (GUI.Button(new Rect(938, 64, 219, 32), \"取消一键测试\", button)) {\n                    campaignCancelled = true;\n                    status = \"正在结束当前测试步骤…\";\n                }\n            } else {\n                bool canMeasure = startup.SourceKind == InputKind.Rtsp && (automatedFixture ||\n                    HasManualQuality(startup.AccelerationMode, ModelInputQuality.Low) && startup.InputQuality == ModelInputQuality.Low);\n                GUI.enabled = !operating && canMeasure;\n                if (GUI.Button(new Rect(938, 64, 219, 32), canMeasure ? \"一键测试\" : \"低档可一键测试\", selected))\n                    Run(RunThermalCampaign());\n            }\n            GUI.enabled = true;\n            if (GUI.Button(new Rect(1172, 64, 240, 32), \"导出 JSONL / 复制路径\", button)) {\n                diagnostics.Export();\n                if (!string.IsNullOrEmpty(diagnostics.ExportPath)) GUIUtility.systemCopyBuffer = diagnostics.ExportPath;\n                status = diagnostics.Status;\n            }\n        }\n\n        private void DrawThermalAddress()\n        {\n            if (!automatedFixture) { DrawInteractiveAddress(); return; }\n            GUI.Label(new Rect(28, 104, 118, 34), \"RTSP 地址\", body);\n            GUI.enabled = !operating;\n            var inputRect = new Rect(146, 104, 764, 34);\n            rtspUrl = showAddress ? GUI.TextField(inputRect, rtspUrl, field) : GUI.PasswordField(inputRect, rtspUrl, '*', field);\n            if (GUI.Button(new Rect(922, 104, 94, 34), showAddress ? \"隐藏\" : \"显示\", button)) showAddress = !showAddress;\n            if (GUI.Button(new Rect(1028, 104, 178, 34), useRequestedStream ? \"固定所填码流\" : \"自动选流\",\n                useRequestedStream ? selected : button)) useRequestedStream = !useRequestedStream;\n            GUI.enabled = !operating && (automatedFixture || HasManualQuality(startup.AccelerationMode, startup.InputQuality));\n            if (GUI.Button(new Rect(1224, 104, 188, 34), \"连接相机\", selected)) Run(Connect());\n            GUI.enabled = true;\n        }\n#endif\n\n        private void DismissCapacityMenu()\n        {\n            if (!capacityMenuOpen) return;\n            if (operating) {\n                capacityMenuOpen = false;\n                return;\n            }\n\n            Event current = Event.current;\n            bool outsideClick = current.type == EventType.MouseDown &&\n                !CapacityButton.Contains(current.mousePosition) && !CapacityMenu.Contains(current.mousePosition);\n            if (outsideClick || (current.type == EventType.KeyDown && current.keyCode == KeyCode.Escape)) {\n                capacityMenuOpen = false;\n                current.Use();\n            }\n        }\n\n        private void DrawCapacityMenu()\n        {\n            Box(CapacityMenu, Inset);\n            for (int count = 1; count <= MaxCapacity; count++) {\n                var row = new Rect(CapacityMenu.x + 3, CapacityMenu.y + 3 + (count - 1) * CapacityRowHeight,\n                    CapacityMenu.width - 6, CapacityRowHeight);\n                if (GUI.Button(row, $\"{count} 人\", count == maxBodies ? selected : button)) {\n                    capacityMenuOpen = false;\n                    SetCapacity(count);\n                }\n            }\n        }\n\n        private void DrawCard(Rect card, string label, Texture texture, string detail, bool showRegions = false,\n            bool highlightDetail = false, string emptyText = \"等待输入 / 结果\", bool drawSkeleton = false)\n        {\n            Box(card, Panel);\n            GUI.Label(new Rect(card.x + 17, card.y + 4, card.width - 34, 44), label, title);\n            Rect window = CardImageWindow(card);\n            Box(window, Inset);\n            bool hasTexture = texture != null && texture.width > 0 && texture.height > 0;\n            if (hasTexture || showRegions || drawSkeleton) {\n                int width = hasTexture ? texture.width : 1280;\n                int height = hasTexture ? texture.height : 720;\n                var image = RuntimePrefabLiveSkeleton.Fit(window, width, height);\n                DrawPreviewImage(image, texture, showRegions, drawSkeleton);\n            }\n            if (!hasTexture && (!drawSkeleton || liveSkeleton.VisibleJoints == 0)) GUI.Label(window, emptyText, badge);\n            GUI.Label(new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail, highlightDetail ? warning : small);\n        }\n\n        private void DrawRegions(Rect image)\n        {\n            for (int i = 0; i < recognition.Regions.Length; i++) {\n                Rect region = recognition.Regions[i];\n                var bounds = new Rect(image.x + region.x * image.width, image.y + region.y * image.height,\n                    region.width * image.width, region.height * image.height);\n                var border = RuntimePrefabRedrawRig.GetSlotColor(i);\n                Box(new Rect(bounds.x, bounds.y, bounds.width, 1), border);\n                Box(new Rect(bounds.x, bounds.yMax - 1, bounds.width, 1), border);\n                Box(new Rect(bounds.x, bounds.y, 1, bounds.height), border);\n                Box(new Rect(bounds.xMax - 1, bounds.y, 1, bounds.height), border);\n                var label = new Rect(bounds.x + 3, bounds.y + 3, Mathf.Min(bounds.width, 86), 23);\n                Box(label, Inset);\n                GUI.Label(label, $\"区域 {i}\", badge);\n            }\n        }\n\n        private static void Box(Rect rect, Color color)\n        {\n            if (Event.current.type != EventType.Repaint) return;\n            Color previous = GUI.color;\n            GUI.color = color;\n            GUI.DrawTexture(rect, Texture2D.whiteTexture);\n            GUI.color = previous;\n        }\n\n        private void InitStyles()\n        {\n            if (heading != null) return;\n            uiFont = Font.CreateDynamicFontFromOSFont(new[] {\"Microsoft YaHei UI\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", \"Droid Sans Fallback\", \"Arial\"}, 22);\n            heading = Text(34, Color.white, true);\n            title = Text(25, Color.white, true);\n            body = Text(20, Color.white, false);\n            small = Text(17, Dim, false);\n            warning = Text(17, new Color(1f, .78f, .39f), true);\n            badge = Text(17, Color.white, true);\n            badge.alignment = TextAnchor.MiddleCenter;\n            field = new GUIStyle(GUI.skin.textField) { font = uiFont, fontSize = 20 };\n            button = new GUIStyle(GUI.skin.button) { font = uiFont, fontSize = 19 };\n            selected = new GUIStyle(button) { fontStyle = FontStyle.Bold };\n            selected.normal.textColor = Highlight;\n        }\n\n        private GUIStyle Text(int size, Color color, bool bold)\n        {\n            var style = new GUIStyle(GUI.skin.label) {\n                font = uiFont, fontSize = size, alignment = TextAnchor.MiddleLeft,\n                fontStyle = bold ? FontStyle.Bold : FontStyle.Normal, clipping = TextClipping.Clip, wordWrap = false\n            };\n            style.normal.textColor = color;\n            return style;\n        }\n    }\n}\n",
+          "    }\n}\n"
+        ],
+        [
+          "                view = sceneRuntimeView;\n",
+          "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n"
+        ],
+        [
+          "            if (sceneRuntimeView == null)\n",
+          "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n"
+        ],
+        [
+          "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);",
+          "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。\", this);"
+        ],
+        [
+          "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n",
+          "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n"
+        ],
+        [
+          "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n",
+          "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n"
+        ],
+        [
+          "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n",
+          "            if (sceneRuntimeView == null || sceneRuntimeView.Sdk == null || HumanVisionRuntimeView.Instance != sceneRuntimeView)\n"
+        ],
+        [
+          "RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。",
+          "RuntimePrefabAcceptance 需要在 Inspector 引用此场景唯一且已启用的 HumanVisionRuntime。"
+        ],
+        [
+          "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n",
+          "                view = sceneRuntimeView;\n"
+        ],
+        [
+          "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n",
+          "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n"
         ]
       ],
       "upgrades": [
@@ -182,6 +278,102 @@
             [
               "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n\n",
               "        private void LateUpdate() => RenderAcceptanceUi();\n\n"
+            ],
+            [
+              "        private static readonly Color Highlight = new Color(.22f,.91f,1);\n        private static readonly Color Background = new Color(.048f,.071f,.105f);\n        private static readonly Color Panel = new Color(.088f,.123f,.173f);\n        private static readonly Color Inset = new Color(.025f,.042f,.063f);\n        private static readonly Color Dim = new Color(.67f,.75f,.85f);\n        private const int MaxCapacity = 8;\n        private const float CapacityRowHeight = 32;\n        private static readonly Rect CapacityButton = new Rect(181, 674, 205, 33);\n        private static readonly Rect CapacityMenu = new Rect(CapacityButton.x, CapacityButton.y - MaxCapacity * CapacityRowHeight - 10,\n            CapacityButton.width, MaxCapacity * CapacityRowHeight + 6);\n        private static readonly Rect LiveCard = new Rect(28, 86, 480, 752);\n        private static readonly Rect PoseCard = new Rect(528, 86, 884, 752);\n\n",
+              ""
+            ],
+            [
+              "        private HumanVisionRuntimeView view;",
+              "        private const int MaxCapacity = 8;\n\n        private HumanVisionRuntimeView view;"
+            ],
+            [
+              "        private Font uiFont;\n        private GUIStyle heading, title, body, small, warning, field, button, selected, badge;\n",
+              ""
+            ],
+            [
+              "private bool paired, hasInput, operating, capacityMenuOpen;",
+              "private bool paired, hasInput, operating;"
+            ],
+            [
+              "campaignRunning, campaignCancelled, showAddress, useRequestedStream",
+              "campaignRunning, campaignCancelled, useRequestedStream"
+            ],
+            [
+              "            showAddress = false;\n",
+              ""
+            ],
+            [
+              "        private void Start()\n        {\n",
+              "        private void Start()\n        {\n            if (sceneRuntimeView == null)\n            {\n                Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);\n                enabled = false;\n                return;\n            }\n            if (!BindAcceptanceUi())\n            {\n                enabled = false;\n                return;\n            }\n\n            ApplySceneFont();\n"
+            ],
+            [
+              "            if (uiFont != null) Destroy(uiFont);",
+              "            DisposeSceneFont();"
+            ],
+            [
+              "                view = HumanVisionRuntimeView.Create();",
+              "                view = sceneRuntimeView;"
+            ],
+            [
+              "        private IEnumerator Initialize(HumanVisionSdkOptions options)\n        {\n            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);",
+              "        private IEnumerator Initialize(HumanVisionSdkOptions options)\n        {\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            bool saveInput = rememberConnectedInput;\n            rememberConnectedInput = false;\n#endif\n            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);"
+            ],
+            [
+              "                status = diagnostics.Redact(status);\n#endif\n                yield break;\n            }\n            startup = view.Sdk.Configuration;",
+              "                status = diagnostics.Redact(status);\n                if (saveInput && options.SourceKind == InputKind.Rtsp &&\n                    Uri.TryCreate(options.Input.RtspUrl, UriKind.Absolute, out var address) && address.IsLoopback)\n                {\n                    int port = address.Port > 0 ? address.Port : 554;\n                    status += \" · 本机 RTSP 端口 \" + port + \"，请检查样本流是否运行。\";\n                }\n#endif\n                yield break;\n            }\n            startup = view.Sdk.Configuration;"
+            ],
+            [
+              "            telemetry.Reset();\n            status = \"输入已连接\";\n        }\n",
+              "            telemetry.Reset();\n            status = \"输入已连接\";\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            if (saveInput)\n                SaveConnectedInput();\n#endif\n        }\n"
+            ],
+            [
+              "        private void DrawModelButton(Rect rect, ModelInputQuality quality, string label)\n        {\n            if (GUI.Button(rect, label, startup.InputQuality == quality ? selected : button))\n                SelectCompute(startup.AccelerationMode, quality);\n        }\n\n        private void DrawBackendButton(Rect rect, HumanVisionAccelerationMode mode, string label)\n        {\n            if (GUI.Button(rect, label, startup.AccelerationMode == mode ? selected : button))\n                SelectCompute(mode, startup.InputQuality);\n        }\n\n",
+              ""
+            ],
+            [
+              "            var previous = view;\n            previous.FramePresented -= CountPresented;\n            yield return previous.Unload();\n            view = null;\n            status = \"已卸载；点击连接重新创建\";",
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";"
+            ],
+            [
+              "\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n        private void DrawThermalControls()\n        {\n            if (automatedFixture)\n                GUI.Label(new Rect(30, 65, 865, 30), $\"预览最高 1920×1080  |  骨骼输入 512×288  |  {routeLabel}\", body);\n            else DrawManualChoices();\n            if (campaignRunning) {\n                GUI.enabled = !campaignCancelled;\n                if (GUI.Button(new Rect(938, 64, 219, 32), \"取消一键测试\", button)) {\n                    campaignCancelled = true;\n                    status = \"正在结束当前测试步骤…\";\n                }\n            } else {\n                bool canMeasure = startup.SourceKind == InputKind.Rtsp && (automatedFixture ||\n                    HasManualQuality(startup.AccelerationMode, ModelInputQuality.Low) && startup.InputQuality == ModelInputQuality.Low);\n                GUI.enabled = !operating && canMeasure;\n                if (GUI.Button(new Rect(938, 64, 219, 32), canMeasure ? \"一键测试\" : \"低档可一键测试\", selected))\n                    Run(RunThermalCampaign());\n            }\n            GUI.enabled = true;\n            if (GUI.Button(new Rect(1172, 64, 240, 32), \"导出 JSONL / 复制路径\", button)) {\n                diagnostics.Export();\n                if (!string.IsNullOrEmpty(diagnostics.ExportPath)) GUIUtility.systemCopyBuffer = diagnostics.ExportPath;\n                status = diagnostics.Status;\n            }\n        }\n\n        private void DrawThermalAddress()\n        {\n            if (!automatedFixture) { DrawInteractiveAddress(); return; }\n            GUI.Label(new Rect(28, 104, 118, 34), \"RTSP 地址\", body);\n            GUI.enabled = !operating;\n            var inputRect = new Rect(146, 104, 764, 34);\n            rtspUrl = showAddress ? GUI.TextField(inputRect, rtspUrl, field) : GUI.PasswordField(inputRect, rtspUrl, '*', field);\n            if (GUI.Button(new Rect(922, 104, 94, 34), showAddress ? \"隐藏\" : \"显示\", button)) showAddress = !showAddress;\n            if (GUI.Button(new Rect(1028, 104, 178, 34), useRequestedStream ? \"固定所填码流\" : \"自动选流\",\n                useRequestedStream ? selected : button)) useRequestedStream = !useRequestedStream;\n            GUI.enabled = !operating && (automatedFixture || HasManualQuality(startup.AccelerationMode, startup.InputQuality));\n            if (GUI.Button(new Rect(1224, 104, 188, 34), \"连接相机\", selected)) Run(Connect());\n            GUI.enabled = true;\n        }\n#endif\n\n        private void DismissCapacityMenu()\n        {\n            if (!capacityMenuOpen) return;\n            if (operating) {\n                capacityMenuOpen = false;\n                return;\n            }\n\n            Event current = Event.current;\n            bool outsideClick = current.type == EventType.MouseDown &&\n                !CapacityButton.Contains(current.mousePosition) && !CapacityMenu.Contains(current.mousePosition);\n            if (outsideClick || (current.type == EventType.KeyDown && current.keyCode == KeyCode.Escape)) {\n                capacityMenuOpen = false;\n                current.Use();\n            }\n        }\n\n        private void DrawCapacityMenu()\n        {\n            Box(CapacityMenu, Inset);\n            for (int count = 1; count <= MaxCapacity; count++) {\n                var row = new Rect(CapacityMenu.x + 3, CapacityMenu.y + 3 + (count - 1) * CapacityRowHeight,\n                    CapacityMenu.width - 6, CapacityRowHeight);\n                if (GUI.Button(row, $\"{count} 人\", count == maxBodies ? selected : button)) {\n                    capacityMenuOpen = false;\n                    SetCapacity(count);\n                }\n            }\n        }\n\n        private void DrawCard(Rect card, string label, Texture texture, string detail, bool showRegions = false,\n            bool highlightDetail = false, string emptyText = \"等待输入 / 结果\", bool drawSkeleton = false)\n        {\n            Box(card, Panel);\n            GUI.Label(new Rect(card.x + 17, card.y + 4, card.width - 34, 44), label, title);\n            Rect window = CardImageWindow(card);\n            Box(window, Inset);\n            bool hasTexture = texture != null && texture.width > 0 && texture.height > 0;\n            if (hasTexture || showRegions || drawSkeleton) {\n                int width = hasTexture ? texture.width : 1280;\n                int height = hasTexture ? texture.height : 720;\n                var image = RuntimePrefabLiveSkeleton.Fit(window, width, height);\n                DrawPreviewImage(image, texture, showRegions, drawSkeleton);\n            }\n            if (!hasTexture && (!drawSkeleton || liveSkeleton.VisibleJoints == 0)) GUI.Label(window, emptyText, badge);\n            GUI.Label(new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail, highlightDetail ? warning : small);\n        }\n\n        private void DrawRegions(Rect image)\n        {\n            for (int i = 0; i < recognition.Regions.Length; i++) {\n                Rect region = recognition.Regions[i];\n                var bounds = new Rect(image.x + region.x * image.width, image.y + region.y * image.height,\n                    region.width * image.width, region.height * image.height);\n                var border = RuntimePrefabRedrawRig.GetSlotColor(i);\n                Box(new Rect(bounds.x, bounds.y, bounds.width, 1), border);\n                Box(new Rect(bounds.x, bounds.yMax - 1, bounds.width, 1), border);\n                Box(new Rect(bounds.x, bounds.y, 1, bounds.height), border);\n                Box(new Rect(bounds.xMax - 1, bounds.y, 1, bounds.height), border);\n                var label = new Rect(bounds.x + 3, bounds.y + 3, Mathf.Min(bounds.width, 86), 23);\n                Box(label, Inset);\n                GUI.Label(label, $\"区域 {i}\", badge);\n            }\n        }\n\n        private static void Box(Rect rect, Color color)\n        {\n            if (Event.current.type != EventType.Repaint) return;\n            Color previous = GUI.color;\n            GUI.color = color;\n            GUI.DrawTexture(rect, Texture2D.whiteTexture);\n            GUI.color = previous;\n        }\n\n        private void InitStyles()\n        {\n            if (heading != null) return;\n            uiFont = Font.CreateDynamicFontFromOSFont(new[] {\"Microsoft YaHei UI\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", \"Droid Sans Fallback\", \"Arial\"}, 22);\n            heading = Text(34, Color.white, true);\n            title = Text(25, Color.white, true);\n            body = Text(20, Color.white, false);\n            small = Text(17, Dim, false);\n            warning = Text(17, new Color(1f, .78f, .39f), true);\n            badge = Text(17, Color.white, true);\n            badge.alignment = TextAnchor.MiddleCenter;\n            field = new GUIStyle(GUI.skin.textField) { font = uiFont, fontSize = 20 };\n            button = new GUIStyle(GUI.skin.button) { font = uiFont, fontSize = 19 };\n            selected = new GUIStyle(button) { fontStyle = FontStyle.Bold };\n            selected.normal.textColor = Highlight;\n        }\n\n        private GUIStyle Text(int size, Color color, bool bold)\n        {\n            var style = new GUIStyle(GUI.skin.label) {\n                font = uiFont, fontSize = size, alignment = TextAnchor.MiddleLeft,\n                fontStyle = bold ? FontStyle.Bold : FontStyle.Normal, clipping = TextClipping.Clip, wordWrap = false\n            };\n            style.normal.textColor = color;\n            return style;\n        }\n    }\n}\n",
+              "    }\n}\n"
+            ],
+            [
+              "                view = sceneRuntimeView;\n",
+              "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            if (sceneRuntimeView == null)\n",
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n"
+            ],
+            [
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);",
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。\", this);"
+            ],
+            [
+              "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n",
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n"
+            ],
+            [
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n",
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n"
+            ],
+            [
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n",
+              "            if (sceneRuntimeView == null || sceneRuntimeView.Sdk == null || HumanVisionRuntimeView.Instance != sceneRuntimeView)\n"
+            ],
+            [
+              "RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。",
+              "RuntimePrefabAcceptance 需要在 Inspector 引用此场景唯一且已启用的 HumanVisionRuntime。"
+            ],
+            [
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n",
+              "                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n",
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n"
             ]
           ]
         },
@@ -239,6 +431,102 @@
             [
               "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n\n",
               "        private void LateUpdate() => RenderAcceptanceUi();\n\n"
+            ],
+            [
+              "        private static readonly Color Highlight = new Color(.22f,.91f,1);\n        private static readonly Color Background = new Color(.048f,.071f,.105f);\n        private static readonly Color Panel = new Color(.088f,.123f,.173f);\n        private static readonly Color Inset = new Color(.025f,.042f,.063f);\n        private static readonly Color Dim = new Color(.67f,.75f,.85f);\n        private const int MaxCapacity = 8;\n        private const float CapacityRowHeight = 32;\n        private static readonly Rect CapacityButton = new Rect(181, 674, 205, 33);\n        private static readonly Rect CapacityMenu = new Rect(CapacityButton.x, CapacityButton.y - MaxCapacity * CapacityRowHeight - 10,\n            CapacityButton.width, MaxCapacity * CapacityRowHeight + 6);\n        private static readonly Rect LiveCard = new Rect(28, 86, 480, 752);\n        private static readonly Rect PoseCard = new Rect(528, 86, 884, 752);\n\n",
+              ""
+            ],
+            [
+              "        private HumanVisionRuntimeView view;",
+              "        private const int MaxCapacity = 8;\n\n        private HumanVisionRuntimeView view;"
+            ],
+            [
+              "        private Font uiFont;\n        private GUIStyle heading, title, body, small, warning, field, button, selected, badge;\n",
+              ""
+            ],
+            [
+              "private bool paired, hasInput, operating, capacityMenuOpen;",
+              "private bool paired, hasInput, operating;"
+            ],
+            [
+              "campaignRunning, campaignCancelled, showAddress, useRequestedStream",
+              "campaignRunning, campaignCancelled, useRequestedStream"
+            ],
+            [
+              "            showAddress = false;\n",
+              ""
+            ],
+            [
+              "        private void Start()\n        {\n",
+              "        private void Start()\n        {\n            if (sceneRuntimeView == null)\n            {\n                Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);\n                enabled = false;\n                return;\n            }\n            if (!BindAcceptanceUi())\n            {\n                enabled = false;\n                return;\n            }\n\n            ApplySceneFont();\n"
+            ],
+            [
+              "            if (uiFont != null) Destroy(uiFont);",
+              "            DisposeSceneFont();"
+            ],
+            [
+              "                view = HumanVisionRuntimeView.Create();",
+              "                view = sceneRuntimeView;"
+            ],
+            [
+              "        private IEnumerator Initialize(HumanVisionSdkOptions options)\n        {\n            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);",
+              "        private IEnumerator Initialize(HumanVisionSdkOptions options)\n        {\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            bool saveInput = rememberConnectedInput;\n            rememberConnectedInput = false;\n#endif\n            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);"
+            ],
+            [
+              "                status = diagnostics.Redact(status);\n#endif\n                yield break;\n            }\n            startup = view.Sdk.Configuration;",
+              "                status = diagnostics.Redact(status);\n                if (saveInput && options.SourceKind == InputKind.Rtsp &&\n                    Uri.TryCreate(options.Input.RtspUrl, UriKind.Absolute, out var address) && address.IsLoopback)\n                {\n                    int port = address.Port > 0 ? address.Port : 554;\n                    status += \" · 本机 RTSP 端口 \" + port + \"，请检查样本流是否运行。\";\n                }\n#endif\n                yield break;\n            }\n            startup = view.Sdk.Configuration;"
+            ],
+            [
+              "            telemetry.Reset();\n            status = \"输入已连接\";\n        }\n",
+              "            telemetry.Reset();\n            status = \"输入已连接\";\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            if (saveInput)\n                SaveConnectedInput();\n#endif\n        }\n"
+            ],
+            [
+              "        private void DrawModelButton(Rect rect, ModelInputQuality quality, string label)\n        {\n            if (GUI.Button(rect, label, startup.InputQuality == quality ? selected : button))\n                SelectCompute(startup.AccelerationMode, quality);\n        }\n\n        private void DrawBackendButton(Rect rect, HumanVisionAccelerationMode mode, string label)\n        {\n            if (GUI.Button(rect, label, startup.AccelerationMode == mode ? selected : button))\n                SelectCompute(mode, startup.InputQuality);\n        }\n\n",
+              ""
+            ],
+            [
+              "            var previous = view;\n            previous.FramePresented -= CountPresented;\n            yield return previous.Unload();\n            view = null;\n            status = \"已卸载；点击连接重新创建\";",
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";"
+            ],
+            [
+              "\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n        private void DrawThermalControls()\n        {\n            if (automatedFixture)\n                GUI.Label(new Rect(30, 65, 865, 30), $\"预览最高 1920×1080  |  骨骼输入 512×288  |  {routeLabel}\", body);\n            else DrawManualChoices();\n            if (campaignRunning) {\n                GUI.enabled = !campaignCancelled;\n                if (GUI.Button(new Rect(938, 64, 219, 32), \"取消一键测试\", button)) {\n                    campaignCancelled = true;\n                    status = \"正在结束当前测试步骤…\";\n                }\n            } else {\n                bool canMeasure = startup.SourceKind == InputKind.Rtsp && (automatedFixture ||\n                    HasManualQuality(startup.AccelerationMode, ModelInputQuality.Low) && startup.InputQuality == ModelInputQuality.Low);\n                GUI.enabled = !operating && canMeasure;\n                if (GUI.Button(new Rect(938, 64, 219, 32), canMeasure ? \"一键测试\" : \"低档可一键测试\", selected))\n                    Run(RunThermalCampaign());\n            }\n            GUI.enabled = true;\n            if (GUI.Button(new Rect(1172, 64, 240, 32), \"导出 JSONL / 复制路径\", button)) {\n                diagnostics.Export();\n                if (!string.IsNullOrEmpty(diagnostics.ExportPath)) GUIUtility.systemCopyBuffer = diagnostics.ExportPath;\n                status = diagnostics.Status;\n            }\n        }\n\n        private void DrawThermalAddress()\n        {\n            if (!automatedFixture) { DrawInteractiveAddress(); return; }\n            GUI.Label(new Rect(28, 104, 118, 34), \"RTSP 地址\", body);\n            GUI.enabled = !operating;\n            var inputRect = new Rect(146, 104, 764, 34);\n            rtspUrl = showAddress ? GUI.TextField(inputRect, rtspUrl, field) : GUI.PasswordField(inputRect, rtspUrl, '*', field);\n            if (GUI.Button(new Rect(922, 104, 94, 34), showAddress ? \"隐藏\" : \"显示\", button)) showAddress = !showAddress;\n            if (GUI.Button(new Rect(1028, 104, 178, 34), useRequestedStream ? \"固定所填码流\" : \"自动选流\",\n                useRequestedStream ? selected : button)) useRequestedStream = !useRequestedStream;\n            GUI.enabled = !operating && (automatedFixture || HasManualQuality(startup.AccelerationMode, startup.InputQuality));\n            if (GUI.Button(new Rect(1224, 104, 188, 34), \"连接相机\", selected)) Run(Connect());\n            GUI.enabled = true;\n        }\n#endif\n\n        private void DismissCapacityMenu()\n        {\n            if (!capacityMenuOpen) return;\n            if (operating) {\n                capacityMenuOpen = false;\n                return;\n            }\n\n            Event current = Event.current;\n            bool outsideClick = current.type == EventType.MouseDown &&\n                !CapacityButton.Contains(current.mousePosition) && !CapacityMenu.Contains(current.mousePosition);\n            if (outsideClick || (current.type == EventType.KeyDown && current.keyCode == KeyCode.Escape)) {\n                capacityMenuOpen = false;\n                current.Use();\n            }\n        }\n\n        private void DrawCapacityMenu()\n        {\n            Box(CapacityMenu, Inset);\n            for (int count = 1; count <= MaxCapacity; count++) {\n                var row = new Rect(CapacityMenu.x + 3, CapacityMenu.y + 3 + (count - 1) * CapacityRowHeight,\n                    CapacityMenu.width - 6, CapacityRowHeight);\n                if (GUI.Button(row, $\"{count} 人\", count == maxBodies ? selected : button)) {\n                    capacityMenuOpen = false;\n                    SetCapacity(count);\n                }\n            }\n        }\n\n        private void DrawCard(Rect card, string label, Texture texture, string detail, bool showRegions = false,\n            bool highlightDetail = false, string emptyText = \"等待输入 / 结果\", bool drawSkeleton = false)\n        {\n            Box(card, Panel);\n            GUI.Label(new Rect(card.x + 17, card.y + 4, card.width - 34, 44), label, title);\n            Rect window = CardImageWindow(card);\n            Box(window, Inset);\n            bool hasTexture = texture != null && texture.width > 0 && texture.height > 0;\n            if (hasTexture || showRegions || drawSkeleton) {\n                int width = hasTexture ? texture.width : 1280;\n                int height = hasTexture ? texture.height : 720;\n                var image = RuntimePrefabLiveSkeleton.Fit(window, width, height);\n                DrawPreviewImage(image, texture, showRegions, drawSkeleton);\n            }\n            if (!hasTexture && (!drawSkeleton || liveSkeleton.VisibleJoints == 0)) GUI.Label(window, emptyText, badge);\n            GUI.Label(new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail, highlightDetail ? warning : small);\n        }\n\n        private void DrawRegions(Rect image)\n        {\n            for (int i = 0; i < recognition.Regions.Length; i++) {\n                Rect region = recognition.Regions[i];\n                var bounds = new Rect(image.x + region.x * image.width, image.y + region.y * image.height,\n                    region.width * image.width, region.height * image.height);\n                var border = RuntimePrefabRedrawRig.GetSlotColor(i);\n                Box(new Rect(bounds.x, bounds.y, bounds.width, 1), border);\n                Box(new Rect(bounds.x, bounds.yMax - 1, bounds.width, 1), border);\n                Box(new Rect(bounds.x, bounds.y, 1, bounds.height), border);\n                Box(new Rect(bounds.xMax - 1, bounds.y, 1, bounds.height), border);\n                var label = new Rect(bounds.x + 3, bounds.y + 3, Mathf.Min(bounds.width, 86), 23);\n                Box(label, Inset);\n                GUI.Label(label, $\"区域 {i}\", badge);\n            }\n        }\n\n        private static void Box(Rect rect, Color color)\n        {\n            if (Event.current.type != EventType.Repaint) return;\n            Color previous = GUI.color;\n            GUI.color = color;\n            GUI.DrawTexture(rect, Texture2D.whiteTexture);\n            GUI.color = previous;\n        }\n\n        private void InitStyles()\n        {\n            if (heading != null) return;\n            uiFont = Font.CreateDynamicFontFromOSFont(new[] {\"Microsoft YaHei UI\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", \"Droid Sans Fallback\", \"Arial\"}, 22);\n            heading = Text(34, Color.white, true);\n            title = Text(25, Color.white, true);\n            body = Text(20, Color.white, false);\n            small = Text(17, Dim, false);\n            warning = Text(17, new Color(1f, .78f, .39f), true);\n            badge = Text(17, Color.white, true);\n            badge.alignment = TextAnchor.MiddleCenter;\n            field = new GUIStyle(GUI.skin.textField) { font = uiFont, fontSize = 20 };\n            button = new GUIStyle(GUI.skin.button) { font = uiFont, fontSize = 19 };\n            selected = new GUIStyle(button) { fontStyle = FontStyle.Bold };\n            selected.normal.textColor = Highlight;\n        }\n\n        private GUIStyle Text(int size, Color color, bool bold)\n        {\n            var style = new GUIStyle(GUI.skin.label) {\n                font = uiFont, fontSize = size, alignment = TextAnchor.MiddleLeft,\n                fontStyle = bold ? FontStyle.Bold : FontStyle.Normal, clipping = TextClipping.Clip, wordWrap = false\n            };\n            style.normal.textColor = color;\n            return style;\n        }\n    }\n}\n",
+              "    }\n}\n"
+            ],
+            [
+              "                view = sceneRuntimeView;\n",
+              "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            if (sceneRuntimeView == null)\n",
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n"
+            ],
+            [
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);",
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。\", this);"
+            ],
+            [
+              "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n",
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n"
+            ],
+            [
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n",
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n"
+            ],
+            [
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n",
+              "            if (sceneRuntimeView == null || sceneRuntimeView.Sdk == null || HumanVisionRuntimeView.Instance != sceneRuntimeView)\n"
+            ],
+            [
+              "RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。",
+              "RuntimePrefabAcceptance 需要在 Inspector 引用此场景唯一且已启用的 HumanVisionRuntime。"
+            ],
+            [
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n",
+              "                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n",
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n"
             ]
           ]
         },
@@ -276,6 +564,102 @@
             [
               "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n\n",
               "        private void LateUpdate() => RenderAcceptanceUi();\n\n"
+            ],
+            [
+              "        private static readonly Color Highlight = new Color(.22f,.91f,1);\n        private static readonly Color Background = new Color(.048f,.071f,.105f);\n        private static readonly Color Panel = new Color(.088f,.123f,.173f);\n        private static readonly Color Inset = new Color(.025f,.042f,.063f);\n        private static readonly Color Dim = new Color(.67f,.75f,.85f);\n        private const int MaxCapacity = 8;\n        private const float CapacityRowHeight = 32;\n        private static readonly Rect CapacityButton = new Rect(181, 674, 205, 33);\n        private static readonly Rect CapacityMenu = new Rect(CapacityButton.x, CapacityButton.y - MaxCapacity * CapacityRowHeight - 10,\n            CapacityButton.width, MaxCapacity * CapacityRowHeight + 6);\n        private static readonly Rect LiveCard = new Rect(28, 86, 480, 752);\n        private static readonly Rect PoseCard = new Rect(528, 86, 884, 752);\n\n",
+              ""
+            ],
+            [
+              "        private HumanVisionRuntimeView view;",
+              "        private const int MaxCapacity = 8;\n\n        private HumanVisionRuntimeView view;"
+            ],
+            [
+              "        private Font uiFont;\n        private GUIStyle heading, title, body, small, warning, field, button, selected, badge;\n",
+              ""
+            ],
+            [
+              "private bool paired, hasInput, operating, capacityMenuOpen;",
+              "private bool paired, hasInput, operating;"
+            ],
+            [
+              "campaignRunning, campaignCancelled, showAddress, useRequestedStream",
+              "campaignRunning, campaignCancelled, useRequestedStream"
+            ],
+            [
+              "            showAddress = false;\n",
+              ""
+            ],
+            [
+              "        private void Start()\n        {\n",
+              "        private void Start()\n        {\n            if (sceneRuntimeView == null)\n            {\n                Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);\n                enabled = false;\n                return;\n            }\n            if (!BindAcceptanceUi())\n            {\n                enabled = false;\n                return;\n            }\n\n            ApplySceneFont();\n"
+            ],
+            [
+              "            if (uiFont != null) Destroy(uiFont);",
+              "            DisposeSceneFont();"
+            ],
+            [
+              "                view = HumanVisionRuntimeView.Create();",
+              "                view = sceneRuntimeView;"
+            ],
+            [
+              "        private IEnumerator Initialize(HumanVisionSdkOptions options)\n        {\n            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);",
+              "        private IEnumerator Initialize(HumanVisionSdkOptions options)\n        {\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            bool saveInput = rememberConnectedInput;\n            rememberConnectedInput = false;\n#endif\n            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);"
+            ],
+            [
+              "                status = diagnostics.Redact(status);\n#endif\n                yield break;\n            }\n            startup = view.Sdk.Configuration;",
+              "                status = diagnostics.Redact(status);\n                if (saveInput && options.SourceKind == InputKind.Rtsp &&\n                    Uri.TryCreate(options.Input.RtspUrl, UriKind.Absolute, out var address) && address.IsLoopback)\n                {\n                    int port = address.Port > 0 ? address.Port : 554;\n                    status += \" · 本机 RTSP 端口 \" + port + \"，请检查样本流是否运行。\";\n                }\n#endif\n                yield break;\n            }\n            startup = view.Sdk.Configuration;"
+            ],
+            [
+              "            telemetry.Reset();\n            status = \"输入已连接\";\n        }\n",
+              "            telemetry.Reset();\n            status = \"输入已连接\";\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            if (saveInput)\n                SaveConnectedInput();\n#endif\n        }\n"
+            ],
+            [
+              "        private void DrawModelButton(Rect rect, ModelInputQuality quality, string label)\n        {\n            if (GUI.Button(rect, label, startup.InputQuality == quality ? selected : button))\n                SelectCompute(startup.AccelerationMode, quality);\n        }\n\n        private void DrawBackendButton(Rect rect, HumanVisionAccelerationMode mode, string label)\n        {\n            if (GUI.Button(rect, label, startup.AccelerationMode == mode ? selected : button))\n                SelectCompute(mode, startup.InputQuality);\n        }\n\n",
+              ""
+            ],
+            [
+              "            var previous = view;\n            previous.FramePresented -= CountPresented;\n            yield return previous.Unload();\n            view = null;\n            status = \"已卸载；点击连接重新创建\";",
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";"
+            ],
+            [
+              "\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n        private void DrawThermalControls()\n        {\n            if (automatedFixture)\n                GUI.Label(new Rect(30, 65, 865, 30), $\"预览最高 1920×1080  |  骨骼输入 512×288  |  {routeLabel}\", body);\n            else DrawManualChoices();\n            if (campaignRunning) {\n                GUI.enabled = !campaignCancelled;\n                if (GUI.Button(new Rect(938, 64, 219, 32), \"取消一键测试\", button)) {\n                    campaignCancelled = true;\n                    status = \"正在结束当前测试步骤…\";\n                }\n            } else {\n                bool canMeasure = startup.SourceKind == InputKind.Rtsp && (automatedFixture ||\n                    HasManualQuality(startup.AccelerationMode, ModelInputQuality.Low) && startup.InputQuality == ModelInputQuality.Low);\n                GUI.enabled = !operating && canMeasure;\n                if (GUI.Button(new Rect(938, 64, 219, 32), canMeasure ? \"一键测试\" : \"低档可一键测试\", selected))\n                    Run(RunThermalCampaign());\n            }\n            GUI.enabled = true;\n            if (GUI.Button(new Rect(1172, 64, 240, 32), \"导出 JSONL / 复制路径\", button)) {\n                diagnostics.Export();\n                if (!string.IsNullOrEmpty(diagnostics.ExportPath)) GUIUtility.systemCopyBuffer = diagnostics.ExportPath;\n                status = diagnostics.Status;\n            }\n        }\n\n        private void DrawThermalAddress()\n        {\n            if (!automatedFixture) { DrawInteractiveAddress(); return; }\n            GUI.Label(new Rect(28, 104, 118, 34), \"RTSP 地址\", body);\n            GUI.enabled = !operating;\n            var inputRect = new Rect(146, 104, 764, 34);\n            rtspUrl = showAddress ? GUI.TextField(inputRect, rtspUrl, field) : GUI.PasswordField(inputRect, rtspUrl, '*', field);\n            if (GUI.Button(new Rect(922, 104, 94, 34), showAddress ? \"隐藏\" : \"显示\", button)) showAddress = !showAddress;\n            if (GUI.Button(new Rect(1028, 104, 178, 34), useRequestedStream ? \"固定所填码流\" : \"自动选流\",\n                useRequestedStream ? selected : button)) useRequestedStream = !useRequestedStream;\n            GUI.enabled = !operating && (automatedFixture || HasManualQuality(startup.AccelerationMode, startup.InputQuality));\n            if (GUI.Button(new Rect(1224, 104, 188, 34), \"连接相机\", selected)) Run(Connect());\n            GUI.enabled = true;\n        }\n#endif\n\n        private void DismissCapacityMenu()\n        {\n            if (!capacityMenuOpen) return;\n            if (operating) {\n                capacityMenuOpen = false;\n                return;\n            }\n\n            Event current = Event.current;\n            bool outsideClick = current.type == EventType.MouseDown &&\n                !CapacityButton.Contains(current.mousePosition) && !CapacityMenu.Contains(current.mousePosition);\n            if (outsideClick || (current.type == EventType.KeyDown && current.keyCode == KeyCode.Escape)) {\n                capacityMenuOpen = false;\n                current.Use();\n            }\n        }\n\n        private void DrawCapacityMenu()\n        {\n            Box(CapacityMenu, Inset);\n            for (int count = 1; count <= MaxCapacity; count++) {\n                var row = new Rect(CapacityMenu.x + 3, CapacityMenu.y + 3 + (count - 1) * CapacityRowHeight,\n                    CapacityMenu.width - 6, CapacityRowHeight);\n                if (GUI.Button(row, $\"{count} 人\", count == maxBodies ? selected : button)) {\n                    capacityMenuOpen = false;\n                    SetCapacity(count);\n                }\n            }\n        }\n\n        private void DrawCard(Rect card, string label, Texture texture, string detail, bool showRegions = false,\n            bool highlightDetail = false, string emptyText = \"等待输入 / 结果\", bool drawSkeleton = false)\n        {\n            Box(card, Panel);\n            GUI.Label(new Rect(card.x + 17, card.y + 4, card.width - 34, 44), label, title);\n            Rect window = CardImageWindow(card);\n            Box(window, Inset);\n            bool hasTexture = texture != null && texture.width > 0 && texture.height > 0;\n            if (hasTexture || showRegions || drawSkeleton) {\n                int width = hasTexture ? texture.width : 1280;\n                int height = hasTexture ? texture.height : 720;\n                var image = RuntimePrefabLiveSkeleton.Fit(window, width, height);\n                DrawPreviewImage(image, texture, showRegions, drawSkeleton);\n            }\n            if (!hasTexture && (!drawSkeleton || liveSkeleton.VisibleJoints == 0)) GUI.Label(window, emptyText, badge);\n            GUI.Label(new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail, highlightDetail ? warning : small);\n        }\n\n        private void DrawRegions(Rect image)\n        {\n            for (int i = 0; i < recognition.Regions.Length; i++) {\n                Rect region = recognition.Regions[i];\n                var bounds = new Rect(image.x + region.x * image.width, image.y + region.y * image.height,\n                    region.width * image.width, region.height * image.height);\n                var border = RuntimePrefabRedrawRig.GetSlotColor(i);\n                Box(new Rect(bounds.x, bounds.y, bounds.width, 1), border);\n                Box(new Rect(bounds.x, bounds.yMax - 1, bounds.width, 1), border);\n                Box(new Rect(bounds.x, bounds.y, 1, bounds.height), border);\n                Box(new Rect(bounds.xMax - 1, bounds.y, 1, bounds.height), border);\n                var label = new Rect(bounds.x + 3, bounds.y + 3, Mathf.Min(bounds.width, 86), 23);\n                Box(label, Inset);\n                GUI.Label(label, $\"区域 {i}\", badge);\n            }\n        }\n\n        private static void Box(Rect rect, Color color)\n        {\n            if (Event.current.type != EventType.Repaint) return;\n            Color previous = GUI.color;\n            GUI.color = color;\n            GUI.DrawTexture(rect, Texture2D.whiteTexture);\n            GUI.color = previous;\n        }\n\n        private void InitStyles()\n        {\n            if (heading != null) return;\n            uiFont = Font.CreateDynamicFontFromOSFont(new[] {\"Microsoft YaHei UI\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", \"Droid Sans Fallback\", \"Arial\"}, 22);\n            heading = Text(34, Color.white, true);\n            title = Text(25, Color.white, true);\n            body = Text(20, Color.white, false);\n            small = Text(17, Dim, false);\n            warning = Text(17, new Color(1f, .78f, .39f), true);\n            badge = Text(17, Color.white, true);\n            badge.alignment = TextAnchor.MiddleCenter;\n            field = new GUIStyle(GUI.skin.textField) { font = uiFont, fontSize = 20 };\n            button = new GUIStyle(GUI.skin.button) { font = uiFont, fontSize = 19 };\n            selected = new GUIStyle(button) { fontStyle = FontStyle.Bold };\n            selected.normal.textColor = Highlight;\n        }\n\n        private GUIStyle Text(int size, Color color, bool bold)\n        {\n            var style = new GUIStyle(GUI.skin.label) {\n                font = uiFont, fontSize = size, alignment = TextAnchor.MiddleLeft,\n                fontStyle = bold ? FontStyle.Bold : FontStyle.Normal, clipping = TextClipping.Clip, wordWrap = false\n            };\n            style.normal.textColor = color;\n            return style;\n        }\n    }\n}\n",
+              "    }\n}\n"
+            ],
+            [
+              "                view = sceneRuntimeView;\n",
+              "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            if (sceneRuntimeView == null)\n",
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n"
+            ],
+            [
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);",
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。\", this);"
+            ],
+            [
+              "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n",
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n"
+            ],
+            [
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n",
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n"
+            ],
+            [
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n",
+              "            if (sceneRuntimeView == null || sceneRuntimeView.Sdk == null || HumanVisionRuntimeView.Instance != sceneRuntimeView)\n"
+            ],
+            [
+              "RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。",
+              "RuntimePrefabAcceptance 需要在 Inspector 引用此场景唯一且已启用的 HumanVisionRuntime。"
+            ],
+            [
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n",
+              "                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n",
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n"
             ]
           ]
         },
@@ -309,6 +693,102 @@
             [
               "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n\n",
               "        private void LateUpdate() => RenderAcceptanceUi();\n\n"
+            ],
+            [
+              "        private static readonly Color Highlight = new Color(.22f,.91f,1);\n        private static readonly Color Background = new Color(.048f,.071f,.105f);\n        private static readonly Color Panel = new Color(.088f,.123f,.173f);\n        private static readonly Color Inset = new Color(.025f,.042f,.063f);\n        private static readonly Color Dim = new Color(.67f,.75f,.85f);\n        private const int MaxCapacity = 8;\n        private const float CapacityRowHeight = 32;\n        private static readonly Rect CapacityButton = new Rect(181, 674, 205, 33);\n        private static readonly Rect CapacityMenu = new Rect(CapacityButton.x, CapacityButton.y - MaxCapacity * CapacityRowHeight - 10,\n            CapacityButton.width, MaxCapacity * CapacityRowHeight + 6);\n        private static readonly Rect LiveCard = new Rect(28, 86, 480, 752);\n        private static readonly Rect PoseCard = new Rect(528, 86, 884, 752);\n\n",
+              ""
+            ],
+            [
+              "        private HumanVisionRuntimeView view;",
+              "        private const int MaxCapacity = 8;\n\n        private HumanVisionRuntimeView view;"
+            ],
+            [
+              "        private Font uiFont;\n        private GUIStyle heading, title, body, small, warning, field, button, selected, badge;\n",
+              ""
+            ],
+            [
+              "private bool paired, hasInput, operating, capacityMenuOpen;",
+              "private bool paired, hasInput, operating;"
+            ],
+            [
+              "campaignRunning, campaignCancelled, showAddress, useRequestedStream",
+              "campaignRunning, campaignCancelled, useRequestedStream"
+            ],
+            [
+              "            showAddress = false;\n",
+              ""
+            ],
+            [
+              "        private void Start()\n        {\n",
+              "        private void Start()\n        {\n            if (sceneRuntimeView == null)\n            {\n                Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);\n                enabled = false;\n                return;\n            }\n            if (!BindAcceptanceUi())\n            {\n                enabled = false;\n                return;\n            }\n\n            ApplySceneFont();\n"
+            ],
+            [
+              "            if (uiFont != null) Destroy(uiFont);",
+              "            DisposeSceneFont();"
+            ],
+            [
+              "                view = HumanVisionRuntimeView.Create();",
+              "                view = sceneRuntimeView;"
+            ],
+            [
+              "        private IEnumerator Initialize(HumanVisionSdkOptions options)\n        {\n            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);",
+              "        private IEnumerator Initialize(HumanVisionSdkOptions options)\n        {\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            bool saveInput = rememberConnectedInput;\n            rememberConnectedInput = false;\n#endif\n            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);"
+            ],
+            [
+              "                status = diagnostics.Redact(status);\n#endif\n                yield break;\n            }\n            startup = view.Sdk.Configuration;",
+              "                status = diagnostics.Redact(status);\n                if (saveInput && options.SourceKind == InputKind.Rtsp &&\n                    Uri.TryCreate(options.Input.RtspUrl, UriKind.Absolute, out var address) && address.IsLoopback)\n                {\n                    int port = address.Port > 0 ? address.Port : 554;\n                    status += \" · 本机 RTSP 端口 \" + port + \"，请检查样本流是否运行。\";\n                }\n#endif\n                yield break;\n            }\n            startup = view.Sdk.Configuration;"
+            ],
+            [
+              "            telemetry.Reset();\n            status = \"输入已连接\";\n        }\n",
+              "            telemetry.Reset();\n            status = \"输入已连接\";\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            if (saveInput)\n                SaveConnectedInput();\n#endif\n        }\n"
+            ],
+            [
+              "        private void DrawModelButton(Rect rect, ModelInputQuality quality, string label)\n        {\n            if (GUI.Button(rect, label, startup.InputQuality == quality ? selected : button))\n                SelectCompute(startup.AccelerationMode, quality);\n        }\n\n        private void DrawBackendButton(Rect rect, HumanVisionAccelerationMode mode, string label)\n        {\n            if (GUI.Button(rect, label, startup.AccelerationMode == mode ? selected : button))\n                SelectCompute(mode, startup.InputQuality);\n        }\n\n",
+              ""
+            ],
+            [
+              "            var previous = view;\n            previous.FramePresented -= CountPresented;\n            yield return previous.Unload();\n            view = null;\n            status = \"已卸载；点击连接重新创建\";",
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";"
+            ],
+            [
+              "\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n        private void DrawThermalControls()\n        {\n            if (automatedFixture)\n                GUI.Label(new Rect(30, 65, 865, 30), $\"预览最高 1920×1080  |  骨骼输入 512×288  |  {routeLabel}\", body);\n            else DrawManualChoices();\n            if (campaignRunning) {\n                GUI.enabled = !campaignCancelled;\n                if (GUI.Button(new Rect(938, 64, 219, 32), \"取消一键测试\", button)) {\n                    campaignCancelled = true;\n                    status = \"正在结束当前测试步骤…\";\n                }\n            } else {\n                bool canMeasure = startup.SourceKind == InputKind.Rtsp && (automatedFixture ||\n                    HasManualQuality(startup.AccelerationMode, ModelInputQuality.Low) && startup.InputQuality == ModelInputQuality.Low);\n                GUI.enabled = !operating && canMeasure;\n                if (GUI.Button(new Rect(938, 64, 219, 32), canMeasure ? \"一键测试\" : \"低档可一键测试\", selected))\n                    Run(RunThermalCampaign());\n            }\n            GUI.enabled = true;\n            if (GUI.Button(new Rect(1172, 64, 240, 32), \"导出 JSONL / 复制路径\", button)) {\n                diagnostics.Export();\n                if (!string.IsNullOrEmpty(diagnostics.ExportPath)) GUIUtility.systemCopyBuffer = diagnostics.ExportPath;\n                status = diagnostics.Status;\n            }\n        }\n\n        private void DrawThermalAddress()\n        {\n            if (!automatedFixture) { DrawInteractiveAddress(); return; }\n            GUI.Label(new Rect(28, 104, 118, 34), \"RTSP 地址\", body);\n            GUI.enabled = !operating;\n            var inputRect = new Rect(146, 104, 764, 34);\n            rtspUrl = showAddress ? GUI.TextField(inputRect, rtspUrl, field) : GUI.PasswordField(inputRect, rtspUrl, '*', field);\n            if (GUI.Button(new Rect(922, 104, 94, 34), showAddress ? \"隐藏\" : \"显示\", button)) showAddress = !showAddress;\n            if (GUI.Button(new Rect(1028, 104, 178, 34), useRequestedStream ? \"固定所填码流\" : \"自动选流\",\n                useRequestedStream ? selected : button)) useRequestedStream = !useRequestedStream;\n            GUI.enabled = !operating && (automatedFixture || HasManualQuality(startup.AccelerationMode, startup.InputQuality));\n            if (GUI.Button(new Rect(1224, 104, 188, 34), \"连接相机\", selected)) Run(Connect());\n            GUI.enabled = true;\n        }\n#endif\n\n        private void DismissCapacityMenu()\n        {\n            if (!capacityMenuOpen) return;\n            if (operating) {\n                capacityMenuOpen = false;\n                return;\n            }\n\n            Event current = Event.current;\n            bool outsideClick = current.type == EventType.MouseDown &&\n                !CapacityButton.Contains(current.mousePosition) && !CapacityMenu.Contains(current.mousePosition);\n            if (outsideClick || (current.type == EventType.KeyDown && current.keyCode == KeyCode.Escape)) {\n                capacityMenuOpen = false;\n                current.Use();\n            }\n        }\n\n        private void DrawCapacityMenu()\n        {\n            Box(CapacityMenu, Inset);\n            for (int count = 1; count <= MaxCapacity; count++) {\n                var row = new Rect(CapacityMenu.x + 3, CapacityMenu.y + 3 + (count - 1) * CapacityRowHeight,\n                    CapacityMenu.width - 6, CapacityRowHeight);\n                if (GUI.Button(row, $\"{count} 人\", count == maxBodies ? selected : button)) {\n                    capacityMenuOpen = false;\n                    SetCapacity(count);\n                }\n            }\n        }\n\n        private void DrawCard(Rect card, string label, Texture texture, string detail, bool showRegions = false,\n            bool highlightDetail = false, string emptyText = \"等待输入 / 结果\", bool drawSkeleton = false)\n        {\n            Box(card, Panel);\n            GUI.Label(new Rect(card.x + 17, card.y + 4, card.width - 34, 44), label, title);\n            Rect window = CardImageWindow(card);\n            Box(window, Inset);\n            bool hasTexture = texture != null && texture.width > 0 && texture.height > 0;\n            if (hasTexture || showRegions || drawSkeleton) {\n                int width = hasTexture ? texture.width : 1280;\n                int height = hasTexture ? texture.height : 720;\n                var image = RuntimePrefabLiveSkeleton.Fit(window, width, height);\n                DrawPreviewImage(image, texture, showRegions, drawSkeleton);\n            }\n            if (!hasTexture && (!drawSkeleton || liveSkeleton.VisibleJoints == 0)) GUI.Label(window, emptyText, badge);\n            GUI.Label(new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail, highlightDetail ? warning : small);\n        }\n\n        private void DrawRegions(Rect image)\n        {\n            for (int i = 0; i < recognition.Regions.Length; i++) {\n                Rect region = recognition.Regions[i];\n                var bounds = new Rect(image.x + region.x * image.width, image.y + region.y * image.height,\n                    region.width * image.width, region.height * image.height);\n                var border = RuntimePrefabRedrawRig.GetSlotColor(i);\n                Box(new Rect(bounds.x, bounds.y, bounds.width, 1), border);\n                Box(new Rect(bounds.x, bounds.yMax - 1, bounds.width, 1), border);\n                Box(new Rect(bounds.x, bounds.y, 1, bounds.height), border);\n                Box(new Rect(bounds.xMax - 1, bounds.y, 1, bounds.height), border);\n                var label = new Rect(bounds.x + 3, bounds.y + 3, Mathf.Min(bounds.width, 86), 23);\n                Box(label, Inset);\n                GUI.Label(label, $\"区域 {i}\", badge);\n            }\n        }\n\n        private static void Box(Rect rect, Color color)\n        {\n            if (Event.current.type != EventType.Repaint) return;\n            Color previous = GUI.color;\n            GUI.color = color;\n            GUI.DrawTexture(rect, Texture2D.whiteTexture);\n            GUI.color = previous;\n        }\n\n        private void InitStyles()\n        {\n            if (heading != null) return;\n            uiFont = Font.CreateDynamicFontFromOSFont(new[] {\"Microsoft YaHei UI\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", \"Droid Sans Fallback\", \"Arial\"}, 22);\n            heading = Text(34, Color.white, true);\n            title = Text(25, Color.white, true);\n            body = Text(20, Color.white, false);\n            small = Text(17, Dim, false);\n            warning = Text(17, new Color(1f, .78f, .39f), true);\n            badge = Text(17, Color.white, true);\n            badge.alignment = TextAnchor.MiddleCenter;\n            field = new GUIStyle(GUI.skin.textField) { font = uiFont, fontSize = 20 };\n            button = new GUIStyle(GUI.skin.button) { font = uiFont, fontSize = 19 };\n            selected = new GUIStyle(button) { fontStyle = FontStyle.Bold };\n            selected.normal.textColor = Highlight;\n        }\n\n        private GUIStyle Text(int size, Color color, bool bold)\n        {\n            var style = new GUIStyle(GUI.skin.label) {\n                font = uiFont, fontSize = size, alignment = TextAnchor.MiddleLeft,\n                fontStyle = bold ? FontStyle.Bold : FontStyle.Normal, clipping = TextClipping.Clip, wordWrap = false\n            };\n            style.normal.textColor = color;\n            return style;\n        }\n    }\n}\n",
+              "    }\n}\n"
+            ],
+            [
+              "                view = sceneRuntimeView;\n",
+              "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            if (sceneRuntimeView == null)\n",
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n"
+            ],
+            [
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);",
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。\", this);"
+            ],
+            [
+              "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n",
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n"
+            ],
+            [
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n",
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n"
+            ],
+            [
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n",
+              "            if (sceneRuntimeView == null || sceneRuntimeView.Sdk == null || HumanVisionRuntimeView.Instance != sceneRuntimeView)\n"
+            ],
+            [
+              "RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。",
+              "RuntimePrefabAcceptance 需要在 Inspector 引用此场景唯一且已启用的 HumanVisionRuntime。"
+            ],
+            [
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n",
+              "                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n",
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n"
             ]
           ]
         },
@@ -326,6 +806,302 @@
             [
               "        private void OnGUI()\n        {\n            if (startup == null) return;\n            InitStyles();\n            if (fullscreenPreview) { DrawFullscreenPreview(); return; }\n            var previousMatrix = GUI.matrix;\n            var safe = Screen.safeArea;\n            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);\n            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);\n            if (scale <= 0) return;\n            GUI.matrix = Matrix4x4.identity;\n            Box(new Rect(0, 0, Screen.width, Screen.height), Background);\n            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,\n                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),\n                Quaternion.identity, Vector3.one * scale);\n            try {\n                GetExpandedCards(scale, out var sidebar, out var preview, out _);\n                GUI.Label(new Rect(28, 12, 1050, 52), \"Human Vision  /  实时识别\", heading);\n                GUI.Label(new Rect(1160, 24, 252, 34), $\"SDK  {HumanVisionSdk.Version}\", badge);\n                DrawControlSidebar(sidebar);\n                DrawUnifiedPreviewCard(sidebar, preview);\n                ObserveSidebarPreview();\n                DrawSidebarModal();\n            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }\n        }\n\n",
               "        private void LateUpdate() => RenderAcceptanceUi();\n\n"
+            ],
+            [
+              "        private static readonly Color Highlight = new Color(.22f,.91f,1);\n        private static readonly Color Background = new Color(.048f,.071f,.105f);\n        private static readonly Color Panel = new Color(.088f,.123f,.173f);\n        private static readonly Color Inset = new Color(.025f,.042f,.063f);\n        private static readonly Color Dim = new Color(.67f,.75f,.85f);\n        private const int MaxCapacity = 8;\n        private const float CapacityRowHeight = 32;\n        private static readonly Rect CapacityButton = new Rect(181, 674, 205, 33);\n        private static readonly Rect CapacityMenu = new Rect(CapacityButton.x, CapacityButton.y - MaxCapacity * CapacityRowHeight - 10,\n            CapacityButton.width, MaxCapacity * CapacityRowHeight + 6);\n        private static readonly Rect LiveCard = new Rect(28, 86, 480, 752);\n        private static readonly Rect PoseCard = new Rect(528, 86, 884, 752);\n\n",
+              ""
+            ],
+            [
+              "        private HumanVisionRuntimeView view;",
+              "        private const int MaxCapacity = 8;\n\n        private HumanVisionRuntimeView view;"
+            ],
+            [
+              "        private Font uiFont;\n        private GUIStyle heading, title, body, small, warning, field, button, selected, badge;\n",
+              ""
+            ],
+            [
+              "private bool paired, hasInput, operating, capacityMenuOpen;",
+              "private bool paired, hasInput, operating;"
+            ],
+            [
+              "campaignRunning, campaignCancelled, showAddress, useRequestedStream",
+              "campaignRunning, campaignCancelled, useRequestedStream"
+            ],
+            [
+              "            showAddress = false;\n",
+              ""
+            ],
+            [
+              "        private void Start()\n        {\n",
+              "        private void Start()\n        {\n            if (sceneRuntimeView == null)\n            {\n                Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);\n                enabled = false;\n                return;\n            }\n            if (!BindAcceptanceUi())\n            {\n                enabled = false;\n                return;\n            }\n\n            ApplySceneFont();\n"
+            ],
+            [
+              "            if (uiFont != null) Destroy(uiFont);",
+              "            DisposeSceneFont();"
+            ],
+            [
+              "                view = HumanVisionRuntimeView.Create();",
+              "                view = sceneRuntimeView;"
+            ],
+            [
+              "        private IEnumerator Initialize(HumanVisionSdkOptions options)\n        {\n            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);",
+              "        private IEnumerator Initialize(HumanVisionSdkOptions options)\n        {\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            bool saveInput = rememberConnectedInput;\n            rememberConnectedInput = false;\n#endif\n            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);"
+            ],
+            [
+              "                status = diagnostics.Redact(status);\n#endif\n                yield break;\n            }\n            startup = view.Sdk.Configuration;",
+              "                status = diagnostics.Redact(status);\n                if (saveInput && options.SourceKind == InputKind.Rtsp &&\n                    Uri.TryCreate(options.Input.RtspUrl, UriKind.Absolute, out var address) && address.IsLoopback)\n                {\n                    int port = address.Port > 0 ? address.Port : 554;\n                    status += \" · 本机 RTSP 端口 \" + port + \"，请检查样本流是否运行。\";\n                }\n#endif\n                yield break;\n            }\n            startup = view.Sdk.Configuration;"
+            ],
+            [
+              "            telemetry.Reset();\n            status = \"输入已连接\";\n        }\n",
+              "            telemetry.Reset();\n            status = \"输入已连接\";\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            if (saveInput)\n                SaveConnectedInput();\n#endif\n        }\n"
+            ],
+            [
+              "        private void DrawModelButton(Rect rect, ModelInputQuality quality, string label)\n        {\n            if (GUI.Button(rect, label, startup.InputQuality == quality ? selected : button))\n                SelectCompute(startup.AccelerationMode, quality);\n        }\n\n        private void DrawBackendButton(Rect rect, HumanVisionAccelerationMode mode, string label)\n        {\n            if (GUI.Button(rect, label, startup.AccelerationMode == mode ? selected : button))\n                SelectCompute(mode, startup.InputQuality);\n        }\n\n",
+              ""
+            ],
+            [
+              "            var previous = view;\n            previous.FramePresented -= CountPresented;\n            yield return previous.Unload();\n            view = null;\n            status = \"已卸载；点击连接重新创建\";",
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";"
+            ],
+            [
+              "\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n        private void DrawThermalControls()\n        {\n            if (automatedFixture)\n                GUI.Label(new Rect(30, 65, 865, 30), $\"预览最高 1920×1080  |  骨骼输入 512×288  |  {routeLabel}\", body);\n            else DrawManualChoices();\n            if (campaignRunning) {\n                GUI.enabled = !campaignCancelled;\n                if (GUI.Button(new Rect(938, 64, 219, 32), \"取消一键测试\", button)) {\n                    campaignCancelled = true;\n                    status = \"正在结束当前测试步骤…\";\n                }\n            } else {\n                bool canMeasure = startup.SourceKind == InputKind.Rtsp && (automatedFixture ||\n                    HasManualQuality(startup.AccelerationMode, ModelInputQuality.Low) && startup.InputQuality == ModelInputQuality.Low);\n                GUI.enabled = !operating && canMeasure;\n                if (GUI.Button(new Rect(938, 64, 219, 32), canMeasure ? \"一键测试\" : \"低档可一键测试\", selected))\n                    Run(RunThermalCampaign());\n            }\n            GUI.enabled = true;\n            if (GUI.Button(new Rect(1172, 64, 240, 32), \"导出 JSONL / 复制路径\", button)) {\n                diagnostics.Export();\n                if (!string.IsNullOrEmpty(diagnostics.ExportPath)) GUIUtility.systemCopyBuffer = diagnostics.ExportPath;\n                status = diagnostics.Status;\n            }\n        }\n\n        private void DrawThermalAddress()\n        {\n            if (!automatedFixture) { DrawInteractiveAddress(); return; }\n            GUI.Label(new Rect(28, 104, 118, 34), \"RTSP 地址\", body);\n            GUI.enabled = !operating;\n            var inputRect = new Rect(146, 104, 764, 34);\n            rtspUrl = showAddress ? GUI.TextField(inputRect, rtspUrl, field) : GUI.PasswordField(inputRect, rtspUrl, '*', field);\n            if (GUI.Button(new Rect(922, 104, 94, 34), showAddress ? \"隐藏\" : \"显示\", button)) showAddress = !showAddress;\n            if (GUI.Button(new Rect(1028, 104, 178, 34), useRequestedStream ? \"固定所填码流\" : \"自动选流\",\n                useRequestedStream ? selected : button)) useRequestedStream = !useRequestedStream;\n            GUI.enabled = !operating && (automatedFixture || HasManualQuality(startup.AccelerationMode, startup.InputQuality));\n            if (GUI.Button(new Rect(1224, 104, 188, 34), \"连接相机\", selected)) Run(Connect());\n            GUI.enabled = true;\n        }\n#endif\n\n        private void DismissCapacityMenu()\n        {\n            if (!capacityMenuOpen) return;\n            if (operating) {\n                capacityMenuOpen = false;\n                return;\n            }\n\n            Event current = Event.current;\n            bool outsideClick = current.type == EventType.MouseDown &&\n                !CapacityButton.Contains(current.mousePosition) && !CapacityMenu.Contains(current.mousePosition);\n            if (outsideClick || (current.type == EventType.KeyDown && current.keyCode == KeyCode.Escape)) {\n                capacityMenuOpen = false;\n                current.Use();\n            }\n        }\n\n        private void DrawCapacityMenu()\n        {\n            Box(CapacityMenu, Inset);\n            for (int count = 1; count <= MaxCapacity; count++) {\n                var row = new Rect(CapacityMenu.x + 3, CapacityMenu.y + 3 + (count - 1) * CapacityRowHeight,\n                    CapacityMenu.width - 6, CapacityRowHeight);\n                if (GUI.Button(row, $\"{count} 人\", count == maxBodies ? selected : button)) {\n                    capacityMenuOpen = false;\n                    SetCapacity(count);\n                }\n            }\n        }\n\n        private void DrawCard(Rect card, string label, Texture texture, string detail, bool showRegions = false,\n            bool highlightDetail = false, string emptyText = \"等待输入 / 结果\", bool drawSkeleton = false)\n        {\n            Box(card, Panel);\n            GUI.Label(new Rect(card.x + 17, card.y + 4, card.width - 34, 44), label, title);\n            Rect window = CardImageWindow(card);\n            Box(window, Inset);\n            bool hasTexture = texture != null && texture.width > 0 && texture.height > 0;\n            if (hasTexture || showRegions || drawSkeleton) {\n                int width = hasTexture ? texture.width : 1280;\n                int height = hasTexture ? texture.height : 720;\n                var image = RuntimePrefabLiveSkeleton.Fit(window, width, height);\n                DrawPreviewImage(image, texture, showRegions, drawSkeleton);\n            }\n            if (!hasTexture && (!drawSkeleton || liveSkeleton.VisibleJoints == 0)) GUI.Label(window, emptyText, badge);\n            GUI.Label(new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail, highlightDetail ? warning : small);\n        }\n\n        private void DrawRegions(Rect image)\n        {\n            for (int i = 0; i < recognition.Regions.Length; i++) {\n                Rect region = recognition.Regions[i];\n                var bounds = new Rect(image.x + region.x * image.width, image.y + region.y * image.height,\n                    region.width * image.width, region.height * image.height);\n                var border = RuntimePrefabRedrawRig.GetSlotColor(i);\n                Box(new Rect(bounds.x, bounds.y, bounds.width, 1), border);\n                Box(new Rect(bounds.x, bounds.yMax - 1, bounds.width, 1), border);\n                Box(new Rect(bounds.x, bounds.y, 1, bounds.height), border);\n                Box(new Rect(bounds.xMax - 1, bounds.y, 1, bounds.height), border);\n                var label = new Rect(bounds.x + 3, bounds.y + 3, Mathf.Min(bounds.width, 86), 23);\n                Box(label, Inset);\n                GUI.Label(label, $\"区域 {i}\", badge);\n            }\n        }\n\n        private static void Box(Rect rect, Color color)\n        {\n            if (Event.current.type != EventType.Repaint) return;\n            Color previous = GUI.color;\n            GUI.color = color;\n            GUI.DrawTexture(rect, Texture2D.whiteTexture);\n            GUI.color = previous;\n        }\n\n        private void InitStyles()\n        {\n            if (heading != null) return;\n            uiFont = Font.CreateDynamicFontFromOSFont(new[] {\"Microsoft YaHei UI\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", \"Droid Sans Fallback\", \"Arial\"}, 22);\n            heading = Text(34, Color.white, true);\n            title = Text(25, Color.white, true);\n            body = Text(20, Color.white, false);\n            small = Text(17, Dim, false);\n            warning = Text(17, new Color(1f, .78f, .39f), true);\n            badge = Text(17, Color.white, true);\n            badge.alignment = TextAnchor.MiddleCenter;\n            field = new GUIStyle(GUI.skin.textField) { font = uiFont, fontSize = 20 };\n            button = new GUIStyle(GUI.skin.button) { font = uiFont, fontSize = 19 };\n            selected = new GUIStyle(button) { fontStyle = FontStyle.Bold };\n            selected.normal.textColor = Highlight;\n        }\n\n        private GUIStyle Text(int size, Color color, bool bold)\n        {\n            var style = new GUIStyle(GUI.skin.label) {\n                font = uiFont, fontSize = size, alignment = TextAnchor.MiddleLeft,\n                fontStyle = bold ? FontStyle.Bold : FontStyle.Normal, clipping = TextClipping.Clip, wordWrap = false\n            };\n            style.normal.textColor = color;\n            return style;\n        }\n    }\n}\n",
+              "    }\n}\n"
+            ],
+            [
+              "                view = sceneRuntimeView;\n",
+              "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            if (sceneRuntimeView == null)\n",
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n"
+            ],
+            [
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);",
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。\", this);"
+            ],
+            [
+              "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n",
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n"
+            ],
+            [
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n",
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n"
+            ],
+            [
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n",
+              "            if (sceneRuntimeView == null || sceneRuntimeView.Sdk == null || HumanVisionRuntimeView.Instance != sceneRuntimeView)\n"
+            ],
+            [
+              "RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。",
+              "RuntimePrefabAcceptance 需要在 Inspector 引用此场景唯一且已启用的 HumanVisionRuntime。"
+            ],
+            [
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n",
+              "                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n",
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n"
+            ]
+          ]
+        },
+        {
+          "before": "e065013ebac4cbe9233602bc6ea662eefa1d6e35afaefaac7b9e9aa34679da56",
+          "replacements": [
+            [
+              "        private static readonly Color Highlight = new Color(.22f,.91f,1);\n        private static readonly Color Background = new Color(.048f,.071f,.105f);\n        private static readonly Color Panel = new Color(.088f,.123f,.173f);\n        private static readonly Color Inset = new Color(.025f,.042f,.063f);\n        private static readonly Color Dim = new Color(.67f,.75f,.85f);\n        private const int MaxCapacity = 8;\n        private const float CapacityRowHeight = 32;\n        private static readonly Rect CapacityButton = new Rect(181, 674, 205, 33);\n        private static readonly Rect CapacityMenu = new Rect(CapacityButton.x, CapacityButton.y - MaxCapacity * CapacityRowHeight - 10,\n            CapacityButton.width, MaxCapacity * CapacityRowHeight + 6);\n        private static readonly Rect LiveCard = new Rect(28, 86, 480, 752);\n        private static readonly Rect PoseCard = new Rect(528, 86, 884, 752);\n\n",
+              ""
+            ],
+            [
+              "        private HumanVisionRuntimeView view;",
+              "        private const int MaxCapacity = 8;\n\n        private HumanVisionRuntimeView view;"
+            ],
+            [
+              "        private Font uiFont;\n        private GUIStyle heading, title, body, small, warning, field, button, selected, badge;\n",
+              ""
+            ],
+            [
+              "private bool paired, hasInput, operating, capacityMenuOpen;",
+              "private bool paired, hasInput, operating;"
+            ],
+            [
+              "campaignRunning, campaignCancelled, showAddress, useRequestedStream",
+              "campaignRunning, campaignCancelled, useRequestedStream"
+            ],
+            [
+              "            showAddress = false;\n",
+              ""
+            ],
+            [
+              "        private void Start()\n        {\n",
+              "        private void Start()\n        {\n            if (sceneRuntimeView == null)\n            {\n                Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);\n                enabled = false;\n                return;\n            }\n            if (!BindAcceptanceUi())\n            {\n                enabled = false;\n                return;\n            }\n\n            ApplySceneFont();\n"
+            ],
+            [
+              "            if (uiFont != null) Destroy(uiFont);",
+              "            DisposeSceneFont();"
+            ],
+            [
+              "                view = HumanVisionRuntimeView.Create();",
+              "                view = sceneRuntimeView;"
+            ],
+            [
+              "        private IEnumerator Initialize(HumanVisionSdkOptions options)\n        {\n            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);",
+              "        private IEnumerator Initialize(HumanVisionSdkOptions options)\n        {\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            bool saveInput = rememberConnectedInput;\n            rememberConnectedInput = false;\n#endif\n            RuntimeIndependentAcceptanceProbe.ConfigureOptions(options);"
+            ],
+            [
+              "                status = diagnostics.Redact(status);\n#endif\n                yield break;\n            }\n            startup = view.Sdk.Configuration;",
+              "                status = diagnostics.Redact(status);\n                if (saveInput && options.SourceKind == InputKind.Rtsp &&\n                    Uri.TryCreate(options.Input.RtspUrl, UriKind.Absolute, out var address) && address.IsLoopback)\n                {\n                    int port = address.Port > 0 ? address.Port : 554;\n                    status += \" · 本机 RTSP 端口 \" + port + \"，请检查样本流是否运行。\";\n                }\n#endif\n                yield break;\n            }\n            startup = view.Sdk.Configuration;"
+            ],
+            [
+              "            telemetry.Reset();\n            status = \"输入已连接\";\n        }\n",
+              "            telemetry.Reset();\n            status = \"输入已连接\";\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n            if (saveInput)\n                SaveConnectedInput();\n#endif\n        }\n"
+            ],
+            [
+              "        private void DrawModelButton(Rect rect, ModelInputQuality quality, string label)\n        {\n            if (GUI.Button(rect, label, startup.InputQuality == quality ? selected : button))\n                SelectCompute(startup.AccelerationMode, quality);\n        }\n\n        private void DrawBackendButton(Rect rect, HumanVisionAccelerationMode mode, string label)\n        {\n            if (GUI.Button(rect, label, startup.AccelerationMode == mode ? selected : button))\n                SelectCompute(mode, startup.InputQuality);\n        }\n\n",
+              ""
+            ],
+            [
+              "            var previous = view;\n            previous.FramePresented -= CountPresented;\n            yield return previous.Unload();\n            view = null;\n            status = \"已卸载；点击连接重新创建\";",
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";"
+            ],
+            [
+              "\n#if UNITY_EDITOR || (HV_ANDROID_RTSP_ACCEPTANCE && UNITY_ANDROID)\n        private void DrawThermalControls()\n        {\n            if (automatedFixture)\n                GUI.Label(new Rect(30, 65, 865, 30), $\"预览最高 1920×1080  |  骨骼输入 512×288  |  {routeLabel}\", body);\n            else DrawManualChoices();\n            if (campaignRunning) {\n                GUI.enabled = !campaignCancelled;\n                if (GUI.Button(new Rect(938, 64, 219, 32), \"取消一键测试\", button)) {\n                    campaignCancelled = true;\n                    status = \"正在结束当前测试步骤…\";\n                }\n            } else {\n                bool canMeasure = startup.SourceKind == InputKind.Rtsp && (automatedFixture ||\n                    HasManualQuality(startup.AccelerationMode, ModelInputQuality.Low) && startup.InputQuality == ModelInputQuality.Low);\n                GUI.enabled = !operating && canMeasure;\n                if (GUI.Button(new Rect(938, 64, 219, 32), canMeasure ? \"一键测试\" : \"低档可一键测试\", selected))\n                    Run(RunThermalCampaign());\n            }\n            GUI.enabled = true;\n            if (GUI.Button(new Rect(1172, 64, 240, 32), \"导出 JSONL / 复制路径\", button)) {\n                diagnostics.Export();\n                if (!string.IsNullOrEmpty(diagnostics.ExportPath)) GUIUtility.systemCopyBuffer = diagnostics.ExportPath;\n                status = diagnostics.Status;\n            }\n        }\n\n        private void DrawThermalAddress()\n        {\n            if (!automatedFixture) { DrawInteractiveAddress(); return; }\n            GUI.Label(new Rect(28, 104, 118, 34), \"RTSP 地址\", body);\n            GUI.enabled = !operating;\n            var inputRect = new Rect(146, 104, 764, 34);\n            rtspUrl = showAddress ? GUI.TextField(inputRect, rtspUrl, field) : GUI.PasswordField(inputRect, rtspUrl, '*', field);\n            if (GUI.Button(new Rect(922, 104, 94, 34), showAddress ? \"隐藏\" : \"显示\", button)) showAddress = !showAddress;\n            if (GUI.Button(new Rect(1028, 104, 178, 34), useRequestedStream ? \"固定所填码流\" : \"自动选流\",\n                useRequestedStream ? selected : button)) useRequestedStream = !useRequestedStream;\n            GUI.enabled = !operating && (automatedFixture || HasManualQuality(startup.AccelerationMode, startup.InputQuality));\n            if (GUI.Button(new Rect(1224, 104, 188, 34), \"连接相机\", selected)) Run(Connect());\n            GUI.enabled = true;\n        }\n#endif\n\n        private void DismissCapacityMenu()\n        {\n            if (!capacityMenuOpen) return;\n            if (operating) {\n                capacityMenuOpen = false;\n                return;\n            }\n\n            Event current = Event.current;\n            bool outsideClick = current.type == EventType.MouseDown &&\n                !CapacityButton.Contains(current.mousePosition) && !CapacityMenu.Contains(current.mousePosition);\n            if (outsideClick || (current.type == EventType.KeyDown && current.keyCode == KeyCode.Escape)) {\n                capacityMenuOpen = false;\n                current.Use();\n            }\n        }\n\n        private void DrawCapacityMenu()\n        {\n            Box(CapacityMenu, Inset);\n            for (int count = 1; count <= MaxCapacity; count++) {\n                var row = new Rect(CapacityMenu.x + 3, CapacityMenu.y + 3 + (count - 1) * CapacityRowHeight,\n                    CapacityMenu.width - 6, CapacityRowHeight);\n                if (GUI.Button(row, $\"{count} 人\", count == maxBodies ? selected : button)) {\n                    capacityMenuOpen = false;\n                    SetCapacity(count);\n                }\n            }\n        }\n\n        private void DrawCard(Rect card, string label, Texture texture, string detail, bool showRegions = false,\n            bool highlightDetail = false, string emptyText = \"等待输入 / 结果\", bool drawSkeleton = false)\n        {\n            Box(card, Panel);\n            GUI.Label(new Rect(card.x + 17, card.y + 4, card.width - 34, 44), label, title);\n            Rect window = CardImageWindow(card);\n            Box(window, Inset);\n            bool hasTexture = texture != null && texture.width > 0 && texture.height > 0;\n            if (hasTexture || showRegions || drawSkeleton) {\n                int width = hasTexture ? texture.width : 1280;\n                int height = hasTexture ? texture.height : 720;\n                var image = RuntimePrefabLiveSkeleton.Fit(window, width, height);\n                DrawPreviewImage(image, texture, showRegions, drawSkeleton);\n            }\n            if (!hasTexture && (!drawSkeleton || liveSkeleton.VisibleJoints == 0)) GUI.Label(window, emptyText, badge);\n            GUI.Label(new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail, highlightDetail ? warning : small);\n        }\n\n        private void DrawRegions(Rect image)\n        {\n            for (int i = 0; i < recognition.Regions.Length; i++) {\n                Rect region = recognition.Regions[i];\n                var bounds = new Rect(image.x + region.x * image.width, image.y + region.y * image.height,\n                    region.width * image.width, region.height * image.height);\n                var border = RuntimePrefabRedrawRig.GetSlotColor(i);\n                Box(new Rect(bounds.x, bounds.y, bounds.width, 1), border);\n                Box(new Rect(bounds.x, bounds.yMax - 1, bounds.width, 1), border);\n                Box(new Rect(bounds.x, bounds.y, 1, bounds.height), border);\n                Box(new Rect(bounds.xMax - 1, bounds.y, 1, bounds.height), border);\n                var label = new Rect(bounds.x + 3, bounds.y + 3, Mathf.Min(bounds.width, 86), 23);\n                Box(label, Inset);\n                GUI.Label(label, $\"区域 {i}\", badge);\n            }\n        }\n\n        private static void Box(Rect rect, Color color)\n        {\n            if (Event.current.type != EventType.Repaint) return;\n            Color previous = GUI.color;\n            GUI.color = color;\n            GUI.DrawTexture(rect, Texture2D.whiteTexture);\n            GUI.color = previous;\n        }\n\n        private void InitStyles()\n        {\n            if (heading != null) return;\n            uiFont = Font.CreateDynamicFontFromOSFont(new[] {\"Microsoft YaHei UI\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", \"Droid Sans Fallback\", \"Arial\"}, 22);\n            heading = Text(34, Color.white, true);\n            title = Text(25, Color.white, true);\n            body = Text(20, Color.white, false);\n            small = Text(17, Dim, false);\n            warning = Text(17, new Color(1f, .78f, .39f), true);\n            badge = Text(17, Color.white, true);\n            badge.alignment = TextAnchor.MiddleCenter;\n            field = new GUIStyle(GUI.skin.textField) { font = uiFont, fontSize = 20 };\n            button = new GUIStyle(GUI.skin.button) { font = uiFont, fontSize = 19 };\n            selected = new GUIStyle(button) { fontStyle = FontStyle.Bold };\n            selected.normal.textColor = Highlight;\n        }\n\n        private GUIStyle Text(int size, Color color, bool bold)\n        {\n            var style = new GUIStyle(GUI.skin.label) {\n                font = uiFont, fontSize = size, alignment = TextAnchor.MiddleLeft,\n                fontStyle = bold ? FontStyle.Bold : FontStyle.Normal, clipping = TextClipping.Clip, wordWrap = false\n            };\n            style.normal.textColor = color;\n            return style;\n        }\n    }\n}\n",
+              "    }\n}\n"
+            ],
+            [
+              "                view = sceneRuntimeView;\n",
+              "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            if (sceneRuntimeView == null)\n",
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n"
+            ],
+            [
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);",
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。\", this);"
+            ],
+            [
+              "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n",
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n"
+            ],
+            [
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n",
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n"
+            ],
+            [
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n",
+              "            if (sceneRuntimeView == null || sceneRuntimeView.Sdk == null || HumanVisionRuntimeView.Instance != sceneRuntimeView)\n"
+            ],
+            [
+              "RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。",
+              "RuntimePrefabAcceptance 需要在 Inspector 引用此场景唯一且已启用的 HumanVisionRuntime。"
+            ],
+            [
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n",
+              "                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n",
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n"
+            ]
+          ]
+        },
+        {
+          "before": "2c100fe2da17f6a3f9ca3a5c5fa92c9aa431e672655669b9e02357b477bba0a1",
+          "replacements": [
+            [
+              "                view = sceneRuntimeView;\n",
+              "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            if (sceneRuntimeView == null)\n",
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n"
+            ],
+            [
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);",
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。\", this);"
+            ],
+            [
+              "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n",
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n"
+            ],
+            [
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n",
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n"
+            ],
+            [
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n",
+              "            if (sceneRuntimeView == null || sceneRuntimeView.Sdk == null || HumanVisionRuntimeView.Instance != sceneRuntimeView)\n"
+            ],
+            [
+              "RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。",
+              "RuntimePrefabAcceptance 需要在 Inspector 引用此场景唯一且已启用的 HumanVisionRuntime。"
+            ],
+            [
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n",
+              "                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n",
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n"
+            ]
+          ]
+        },
+        {
+          "before": "54eb1ac76b7ac2fb0a545c014a2be83b4fdd229b0df6420d947812f8bbb42e03",
+          "replacements": [
+            [
+              "            if (sceneRuntimeView == null)\n",
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n"
+            ],
+            [
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK RuntimeView 的 Inspector 引用。\", this);",
+              "Debug.LogError(\"RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。\", this);"
+            ],
+            [
+              "                if (!sceneRuntimeView.gameObject.activeSelf)\n                    sceneRuntimeView.gameObject.SetActive(true);\n                view = sceneRuntimeView;\n",
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n"
+            ],
+            [
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n",
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n            view = null;\n            status = \"SDK 已卸载，场景对象保留。\";\n"
+            ],
+            [
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n",
+              "            if (sceneRuntimeView == null || sceneRuntimeView.Sdk == null || HumanVisionRuntimeView.Instance != sceneRuntimeView)\n"
+            ],
+            [
+              "RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。",
+              "RuntimePrefabAcceptance 需要在 Inspector 引用此场景唯一且已启用的 HumanVisionRuntime。"
+            ],
+            [
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n",
+              "                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n",
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n"
+            ]
+          ]
+        },
+        {
+          "before": "7a38ae1646d1ec44aaab4cc93a7ff6d96119222a16e91de92d597366914568bf",
+          "replacements": [
+            [
+              "            if (runtimeAnchor == null || runtimeViewPrefab == null)\n",
+              "            if (sceneRuntimeView == null || sceneRuntimeView.Sdk == null || HumanVisionRuntimeView.Instance != sceneRuntimeView)\n"
+            ],
+            [
+              "RuntimePrefabAcceptance 缺少 SDK 锚点或 Prefab 的 Inspector 引用。",
+              "RuntimePrefabAcceptance 需要在 Inspector 引用此场景唯一且已启用的 HumanVisionRuntime。"
+            ],
+            [
+              "                view = HumanVisionRuntimeView.Instance;\n                if (view == null)\n                    view = Instantiate(runtimeViewPrefab, runtimeAnchor.position, runtimeAnchor.rotation);\n",
+              "                view = sceneRuntimeView;\n"
+            ],
+            [
+              "            var runningView = view;\n            runningView.FramePresented -= CountPresented;\n            yield return runningView.Unload();\n",
+              "            view.FramePresented -= CountPresented;\n            yield return view.Sdk.Shutdown();\n"
             ]
           ]
         }
@@ -334,7 +1110,7 @@
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceControls.cs",
       "before": "88dd8c5059c0f1b294e5c22831a9e63dee52b8b1234315c37dee55b097d54efc",
-      "after": "05a7656d525d8a94208e0ec9eedd7baae820a4b90ba1d097fd026ed6044f529d",
+      "after": "091820300391d1cd6e147126febb307fea6bd292e785dbe30c69427f1d30cd56",
       "replacements": [
         [
           "        private IEnumerator PrepareManualChoices()\n        {\n            status",
@@ -375,13 +1151,28 @@
         [
           "            GUI.enabled = !operating && model != null;",
           "            GUI.enabled = !operating && installedModes[(int)mode] && model != null;"
+        ],
+        [
+          "        private void DrawManualChoices()\n        {\n            GUI.Label(new Rect(30, 65, 97, 30), \"分析设备\", small);\n            DrawManualMode(new Rect(134, 64, 76, 32), HumanVisionAccelerationMode.Cpu, \"CPU\");\n            DrawManualMode(new Rect(218, 64, 76, 32), HumanVisionAccelerationMode.Graphics, \"GPU\");\n            DrawManualMode(new Rect(302, 64, 150, 32), HumanVisionAccelerationMode.Neural,\n                installedModes[(int)HumanVisionAccelerationMode.Neural] ? \"NPU\" : \"NPU 不可用\");\n            GUI.enabled = true;\n            GUI.Label(new Rect(470, 65, 58, 30), \"模型\", small);\n            var mode = startup.AccelerationMode;\n            var choices = installedQualities[(int)mode];\n            if (IsAndroid && mode == HumanVisionAccelerationMode.Cpu && (choices == null || choices.Length == 0)) {\n                GUI.Label(new Rect(532, 65, 390, 30), \"固定低档 · 尺寸以当前模型合同为准\", small);\n            } else if (choices != null) {\n                float width = choices.Length > 3 ? 94 : 127;\n                for (int i = 0; i < choices.Length; i++) {\n                    var quality = choices[i].Quality;\n                    string label = quality == ModelInputQuality.Low ? \"低\" : quality == ModelInputQuality.Medium ? \"中\" : quality == ModelInputQuality.High ? \"高\" : \"超低\";\n                    DrawManualQuality(new Rect(532 + i * (width + 7), 64, width, 32), mode, quality, label);\n                }\n                GUI.enabled = true;\n            }\n        }\n\n        private void DrawManualMode(Rect rect, HumanVisionAccelerationMode mode, string label)\n        {\n            int index = (int)mode;\n            GUI.enabled = !operating && installedModes[index];\n            if (!GUI.Button(rect, label, startup.AccelerationMode == mode ? selected : button)) return;\n            ModelInputQuality quality = startup.InputQuality;\n            if (!HasManualQuality(mode, quality)) {\n                quality = HasManualQuality(mode, ModelInputQuality.Low)\n                    ? ModelInputQuality.Low : installedQualities[index][0].Quality;\n            }\n            SelectCompute(mode, quality);\n        }\n\n        private void DrawManualQuality(Rect rect, HumanVisionAccelerationMode mode, ModelInputQuality quality, string label)\n        {\n            var model = installedQualities[(int)mode]?.FirstOrDefault(item => item.Quality == quality);\n            if (model != null) label += $\" {model.Width}×{model.Height}\";\n            GUI.enabled = !operating && installedModes[(int)mode] && model != null;\n            if (GUI.Button(rect, label, startup.InputQuality == quality ? selected : button)) SelectCompute(mode, quality);\n        }\n    }\n}\n#endif\n",
+          "    }\n}\n#endif\n"
         ]
+      ],
+      "upgrades": [
+        {
+          "before": "05a7656d525d8a94208e0ec9eedd7baae820a4b90ba1d097fd026ed6044f529d",
+          "replacements": [
+            [
+              "        private void DrawManualChoices()\n        {\n            GUI.Label(new Rect(30, 65, 97, 30), \"分析设备\", small);\n            DrawManualMode(new Rect(134, 64, 76, 32), HumanVisionAccelerationMode.Cpu, \"CPU\");\n            DrawManualMode(new Rect(218, 64, 76, 32), HumanVisionAccelerationMode.Graphics, \"GPU\");\n            DrawManualMode(new Rect(302, 64, 150, 32), HumanVisionAccelerationMode.Neural,\n                installedModes[(int)HumanVisionAccelerationMode.Neural] ? \"NPU\" : \"NPU 不可用\");\n            GUI.enabled = true;\n            GUI.Label(new Rect(470, 65, 58, 30), \"模型\", small);\n            var mode = startup.AccelerationMode;\n            var choices = installedQualities[(int)mode];\n            if (IsAndroid && mode == HumanVisionAccelerationMode.Cpu && (choices == null || choices.Length == 0)) {\n                GUI.Label(new Rect(532, 65, 390, 30), \"固定低档 · 尺寸以当前模型合同为准\", small);\n            } else if (choices != null) {\n                float width = choices.Length > 3 ? 94 : 127;\n                for (int i = 0; i < choices.Length; i++) {\n                    var quality = choices[i].Quality;\n                    string label = quality == ModelInputQuality.Low ? \"低\" : quality == ModelInputQuality.Medium ? \"中\" : quality == ModelInputQuality.High ? \"高\" : \"超低\";\n                    DrawManualQuality(new Rect(532 + i * (width + 7), 64, width, 32), mode, quality, label);\n                }\n                GUI.enabled = true;\n            }\n        }\n\n        private void DrawManualMode(Rect rect, HumanVisionAccelerationMode mode, string label)\n        {\n            int index = (int)mode;\n            GUI.enabled = !operating && installedModes[index];\n            if (!GUI.Button(rect, label, startup.AccelerationMode == mode ? selected : button)) return;\n            ModelInputQuality quality = startup.InputQuality;\n            if (!HasManualQuality(mode, quality)) {\n                quality = HasManualQuality(mode, ModelInputQuality.Low)\n                    ? ModelInputQuality.Low : installedQualities[index][0].Quality;\n            }\n            SelectCompute(mode, quality);\n        }\n\n        private void DrawManualQuality(Rect rect, HumanVisionAccelerationMode mode, ModelInputQuality quality, string label)\n        {\n            var model = installedQualities[(int)mode]?.FirstOrDefault(item => item.Quality == quality);\n            if (model != null) label += $\" {model.Width}×{model.Height}\";\n            GUI.enabled = !operating && installedModes[(int)mode] && model != null;\n            if (GUI.Button(rect, label, startup.InputQuality == quality ? selected : button)) SelectCompute(mode, quality);\n        }\n    }\n}\n#endif\n",
+              "    }\n}\n#endif\n"
+            ]
+          ]
+        }
       ]
     },
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptancePreview.cs",
       "before": "d98f358b4087600c34febb9e85af52dc4bce9c42df1f57fcd123a0cff49ce919",
-      "after": "45ab748767f02ba13352dfc76f2d8982935ae4ab7ac7da0eb129b983aae8d658",
+      "after": "4199146fa9c1c8a3b6b94a19f286444f0afe509447f27989764e41d1ae2dfbb7",
       "replacements": [
         [
           "GUI.Label(screen, \"等待当前码流\", badge);",
@@ -434,6 +1225,26 @@
         [
           "            if (Event.current.type != EventType.Repaint || !hasInput) return;\n",
           "            if (!hasInput) return;\n"
+        ],
+        [
+          "        private void DrawUnifiedPreviewCard(Rect left, Rect right)\n        {\n            var card = right;\n            DrawCard(card, \"实时预览 · 骨骼与识别区域\", live, inputLine, showRegions: true, drawSkeleton: showSkeleton);\n            DrawFullscreenButton(card);\n        }\n\n        private void DrawPreviewImage(Rect image, Texture texture, bool showRegions, bool drawSkeleton, float strokeWidth = 2)\n        {\n            if (texture != null) DrawCameraImage(image, texture);\n            if (showRegions && recognition != null && recognition.UseRegions) DrawRegions(image);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n",
+          ""
+        ],
+        [
+          "        private void DrawFullscreenButton(Rect card)\n        {\n            var matrix = GUI.matrix;\n            float right = card.xMax - 17;\n            if (Screen.safeArea.xMax > 0 && matrix.m00 > 0)\n                right = Mathf.Min(right, (Screen.safeArea.xMax - matrix.m03) / matrix.m00 - 8);\n            if (GUI.Button(new Rect(right - 125, card.y + 9, 125, 34), \"全屏预览\", button))\n                SetFullscreenPreview(true);\n        }\n\n        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float availableWidth = Screen.safeArea.width > 0 ? Screen.safeArea.width : Screen.width;\n            float extraSide = Mathf.Max(0, (availableWidth / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width, LiveCard.height);\n            right = new Rect(PoseCard.x - extraSide, PoseCard.y, PoseCard.width + extraSide * 2, PoseCard.height);\n            controls = left;\n        }\n\n",
+          ""
+        ],
+        [
+          "            capacityMenuOpen = false;\n",
+          ""
+        ],
+        [
+          "        private void DrawFullscreenPreview()\n        {\n            var savedMatrix = GUI.matrix;\n            GUI.matrix = Matrix4x4.identity;\n            try {\n                var screen = new Rect(0, 0, Screen.width, Screen.height);\n                Box(screen, Color.black);\n                var safeArea = Screen.safeArea;\n                if (safeArea.width <= 0 || safeArea.height <= 0) safeArea = screen;\n                float scale = Mathf.Clamp(Mathf.Min(safeArea.width / 470f, safeArea.height / 720f), .55f, 2);\n                if (live != null || showSkeleton || recognition != null && recognition.UseRegions) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n                } else {\n                    GUI.Label(screen, startup != null && !startup.PreviewEnabled ? \"预览已关闭（识别可继续）\" : \"等待当前输入\", badge);\n                }\n                float controlsRight = safeArea.xMax - 13 * scale;\n                float controlsTop = Screen.height - safeArea.yMax + 12 * scale;\n                var control = new Rect(controlsRight - 122 * scale, controlsTop, 122 * scale, 36 * scale);\n                if (GUI.Button(control, \"退出全屏\", button) ||\n                    Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape) {\n                    SetFullscreenPreview(false);\n                }\n                control.x -= 129 * scale;\n                if (GUI.Button(control, showSkeleton ? \"关闭骨骼\" : \"开启骨骼\", button)) showSkeleton = !showSkeleton;\n                control.x -= 129 * scale;\n                if (GUI.Button(control, fullscreenCrop ? \"恢复等比\" : \"填满裁切\", button)) fullscreenCrop = !fullscreenCrop;\n            } finally { GUI.matrix = savedMatrix; }\n        }\n\n        private void DrawCameraImage(Rect image, Texture texture, bool drawSkeleton, float strokeWidth = 2)\n        {\n            DrawCameraImage(image, texture);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n        private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));\n\n        private Texture ResolvePosePreview(out HumanVisionPresentedFrame displayed)\n        {\n            displayed = default;\n            if (!hasInput || !matchedPreviewRequested || !showSkeleton) return live;\n            return view.TryGetDisplayedFrame(out displayed) && displayed.SourceId == input.SourceId &&\n                displayed.SourceGeneration == input.Generation ? displayed.OverlayTexture : null;\n        }\n\n",
+          ""
+        ],
+        [
+          "        private void DrawCameraImage(Rect image, Texture texture)\n        {\n            if (Event.current.type != EventType.Repaint) return;\n            // Android hardware RTSP delivers display RGB codes in a non-sRGB storage texture.\n            if (QualitySettings.activeColorSpace == ColorSpace.Linear && texture == input.Texture &&\n                Application.platform == RuntimePlatform.Android && input.TimestampKind == FrameTimestampKind.LocalDecode &&\n                input.ColorSpace != FrameColorSpace.Linear &&\n                texture is RenderTexture renderTexture && !renderTexture.sRGB) {\n                if (previewColorMaterial == null) {\n                    var shader = Resources.Load<Shader>(\"HumanVisionRuntimePreviewColor\");\n                    if (shader != null && shader.isSupported) previewColorMaterial = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };\n                }\n                if (previewColorMaterial != null) {\n                    var matrix = GUI.matrix;\n                    var topLeft = (Vector2)matrix.MultiplyPoint3x4(image.min);\n                    var bottomRight = (Vector2)matrix.MultiplyPoint3x4(image.max);\n                    GUI.matrix = Matrix4x4.identity;\n                    Graphics.DrawTexture(new Rect(topLeft, bottomRight - topLeft), texture, previewColorMaterial);\n                    GUI.matrix = matrix;\n                    return;\n                }\n            }\n            GUI.DrawTexture(image, texture, ScaleMode.StretchToFill, false);\n        }\n\n",
+          ""
         ]
       ],
       "upgrades": [
@@ -479,6 +1290,26 @@
             [
               "            if (Event.current.type != EventType.Repaint || !hasInput) return;\n",
               "            if (!hasInput) return;\n"
+            ],
+            [
+              "        private void DrawUnifiedPreviewCard(Rect left, Rect right)\n        {\n            var card = right;\n            DrawCard(card, \"实时预览 · 骨骼与识别区域\", live, inputLine, showRegions: true, drawSkeleton: showSkeleton);\n            DrawFullscreenButton(card);\n        }\n\n        private void DrawPreviewImage(Rect image, Texture texture, bool showRegions, bool drawSkeleton, float strokeWidth = 2)\n        {\n            if (texture != null) DrawCameraImage(image, texture);\n            if (showRegions && recognition != null && recognition.UseRegions) DrawRegions(image);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n",
+              ""
+            ],
+            [
+              "        private void DrawFullscreenButton(Rect card)\n        {\n            var matrix = GUI.matrix;\n            float right = card.xMax - 17;\n            if (Screen.safeArea.xMax > 0 && matrix.m00 > 0)\n                right = Mathf.Min(right, (Screen.safeArea.xMax - matrix.m03) / matrix.m00 - 8);\n            if (GUI.Button(new Rect(right - 125, card.y + 9, 125, 34), \"全屏预览\", button))\n                SetFullscreenPreview(true);\n        }\n\n        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float availableWidth = Screen.safeArea.width > 0 ? Screen.safeArea.width : Screen.width;\n            float extraSide = Mathf.Max(0, (availableWidth / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width, LiveCard.height);\n            right = new Rect(PoseCard.x - extraSide, PoseCard.y, PoseCard.width + extraSide * 2, PoseCard.height);\n            controls = left;\n        }\n\n",
+              ""
+            ],
+            [
+              "            capacityMenuOpen = false;\n",
+              ""
+            ],
+            [
+              "        private void DrawFullscreenPreview()\n        {\n            var savedMatrix = GUI.matrix;\n            GUI.matrix = Matrix4x4.identity;\n            try {\n                var screen = new Rect(0, 0, Screen.width, Screen.height);\n                Box(screen, Color.black);\n                var safeArea = Screen.safeArea;\n                if (safeArea.width <= 0 || safeArea.height <= 0) safeArea = screen;\n                float scale = Mathf.Clamp(Mathf.Min(safeArea.width / 470f, safeArea.height / 720f), .55f, 2);\n                if (live != null || showSkeleton || recognition != null && recognition.UseRegions) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n                } else {\n                    GUI.Label(screen, startup != null && !startup.PreviewEnabled ? \"预览已关闭（识别可继续）\" : \"等待当前输入\", badge);\n                }\n                float controlsRight = safeArea.xMax - 13 * scale;\n                float controlsTop = Screen.height - safeArea.yMax + 12 * scale;\n                var control = new Rect(controlsRight - 122 * scale, controlsTop, 122 * scale, 36 * scale);\n                if (GUI.Button(control, \"退出全屏\", button) ||\n                    Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape) {\n                    SetFullscreenPreview(false);\n                }\n                control.x -= 129 * scale;\n                if (GUI.Button(control, showSkeleton ? \"关闭骨骼\" : \"开启骨骼\", button)) showSkeleton = !showSkeleton;\n                control.x -= 129 * scale;\n                if (GUI.Button(control, fullscreenCrop ? \"恢复等比\" : \"填满裁切\", button)) fullscreenCrop = !fullscreenCrop;\n            } finally { GUI.matrix = savedMatrix; }\n        }\n\n        private void DrawCameraImage(Rect image, Texture texture, bool drawSkeleton, float strokeWidth = 2)\n        {\n            DrawCameraImage(image, texture);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n        private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));\n\n        private Texture ResolvePosePreview(out HumanVisionPresentedFrame displayed)\n        {\n            displayed = default;\n            if (!hasInput || !matchedPreviewRequested || !showSkeleton) return live;\n            return view.TryGetDisplayedFrame(out displayed) && displayed.SourceId == input.SourceId &&\n                displayed.SourceGeneration == input.Generation ? displayed.OverlayTexture : null;\n        }\n\n",
+              ""
+            ],
+            [
+              "        private void DrawCameraImage(Rect image, Texture texture)\n        {\n            if (Event.current.type != EventType.Repaint) return;\n            // Android hardware RTSP delivers display RGB codes in a non-sRGB storage texture.\n            if (QualitySettings.activeColorSpace == ColorSpace.Linear && texture == input.Texture &&\n                Application.platform == RuntimePlatform.Android && input.TimestampKind == FrameTimestampKind.LocalDecode &&\n                input.ColorSpace != FrameColorSpace.Linear &&\n                texture is RenderTexture renderTexture && !renderTexture.sRGB) {\n                if (previewColorMaterial == null) {\n                    var shader = Resources.Load<Shader>(\"HumanVisionRuntimePreviewColor\");\n                    if (shader != null && shader.isSupported) previewColorMaterial = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };\n                }\n                if (previewColorMaterial != null) {\n                    var matrix = GUI.matrix;\n                    var topLeft = (Vector2)matrix.MultiplyPoint3x4(image.min);\n                    var bottomRight = (Vector2)matrix.MultiplyPoint3x4(image.max);\n                    GUI.matrix = Matrix4x4.identity;\n                    Graphics.DrawTexture(new Rect(topLeft, bottomRight - topLeft), texture, previewColorMaterial);\n                    GUI.matrix = matrix;\n                    return;\n                }\n            }\n            GUI.DrawTexture(image, texture, ScaleMode.StretchToFill, false);\n        }\n\n",
+              ""
             ]
           ]
         },
@@ -520,6 +1351,26 @@
             [
               "            if (Event.current.type != EventType.Repaint || !hasInput) return;\n",
               "            if (!hasInput) return;\n"
+            ],
+            [
+              "        private void DrawUnifiedPreviewCard(Rect left, Rect right)\n        {\n            var card = right;\n            DrawCard(card, \"实时预览 · 骨骼与识别区域\", live, inputLine, showRegions: true, drawSkeleton: showSkeleton);\n            DrawFullscreenButton(card);\n        }\n\n        private void DrawPreviewImage(Rect image, Texture texture, bool showRegions, bool drawSkeleton, float strokeWidth = 2)\n        {\n            if (texture != null) DrawCameraImage(image, texture);\n            if (showRegions && recognition != null && recognition.UseRegions) DrawRegions(image);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n",
+              ""
+            ],
+            [
+              "        private void DrawFullscreenButton(Rect card)\n        {\n            var matrix = GUI.matrix;\n            float right = card.xMax - 17;\n            if (Screen.safeArea.xMax > 0 && matrix.m00 > 0)\n                right = Mathf.Min(right, (Screen.safeArea.xMax - matrix.m03) / matrix.m00 - 8);\n            if (GUI.Button(new Rect(right - 125, card.y + 9, 125, 34), \"全屏预览\", button))\n                SetFullscreenPreview(true);\n        }\n\n        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float availableWidth = Screen.safeArea.width > 0 ? Screen.safeArea.width : Screen.width;\n            float extraSide = Mathf.Max(0, (availableWidth / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width, LiveCard.height);\n            right = new Rect(PoseCard.x - extraSide, PoseCard.y, PoseCard.width + extraSide * 2, PoseCard.height);\n            controls = left;\n        }\n\n",
+              ""
+            ],
+            [
+              "            capacityMenuOpen = false;\n",
+              ""
+            ],
+            [
+              "        private void DrawFullscreenPreview()\n        {\n            var savedMatrix = GUI.matrix;\n            GUI.matrix = Matrix4x4.identity;\n            try {\n                var screen = new Rect(0, 0, Screen.width, Screen.height);\n                Box(screen, Color.black);\n                var safeArea = Screen.safeArea;\n                if (safeArea.width <= 0 || safeArea.height <= 0) safeArea = screen;\n                float scale = Mathf.Clamp(Mathf.Min(safeArea.width / 470f, safeArea.height / 720f), .55f, 2);\n                if (live != null || showSkeleton || recognition != null && recognition.UseRegions) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n                } else {\n                    GUI.Label(screen, startup != null && !startup.PreviewEnabled ? \"预览已关闭（识别可继续）\" : \"等待当前输入\", badge);\n                }\n                float controlsRight = safeArea.xMax - 13 * scale;\n                float controlsTop = Screen.height - safeArea.yMax + 12 * scale;\n                var control = new Rect(controlsRight - 122 * scale, controlsTop, 122 * scale, 36 * scale);\n                if (GUI.Button(control, \"退出全屏\", button) ||\n                    Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape) {\n                    SetFullscreenPreview(false);\n                }\n                control.x -= 129 * scale;\n                if (GUI.Button(control, showSkeleton ? \"关闭骨骼\" : \"开启骨骼\", button)) showSkeleton = !showSkeleton;\n                control.x -= 129 * scale;\n                if (GUI.Button(control, fullscreenCrop ? \"恢复等比\" : \"填满裁切\", button)) fullscreenCrop = !fullscreenCrop;\n            } finally { GUI.matrix = savedMatrix; }\n        }\n\n        private void DrawCameraImage(Rect image, Texture texture, bool drawSkeleton, float strokeWidth = 2)\n        {\n            DrawCameraImage(image, texture);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n        private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));\n\n        private Texture ResolvePosePreview(out HumanVisionPresentedFrame displayed)\n        {\n            displayed = default;\n            if (!hasInput || !matchedPreviewRequested || !showSkeleton) return live;\n            return view.TryGetDisplayedFrame(out displayed) && displayed.SourceId == input.SourceId &&\n                displayed.SourceGeneration == input.Generation ? displayed.OverlayTexture : null;\n        }\n\n",
+              ""
+            ],
+            [
+              "        private void DrawCameraImage(Rect image, Texture texture)\n        {\n            if (Event.current.type != EventType.Repaint) return;\n            // Android hardware RTSP delivers display RGB codes in a non-sRGB storage texture.\n            if (QualitySettings.activeColorSpace == ColorSpace.Linear && texture == input.Texture &&\n                Application.platform == RuntimePlatform.Android && input.TimestampKind == FrameTimestampKind.LocalDecode &&\n                input.ColorSpace != FrameColorSpace.Linear &&\n                texture is RenderTexture renderTexture && !renderTexture.sRGB) {\n                if (previewColorMaterial == null) {\n                    var shader = Resources.Load<Shader>(\"HumanVisionRuntimePreviewColor\");\n                    if (shader != null && shader.isSupported) previewColorMaterial = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };\n                }\n                if (previewColorMaterial != null) {\n                    var matrix = GUI.matrix;\n                    var topLeft = (Vector2)matrix.MultiplyPoint3x4(image.min);\n                    var bottomRight = (Vector2)matrix.MultiplyPoint3x4(image.max);\n                    GUI.matrix = Matrix4x4.identity;\n                    Graphics.DrawTexture(new Rect(topLeft, bottomRight - topLeft), texture, previewColorMaterial);\n                    GUI.matrix = matrix;\n                    return;\n                }\n            }\n            GUI.DrawTexture(image, texture, ScaleMode.StretchToFill, false);\n        }\n\n",
+              ""
             ]
           ]
         },
@@ -549,6 +1400,26 @@
             [
               "            if (Event.current.type != EventType.Repaint || !hasInput) return;\n",
               "            if (!hasInput) return;\n"
+            ],
+            [
+              "        private void DrawUnifiedPreviewCard(Rect left, Rect right)\n        {\n            var card = right;\n            DrawCard(card, \"实时预览 · 骨骼与识别区域\", live, inputLine, showRegions: true, drawSkeleton: showSkeleton);\n            DrawFullscreenButton(card);\n        }\n\n        private void DrawPreviewImage(Rect image, Texture texture, bool showRegions, bool drawSkeleton, float strokeWidth = 2)\n        {\n            if (texture != null) DrawCameraImage(image, texture);\n            if (showRegions && recognition != null && recognition.UseRegions) DrawRegions(image);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n",
+              ""
+            ],
+            [
+              "        private void DrawFullscreenButton(Rect card)\n        {\n            var matrix = GUI.matrix;\n            float right = card.xMax - 17;\n            if (Screen.safeArea.xMax > 0 && matrix.m00 > 0)\n                right = Mathf.Min(right, (Screen.safeArea.xMax - matrix.m03) / matrix.m00 - 8);\n            if (GUI.Button(new Rect(right - 125, card.y + 9, 125, 34), \"全屏预览\", button))\n                SetFullscreenPreview(true);\n        }\n\n        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float availableWidth = Screen.safeArea.width > 0 ? Screen.safeArea.width : Screen.width;\n            float extraSide = Mathf.Max(0, (availableWidth / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width, LiveCard.height);\n            right = new Rect(PoseCard.x - extraSide, PoseCard.y, PoseCard.width + extraSide * 2, PoseCard.height);\n            controls = left;\n        }\n\n",
+              ""
+            ],
+            [
+              "            capacityMenuOpen = false;\n",
+              ""
+            ],
+            [
+              "        private void DrawFullscreenPreview()\n        {\n            var savedMatrix = GUI.matrix;\n            GUI.matrix = Matrix4x4.identity;\n            try {\n                var screen = new Rect(0, 0, Screen.width, Screen.height);\n                Box(screen, Color.black);\n                var safeArea = Screen.safeArea;\n                if (safeArea.width <= 0 || safeArea.height <= 0) safeArea = screen;\n                float scale = Mathf.Clamp(Mathf.Min(safeArea.width / 470f, safeArea.height / 720f), .55f, 2);\n                if (live != null || showSkeleton || recognition != null && recognition.UseRegions) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n                } else {\n                    GUI.Label(screen, startup != null && !startup.PreviewEnabled ? \"预览已关闭（识别可继续）\" : \"等待当前输入\", badge);\n                }\n                float controlsRight = safeArea.xMax - 13 * scale;\n                float controlsTop = Screen.height - safeArea.yMax + 12 * scale;\n                var control = new Rect(controlsRight - 122 * scale, controlsTop, 122 * scale, 36 * scale);\n                if (GUI.Button(control, \"退出全屏\", button) ||\n                    Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape) {\n                    SetFullscreenPreview(false);\n                }\n                control.x -= 129 * scale;\n                if (GUI.Button(control, showSkeleton ? \"关闭骨骼\" : \"开启骨骼\", button)) showSkeleton = !showSkeleton;\n                control.x -= 129 * scale;\n                if (GUI.Button(control, fullscreenCrop ? \"恢复等比\" : \"填满裁切\", button)) fullscreenCrop = !fullscreenCrop;\n            } finally { GUI.matrix = savedMatrix; }\n        }\n\n        private void DrawCameraImage(Rect image, Texture texture, bool drawSkeleton, float strokeWidth = 2)\n        {\n            DrawCameraImage(image, texture);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n        private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));\n\n        private Texture ResolvePosePreview(out HumanVisionPresentedFrame displayed)\n        {\n            displayed = default;\n            if (!hasInput || !matchedPreviewRequested || !showSkeleton) return live;\n            return view.TryGetDisplayedFrame(out displayed) && displayed.SourceId == input.SourceId &&\n                displayed.SourceGeneration == input.Generation ? displayed.OverlayTexture : null;\n        }\n\n",
+              ""
+            ],
+            [
+              "        private void DrawCameraImage(Rect image, Texture texture)\n        {\n            if (Event.current.type != EventType.Repaint) return;\n            // Android hardware RTSP delivers display RGB codes in a non-sRGB storage texture.\n            if (QualitySettings.activeColorSpace == ColorSpace.Linear && texture == input.Texture &&\n                Application.platform == RuntimePlatform.Android && input.TimestampKind == FrameTimestampKind.LocalDecode &&\n                input.ColorSpace != FrameColorSpace.Linear &&\n                texture is RenderTexture renderTexture && !renderTexture.sRGB) {\n                if (previewColorMaterial == null) {\n                    var shader = Resources.Load<Shader>(\"HumanVisionRuntimePreviewColor\");\n                    if (shader != null && shader.isSupported) previewColorMaterial = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };\n                }\n                if (previewColorMaterial != null) {\n                    var matrix = GUI.matrix;\n                    var topLeft = (Vector2)matrix.MultiplyPoint3x4(image.min);\n                    var bottomRight = (Vector2)matrix.MultiplyPoint3x4(image.max);\n                    GUI.matrix = Matrix4x4.identity;\n                    Graphics.DrawTexture(new Rect(topLeft, bottomRight - topLeft), texture, previewColorMaterial);\n                    GUI.matrix = matrix;\n                    return;\n                }\n            }\n            GUI.DrawTexture(image, texture, ScaleMode.StretchToFill, false);\n        }\n\n",
+              ""
             ]
           ]
         },
@@ -570,6 +1441,26 @@
             [
               "            if (Event.current.type != EventType.Repaint || !hasInput) return;\n",
               "            if (!hasInput) return;\n"
+            ],
+            [
+              "        private void DrawUnifiedPreviewCard(Rect left, Rect right)\n        {\n            var card = right;\n            DrawCard(card, \"实时预览 · 骨骼与识别区域\", live, inputLine, showRegions: true, drawSkeleton: showSkeleton);\n            DrawFullscreenButton(card);\n        }\n\n        private void DrawPreviewImage(Rect image, Texture texture, bool showRegions, bool drawSkeleton, float strokeWidth = 2)\n        {\n            if (texture != null) DrawCameraImage(image, texture);\n            if (showRegions && recognition != null && recognition.UseRegions) DrawRegions(image);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n",
+              ""
+            ],
+            [
+              "        private void DrawFullscreenButton(Rect card)\n        {\n            var matrix = GUI.matrix;\n            float right = card.xMax - 17;\n            if (Screen.safeArea.xMax > 0 && matrix.m00 > 0)\n                right = Mathf.Min(right, (Screen.safeArea.xMax - matrix.m03) / matrix.m00 - 8);\n            if (GUI.Button(new Rect(right - 125, card.y + 9, 125, 34), \"全屏预览\", button))\n                SetFullscreenPreview(true);\n        }\n\n        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float availableWidth = Screen.safeArea.width > 0 ? Screen.safeArea.width : Screen.width;\n            float extraSide = Mathf.Max(0, (availableWidth / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width, LiveCard.height);\n            right = new Rect(PoseCard.x - extraSide, PoseCard.y, PoseCard.width + extraSide * 2, PoseCard.height);\n            controls = left;\n        }\n\n",
+              ""
+            ],
+            [
+              "            capacityMenuOpen = false;\n",
+              ""
+            ],
+            [
+              "        private void DrawFullscreenPreview()\n        {\n            var savedMatrix = GUI.matrix;\n            GUI.matrix = Matrix4x4.identity;\n            try {\n                var screen = new Rect(0, 0, Screen.width, Screen.height);\n                Box(screen, Color.black);\n                var safeArea = Screen.safeArea;\n                if (safeArea.width <= 0 || safeArea.height <= 0) safeArea = screen;\n                float scale = Mathf.Clamp(Mathf.Min(safeArea.width / 470f, safeArea.height / 720f), .55f, 2);\n                if (live != null || showSkeleton || recognition != null && recognition.UseRegions) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n                } else {\n                    GUI.Label(screen, startup != null && !startup.PreviewEnabled ? \"预览已关闭（识别可继续）\" : \"等待当前输入\", badge);\n                }\n                float controlsRight = safeArea.xMax - 13 * scale;\n                float controlsTop = Screen.height - safeArea.yMax + 12 * scale;\n                var control = new Rect(controlsRight - 122 * scale, controlsTop, 122 * scale, 36 * scale);\n                if (GUI.Button(control, \"退出全屏\", button) ||\n                    Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape) {\n                    SetFullscreenPreview(false);\n                }\n                control.x -= 129 * scale;\n                if (GUI.Button(control, showSkeleton ? \"关闭骨骼\" : \"开启骨骼\", button)) showSkeleton = !showSkeleton;\n                control.x -= 129 * scale;\n                if (GUI.Button(control, fullscreenCrop ? \"恢复等比\" : \"填满裁切\", button)) fullscreenCrop = !fullscreenCrop;\n            } finally { GUI.matrix = savedMatrix; }\n        }\n\n        private void DrawCameraImage(Rect image, Texture texture, bool drawSkeleton, float strokeWidth = 2)\n        {\n            DrawCameraImage(image, texture);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n        private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));\n\n        private Texture ResolvePosePreview(out HumanVisionPresentedFrame displayed)\n        {\n            displayed = default;\n            if (!hasInput || !matchedPreviewRequested || !showSkeleton) return live;\n            return view.TryGetDisplayedFrame(out displayed) && displayed.SourceId == input.SourceId &&\n                displayed.SourceGeneration == input.Generation ? displayed.OverlayTexture : null;\n        }\n\n",
+              ""
+            ],
+            [
+              "        private void DrawCameraImage(Rect image, Texture texture)\n        {\n            if (Event.current.type != EventType.Repaint) return;\n            // Android hardware RTSP delivers display RGB codes in a non-sRGB storage texture.\n            if (QualitySettings.activeColorSpace == ColorSpace.Linear && texture == input.Texture &&\n                Application.platform == RuntimePlatform.Android && input.TimestampKind == FrameTimestampKind.LocalDecode &&\n                input.ColorSpace != FrameColorSpace.Linear &&\n                texture is RenderTexture renderTexture && !renderTexture.sRGB) {\n                if (previewColorMaterial == null) {\n                    var shader = Resources.Load<Shader>(\"HumanVisionRuntimePreviewColor\");\n                    if (shader != null && shader.isSupported) previewColorMaterial = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };\n                }\n                if (previewColorMaterial != null) {\n                    var matrix = GUI.matrix;\n                    var topLeft = (Vector2)matrix.MultiplyPoint3x4(image.min);\n                    var bottomRight = (Vector2)matrix.MultiplyPoint3x4(image.max);\n                    GUI.matrix = Matrix4x4.identity;\n                    Graphics.DrawTexture(new Rect(topLeft, bottomRight - topLeft), texture, previewColorMaterial);\n                    GUI.matrix = matrix;\n                    return;\n                }\n            }\n            GUI.DrawTexture(image, texture, ScaleMode.StretchToFill, false);\n        }\n\n",
+              ""
             ]
           ]
         },
@@ -579,6 +1470,51 @@
             [
               "            if (Event.current.type != EventType.Repaint || !hasInput) return;\n",
               "            if (!hasInput) return;\n"
+            ],
+            [
+              "        private void DrawUnifiedPreviewCard(Rect left, Rect right)\n        {\n            var card = right;\n            DrawCard(card, \"实时预览 · 骨骼与识别区域\", live, inputLine, showRegions: true, drawSkeleton: showSkeleton);\n            DrawFullscreenButton(card);\n        }\n\n        private void DrawPreviewImage(Rect image, Texture texture, bool showRegions, bool drawSkeleton, float strokeWidth = 2)\n        {\n            if (texture != null) DrawCameraImage(image, texture);\n            if (showRegions && recognition != null && recognition.UseRegions) DrawRegions(image);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n",
+              ""
+            ],
+            [
+              "        private void DrawFullscreenButton(Rect card)\n        {\n            var matrix = GUI.matrix;\n            float right = card.xMax - 17;\n            if (Screen.safeArea.xMax > 0 && matrix.m00 > 0)\n                right = Mathf.Min(right, (Screen.safeArea.xMax - matrix.m03) / matrix.m00 - 8);\n            if (GUI.Button(new Rect(right - 125, card.y + 9, 125, 34), \"全屏预览\", button))\n                SetFullscreenPreview(true);\n        }\n\n        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float availableWidth = Screen.safeArea.width > 0 ? Screen.safeArea.width : Screen.width;\n            float extraSide = Mathf.Max(0, (availableWidth / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width, LiveCard.height);\n            right = new Rect(PoseCard.x - extraSide, PoseCard.y, PoseCard.width + extraSide * 2, PoseCard.height);\n            controls = left;\n        }\n\n",
+              ""
+            ],
+            [
+              "            capacityMenuOpen = false;\n",
+              ""
+            ],
+            [
+              "        private void DrawFullscreenPreview()\n        {\n            var savedMatrix = GUI.matrix;\n            GUI.matrix = Matrix4x4.identity;\n            try {\n                var screen = new Rect(0, 0, Screen.width, Screen.height);\n                Box(screen, Color.black);\n                var safeArea = Screen.safeArea;\n                if (safeArea.width <= 0 || safeArea.height <= 0) safeArea = screen;\n                float scale = Mathf.Clamp(Mathf.Min(safeArea.width / 470f, safeArea.height / 720f), .55f, 2);\n                if (live != null || showSkeleton || recognition != null && recognition.UseRegions) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n                } else {\n                    GUI.Label(screen, startup != null && !startup.PreviewEnabled ? \"预览已关闭（识别可继续）\" : \"等待当前输入\", badge);\n                }\n                float controlsRight = safeArea.xMax - 13 * scale;\n                float controlsTop = Screen.height - safeArea.yMax + 12 * scale;\n                var control = new Rect(controlsRight - 122 * scale, controlsTop, 122 * scale, 36 * scale);\n                if (GUI.Button(control, \"退出全屏\", button) ||\n                    Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape) {\n                    SetFullscreenPreview(false);\n                }\n                control.x -= 129 * scale;\n                if (GUI.Button(control, showSkeleton ? \"关闭骨骼\" : \"开启骨骼\", button)) showSkeleton = !showSkeleton;\n                control.x -= 129 * scale;\n                if (GUI.Button(control, fullscreenCrop ? \"恢复等比\" : \"填满裁切\", button)) fullscreenCrop = !fullscreenCrop;\n            } finally { GUI.matrix = savedMatrix; }\n        }\n\n        private void DrawCameraImage(Rect image, Texture texture, bool drawSkeleton, float strokeWidth = 2)\n        {\n            DrawCameraImage(image, texture);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n        private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));\n\n        private Texture ResolvePosePreview(out HumanVisionPresentedFrame displayed)\n        {\n            displayed = default;\n            if (!hasInput || !matchedPreviewRequested || !showSkeleton) return live;\n            return view.TryGetDisplayedFrame(out displayed) && displayed.SourceId == input.SourceId &&\n                displayed.SourceGeneration == input.Generation ? displayed.OverlayTexture : null;\n        }\n\n",
+              ""
+            ],
+            [
+              "        private void DrawCameraImage(Rect image, Texture texture)\n        {\n            if (Event.current.type != EventType.Repaint) return;\n            // Android hardware RTSP delivers display RGB codes in a non-sRGB storage texture.\n            if (QualitySettings.activeColorSpace == ColorSpace.Linear && texture == input.Texture &&\n                Application.platform == RuntimePlatform.Android && input.TimestampKind == FrameTimestampKind.LocalDecode &&\n                input.ColorSpace != FrameColorSpace.Linear &&\n                texture is RenderTexture renderTexture && !renderTexture.sRGB) {\n                if (previewColorMaterial == null) {\n                    var shader = Resources.Load<Shader>(\"HumanVisionRuntimePreviewColor\");\n                    if (shader != null && shader.isSupported) previewColorMaterial = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };\n                }\n                if (previewColorMaterial != null) {\n                    var matrix = GUI.matrix;\n                    var topLeft = (Vector2)matrix.MultiplyPoint3x4(image.min);\n                    var bottomRight = (Vector2)matrix.MultiplyPoint3x4(image.max);\n                    GUI.matrix = Matrix4x4.identity;\n                    Graphics.DrawTexture(new Rect(topLeft, bottomRight - topLeft), texture, previewColorMaterial);\n                    GUI.matrix = matrix;\n                    return;\n                }\n            }\n            GUI.DrawTexture(image, texture, ScaleMode.StretchToFill, false);\n        }\n\n",
+              ""
+            ]
+          ]
+        },
+        {
+          "before": "45ab748767f02ba13352dfc76f2d8982935ae4ab7ac7da0eb129b983aae8d658",
+          "replacements": [
+            [
+              "        private void DrawUnifiedPreviewCard(Rect left, Rect right)\n        {\n            var card = right;\n            DrawCard(card, \"实时预览 · 骨骼与识别区域\", live, inputLine, showRegions: true, drawSkeleton: showSkeleton);\n            DrawFullscreenButton(card);\n        }\n\n        private void DrawPreviewImage(Rect image, Texture texture, bool showRegions, bool drawSkeleton, float strokeWidth = 2)\n        {\n            if (texture != null) DrawCameraImage(image, texture);\n            if (showRegions && recognition != null && recognition.UseRegions) DrawRegions(image);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n",
+              ""
+            ],
+            [
+              "        private void DrawFullscreenButton(Rect card)\n        {\n            var matrix = GUI.matrix;\n            float right = card.xMax - 17;\n            if (Screen.safeArea.xMax > 0 && matrix.m00 > 0)\n                right = Mathf.Min(right, (Screen.safeArea.xMax - matrix.m03) / matrix.m00 - 8);\n            if (GUI.Button(new Rect(right - 125, card.y + 9, 125, 34), \"全屏预览\", button))\n                SetFullscreenPreview(true);\n        }\n\n        private static void GetExpandedCards(float scale, out Rect left, out Rect right, out Rect controls)\n        {\n            float availableWidth = Screen.safeArea.width > 0 ? Screen.safeArea.width : Screen.width;\n            float extraSide = Mathf.Max(0, (availableWidth / scale - 1440f) * .5f);\n            left = new Rect(LiveCard.x - extraSide, LiveCard.y, LiveCard.width, LiveCard.height);\n            right = new Rect(PoseCard.x - extraSide, PoseCard.y, PoseCard.width + extraSide * 2, PoseCard.height);\n            controls = left;\n        }\n\n",
+              ""
+            ],
+            [
+              "            capacityMenuOpen = false;\n",
+              ""
+            ],
+            [
+              "        private void DrawFullscreenPreview()\n        {\n            var savedMatrix = GUI.matrix;\n            GUI.matrix = Matrix4x4.identity;\n            try {\n                var screen = new Rect(0, 0, Screen.width, Screen.height);\n                Box(screen, Color.black);\n                var safeArea = Screen.safeArea;\n                if (safeArea.width <= 0 || safeArea.height <= 0) safeArea = screen;\n                float scale = Mathf.Clamp(Mathf.Min(safeArea.width / 470f, safeArea.height / 720f), .55f, 2);\n                if (live != null || showSkeleton || recognition != null && recognition.UseRegions) {\n                    int width = live != null ? live.width : 1280;\n                    int height = live != null ? live.height : 720;\n                    Rect image = RuntimePrefabLiveSkeleton.Fit(screen, width, height, fullscreenCrop);\n                    DrawPreviewImage(image, live, true, showSkeleton, 2 * scale);\n                } else {\n                    GUI.Label(screen, startup != null && !startup.PreviewEnabled ? \"预览已关闭（识别可继续）\" : \"等待当前输入\", badge);\n                }\n                float controlsRight = safeArea.xMax - 13 * scale;\n                float controlsTop = Screen.height - safeArea.yMax + 12 * scale;\n                var control = new Rect(controlsRight - 122 * scale, controlsTop, 122 * scale, 36 * scale);\n                if (GUI.Button(control, \"退出全屏\", button) ||\n                    Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape) {\n                    SetFullscreenPreview(false);\n                }\n                control.x -= 129 * scale;\n                if (GUI.Button(control, showSkeleton ? \"关闭骨骼\" : \"开启骨骼\", button)) showSkeleton = !showSkeleton;\n                control.x -= 129 * scale;\n                if (GUI.Button(control, fullscreenCrop ? \"恢复等比\" : \"填满裁切\", button)) fullscreenCrop = !fullscreenCrop;\n            } finally { GUI.matrix = savedMatrix; }\n        }\n\n        private void DrawCameraImage(Rect image, Texture texture, bool drawSkeleton, float strokeWidth = 2)\n        {\n            DrawCameraImage(image, texture);\n            if (drawSkeleton) liveSkeleton.Draw(image, strokeWidth);\n        }\n\n        private static Rect CardImageWindow(Rect card) => new Rect(card.x + 16, card.y + 49, card.width - 32, Mathf.Max(1, card.height - 100));\n\n        private Texture ResolvePosePreview(out HumanVisionPresentedFrame displayed)\n        {\n            displayed = default;\n            if (!hasInput || !matchedPreviewRequested || !showSkeleton) return live;\n            return view.TryGetDisplayedFrame(out displayed) && displayed.SourceId == input.SourceId &&\n                displayed.SourceGeneration == input.Generation ? displayed.OverlayTexture : null;\n        }\n\n",
+              ""
+            ],
+            [
+              "        private void DrawCameraImage(Rect image, Texture texture)\n        {\n            if (Event.current.type != EventType.Repaint) return;\n            // Android hardware RTSP delivers display RGB codes in a non-sRGB storage texture.\n            if (QualitySettings.activeColorSpace == ColorSpace.Linear && texture == input.Texture &&\n                Application.platform == RuntimePlatform.Android && input.TimestampKind == FrameTimestampKind.LocalDecode &&\n                input.ColorSpace != FrameColorSpace.Linear &&\n                texture is RenderTexture renderTexture && !renderTexture.sRGB) {\n                if (previewColorMaterial == null) {\n                    var shader = Resources.Load<Shader>(\"HumanVisionRuntimePreviewColor\");\n                    if (shader != null && shader.isSupported) previewColorMaterial = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };\n                }\n                if (previewColorMaterial != null) {\n                    var matrix = GUI.matrix;\n                    var topLeft = (Vector2)matrix.MultiplyPoint3x4(image.min);\n                    var bottomRight = (Vector2)matrix.MultiplyPoint3x4(image.max);\n                    GUI.matrix = Matrix4x4.identity;\n                    Graphics.DrawTexture(new Rect(topLeft, bottomRight - topLeft), texture, previewColorMaterial);\n                    GUI.matrix = matrix;\n                    return;\n                }\n            }\n            GUI.DrawTexture(image, texture, ScaleMode.StretchToFill, false);\n        }\n\n",
+              ""
             ]
           ]
         }
@@ -733,12 +1669,35 @@
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabLiveSkeleton.cs",
       "before": "d960a2c861560a87d5da6c7f2cd959383cf0f0ba8d875f4909c39c88a9f72271",
-      "after": "ed942b21712b3fb80674243afbb8ba66e69a0fb80be9088ead8a767bb8ef8bad",
+      "after": "f944890a057ef8af07301f6a3c26419c207cac2be3a67e3b7627c5214eee36dc",
       "replacements": [
         [
           "        internal void Clear() => ClearGeometry();",
           "        internal bool HasBody(int slot) => visible[slot];\n\n        internal bool TryGetPoint(int slot, int joint, out Vector2 point)\n        {\n            bool tracked = visible[slot] && valid[slot, joint];\n            point = tracked ? points[slot, joint] : default;\n            return tracked;\n        }\n\n        internal void Clear() => ClearGeometry();"
+        ],
+        [
+          "        internal void Draw(Rect image, float strokeWidth)\n        {\n            if (Event.current.type != EventType.Repaint || VisibleJoints == 0) return;\n            Texture2D pixel = Texture2D.whiteTexture;\n            Color previousColor = GUI.color;\n            Matrix4x4 previousMatrix = GUI.matrix;\n            try {\n                for (int slot = 0; slot < Capacity; slot++) {\n                    if (!visible[slot]) continue;\n                    GUI.color = RuntimePrefabRedrawRig.GetSlotColor(slot);\n                    for (int joint = 0; joint < JointCount; joint++) {\n                        if (!valid[slot, joint]) continue;\n                        int parent = Parents[joint];\n                        if (parent < 0 || !valid[slot, parent]) continue;\n                        Vector2 a = ToImage(points[slot, parent], image);\n                        Vector2 delta = ToImage(points[slot, joint], image) - a;\n                        float length = delta.magnitude;\n                        if (length < .01f) continue;\n\n                        // A unit axis along the bone and another perpendicular to it.\n                        Vector2 direction = delta / length;\n                        var bone = Matrix4x4.identity;\n                        bone.m00 = bone.m11 = direction.x;\n                        bone.m10 = direction.y;\n                        bone.m01 = -direction.y;\n                        bone.m03 = a.x;\n                        bone.m13 = a.y;\n                        GUI.matrix = previousMatrix * bone;\n                        GUI.DrawTexture(new Rect(0, -strokeWidth * .5f, length, strokeWidth), pixel);\n                    }\n                    GUI.matrix = previousMatrix;\n                    float radius = strokeWidth * .85f;\n                    for (int joint = 0; joint < JointCount; joint++) {\n                        if (!valid[slot, joint]) continue;\n                        Vector2 p = ToImage(points[slot, joint], image);\n                        GUI.DrawTexture(new Rect(p.x - radius, p.y - radius, radius * 2, radius * 2), pixel);\n                    }\n                }\n            } finally {\n                GUI.color = previousColor;\n                GUI.matrix = previousMatrix;\n            }\n        }\n\n",
+          ""
+        ],
+        [
+          "        private static Vector2 ToImage(Vector2 point, Rect image) =>\n            new Vector2(image.x + point.x * image.width, image.y + point.y * image.height);\n\n",
+          ""
         ]
+      ],
+      "upgrades": [
+        {
+          "before": "ed942b21712b3fb80674243afbb8ba66e69a0fb80be9088ead8a767bb8ef8bad",
+          "replacements": [
+            [
+              "        internal void Draw(Rect image, float strokeWidth)\n        {\n            if (Event.current.type != EventType.Repaint || VisibleJoints == 0) return;\n            Texture2D pixel = Texture2D.whiteTexture;\n            Color previousColor = GUI.color;\n            Matrix4x4 previousMatrix = GUI.matrix;\n            try {\n                for (int slot = 0; slot < Capacity; slot++) {\n                    if (!visible[slot]) continue;\n                    GUI.color = RuntimePrefabRedrawRig.GetSlotColor(slot);\n                    for (int joint = 0; joint < JointCount; joint++) {\n                        if (!valid[slot, joint]) continue;\n                        int parent = Parents[joint];\n                        if (parent < 0 || !valid[slot, parent]) continue;\n                        Vector2 a = ToImage(points[slot, parent], image);\n                        Vector2 delta = ToImage(points[slot, joint], image) - a;\n                        float length = delta.magnitude;\n                        if (length < .01f) continue;\n\n                        // A unit axis along the bone and another perpendicular to it.\n                        Vector2 direction = delta / length;\n                        var bone = Matrix4x4.identity;\n                        bone.m00 = bone.m11 = direction.x;\n                        bone.m10 = direction.y;\n                        bone.m01 = -direction.y;\n                        bone.m03 = a.x;\n                        bone.m13 = a.y;\n                        GUI.matrix = previousMatrix * bone;\n                        GUI.DrawTexture(new Rect(0, -strokeWidth * .5f, length, strokeWidth), pixel);\n                    }\n                    GUI.matrix = previousMatrix;\n                    float radius = strokeWidth * .85f;\n                    for (int joint = 0; joint < JointCount; joint++) {\n                        if (!valid[slot, joint]) continue;\n                        Vector2 p = ToImage(points[slot, joint], image);\n                        GUI.DrawTexture(new Rect(p.x - radius, p.y - radius, radius * 2, radius * 2), pixel);\n                    }\n                }\n            } finally {\n                GUI.color = previousColor;\n                GUI.matrix = previousMatrix;\n            }\n        }\n\n",
+              ""
+            ],
+            [
+              "        private static Vector2 ToImage(Vector2 point, Rect image) =>\n            new Vector2(image.x + point.x * image.width, image.y + point.y * image.height);\n\n",
+              ""
+            ]
+          ]
+        }
       ]
     },
     {
@@ -757,7 +1716,7 @@
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceInteractive.cs",
       "payload": "RuntimePrefabAcceptanceInteractive.cs",
-      "sha256": "c04c6ebeafa1304b7323893eef61e98ca1a94a090f43391c41a7fe06a1958c07",
+      "sha256": "723b26c72e701ccc3ebd41aa538a5e5709565ab4b192b3e5da0ce61ed0e017d1",
       "previous_sha256": [
         "9421fd7d346783ba59cacd32e2b034b513d39c9fcc2f2cdcc44d6d6050e2e0d1",
         "44c50dbe0e7ed6c54ce9cb2989da488eb9c79c4ccc1d8b2fddbd7d8de074fde7",
@@ -767,7 +1726,8 @@
         "7f9c4d1e065e48a16b085e54f10bd773f247b25e27eea0aad6de571148d7e95a",
         "77bbcbc31e4021593b65c6c35adebeabc062e0252f084bce393cb390041dd66b",
         "7c3c20acfea8226a35f0baf8aae4eb2d12cafe8a415623e60d6c875c3e4cfc77",
-        "ad637f6e6e90c1c7a7baa891d8de6bcf56030cad18f6925f3ec54a4d28dea828"
+        "ad637f6e6e90c1c7a7baa891d8de6bcf56030cad18f6925f3ec54a4d28dea828",
+        "c04c6ebeafa1304b7323893eef61e98ca1a94a090f43391c41a7fe06a1958c07"
       ]
     },
     {
@@ -801,25 +1761,31 @@
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceSidebar.cs",
       "payload": "RuntimePrefabAcceptanceSidebar.cs",
-      "sha256": "0b86f914095908e88a06d41cdc9bddfa456ecab0565faa6ae4a4e953326cb2de",
+      "sha256": "ff0e384b0088c63ddc567a362a71523d7d69a3518e431b0aae552cf520992912",
       "previous_sha256": [
         "d94217cee68441cedd9522ecda56a692621adbea3105c99c75f19687266224ef",
         "ba84c88fb101dd8cfabbb5b19e3639874be6f950e12ed6007d2c3840a3207913",
         "350580d0bda86b1051c9c10a0b93e5f1c688601e34dbd8de6aa157feb4f108aa",
-        "9236d6f762ae0ef9427ce8575d6516ecc6f68495853133180c43dd243769ca3e"
+        "9236d6f762ae0ef9427ce8575d6516ecc6f68495853133180c43dd243769ca3e",
+        "0b86f914095908e88a06d41cdc9bddfa456ecab0565faa6ae4a4e953326cb2de"
       ]
     },
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabSceneSkeleton.cs",
       "payload": "RuntimePrefabSceneSkeleton.cs",
-      "sha256": "d66e93a9bc36d194c1cc4d1ffbe77c7f1675955568a7c78620d307f215556de7"
+      "sha256": "5263c9e2adac45351611cfe2456e62185b957d1261e59a1967d677bf1ec9beb2",
+      "previous_sha256": [
+        "d66e93a9bc36d194c1cc4d1ffbe77c7f1675955568a7c78620d307f215556de7",
+        "120a5d9b9babff839227181869a0243d0d0efeb2a47d44976c1da5498f8070e8"
+      ]
     },
     {
       "path": "Assets/HumanVision/Tests/EditMode/RuntimePrefabSceneSkeletonTests.cs",
       "payload": "RuntimePrefabSceneSkeletonTests.cs",
-      "sha256": "9563fb6968b9b49b53134d4df94afb92d9cd3811366671c5419d9860cae5ea54",
+      "sha256": "bd7e140238533b10d22326e2503cc4c1daf5206a3ff71daba8ba16f7bc5e7215",
       "previous_sha256": [
-        "e8c1823f449b9755b42788d890d0d5ea1c4fd8f0219a3461db5b9749f029f655"
+        "e8c1823f449b9755b42788d890d0d5ea1c4fd8f0219a3461db5b9749f029f655",
+        "9563fb6968b9b49b53134d4df94afb92d9cd3811366671c5419d9860cae5ea54"
       ]
     },
     {
@@ -835,27 +1801,80 @@
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceUgui.cs",
       "payload": "RuntimePrefabAcceptanceUgui.cs",
-      "sha256": "be9fc42c8239d8471d3c82c9e84ecc07afff5491cee601f4196703545464aaf9"
+      "sha256": "e10ac3e2a61cf55fdff1cd5e3792445328a8c142a77e9137e8c0fff52cf10feb",
+      "previous_sha256": [
+        "be9fc42c8239d8471d3c82c9e84ecc07afff5491cee601f4196703545464aaf9"
+      ]
     },
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceAdvancedUi.cs",
       "payload": "RuntimePrefabAcceptanceAdvancedUi.cs",
-      "sha256": "01914373f4ce280cff590e86ae6059b0932181314e113503599c0719f2bf34ca"
+      "sha256": "10cf9d6a34133c5a3287209d8048b7cc1d1056d21ed78989e6e2598fd1fc1f98",
+      "previous_sha256": [
+        "01914373f4ce280cff590e86ae6059b0932181314e113503599c0719f2bf34ca"
+      ]
     },
     {
       "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceConnectionUi.cs",
       "payload": "RuntimePrefabAcceptanceConnectionUi.cs",
-      "sha256": "fc18c3794b6edb075f5bb01c4287e884da8df5964698490f460249fbe67fc94c"
+      "sha256": "0a544b87d89c5db90de1ae7b6761995bd1092a349d0a59e459c895ab985667e8",
+      "previous_sha256": [
+        "fc18c3794b6edb075f5bb01c4287e884da8df5964698490f460249fbe67fc94c"
+      ]
     },
     {
       "path": "Assets/HumanVision/Tests/EditMode/RuntimePrefabPresentationAcceptanceTests.cs",
       "payload": "RuntimePrefabPresentationAcceptanceTests.cs",
-      "sha256": "f85588644c0e0785ed6e51b695cf259c07f5f4efdf9eee5fcc99befb1a961a9b"
+      "sha256": "d0e66b3446c7498e30ca2fa39ed4029cdb8a5cade943a6a9883f0a656323760b",
+      "previous_sha256": [
+        "f85588644c0e0785ed6e51b695cf259c07f5f4efdf9eee5fcc99befb1a961a9b"
+      ]
     },
     {
       "path": "Assets/HumanVision/Tests/EditMode/RuntimePrefabConnectionUiTests.cs",
       "payload": "RuntimePrefabConnectionUiTests.cs",
-      "sha256": "1c20562b71fa8226be2d177b3fe6d5b6af98a2637039c967a3b6847168a0bda6"
+      "sha256": "4ab13d2798da8946be8aa7c1cc0712a1a952f17dd82ab2be2de931c5b8263972",
+      "previous_sha256": [
+        "1c20562b71fa8226be2d177b3fe6d5b6af98a2637039c967a3b6847168a0bda6"
+      ]
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceUguiAuthoring.cs",
+      "payload": "RuntimePrefabAcceptanceUguiAuthoring.cs",
+      "sha256": "fbdbf97b60206076808f76f4da72cc94ef3184e4bde8a81585caaca6e3e9694a"
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceDialogAuthoring.cs",
+      "payload": "RuntimePrefabAcceptanceDialogAuthoring.cs",
+      "sha256": "cde8f719a5ea909ab19c3e8b150a477a333cca5219fbc4e618c1c54e9f70b6ed"
+    },
+    {
+      "path": "Assets/HumanVision/Samples/RuntimePrefab/RuntimePrefabAcceptanceSceneReferences.cs",
+      "payload": "RuntimePrefabAcceptanceSceneReferences.cs",
+      "sha256": "296c46049b7c562014061af62b864ad25c7d1de334423b14e67a6aff3187440c",
+      "previous_sha256": [
+        "db5ef6bed2b5f9dfc398d3d0d0ffe75ca4e54732904468e26c2dbf0b1746d9c3",
+        "8af33d4788071b67ad7db83022ff4ff880589b76c9cd7a01b50caf7f59b14f06"
+      ]
+    },
+    {
+      "path": "Assets/Editor/RuntimePrefabAcceptanceSceneAuthoring.cs",
+      "payload": "RuntimePrefabAcceptanceSceneAuthoring.cs",
+      "sha256": "9cffd666cad4902cc110946bc17cbd56f37acf6411fec6a0d26b4f80eaf4a744",
+      "previous_sha256": [
+        "c71b7cf8eb7397d4b00af719d9ca4a642a66beaf807ec0f3ff2581fde40f87f6",
+        "2b8c4e03e31a7dc2f5f3b81fc25d0978bd19879b5b5c39441a8ff981d0d42c65",
+        "ae456b7ad573d1726ee4cfa6f8537ab6657520e4b3e1d7d07efa736d1feaa452"
+      ]
+    },
+    {
+      "path": "Assets/HumanVision/Tests/EditMode/RuntimePrefabSceneWiringTests.cs",
+      "payload": "RuntimePrefabSceneWiringTests.cs",
+      "sha256": "fa489e5b00f08b75ac813f5a0264e6a288df5ce02d86582cc5ca9eb64828d06f",
+      "previous_sha256": [
+        "bb2511f7bcdf628d2cf40ef06c6819e646eb95cf3b48db093cc29e0e57d72ade",
+        "093a94b4342ce39bc699af046216110ec0316f1179bdb5bcefb007d0b0d4d1f0"
+      ]
     }
   ]
 }

@@ -25,7 +25,15 @@ namespace HumanVision.Tests
         private static void VerifyCameraRenderer(Type rendererType)
         {
             object renderer = Activator.CreateInstance(rendererType, true);
+            var root = new GameObject("Scene skeleton projection test");
             try {
+                var createArguments = new object[] { root.transform, null };
+                var sceneBodies = rendererType.GetMethod("CreateSceneObjects", BindingFlags.Static | BindingFlags.NonPublic)
+                    .Invoke(null, createArguments);
+                var camera = (Camera)createArguments[1];
+                var bound = (bool)rendererType.GetMethod("Bind", Members).Invoke(renderer,
+                    new[] { camera, sceneBodies, Shader.Find("Sprites/Default") });
+                Assert.That(bound, Is.True);
                 object sample = Activator.CreateInstance(FindDemoType("RuntimePrefabLiveSkeleton"), true);
                 Type sampleType = sample.GetType();
                 var points = (Vector2[,])sampleType.GetField("points", Members).GetValue(sample);
@@ -41,8 +49,6 @@ namespace HumanVision.Tests
                 MethodInfo refresh = rendererType.GetMethod("Refresh", Members);
                 var arguments = new object[] { sample, 1920, 1080 };
                 refresh.Invoke(renderer, arguments);
-                var root = (GameObject)rendererType.GetField("root", Members).GetValue(renderer);
-                var camera = root.GetComponentInChildren<Camera>();
                 Transform body = root.transform.Find("Body 1");
                 string parentName = ((HumanVisionCanonicalJointId)0).ToString();
                 string jointName = ((HumanVisionCanonicalJointId)1).ToString();
@@ -78,6 +84,7 @@ namespace HumanVision.Tests
                 Assert.That(rendererType.GetProperty("Output", Members).GetValue(renderer), Is.Null);
             } finally {
                 ((IDisposable)renderer).Dispose();
+                UnityEngine.Object.DestroyImmediate(root);
             }
         }
 
