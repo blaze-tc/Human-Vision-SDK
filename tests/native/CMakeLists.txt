@@ -258,3 +258,8 @@ target_compile_features(humanvision_runtime_control_c_contract PRIVATE c_std_11)
 add_test(NAME runtime_control_c_abi COMMAND humanvision_runtime_control_c_contract)
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_ncnn_dispatch_budget.cpp)
 target_sources(humanvision_native_tests PRIVATE ../runtime/test_yolo_rgb_preprocess.cpp)
+
+if(WIN32 AND HV_ENABLE_RTSP)
+    # Exercise the actual loaded DLL, not just declarations in a static library.
+    target_sources(humanvision_native_tests PRIVATE ../runtime/test_windows_sdk_exports.cpp)
+endif()

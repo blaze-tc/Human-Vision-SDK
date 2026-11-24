@@ -1,5 +1,6 @@
 find_package(Threads REQUIRED)
 option(HV_USE_DIRECTML "Enable GPU selection for AUTO on Windows" OFF)
+option(HV_ENABLE_RTSP "Build native RTSP capture with FFmpeg" OFF)
 option(HV_USE_QNN "Enable Android QNN EP in a custom ONNX Runtime build" OFF)
 set(HV_QNN_HOME "" CACHE PATH "Authorized QAIRT SDK root used to build ONNX Runtime")
 if(HV_USE_QNN)
@@ -139,8 +140,14 @@ set_target_properties(humanvision PROPERTIES
     OUTPUT_NAME humanvision)
 
 if(MSVC)
-    # Freeze historic ordinal imports while appending additive entry points.
-    target_sources(humanvision PRIVATE src/core/humanvision_windows.def)
+    # Published FFmpeg-enabled SDKs have four additional legacy RTSP exports.
+    # Keep their actual published names/ordinals; the smaller development build
+    # has a separate pre-existing export contract.
+    if(HV_ENABLE_RTSP)
+        target_sources(humanvision PRIVATE src/core/humanvision_windows_rtsp.def)
+    else()
+        target_sources(humanvision PRIVATE src/core/humanvision_windows.def)
+    endif()
     target_compile_options(humanvision_internal PRIVATE /W4 /permissive-)
     target_compile_options(humanvision PRIVATE /W4 /permissive-)
 endif()
@@ -164,7 +171,6 @@ if(HV_USE_DIRECTML)
         VERBATIM)
 endif()
 
-option(HV_ENABLE_RTSP "Build native RTSP capture with FFmpeg" OFF)
 set(HV_FFMPEG_INCLUDE "" CACHE PATH "FFmpeg 7.1 headers")
 set(HV_FFMPEG_LIB_DIR "" CACHE PATH "FFmpeg shared libraries and Windows import libraries")
 if(HV_ENABLE_RTSP)
