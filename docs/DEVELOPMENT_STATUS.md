@@ -1,3 +1,11 @@
+## 2026-11-24 本地候选：RK3588 宿主启动回归
+
+基于 `v0.4.0` 的 `codex/npu-android-startup` 候选。Android Input 校验 Unity Vulkan device 和 loader 上下文，限制旧设备代次的 live 资源访问，关闭预览时跳过 live 桥挂接。RuntimePrefabAcceptance 增加显式 Neural/Low A/B/C 冷启动和实际配置、SO 映射、首输入／预览／结果观测。[故障定位与验证](reports/2026-11-24-rk3588-npu-startup-regression.md) · [诊断命令](../tools/test/NPU_STARTUP_DIAGNOSTICS.md)
+
+- Input Windows host `ctest --test-dir out/input-native/windows -C Release --output-on-failure` 74/74。Unity Skills 8091 EditMode 151/151，实际 Play 模式 1920×1080 纹理前进、4 人 96 骨骼点与 92 线。A/B/C 参数合同在 Editor 与 Android 条件下各 42 项通过。
+- Unity Android ARM64 验收 APK 构建 0 错误、1 警告，9 个 SO、74 个资源与候选一致。已装 APK SHA-256 `f9455d9415664b057d709a39b2ffaa3a8fe0c0d55d0b8d4066d1c137a9dde551`。一加 LE2120 两组 Vulkan 低档冷启动通过，预览开时 Unity 持续收到 1920×1080 纹理，关时无原图发布且分析、推理结果均推进。
+- 本轮为独立验收工程的本地修复。RK3588 Neural/Low、客户宿主集成与原始崩溃根因仍待现场对照和 backtrace。
+
 ## 2026-11-24 当前版本：SDK 0.4.0 / Input 0.1.0 正式发布范围
 
 用户已明确授权将本轮修改合并main、上传GitHub并发布正式版，使用同一标签v0.4.0。当前代码与包范围见[发布说明](reports/2026-11-24-v040-release.md)，已完成的正式包检查、旧Windows39导出/ordinal修复及真实双包导入见[发布验证](reports/2026-11-24-v040-publication-verification.md)。SDK原生新全量578/578、Input66/66、本轮Unity150/150及专项真实导入验证通过；公开Android为RKNN-OFF，完整CPU/NPU替代SDK仍本地交付。跨栏王仅提供[升级提示词](integrations/HURDLE_KING_SDK_040_UPGRADE_PROMPT.md)，没有修改或发布业务AAR。

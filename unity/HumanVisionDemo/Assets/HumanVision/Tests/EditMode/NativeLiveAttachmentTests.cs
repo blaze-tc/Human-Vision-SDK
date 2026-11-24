@@ -28,10 +28,24 @@ namespace HumanVision.Tests
             public bool TryRelease() => true;
             public void PumpRenderEvent() { }
         }
+        [Test] public void PreviewDisabledDoesNotAttachTheAndroidLiveBridge() {
+            var go = new GameObject("independent analysis without preview");
+            var source = go.AddComponent<HumanVisionNativeFrameSource>();
+            var provider = new Provider { BusyUntil = 0 };
+            try {
+                source.ConfigureLive(provider, false, false, 0, 0);
+                source.Tick();
+                Assert.That(provider.Calls, Is.Zero);
+                Assert.That(provider.Creates, Is.Zero);
+                Assert.That(source.State, Is.EqualTo(InputSourceState.Streaming));
+                Assert.That(source.PreviewError, Is.Empty);
+                Assert.That(source.CurrentTexture, Is.Null);
+            } finally { source.Close(); source.Tick(); Object.DestroyImmediate(go); }
+        }
         [Test] public void TransientAttachBusyRetriesWithoutOpeningAnotherSourceOrRecordingPermanentError() {
             var go = new GameObject("live attach retry"); var source = go.AddComponent<HumanVisionNativeFrameSource>(); var provider = new Provider();
             try {
-                source.ConfigureLive(provider,false,false,1920,1080);source.Tick();source.Tick();source.Tick();
+                source.ConfigureLive(provider,true,false,1920,1080);source.Tick();source.Tick();source.Tick();
                 Assert.That(provider.Calls,Is.EqualTo(3));Assert.That(provider.Creates,Is.EqualTo(1));
                 Assert.That(source.PreviewError,Is.Empty);Assert.That(source.State,Is.EqualTo(InputSourceState.Streaming));
             } finally { source.Close();source.Tick();Object.DestroyImmediate(go); }
@@ -39,7 +53,7 @@ namespace HumanVision.Tests
         [Test] public void OriginalLiveZeroBoundsReachTheExistingDecoderUnchanged() {
             var go = new GameObject("original live attach"); var source = go.AddComponent<HumanVisionNativeFrameSource>(); var provider = new Provider { BusyUntil = 0 };
             try {
-                source.ConfigureLive(provider, false, false, 0, 0);
+                source.ConfigureLive(provider, true, false, 0, 0);
                 Assert.That(provider.Width, Is.Zero); Assert.That(provider.Height, Is.Zero); Assert.That(provider.Creates, Is.EqualTo(1));
             } finally { source.Close(); source.Tick(); Object.DestroyImmediate(go); }
         }
@@ -55,7 +69,7 @@ namespace HumanVision.Tests
         [Test] public void CloseCancelsPendingAttachWithoutReopeningTheSource() {
             var go = new GameObject("live attach cancel"); var source = go.AddComponent<HumanVisionNativeFrameSource>(); var provider = new Provider { BusyUntil = int.MaxValue };
             try {
-                source.ConfigureLive(provider,false,false,1920,1080);source.Tick();int calls=provider.Calls;source.Close();source.Tick();source.Tick();
+                source.ConfigureLive(provider,true,false,1920,1080);source.Tick();int calls=provider.Calls;source.Close();source.Tick();source.Tick();
                 Assert.That(provider.Calls,Is.EqualTo(calls));Assert.That(provider.Creates,Is.Zero);Assert.That(source.State,Is.EqualTo(InputSourceState.Stopped));
             } finally { Object.DestroyImmediate(go); }
         }

@@ -1,8 +1,18 @@
 #include "live_bridge_state.h"
+#include "live_device_lifetime.h"
 #include <iostream>
 #define CHECK(x) do { if(!(x)){std::cerr<<__LINE__<<": " #x "\n";return 1;} }while(false)
 using hvinput::LiveBridgeState;
 int main(){
+ hvinput::LiveDeviceLifetime device;
+ CHECK(!device.Acquire().Epoch());
+ device.Activate();
+ const auto first_epoch=device.Acquire().Epoch();CHECK(first_epoch);
+ CHECK(device.Acquire().Matches(first_epoch));
+ device.Invalidate();CHECK(!device.Acquire().Matches(first_epoch));
+ device.Activate();CHECK(device.Acquire().Epoch()!=first_epoch);
+ CHECK(!device.Acquire().Matches(first_epoch));
+
  LiveBridgeState s;CHECK(s.Bind(9));CHECK(s.QueueEvent());CHECK(!s.QueueEvent());
  CHECK(s.Begin(2,1)>=0);CHECK(!s.Finish(false));CHECK(s.Writing());
  CHECK(s.Finish(true));int held=s.Acquire(0);CHECK(held>=0);
@@ -20,5 +30,9 @@ int main(){
  CHECK(full.Release(pins[1],1,2));CHECK(full.Release(pins[2],1,3));CHECK(full.TargetsRetired());
  LiveBridgeState stopped;CHECK(stopped.Bind(11));CHECK(stopped.Begin(1,1)>=0);
  stopped.Close();CHECK(!stopped.Finish(true));CHECK(stopped.Acquire(0)<0);CHECK(stopped.Retired());
+ LiveBridgeState deferred;CHECK(deferred.Bind(12));CHECK(deferred.QueueEvent());CHECK(deferred.Begin(1,1)>=0);
+ deferred.QueueSubmission();deferred.EventFinished();deferred.Close();
+ CHECK(!deferred.Retired());CHECK(!deferred.Finish(true));CHECK(!deferred.Retired());
+ deferred.SubmissionFinished();CHECK(deferred.Retired());
  std::cout<<"live target latest/fence/lease/generation/close contracts passed\n";
 }

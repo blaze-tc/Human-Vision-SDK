@@ -12,6 +12,7 @@
 #include "android/input_vulkan_private.h"
 #include "android/input_conversion.h"
 #include "android/native_vulkan_image_service.h"
+#include <android/log.h>
 #include <unistd.h>
 #endif
 
@@ -37,13 +38,17 @@ struct HV_InputLiveConsumerOpaque {
  VkCommandPool pool{};VkCommandBuffer command{};VkFence fence{};
  UnityVulkanImage target_image{};
  HV_InputNativeFrameV1 active{};
+ uint64_t device_epoch{};
  int target_slot=-1;
  bool inflight{},unfenced{},resources_retired=true,failed{};
 };
 namespace {
 constexpr int kLiveEvent=HV_INPUT_LIVE_RENDER_EVENT_ID;
 constexpr VkImageSubresourceRange kColor{VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
-bool Error(HV_InputLiveHandle h,const char* reason){if(h->error.empty())h->error=reason;h->failed=true;h->state.RetireTargets();return false;}
+bool Error(HV_InputLiveHandle h,const char* reason){
+ if(!h->failed){h->error=reason;__android_log_print(ANDROID_LOG_ERROR,"HVInputLive","%s",reason);}
+ h->failed=true;h->state.RetireTargets();return false;
+}
 bool VkCheck(HV_InputLiveHandle h,VkResult result,const char* stage){
  if(result==VK_SUCCESS)return true;char text[192]{};std::snprintf(text,sizeof(text),"%s: Vulkan result %d",stage,int(result));return Error(h,text);
 }
@@ -51,12 +56,26 @@ VkImageMemoryBarrier Barrier(VkImage image,VkImageLayout from,VkImageLayout to,V
  VkImageMemoryBarrier out{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};out.image=image;out.oldLayout=from;out.newLayout=to;
  out.srcAccessMask=src;out.dstAccessMask=dst;out.srcQueueFamilyIndex=a;out.dstQueueFamilyIndex=b;out.subresourceRange=kColor;return out;
 }
-bool Initialize(HV_InputLiveHandle h){
- if(h->pool)return true;
- auto* unity=hvinput::InputUnityVulkan();
- if(!unity||!hvinput::InputForeignEnabled())return Error(h,"Live preview requires the qualified Unity Vulkan external-memory device");
- h->api.unity=unity->Instance();auto& u=h->api.unity;
- if(!u.device||!h->api.LoadFunctions(u.device,u.instance,u.getInstanceProcAddr))return Error(h,"Unity live Vulkan functions are unavailable");
+bool DeviceIsCurrent(HV_InputLiveHandle h,const hvinput::LiveDeviceLifetime::Lease& device){
+ if(device.Matches(h->device_epoch))return true;
+ // An old VkDevice can no longer be used even to poll or destroy a fence.
+ // Retain everything whose GPU completion cannot be observed.
+ if(h->pool)h->unfenced=true;
+ return Error(h,"Unity Vulkan device changed before live preview targets retired");
+}
+bool Initialize(HV_InputLiveHandle h,IUnityGraphicsVulkan& unity){
+ const auto u=unity.Instance();
+ if(const char* error=hvinput::InputVulkanContextError(u))return Error(h,error);
+ if(!hvinput::InputForeignEnabled(u))return Error(h,"Live preview requires the qualified Unity Vulkan external-memory device");
+ if(h->pool){
+  const auto& previous=h->api.unity;
+  if(previous.instance==u.instance&&previous.physicalDevice==u.physicalDevice&&previous.device==u.device&&
+     previous.graphicsQueue==u.graphicsQueue&&previous.queueFamilyIndex==u.queueFamilyIndex&&previous.getInstanceProcAddr==u.getInstanceProcAddr)return true;
+  h->unfenced=true;
+  return Error(h,"Unity Vulkan context changed while live preview resources were owned");
+ }
+ h->api.unity=u;
+ if(!h->api.LoadFunctions(u.device,u.instance,u.getInstanceProcAddr))return Error(h,"Unity live Vulkan functions are unavailable");
  HV_InputNativeDeviceV1 producer{sizeof(producer),1};
  if(h->source->Device(producer)!=HV_INPUT_OK)return Error(h,"Native producer device identity unavailable");
  auto properties=reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2>(u.getInstanceProcAddr(u.instance,"vkGetPhysicalDeviceProperties2"));
@@ -77,7 +96,7 @@ void DestroyResources(HV_InputLiveHandle h){
  auto d=h->api.unity.device;
  if(d){for(auto& i:h->imported){if(i.image)h->api.DestroyImage(d,i.image,nullptr);if(i.memory)h->api.FreeMemory(d,i.memory,nullptr);if(i.ahb)AHardwareBuffer_release(i.ahb);i={};}
   if(h->fence)h->api.DestroyFence(d,h->fence,nullptr);if(h->pool)h->api.DestroyCommandPool(d,h->pool,nullptr);}
- h->fence={};h->pool={};h->command={};h->targets={};h->resources_retired=true;
+ h->fence={};h->pool={};h->command={};h->targets={};h->device_epoch=0;h->api.unity={};h->resources_retired=true;
 }
 bool Import(HV_InputLiveHandle h,const HV_InputNativeFrameV1& frame){
  if(frame.slot>=3||!frame.hardware_buffer)return Error(h,"Invalid live producer slot/AHB");
@@ -106,15 +125,17 @@ void ReleaseActive(HV_InputLiveHandle h){
  if(h->active.hardware_buffer){h->source->ReleaseLive(h->active.slot,h->active.frame.generation,h->active.frame.sequence);h->active={};}
 }
 void Complete(HV_InputLiveHandle h){
- if(!h->inflight)return;auto result=h->api.GetFenceStatus(h->api.unity.device,h->fence);
+ if(!h->inflight||h->unfenced)return;auto result=h->api.GetFenceStatus(h->api.unity.device,h->fence);
  if(result==VK_NOT_READY)return;
  if(result!=VK_SUCCESS){h->unfenced=true;Error(h,"Unity live copy fence failed; resources remain quarantined");return;}
  h->inflight=false;
  h->state.Finish(true);ReleaseActive(h);h->target_slot=-1;
 }
-void UNITY_INTERFACE_API SubmitLive(int,void* data){
- auto* h=static_cast<HV_InputLiveHandle>(data);std::lock_guard<std::mutex> lock(h->mutex);
+void SubmitLiveLocked(HV_InputLiveHandle h,const hvinput::LiveDeviceLifetime::Lease& device){
  if(!h->active.hardware_buffer||h->inflight)return;
+ if(!DeviceIsCurrent(h,device)||h->failed||h->state.Retiring()){
+  h->state.Finish(true);ReleaseActive(h);return;
+ }
  if(h->state.Closing()||h->owner->stop){h->state.Close();h->state.Finish(true);ReleaseActive(h);return;}
  auto& api=h->api;const auto& u=api.unity;auto source=h->imported[h->active.slot].image;
  if(!VkCheck(h,api.ResetFences(u.device,1,&h->fence),"reset live fence")||!VkCheck(h,api.ResetCommandBuffer(h->command,0),"reset live command")){h->state.Finish(true);ReleaseActive(h);return;}
@@ -136,18 +157,31 @@ void UNITY_INTERFACE_API SubmitLive(int,void* data){
  if(result!=VK_SUCCESS){h->unfenced=true;Error(h,"Unity live submit failed; producer/target remain quarantined");return;}
  h->inflight=true;
 }
+void UNITY_INTERFACE_API SubmitLive(int,void* data){
+ auto* h=static_cast<HV_InputLiveHandle>(data);std::lock_guard<std::mutex> lock(h->mutex);
+ auto device=hvinput::InputLiveDeviceLifetime().Acquire();
+ SubmitLiveLocked(h,device);
+ h->state.SubmissionFinished();
+}
 void HV_INPUT_CALL RenderLive(int,void* data){
  auto* h=static_cast<HV_InputLiveHandle>(data);if(!h)return;
- bool submit=false;
+ IUnityGraphicsVulkan* queue_interface=nullptr;
  {
   std::lock_guard<std::mutex> lock(h->mutex);
+  auto device=hvinput::InputLiveDeviceLifetime().Acquire();
+  auto* unity=hvinput::InputUnityVulkan();
   if(h->owner->stop)h->state.Close();
   HV_InputLiveGeometryV1 current{sizeof(current),1};
   if(h->source->LiveGeometry(current)==HV_INPUT_OK)h->state.AdmitGeneration(current.generation);
-  Complete(h);
+  if(h->device_epoch&&DeviceIsCurrent(h,device))Complete(h);
   if(h->state.Closing()||h->state.Retiring()||h->failed||!h->targets.textures[0]){
    if(!h->inflight&&h->state.TargetsRetired())DestroyResources(h);
   }else if(h->config.enabled&&!h->inflight&&!h->unfenced&&h->state.CanBegin()){
+   if(!unity||!unity->Instance||!unity->AccessTexture||!unity->AccessQueue){
+    Error(h,"Unity Vulkan texture or queue access is unavailable");
+    h->state.EventFinished();
+    return;
+   }
    HV_InputNativeFrameV1 frame{sizeof(frame),1};
    if(h->source->AcquireLive(h->after,frame)==HV_INPUT_OK){
     h->after=frame.frame.sequence;int slot=h->state.Begin(frame.frame.generation,frame.frame.sequence);
@@ -156,22 +190,25 @@ void HV_INPUT_CALL RenderLive(int,void* data){
      h->active=frame;h->target_slot=slot;
      if(frame.producer_sync_fd>=0){::close(frame.producer_sync_fd);h->active.producer_sync_fd=-1;
       Error(h,"Live publication lacks the required observed producer completion proof");h->state.Finish(true);ReleaseActive(h);}
-     else if(frame.frame.width!=h->targets.width||frame.frame.height!=h->targets.height||frame.frame.row_origin!=0||!Initialize(h)||!Import(h,frame)){
+     else if(frame.frame.width!=h->targets.width||frame.frame.height!=h->targets.height||frame.frame.row_origin!=0||!Initialize(h,*unity)||!Import(h,frame)){
       if(h->error.empty())Error(h,"Live geometry changed; retire targets and bind the actual extent");h->state.Finish(true);ReleaseActive(h);
-     }else if(!hvinput::InputUnityVulkan()->AccessTexture(h->targets.textures[slot],UnityVulkanWholeImage,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_ACCESS_TRANSFER_WRITE_BIT,kUnityVulkanResourceAccess_PipelineBarrier,&h->target_image)||
-       (h->target_image.format!=VK_FORMAT_R8G8B8A8_UNORM&&h->target_image.format!=VK_FORMAT_R8G8B8A8_SRGB)||h->target_image.extent.width!=h->targets.width||h->target_image.extent.height!=h->targets.height){
+     }else if(!unity->AccessTexture(h->targets.textures[slot],UnityVulkanWholeImage,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_ACCESS_TRANSFER_WRITE_BIT,kUnityVulkanResourceAccess_PipelineBarrier,&h->target_image)||
+       !h->target_image.image||(h->target_image.format!=VK_FORMAT_R8G8B8A8_UNORM&&h->target_image.format!=VK_FORMAT_R8G8B8A8_SRGB)||h->target_image.extent.width!=h->targets.width||h->target_image.extent.height!=h->targets.height){
       Error(h,"Unity live target must be initialized RGBA8 UNORM/sRGB at the declared extent");h->state.Finish(true);ReleaseActive(h);
      }else{
       auto& out=h->frames[slot];out={};out.size=sizeof(out);out.version=1;out.frame=frame.frame;
       out.frame.color_space=frame.transfer==13?HV_INPUT_COLOR_SRGB:0;
       out.target_generation=h->targets.target_generation;out.slot=slot;
-      out.source_width=frame.source_width;out.source_height=frame.source_height;out.crop_left=frame.crop_left;out.crop_top=frame.crop_top;out.crop_right=frame.crop_right;out.crop_bottom=frame.crop_bottom;out.rotation_degrees=frame.rotation_degrees;out.mirror_x=frame.mirror_x;submit=true;
+      out.source_width=frame.source_width;out.source_height=frame.source_height;out.crop_left=frame.crop_left;out.crop_top=frame.crop_top;out.crop_right=frame.crop_right;out.crop_bottom=frame.crop_bottom;out.rotation_degrees=frame.rotation_degrees;out.mirror_x=frame.mirror_x;
+      h->state.QueueSubmission();queue_interface=unity;
      }
     }
    }
   }
  }
- if(submit)hvinput::InputUnityVulkan()->AccessQueue(SubmitLive,kLiveEvent,h,true);
+ // Unity may run this callback synchronously or defer it to submission.
+ // The separate pending reference protects the handle in either case.
+ if(queue_interface)queue_interface->AccessQueue(SubmitLive,kLiveEvent,h,true);
  {std::lock_guard<std::mutex> lock(h->mutex);h->state.EventFinished();}
 }
 int HV_INPUT_CALL Attach(HV_InputHandle source,const HV_InputLiveConfigV1* config,HV_InputLiveHandle* out){
@@ -193,13 +230,16 @@ int HV_INPUT_CALL Geometry(HV_InputLiveHandle h,HV_InputLiveGeometryV1* out){if(
 int HV_INPUT_CALL Bind(HV_InputLiveHandle h,const HV_InputLiveTargetsV1* targets){
  if(!h||!Valid(targets)||!targets->target_generation||!targets->width||!targets->height||!targets->textures[0]||!targets->textures[1]||!targets->textures[2]||
  targets->textures[0]==targets->textures[1]||targets->textures[0]==targets->textures[2]||targets->textures[1]==targets->textures[2])return HV_INPUT_INVALID;
- std::lock_guard<std::mutex> lock(h->mutex);if(!h->resources_retired||!h->state.Bind(targets->target_generation))return HV_INPUT_BUSY;
+ std::lock_guard<std::mutex> lock(h->mutex);
+ auto device=hvinput::InputLiveDeviceLifetime().Acquire();
+ if(!device.Epoch()){Error(h,"Unity Vulkan device is unavailable for live preview targets");return HV_INPUT_ERROR;}
+ if(!h->resources_retired||!h->state.Bind(targets->target_generation))return HV_INPUT_BUSY;
  HV_InputLiveGeometryV1 actual{sizeof(actual),1};if(h->source->LiveGeometry(actual)!=HV_INPUT_OK||actual.width!=targets->width||actual.height!=targets->height){h->state.RetireTargets();return HV_INPUT_INVALID;}
- h->targets=*targets;h->failed=false;h->error.clear();h->resources_retired=false;return HV_INPUT_OK;
+ h->targets=*targets;h->device_epoch=device.Epoch();h->failed=false;h->error.clear();h->resources_retired=false;return HV_INPUT_OK;
 }
 int HV_INPUT_CALL Prepare(HV_InputLiveHandle h){if(!h)return HV_INPUT_INVALID;std::lock_guard<std::mutex> lock(h->mutex);return h->state.QueueEvent()?HV_INPUT_OK:HV_INPUT_BUSY;}
 HV_InputLiveRenderEvent HV_INPUT_CALL Event(){
- if(auto* unity=hvinput::InputUnityVulkan()){
+ if(auto* unity=hvinput::InputUnityVulkan();unity&&unity->ConfigureEvent){
   UnityVulkanPluginEventConfig config{kUnityVulkanRenderPass_EnsureOutside,kUnityVulkanGraphicsQueueAccess_DontCare,
    kUnityVulkanEventConfigFlag_EnsurePreviousFrameSubmission|kUnityVulkanEventConfigFlag_ModifiesCommandBuffersState};
   unity->ConfigureEvent(kLiveEvent,&config);
@@ -209,7 +249,10 @@ HV_InputLiveRenderEvent HV_INPUT_CALL Event(){
 int HV_INPUT_CALL Poll(HV_InputLiveHandle h,uint64_t after,HV_InputLiveFrameV1* out){
  if(!h||!Valid(out))return HV_INPUT_INVALID;std::lock_guard<std::mutex> lock(h->mutex);if(h->owner->stop)h->state.Close();
  HV_InputLiveGeometryV1 current{sizeof(current),1};if(h->source->LiveGeometry(current)==HV_INPUT_OK)h->state.AdmitGeneration(current.generation);
- Complete(h);int slot=h->config.enabled?h->state.Acquire(after):-1;if(slot<0)return HV_INPUT_NO_FRAME;*out=h->frames[slot];return HV_INPUT_OK;
+ auto device=hvinput::InputLiveDeviceLifetime().Acquire();
+ if(h->device_epoch&&DeviceIsCurrent(h,device))Complete(h);
+ if(h->failed)return HV_INPUT_ERROR;
+ int slot=h->config.enabled?h->state.Acquire(after):-1;if(slot<0)return HV_INPUT_NO_FRAME;*out=h->frames[slot];return HV_INPUT_OK;
 }
 int HV_INPUT_CALL ReleaseSlot(HV_InputLiveHandle h,uint32_t slot,uint64_t target_generation,uint64_t seq){
  if(!h||slot>=3)return HV_INPUT_INVALID;std::lock_guard<std::mutex> lock(h->mutex);

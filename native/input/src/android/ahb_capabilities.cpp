@@ -12,19 +12,44 @@
 namespace hvinput {
 static IUnityGraphicsVulkan* unity_vulkan = nullptr;
 static IUnityGraphics* graphics=nullptr;
-static void UNITY_INTERFACE_API GraphicsEvent(UnityGfxDeviceEventType event){if(event==kUnityGfxDeviceEventInitialize&&graphics&&graphics->GetRenderer()==kUnityGfxRendererVulkan&&InputForeignEnabled())ConfigureInputRenderEvent();}
+static LiveDeviceLifetime live_device_lifetime;
+LiveDeviceLifetime& InputLiveDeviceLifetime(){return live_device_lifetime;}
 static PFN_vkGetInstanceProcAddr loader = nullptr;
 static PFN_vkCreateDevice create_device = nullptr;
 static PFN_vkCreateInstance create_instance = nullptr;
 static uint32_t instance_api = VK_API_VERSION_1_0;
 static VkInstance captured_instance=VK_NULL_HANDLE;
 static std::mutex device_mutex;
+static VkInstance proven_instance = VK_NULL_HANDLE;
 static VkDevice proven_device = VK_NULL_HANDLE;
 static VkPhysicalDevice proven_physical = VK_NULL_HANDLE;
 static bool enabled_ycbcr = false, enabled_sync = false, enabled_ahb = false;
 static bool enabled_foreign=false;
 IUnityGraphicsVulkan* InputUnityVulkan(){return unity_vulkan;}
-bool InputForeignEnabled(){std::lock_guard<std::mutex> lock(device_mutex);return proven_device&&unity_vulkan&&proven_device==unity_vulkan->Instance().device&&enabled_foreign;}
+bool InputForeignEnabled(const UnityVulkanInstance& instance){
+  std::lock_guard<std::mutex> lock(device_mutex);
+  return proven_device && proven_device==instance.device && proven_instance==instance.instance &&
+         proven_physical==instance.physicalDevice && enabled_foreign;
+}
+bool InputForeignEnabled(){return unity_vulkan && InputForeignEnabled(unity_vulkan->Instance());}
+static void UNITY_INTERFACE_API GraphicsEvent(UnityGfxDeviceEventType event){
+  if(event==kUnityGfxDeviceEventShutdown || event==kUnityGfxDeviceEventBeforeReset){
+    live_device_lifetime.Invalidate();
+    if(event==kUnityGfxDeviceEventShutdown){
+      std::lock_guard<std::mutex> lock(device_mutex);
+      proven_instance=VK_NULL_HANDLE;
+      proven_device=VK_NULL_HANDLE;
+      proven_physical=VK_NULL_HANDLE;
+      enabled_ycbcr=enabled_sync=enabled_ahb=enabled_foreign=false;
+    }
+    return;
+  }
+  if((event==kUnityGfxDeviceEventInitialize || event==kUnityGfxDeviceEventAfterReset) &&
+     graphics && graphics->GetRenderer()==kUnityGfxRendererVulkan){
+    live_device_lifetime.Activate();
+    if(InputForeignEnabled())ConfigureInputRenderEvent();
+  }
+}
 static bool HasExtension(const VkDeviceCreateInfo* p, const char* name) {
   for (uint32_t i=0; i<p->enabledExtensionCount; ++i)
     if (!std::strcmp(p->ppEnabledExtensionNames[i], name)) return true;
@@ -90,6 +115,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL CaptureCreateDevice(VkPhysicalDevice physi
   const VkResult result = create_device(physical, info, allocation, device);
   if (result == VK_SUCCESS) {
     std::lock_guard<std::mutex> lock(device_mutex);
+    proven_instance=captured_instance;
     proven_device = *device; proven_physical=physical; enabled_ycbcr = ycbcr;
     enabled_sync = HasExtension(info, VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME);
     enabled_ahb = HasExtension(info, VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME);
@@ -173,7 +199,7 @@ extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnit
   if(hvinput::graphics)hvinput::graphics->RegisterDeviceEventCallback(hvinput::GraphicsEvent);
   __android_log_print(ANDROID_LOG_INFO,"HVInputGate","input_only_preinit_hook=%d",hooked);
 }
-extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload() { hvinput::StopCapabilityProbe(); hvinput::ShutdownInputColor(); if(hvinput::graphics)hvinput::graphics->UnregisterDeviceEventCallback(hvinput::GraphicsEvent); }
+extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload() { hvinput::InputLiveDeviceLifetime().Invalidate(); hvinput::StopCapabilityProbe(); hvinput::ShutdownInputColor(); if(hvinput::graphics)hvinput::graphics->UnregisterDeviceEventCallback(hvinput::GraphicsEvent); }
 extern "C" __attribute__((visibility("default"))) void HV_Input_StartCapabilityProbe(const char* url) {
   try { hvinput::StartCapabilityProbe(url); }
   catch(...) { __android_log_print(ANDROID_LOG_ERROR,"HVInputGate","capability_result=FAIL probe_initialization_exception"); }

@@ -2,12 +2,15 @@
 #include "android_input_gpu.h"
 #include "humanvision_input.h"
 #include "input_color_contract.h"
+#include "live_device_lifetime.h"
 #include "IUnityGraphics.h"
 #include "IUnityGraphicsVulkan.h"
 #include <memory>
 namespace hvinput {
 IUnityGraphicsVulkan* InputUnityVulkan();
 bool InputForeignEnabled();
+bool InputForeignEnabled(const UnityVulkanInstance& instance);
+LiveDeviceLifetime& InputLiveDeviceLifetime();
 void ConfigureInputRenderEvent();
 bool ColorProbeEnabled();
 bool QueueColorImage(AndroidDecodedImage&);

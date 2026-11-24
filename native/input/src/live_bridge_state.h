@@ -11,12 +11,14 @@ class LiveBridgeState {
  std::array<Identity,3> identities_{};
  uint64_t generation_{},target_{};
  int writing_=-1;
- bool bound_{},retiring_{},closing_{};
+ bool bound_{},retiring_{},closing_{},submission_pending_{};
  unsigned queued_{};
 public:
  bool Bind(uint64_t target){if(!target||closing_||!TargetsRetired())return false;target_=target;bound_=true;retiring_=false;return true;}
  bool QueueEvent(){if(queued_)return false;++queued_;return true;}
  void EventFinished(){if(queued_)--queued_;}
+ void QueueSubmission(){submission_pending_=true;}
+ void SubmissionFinished(){submission_pending_=false;}
  void AdmitGeneration(uint64_t generation){if(generation>generation_){generation_=generation;slots_.Invalidate();}}
  int Begin(uint64_t generation,uint64_t sequence){
   if(!bound_||retiring_||closing_||writing_>=0||!generation||!sequence||generation<generation_)return -1;
@@ -34,9 +36,9 @@ public:
  uint64_t Sequence(unsigned slot)const{return slot<3?identities_[slot].sequence:0;}
  uint64_t Target()const{return target_;}
  bool Writing()const{return writing_>=0;}
- bool CanBegin()const{return bound_&&!retiring_&&!closing_&&writing_<0&&slots_.CanBegin();}
+ bool CanBegin()const{return bound_&&!retiring_&&!closing_&&!submission_pending_&&writing_<0&&slots_.CanBegin();}
  void RetireTargets(){retiring_=true;bound_=false;slots_.Invalidate();}
- bool TargetsRetired()const{return writing_<0&&slots_.Retired();}
+ bool TargetsRetired()const{return !submission_pending_&&writing_<0&&slots_.Retired();}
  void Close(){closing_=true;RetireTargets();}
  bool Closing()const{return closing_;}
  bool Retiring()const{return retiring_;}

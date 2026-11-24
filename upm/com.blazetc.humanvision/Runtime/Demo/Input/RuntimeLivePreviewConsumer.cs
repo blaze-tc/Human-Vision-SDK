@@ -32,7 +32,9 @@ namespace HumanVision.Demo
         public int BindTargets(IntPtr[] textures, uint width, uint height, ulong generation) {
             var value = new RuntimeLiveTargetsNative { Size = (uint)Marshal.SizeOf<RuntimeLiveTargetsNative>(), Version = 1,
                 Texture0 = textures[0], Texture1 = textures[1], Texture2 = textures[2], Width = width, Height = height, TargetGeneration = generation };
-            return api.BindTargets(consumer, ref value);
+            int status = api.BindTargets(consumer, ref value);
+            Ready(status);
+            return status;
         }
         public bool TryPoll(ulong after, out NativeLiveTextureFrame frame) {
             frame = default; var value = new RuntimeLiveFrameNative { Size = (uint)Marshal.SizeOf<RuntimeLiveFrameNative>(), Version = 1 };

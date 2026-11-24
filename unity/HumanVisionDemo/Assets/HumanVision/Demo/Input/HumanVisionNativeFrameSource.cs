@@ -54,7 +54,8 @@ namespace HumanVision.Demo
             realtime = true;
             liveConfig = new RuntimeLiveConfigNative { Size = (uint)Marshal.SizeOf<RuntimeLiveConfigNative>(), Version = 1,
                 MaxWidth = (uint)requestedWidth, MaxHeight = (uint)requestedHeight, MirrorX = mirrored ? 1u : 0u, Enabled = preview ? 1u : 0u };
-            liveAttachPending = true; TryAttachLive();
+            liveAttachPending = preview;
+            TryAttachLive();
         }
         private void TryAttachLive()
         {
@@ -100,7 +101,7 @@ namespace HumanVision.Demo
                 return state == 2 && frames > 0 ? InputSourceState.Streaming : InputSourceState.Opening;
             }
         }
-        public string LastError => PreviewError.Length > 0 ? PreviewError : State == InputSourceState.Error ? reader.Diagnostics : "";
+        public string LastError => State == InputSourceState.Error ? reader?.Diagnostics ?? "" : "";
         public Texture CurrentTexture => realtime ? live?.CurrentTexture : !closed && latestSlot >= 0 ? slots[latestSlot].Texture : null;
         public void Open(HumanVisionSourceSettings settings)
         {
