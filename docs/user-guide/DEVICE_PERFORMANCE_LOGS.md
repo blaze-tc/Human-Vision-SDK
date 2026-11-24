@@ -1,5 +1,7 @@
 # HumanVisionSettingsDemo 实机性能日志
 
+SDK 0.4.1 的 Runtime Prefab Acceptance 另有「一键采集日志」，用于生成当前状态和近期采样的 JSONL 快照。按该 Demo 的提示读取路径，设备温度缺测显示「不可读」。启动阶段退出时，先在 Android 设备外启动 logcat。以下是 Settings 场景的持续会话采集说明。[Runtime Prefab 日志操作](UNITY_RUNTIME_PREFAB.md#连接输入和观察场景)
+
 此功能用于 `Human-Vision-SDK-Test` 的 `HumanVisionSettingsDemo`。它是测试项目的诊断组件，SDK 的业务接入 API 与初始化方法保持原有用法。
 
 ## 获取日志

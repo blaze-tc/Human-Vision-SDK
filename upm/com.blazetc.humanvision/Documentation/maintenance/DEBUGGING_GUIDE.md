@@ -1,5 +1,23 @@
 # Symptom-first debugging
 
+## Android startup and preview
+
+For SDK 0.4.1 / Input 0.1.1, check `PreviewError`, input state and SDK `LastError`
+separately. Confirm installed native library identity against the APK and verify
+actual backend in the running session. A cold-start fault requires startup logcat,
+the crash buffer, any accessible tombstone and the matching ELF BuildIds.
+
+For RK3588, compare three cold starts using the same RTSP stream, Neural/Low and
+matching local resources. Run independent input with preview on, independent
+input with preview off, then compatible input with preview on. The preview-off
+case skips Unity's Android Vulkan live bridge. Capture source progress, first
+texture where enabled, valid skeleton results and restart behavior. [Startup probe instructions](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/tools/test/NPU_STARTUP_DIAGNOSTICS.md)
+
+The Runtime Prefab Acceptance Demo can capture a JSONL snapshot while waiting
+for input, on error or during recognition. Record native decode, live publication,
+Unity texture updates, completed inference and valid skeleton delivery separately.
+Device sensor availability is reported with each reading. [Demo instructions](../user-guide/UNITY_RUNTIME_PREFAB.md)
+
 ## OnePlus performance follow-up
 
 See [the measured CPU/Vulkan report](../reports/2026-10-09-oneplus-performance.md).
@@ -49,8 +67,8 @@ Do not interpret missing GPU/NPU metrics as idle, GPU render-frame time as utili
 or the difference between mismatched SDK/native frame samples as CPU overhead.
 
 For the user-approved RK3588 acceleration experiment, start at
-[RKNN offline/device tools](../../tools/models/rknn/README.md) and the
-[verified offline report](../reports/2026-10-09-rknn-offline-validation.md).
+[RKNN offline/device tools](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/tools/models/rknn/README.md) and the
+[verified offline report](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/docs/reports/2026-10-09-rknn-offline-validation.md).
 The fixed non-quantized model passed three PC simulator controls; INT8 was rejected.
 The standalone device probe records input delivery, run call, output wait, release,
 runtime/driver and raw-output errors with no CPU fallback. Repeated static model runs

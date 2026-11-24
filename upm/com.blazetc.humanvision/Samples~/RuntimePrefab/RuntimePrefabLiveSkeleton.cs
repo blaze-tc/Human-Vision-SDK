@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace HumanVisionAcceptance
 {
-    // Reads valid SDK 2D coordinates in Update; draws ordinary points and lines.
+    // Writes only the sampled points and lines onto the visible preview.
     internal sealed class RuntimePrefabLiveSkeleton
     {
         private const int Capacity = 8;
@@ -46,56 +46,21 @@ namespace HumanVisionAcceptance
             }
         }
 
+        internal bool HasBody(int slot) => visible[slot];
+
+        internal bool TryGetPoint(int slot, int joint, out Vector2 point)
+        {
+            bool tracked = visible[slot] && valid[slot, joint];
+            point = tracked ? points[slot, joint] : default;
+            return tracked;
+        }
+
         internal void Clear() => ClearGeometry();
 
         private void ClearGeometry()
         {
             VisibleBodies = VisibleJoints = VisibleBones = 0;
             System.Array.Clear(visible, 0, visible.Length);
-        }
-
-        internal void Draw(Rect image, float strokeWidth)
-        {
-            if (Event.current.type != EventType.Repaint || VisibleJoints == 0) return;
-            Texture2D pixel = Texture2D.whiteTexture;
-            Color previousColor = GUI.color;
-            Matrix4x4 previousMatrix = GUI.matrix;
-            try {
-                for (int slot = 0; slot < Capacity; slot++) {
-                    if (!visible[slot]) continue;
-                    GUI.color = RuntimePrefabRedrawRig.GetSlotColor(slot);
-                    for (int joint = 0; joint < JointCount; joint++) {
-                        if (!valid[slot, joint]) continue;
-                        int parent = Parents[joint];
-                        if (parent < 0 || !valid[slot, parent]) continue;
-                        Vector2 a = ToImage(points[slot, parent], image);
-                        Vector2 delta = ToImage(points[slot, joint], image) - a;
-                        float length = delta.magnitude;
-                        if (length < .01f) continue;
-
-                        // A unit axis along the bone and another perpendicular to it.
-                        Vector2 direction = delta / length;
-                        var bone = Matrix4x4.identity;
-                        bone.m00 = bone.m11 = direction.x;
-                        bone.m10 = direction.y;
-                        bone.m01 = -direction.y;
-                        bone.m03 = a.x;
-                        bone.m13 = a.y;
-                        GUI.matrix = previousMatrix * bone;
-                        GUI.DrawTexture(new Rect(0, -strokeWidth * .5f, length, strokeWidth), pixel);
-                    }
-                    GUI.matrix = previousMatrix;
-                    float radius = strokeWidth * .85f;
-                    for (int joint = 0; joint < JointCount; joint++) {
-                        if (!valid[slot, joint]) continue;
-                        Vector2 p = ToImage(points[slot, joint], image);
-                        GUI.DrawTexture(new Rect(p.x - radius, p.y - radius, radius * 2, radius * 2), pixel);
-                    }
-                }
-            } finally {
-                GUI.color = previousColor;
-                GUI.matrix = previousMatrix;
-            }
         }
 
         private static int[] ReadParents()
@@ -106,9 +71,6 @@ namespace HumanVisionAcceptance
                     ? (int)parent : -1;
             return parents;
         }
-
-        private static Vector2 ToImage(Vector2 point, Rect image) =>
-            new Vector2(image.x + point.x * image.width, image.y + point.y * image.height);
 
         internal static Rect Fit(Rect box, int width, int height, bool fill = false)
         {

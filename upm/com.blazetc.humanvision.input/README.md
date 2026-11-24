@@ -1,10 +1,10 @@
-# Human Vision Input 0.1.0
+# Human Vision Input 0.1.1
 
 Independent Camera, Video and H.264/TCP RTSP frame sources and preview. This package
 contains no models and has no SDK inference dependency. Unity 2021.3+, Windows x64
 and Android ARM64/API 26+ are supported by the bundled runtime. Android RTSP uses
 MediaCodec/AHardwareBuffer/Vulkan and waits for complete native/copy retirement
-before deferred reopening. Errors remain actionable; no silent CPU fallback.
+before deferred reopening. The live preview bridge validates the Unity Vulkan instance, device, loader and target image, and retires resources by device generation. Errors remain actionable; no silent CPU fallback.
 
 A paired zero RTSP width/height preserves the decoded visible source resolution;
 a partially zero pair is rejected. Positive width/height retain explicit local
@@ -26,18 +26,18 @@ changing this scheduling does not guarantee a camera or device frame rate.
 Install Input first using:
 
 ```
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.1
 ```
 
 For body skeletons explicitly add the SDK URL:
 
 ```
-https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0
+https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.1
 ```
 
-For offline preview, import HumanVisionInput-0.1.0.unitypackage into a
+For offline preview, import HumanVisionInput-0.1.1.unitypackage into a
 clean project. Wait for compilation, then import
-HumanVisionSDK-0.4.0.unitypackage if you need body skeletons.
+HumanVisionSDK-0.4.1.unitypackage if you need body skeletons.
 Choose Git UPM or the offline unitypackages; do not install both.
 For Git UPM, import the InputPreview sample in Package Manager first,
 then build preview with HumanVision > Input > Create standalone preview. Choose your own

@@ -1,3 +1,12 @@
+## 2026-11-24 SDK 0.4.1 / Input 0.1.1 正式版
+
+本版合入 Android Vulkan 原图桥启动保护和场景直连 RuntimePrefabAcceptance。公共 Android SDK 保留 RKNN-OFF，Input 原生库重新按 ARM64/API 26 构建；现场 NPU 启动对照使用单独交付的匹配本地 SDK。见[本版说明](reports/2026-11-24-v041-release.md)和[跨栏王升级提示词](integrations/HURDLE_KING_SDK_041_UPGRADE_PROMPT.md)。
+
+- `pwsh -NoProfile -File tools/package/build_input_native.ps1 -Platform Android -ApiLevel 26 -RunTests` 通过，Input 主机 74/74。原 56 个 `HV_Input_*` 导出和 2 个 Unity 插件入口保持一致，其余 16 个公共原生库逐字节沿用 0.4.0。`ctest --test-dir build/windows-test -C Release --output-on-failure -j 4` 578/578。
+- 组件目录、架构边界、公开接口、Input 独立性与发布快照单元 15/15 通过。Android Input 实测 APK 中的 SHA-256 与此次发布库一致。RK3588 宿主启动、NPU 实际后端和长时性能待目标机验收。
+
+- Unity 2021.3.45f1 新项目实际导入 0.4.1/0.1.1 tgz 和 unitypackage，校验 17 个原生库、模型初始化和 Sample 场景引用。Unity EditMode 定向 32/32，`py -3 tools/test/run_runtime_prefab_live_skeleton_contract.py --source upm/com.blazetc.humanvision/Samples~/RuntimePrefab/RuntimePrefabLiveSkeleton.cs --output out/v041-public-sample-live-skeleton-contract` 15/15。离线 Sample 实际 Play Mode 输入弹窗、两个标签、取消和 JSONL 导出通过。
+
 ## 2026-11-24 RuntimePrefabAcceptance 场景直连和手动 RTSP
 
 保留独立验收工程中的既有 `HumanVisionRuntime`。UGUI 界面、两个弹窗、EventSystem、骨骼相机和 8 组骨骼点线已保存在场景中，控制器以 Inspector 序列化引用按职责分组。编辑器装配工具复用已有 Runtime 实例，并拒绝包含多个 RuntimeView 的场景。普通运行只绑定事件、驱动已引用的控件和更新骨骼形状。

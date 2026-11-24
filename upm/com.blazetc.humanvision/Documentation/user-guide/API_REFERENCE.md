@@ -1,4 +1,4 @@
-> 当前分支新增 ScriptableObject 默认配置、代码指定输入源及统一查询 API，请先阅读 [当前接入说明](SDK_CONFIGURATION.md)。下文含已发布版本和兼容 API 的历史说明。
+> SDK 0.4.1 的总控配置、输入与统一查询 API 见 [当前接入说明](SDK_CONFIGURATION.md)。普通场景可在 `Update` 直接查询有效关节。Android 原图桥故障通过 `PreviewError` 读取。[Runtime Prefab 与取点](UNITY_RUNTIME_PREFAB.md)
 
 # 推荐入口 HumanVisionSdk
 
@@ -48,7 +48,7 @@
 
 ## 2. Start初始化与骨骼读取示例
 
-先看[代码入门引导](FIRST_INSTALL.md)：在一个空物体上挂[SdkBasicUsage.cs](examples/SdkBasicUsage.cs.txt)，无需配置Canvas/预览/Overlay。它使用当前包API，自动关联所需组件。
+先看[代码入门引导](FIRST_INSTALL.md)：在一个空物体上挂[SdkBasicUsage.cs](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/docs/user-guide/examples/SdkBasicUsage.cs)，无需配置Canvas/预览/Overlay。它使用当前包API，自动关联所需组件。
 
 | 代码所在位置 | 调用与含义 | 引导片段 |
 | --- | --- | --- |
@@ -62,7 +62,7 @@
 
 ## 3. 运行数据与初始化配置
 
-来源：[HumanVisionRuntimeData](../../upm/com.blazetc.humanvision/Runtime/HumanVisionRuntimeData.cs.txt)、[HumanVisionConfig](../../upm/com.blazetc.humanvision/Runtime/HumanVisionConfig.cs.txt)。
+来源：[HumanVisionRuntimeData](../../Runtime/HumanVisionRuntimeData.cs)、[HumanVisionConfig](../../Runtime/HumanVisionConfig.cs)。
 
 ### 3.1 `HumanVisionRuntimeData.Prepare(Action<string> ready, Action<string> failed)`
 
@@ -91,7 +91,7 @@
 
 ## 4. `HumanVisionManager`逐项说明
 
-来源：[HumanVisionManager.cs](../../upm/com.blazetc.humanvision/Runtime/HumanVisionManager.cs.txt)。新接入由自己的启动脚本持有Manager并管理生命周期，示例见第2节。
+来源：[HumanVisionManager.cs](../../Runtime/HumanVisionManager.cs)。新接入由自己的启动脚本持有Manager并管理生命周期，示例见第2节。
 
 ### 4.1 初始化、提交、容量与关闭
 
@@ -163,7 +163,7 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 | `TryRetireAndroidGpuSourceCopies(out HumanVisionAndroidSourceRetirement retirement)` | bool及退休对象 | false表示尚不能取得退休token，应以后重试；true可返回退休对象，仍须主线程轮询`retirement.IsComplete`才算完成。无Runtime/无活跃租约时true且对象可null；错误记录并重新抛异常 |
 | `SubmitAndroidGpuFrame(RenderTexture texture, int rotationDegrees, bool mirrored, long frameId, long timestampUs)` | bool | GPU帧提交是否接受；metadata描述输入方向；错误可能抛异常；不等于新骨骼完成 |
 
-这些接口要求正确路线/纹理/时钟。统一源已应用旋转/镜像的帧不能再变换一遍。更底层内容见[Android Runtime代码](../../upm/com.blazetc.humanvision/Runtime/Android)。
+这些接口要求正确路线/纹理/时钟。统一源已应用旋转/镜像的帧不能再变换一遍。更底层内容见[Android Runtime代码](../../Runtime/Android)。
 
 `HumanVisionAndroidSourceRetirement.IsComplete`：主线程轮询该旧源GPU拷贝是否完成；未完成false，完成true并释放托管纹理强引用；轮询失败抛HumanVisionException，不能据此销毁资源。`HumanVisionException`是SDK原生错误异常类型；Manager多数Try方法转成false/LastError，但上述GPU方法可能重新抛出，调用者需处理。
 
@@ -171,7 +171,7 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 
 ## 5. 身体、关节点与统计数据
 
-来源：[HumanVisionBody](../../upm/com.blazetc.humanvision/Runtime/HumanVisionBody.cs.txt)、[CanonicalJoint](../../upm/com.blazetc.humanvision/Runtime/HumanVisionCanonicalJoint.cs.txt)、[Stats](../../upm/com.blazetc.humanvision/Runtime/HumanVisionStats.cs.txt)。这些是只读结果，不能由游戏写入伪造观察。
+来源：[HumanVisionBody](../../Runtime/HumanVisionBody.cs)、[CanonicalJoint](../../Runtime/HumanVisionCanonicalJoint.cs)、[Stats](../../Runtime/HumanVisionStats.cs)。这些是只读结果，不能由游戏写入伪造观察。
 
 ### 5.1 `HumanVisionBody`每项字段
 
@@ -242,7 +242,7 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 
 ## 6. 统一输入包API
 
-来源：[IHumanVisionFrameSource](../../upm/com.blazetc.humanvision.input/Runtime/IHumanVisionFrameSource.cs.txt)、[SourceSettings](../../upm/com.blazetc.humanvision.input/Runtime/HumanVisionSourceSettings.cs.txt)、[TextureFrame](../../upm/com.blazetc.humanvision.input/Runtime/HumanVisionTextureFrame.cs.txt)。
+来源：[IHumanVisionFrameSource](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/upm/com.blazetc.humanvision.input/Runtime/IHumanVisionFrameSource.cs)、[SourceSettings](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/upm/com.blazetc.humanvision.input/Runtime/HumanVisionSourceSettings.cs)、[TextureFrame](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/upm/com.blazetc.humanvision.input/Runtime/HumanVisionTextureFrame.cs)。
 
 ### 6.1 输入实现和状态
 
@@ -310,7 +310,7 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 
 ### 6.5 自定义源的资源工具
 
-来源：[SourceRetirement.cs](../../upm/com.blazetc.humanvision.input/Runtime/SourceRetirement.cs.txt)。标准组件/SDK桥已经使用，普通游戏无需自己建一套。
+来源：[SourceRetirement.cs](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/upm/com.blazetc.humanvision.input/Runtime/SourceRetirement.cs)。标准组件/SDK桥已经使用，普通游戏无需自己建一套。
 
 | API | 参数/返回和含义 |
 | --- | --- |
@@ -334,11 +334,11 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 
 `InputMonotonicClock.OriginStopwatchTicks`是本运行域初始化原点，`StopwatchFrequency`是计时器频率，`Domain`固定InputMonotonic。进程/Domain Reload会重建原点，不能比较跨运行保存的时间戳。
 
-输入预览组件`FramePreview.Bind(IHumanVisionFrameSource value)`关联RawImage与借用源，`Refresh()`更新当前纹理；LateUpdate自动刷新，OnDisable清空显示纹理。它不提交骨骼推理，输入预览独立成功不表示识别成功。[源码](../../upm/com.blazetc.humanvision.input/Runtime/FramePreview.cs.txt)
+输入预览组件`FramePreview.Bind(IHumanVisionFrameSource value)`关联RawImage与借用源，`Refresh()`更新当前纹理；LateUpdate自动刷新，OnDisable清空显示纹理。它不提交骨骼推理，输入预览独立成功不表示识别成功。[源码](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/upm/com.blazetc.humanvision.input/Runtime/FramePreview.cs)
 
 ## 7. 提交与显示桥 `VideoPlayerFrameSource`
 
-来源：[VideoPlayerFrameSource.cs](../../upm/com.blazetc.humanvision/Runtime/Demo/VideoPlayerFrameSource.cs.txt)。名称保留历史用法，它当前也桥接统一Camera/Video/RTSP。
+来源：[VideoPlayerFrameSource.cs](../../Runtime/Demo/VideoPlayerFrameSource.cs)。名称保留历史用法，它当前也桥接统一Camera/Video/RTSP。
 
 | API | 参数/返回与含义 |
 | --- | --- |
@@ -375,7 +375,7 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 
 ### 7.1 `HumanVisionInputAdapter`高级接口
 
-来源：[HumanVisionInputAdapter.cs](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/HumanVisionInputAdapter.cs.txt)。`BindUnifiedSource`会自动创建并关联它；通常使用桥即可，不要重复创建第二套提交器。
+来源：[HumanVisionInputAdapter.cs](../../Runtime/Demo/Input/HumanVisionInputAdapter.cs)。`BindUnifiedSource`会自动创建并关联它；通常使用桥即可，不要重复创建第二套提交器。
 
 | API | 参数/返回与含义 |
 | --- | --- |
@@ -396,7 +396,7 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 
 ## 8. SDK设置、质量和实际合同API
 
-来源：[SharedRecognitionSettings](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/SharedRecognitionSettings.cs.txt)、[DemoModeSettings](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/DemoModeSettings.cs.txt)、[AnalysisContract](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/AnalysisContract.cs.txt)、[质量目录](../../upm/com.blazetc.humanvision/Runtime/HumanVisionModelInputQualities.cs.txt)。
+来源：[SharedRecognitionSettings](../../Runtime/Demo/Input/SharedRecognitionSettings.cs)、[DemoModeSettings](../../Runtime/Demo/Input/DemoModeSettings.cs)、[AnalysisContract](../../Runtime/Demo/Input/AnalysisContract.cs)、[质量目录](../../Runtime/HumanVisionModelInputQualities.cs)。
 
 | 类型/字段或方法 | 内容 |
 | --- | --- |
@@ -428,11 +428,11 @@ Runtime轮询也会检测独立手序号变化，因此启用真实手任务的�
 | `CatalogFilename/AdmittedRuntimeMode` | 常量model-input-qualities.json / android-ncnn-vulkan |
 | `ModelInputQualityChoice.Quality/ProfileId/Width/Height` | 选项等级、实际Profile和真实模型输入尺寸 |
 
-RTSP预设工具：[HumanVisionRtspComputerHost](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/HumanVisionRtspComputerHost.cs.txt)。`Configure(host)`登记电脑IP；`ComputerHost`读取；`Resolve(Scene scene,string manualHost)`优先手填，其次场景记录，无合法值抛异常；`IsPrivateIpv4(host)`检查标准私有LAN IPv4；`BuildUrl(host,bool camera)`返回端口554、camera=true为`/videodevice`，false为`/video-1.mp4`。主机字段不能含端口/路径；其他主机用完整RTSP URL。工具不会启动服务。
+RTSP预设工具：[HumanVisionRtspComputerHost](../../Runtime/Demo/Input/HumanVisionRtspComputerHost.cs)。`Configure(host)`登记电脑IP；`ComputerHost`读取；`Resolve(Scene scene,string manualHost)`优先手填，其次场景记录，无合法值抛异常；`IsPrivateIpv4(host)`检查标准私有LAN IPv4；`BuildUrl(host,bool camera)`返回端口554、camera=true为`/videodevice`，false为`/video-1.mp4`。主机字段不能含端口/路径；其他主机用完整RTSP URL。工具不会启动服务。
 
-统一Demo配置存储：[HumanVisionSettingsStore](../../upm/com.blazetc.humanvision/Runtime/Demo/Input/HumanVisionSettingsStore.cs.txt)。构造器`HumanVisionSettingsStore(string directory=null)`默认persistentDataPath/HumanVisionUnifiedInput；`LoadShared()`返回SharedRecognitionSettings，缺文件默认，非法配置抛异常；`SaveShared(value)`验证并保存shared.json；`LoadMode(InputKind kind)`读取该模式DemoModeSettings，缺文件默认；`SaveMode(kind,value)`验证并保存Video/WebCamera/Rtsp.json，使用临时文件及.bak。这是SDK统一示例的配置存储，应用可自行定义其他配置格式。
+统一Demo配置存储：[HumanVisionSettingsStore](../../Runtime/Demo/Input/HumanVisionSettingsStore.cs)。构造器`HumanVisionSettingsStore(string directory=null)`默认persistentDataPath/HumanVisionUnifiedInput；`LoadShared()`返回SharedRecognitionSettings，缺文件默认，非法配置抛异常；`SaveShared(value)`验证并保存shared.json；`LoadMode(InputKind kind)`读取该模式DemoModeSettings，缺文件默认；`SaveMode(kind,value)`验证并保存Video/WebCamera/Rtsp.json，使用临时文件及.bak。这是SDK统一示例的配置存储，应用可自行定义其他配置格式。
 
-Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc.humanvision/Runtime/Android/HumanVisionAndroidRuntimeSelection.cs.txt)。
+Android构建选择：[HumanVisionAndroidRuntimeSelection](../../Runtime/Android/HumanVisionAndroidRuntimeSelection.cs)。
 
 | API | 内容 |
 | --- | --- |
@@ -447,7 +447,7 @@ Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc
 
 ### 9.1 `HumanVisionOverlay`
 
-来源：[HumanVisionOverlay.cs](../../upm/com.blazetc.humanvision/Runtime/Demo/HumanVisionOverlay.cs.txt)。
+来源：[HumanVisionOverlay.cs](../../Runtime/Demo/HumanVisionOverlay.cs)。
 
 - `Configure(HumanVisionManager visionManager,VideoPlayerFrameSource videoFrameSource)`：关联结果和呈现桥。
 - `ConfigureStyle(float lineWidth,float pointDiameter)`：改变显示线宽和点直径；不改识别阈值/模型。
@@ -456,7 +456,7 @@ Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc
 
 ### 9.2 `HumanVisionCameraManager`
 
-命名空间`HumanVision`；来源：[CameraManager](../../upm/com.blazetc.humanvision/Runtime/Demo/Live/HumanVisionCameraManager.cs.txt)。旧接入/官方Demo可使用。使用第2节底层Manager例子时，不要同时再创建自动启动的相机门面，以免重复打开输入/会话。
+命名空间`HumanVision`；来源：[CameraManager](../../Runtime/Demo/Live/HumanVisionCameraManager.cs)。旧接入/官方Demo可使用。使用第2节底层Manager例子时，不要同时再创建自动启动的相机门面，以免重复打开输入/会话。
 
 | API | 参数/返回和含义 |
 | --- | --- |
@@ -492,11 +492,11 @@ Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc
 
 ### 9.3 对象骨骼渲染组件
 
-[`HumanVisionSkeletonOverlayer`](../../upm/com.blazetc.humanvision/Runtime/Demo/Live/HumanVisionSkeletonOverlayer.cs.txt)用于官方对象点/LineRenderer显示：`manager/preview/foregroundCamera`绑定门面、预览和前景相机；`renderLayer`是对象层（其他游戏相机也要排除该层）；`jointPrefab/linePrefab`为可选对象模板；`drawSkeleton/drawJoints/drawBones`控制显示；`lineWidthPixels/jointDiameterPixels`调大小；`planeDistance`定义显示平面位置。类默认9/27，统一设置的4.5/13.5会覆盖实际样式。它把图像点映射到显示平面，不增加3D深度。第2节使用UGUI Overlay；官方统一示例协调对象骨骼与Overlay，避免重复绘制。叠加绘制组件不会增强识别。
+[`HumanVisionSkeletonOverlayer`](../../Runtime/Demo/Live/HumanVisionSkeletonOverlayer.cs)用于官方对象点/LineRenderer显示：`manager/preview/foregroundCamera`绑定门面、预览和前景相机；`renderLayer`是对象层（其他游戏相机也要排除该层）；`jointPrefab/linePrefab`为可选对象模板；`drawSkeleton/drawJoints/drawBones`控制显示；`lineWidthPixels/jointDiameterPixels`调大小；`planeDistance`定义显示平面位置。类默认9/27，统一设置的4.5/13.5会覆盖实际样式。它把图像点映射到显示平面，不增加3D深度。第2节使用UGUI Overlay；官方统一示例协调对象骨骼与Overlay，避免重复绘制。叠加绘制组件不会增强识别。
 
 ### 9.4 举手示例组件
 
-[`HumanVisionRaisedHandDetector`](../../upm/com.blazetc.humanvision/Runtime/Demo/Live/HumanVisionRaisedHandDetector.cs.txt)通过**腕与肩的高度**判断举手，不需要真实Handtip/Thumb，也不能证明手指识别已启用。
+[`HumanVisionRaisedHandDetector`](../../Runtime/Demo/Live/HumanVisionRaisedHandDetector.cs)通过**腕与肩的高度**判断举手，不需要真实Handtip/Thumb，也不能证明手指识别已启用。
 
 | 字段/属性 | 内容 |
 | --- | --- |
@@ -511,7 +511,7 @@ Android构建选择：[HumanVisionAndroidRuntimeSelection](../../upm/com.blazetc
 
 ## 10. C ABI调用与结果码
 
-Unity应用优先用上述托管API。原生应用/自建封装需包含[humanvision_types.h](../../native/include/humanvision/humanvision_types.h)、[humanvision_c.h](../../native/include/humanvision/humanvision_c.h)、[humanvision_v2.h](../../native/include/humanvision/humanvision_v2.h)。这些头文件包含精确参数类型和内存布局，不能把C++类/STL跨边界传递。
+Unity应用优先用上述托管API。原生应用/自建封装需包含[humanvision_types.h](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/native/include/humanvision/humanvision_types.h)、[humanvision_c.h](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/native/include/humanvision/humanvision_c.h)、[humanvision_v2.h](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/native/include/humanvision/humanvision_v2.h)。这些头文件包含精确参数类型和内存布局，不能把C++类/STL跨边界传递。
 
 ### 10.1 共同参数与返回
 
@@ -562,7 +562,7 @@ V1 Meta/Bodies/区域/手分别查询可能跨快照，需序号核对并处理�
 
 ### 10.4 独立Input C ABI与旧RTSP入口
 
-来源：[humanvision_input.h](../../native/input/include/humanvision_input.h)。Options的size/version按ABI1填写，含url、最大尺寸、打开超时、重连等待和TCP开关。
+来源：[humanvision_input.h](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/native/input/include/humanvision_input.h)。Options的size/version按ABI1填写，含url、最大尺寸、打开超时、重连等待和TCP开关。
 
 | API | 内容 |
 | --- | --- |
@@ -577,7 +577,7 @@ V1 Meta/Bodies/区域/手分别查询可能跨快照，需序号核对并处理�
 
 Input返回码独立：OK=0、NO_FRAME=1、BUSY=2、INVALID=-1、BUFFER_TOO_SMALL=-2、ERROR=-3，不能按HV_Result负值含义解释。帧info的received/decoded时间来自本地时钟，presentation是PTS并有pts_valid，源时间要按clock_domain/clock_id映射。
 
-旧可选[humanvision_rtsp.h](../../native/include/humanvision/humanvision_rtsp.h)：`HV_RtspOpen(url,width,height,tcp,timeout_ms)`返回句柄；`HV_RtspCopyFrame(handle,after_sequence,rgba,capacity,out width/height/sequence/timestamp_us)`返回1有帧、0无新帧、-1参数/缓冲错误；`HV_RtspState(handle)`1连接/2流式/3重连/4停止；`HV_RtspClose(handle)`立即使句柄失效并异步释放worker。它和新的Input_Close/Release生命周期不同。
+旧可选[humanvision_rtsp.h](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/native/include/humanvision/humanvision_rtsp.h)：`HV_RtspOpen(url,width,height,tcp,timeout_ms)`返回句柄；`HV_RtspCopyFrame(handle,after_sequence,rgba,capacity,out width/height/sequence/timestamp_us)`返回1有帧、0无新帧、-1参数/缓冲错误；`HV_RtspState(handle)`1连接/2流式/3重连/4停止；`HV_RtspClose(handle)`立即使句柄失效并异步释放worker。它和新的Input_Close/Release生命周期不同。
 
 ## 11. 扩展与维护接口入口
 
@@ -585,9 +585,9 @@ Input返回码独立：OK=0、NO_FRAME=1、BUSY=2、INVALID=-1、BUFFER_TOO_SMAL
 
 | 扩展 | 必须阅读 |
 | --- | --- |
-| 自定义Android GPU提交、资源池、copy ticket/fence | [humanvision_android_gpu.h](../../native/include/humanvision/humanvision_android_gpu.h)、[Android托管适配](../../upm/com.blazetc.humanvision/Runtime/Android) |
-| Android Input AHB/Vulkan来源 | [android_input_gpu.h](../../native/input/include/android_input_gpu.h)、[android_input_vulkan.h](../../native/input/include/android_input_vulkan.h) |
-| 流水线/后端插件 | [插件开发指南](../maintenance/PLUGIN_DEVELOPMENT.md)、[插件ABI1](../../runtime/include/humanvision_plugin.h)、[ABI2](../../runtime/include/humanvision_plugin_v2.h)、[ABI3](../../runtime/include/humanvision_plugin_v3.h) |
+| 自定义Android GPU提交、资源池、copy ticket/fence | [humanvision_android_gpu.h](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/native/include/humanvision/humanvision_android_gpu.h)、[Android托管适配](../../Runtime/Android) |
+| Android Input AHB/Vulkan来源 | [android_input_gpu.h](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/native/input/include/android_input_gpu.h)、[android_input_vulkan.h](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/native/input/include/android_input_vulkan.h) |
+| 流水线/后端插件 | [插件开发指南](../maintenance/PLUGIN_DEVELOPMENT.md)、[插件ABI1](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/runtime/include/humanvision_plugin.h)、[ABI2](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/runtime/include/humanvision_plugin_v2.h)、[ABI3](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/runtime/include/humanvision_plugin_v3.h) |
 | 模型、归一化与输出schema替换 | [MODEL_PACK_GUIDE](../maintenance/MODEL_PACK_GUIDE.md)、[PROFILE_GUIDE](../maintenance/PROFILE_GUIDE.md) |
 | 维护路径/兼容性 | [START_HERE](../maintenance/START_HERE.md)、[UNITY_STABLE_API](../maintenance/UNITY_STABLE_API.md) |
 

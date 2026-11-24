@@ -1,8 +1,8 @@
 # ScriptableObject 配置与统一 API
 
-适用版本：SDK **0.4.0** / Input **0.1.0**。Android CPU/NPU 完整资源安装见[本地部署](LOCAL_ANDROID_CPU_YOLO.md)；公共附件范围见[安装说明](../UPM_INSTALLATION.md)。
-这是当前版本的接入说明；历史 Release 的验证结果不自动适用于本次变更。
-下文原生独立运行能力自0.4.0提供，必须使用配套Input 0.1.0与SDK原生库。默认兼容输入模式保持原有选择，原生RTSP通过ExecutionPolicy显式启用。
+适用 SDK **0.4.1** / Input **0.1.1**。[本地 Android 完整资源部署](LOCAL_ANDROID_CPU_YOLO.md) · [公共包安装说明](../UPM_INSTALLATION.md)
+
+原生独立运行能力从 0.4.0 开始提供。0.4.1 使用配套的 Input 0.1.1 与 SDK 原生库，原生 RTSP 仍通过 `ExecutionPolicy` 显式启用。
 
 ## 最小接入
 
@@ -115,6 +115,7 @@ RGA 是后续可替换的图像服务优化，不是 NPU 获得独立输入和 w
 
 预览是独立的可丢帧消费者，不持有原生解码图像或分析槽；关闭预览不会停止识别。基础 Demo 的实时叠加将当前预览与同一来源身份下最新仍有效的骨骼显示在一起，两者可能来自不同帧；
 精确同帧模式则要求图像与骨骼的 source、generation、frame、epoch 全部匹配，二者须分别验收。
+在 0.4.1 的 Android 独立运行中，`PreviewEnabled=false` 跳过 Unity Vulkan 原图桥。启用预览后，分别检查 `PreviewError`、输入状态和 `LastError`，以区分预览、输入和 SDK 初始化故障。RK3588 启动对照见[本地诊断说明](LOCAL_ANDROID_CPU_YOLO.md#rk3588-启动排查)。
 原生分析缓冲未提供为 Unity 纹理时，`TryGetAnalysisInputFrame` 返回 false，使用 `SubmittedAnalysisInputSize` 查询实际分析尺寸；高清预览不会冒充分析图。
 精确同帧暂缺时不拿当前画面替代。停止请求不会在 Unity 线程等待原生退出；`StopSdk()` 等待真实退役。驱动未完成时保持资源所有权，
 可从 `RuntimeDiagnostics` 查看退役状态，不能强制卸载库或把超时当作完成。

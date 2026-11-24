@@ -1,31 +1,25 @@
 # Runtime Prefab Acceptance
 
-在 Package Manager 的 Human Vision SDK → Samples 选择导入 **Runtime Prefab Acceptance**，打开 `RuntimePrefabAcceptance.unity`。
-进入 Play Mode，填写设备可访问的 RTSP 地址后点击连接。也可给样例绑定 Startup Preset，
-或通过 **HumanVision → Create Default SDK Configuration** 配置项目启动输入。
-预设可选摄像头、RTSP 和视频。Android 使用 ARM64、IL2CPP、Vulkan，Internet Access 设为 Require。
-电脑本机回环地址只指向运行设备自身。
+配套 **Human Vision SDK 0.4.1 / Input 0.1.1**。在 Unity Package Manager 的 **Human Vision SDK → Samples** 导入 **Runtime Prefab Acceptance**，打开 `RuntimePrefabAcceptance.unity`。离线安装后，在 `Assets/HumanVision/Samples/RuntimePrefab` 打开同一场景。
 
-左侧显示最新输入和识别区域，连接前可核对布局。右侧也使用最新相机画面，采样骨骼作为独立图层叠加。
-关闭骨骼时视频继续更新。同一路输入短时缺少新采样时，骨骼最多保留 180 毫秒。识别到无人、切换输入或重连时立即清除。
-点右侧「全屏预览」可按输入比例查看最新画面。右上角可切换等比与填满裁切、开关骨骼或退出全屏。
-RuntimePrefabLiveSkeleton.cs 演示实时叠加，RuntimePrefabAcceptancePreview.cs 演示精确拍照。
-样例启动时优先读取绑定预设和项目默认资产。没有预设时可读取 Settings 已保存的区域，默认四个等宽区域。
-从「区域数量」下拉框选择 1–8 人。更改人数后，当前会话按所选人数生成等宽区域。
-左侧区域从 0 开始编号，空区域的取点返回 false，其他区域编号保持不变。
-HUD 显示游戏、输入、新识别帧率和 SDK 各阶段耗时。主动获取精确帧时也记录配对数据。
-CPU、GPU、NPU 和模型等级以平台及安装资源为准。NPU 需要 RK3588 双模式构建及本地补充包。
+## 连接和使用
 
-RTSP 连接启用同通道宇视码流探测，优先用 `1920×1080` 以内分辨率最高的 H.264 码流。
-仅有 4K 时仍可连接，Unity 预览等比限制在 `1920×1080` 以内。Android GPU/NPU 低档通过独立分路送入 `512×288`。
-左侧预览下方显示所选码流与解码或探测尺寸，状态行单独显示识别输入帧率。无预设时，Android 样例以 GPU 低档启动，安装匹配本地资源后可切换 RK3588 NPU。
+1. 进入 Play Mode，等模型和后端检查结束。点击左侧「输入连接」。
+2. **RTSP** 填写设备可访问的完整地址，按需选择 TCP、镜像和执行方式。Unity 或 Android 上的 `localhost` 指运行 Demo 的设备本身。独立执行仅用于 RTSP，具体能力以平台和安装资源为准。
+3. **本地相机** 刷新并选择 WebCamTexture 设备，设置请求宽高、帧率及镜像。Android 需要相机权限，实际采集规格由设备协商。
+4. 点击「应用并连接」。成功后在当前应用保存输入配置。取消弹窗会继续当前会话。分享诊断时使用导出的 JSONL，该应用保存的输入配置可能含相机地址和认证信息。
+5. 在左侧选择可用的 CPU、GPU、NPU 和模型档位。Android 构建使用 ARM64、IL2CPP、Vulkan，RTSP 构建将 Internet Access 设为 Require。RK3588 NPU 还需要配套的本地资源和双模式构建。以日志的实际后端、Profile 和输入状态为准。
 
-Android 分路模式下，实时预览来自相机分路，最高 `1920×1080`。低档识别继续使用独立的 `512×288` 输入。
-安装对应实验资源后可选「超低」，CPU、Vulkan GPU、RK3588 NPU 的模型尺寸均为 `384×224`。RTSP 分路继续传输 `512×288`，后端等比预处理。超低档未通过七人抬左腕测试，适用于实验对照。
-样例的 `PresentationMode` 平时为 `Disabled`。点击「拍照（精确同帧）」时临时切到 `MatchedColor`，等待当前输入代次的新鲜配对，将原色帧以 PNG 保存到应用的 `runtime-photos` 目录，再恢复实时模式。拍照需要图形栅栏和异步 GPU 回读支持。
-需要持续精确合成的界面可选择 `MatchedOverlay`。业务动作仍应消费新结果。
+「识别与显示设置」可编辑人数、区域、置信度、结果时效、预览及 Unity 限帧。「一键测试」重新连接当前输入，等取得有效结果后记录 180 秒。结束时导出 JSONL，分别记录解码、预览、推理和有效骨骼。
 
-「一键测试」连接当前输入并在首个有效推理结果后记录 180 秒。结果包括独立的解码、识别、有效骨骼和预览统计。
-「导出 JSONL / 复制路径」保存日志路径。Android 分路日志记录可用的 GPU 快照、归还和 CPU 回读数据。
+## 预览、点线与日志
 
-[完整接入说明](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.0-preview.17/docs/user-guide/UNITY_RUNTIME_PREFAB.md)
+右侧只显示一份颜色预览，并在同一区域叠加识别框和点线。普通 RTSP 颜色纹理使用所填码流的可见原尺寸。分析图像及被采样的有效骨骼独立更新。业务可在 `Update` 直接读取有效关节坐标，例如 `Sdk.TryGetJointNormalizedPosition`。
+
+「拍照（精确同帧）」临时启用 `MatchedColor`，等待同一来源的新鲜精确配对，保存匹配原色帧至应用目录下的 `runtime-photos`，再恢复实时模式。此功能需要图形栅栏和异步 GPU 回读。全屏支持等比显示和填满裁切。
+
+UGUI、弹窗、EventSystem、骨骼相机和 8 组场景点线在场景中预先配置。可在 Scene 中选中 `Live Skeleton Scene/Body N` 子节点的 GameObject 或 LineRenderer。场景的 `RuntimePrefabAcceptance` 控制器在 Inspector 引用一个 `HumanVisionRuntime` 和所有控件。
+
+「一键采集日志」导出脱敏 JSONL、显示实际路径并复制到剪贴板。Android 优先写入公共下载目录的 `HumanVisionLogs`，不可用时写入应用目录。日志底部显示系统可读取的 CPU、GPU、NPU 和电池温度，缺少相应读数时显示「不可读」。
+
+[完整接入说明](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/docs/user-guide/UNITY_RUNTIME_PREFAB.md)

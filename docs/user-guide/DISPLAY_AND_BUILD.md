@@ -1,6 +1,6 @@
 # 可选：示例界面、预览显示与平台构建
 
-适用：**新创建的 Unity 项目**，SDK `0.4.0-preview.6` / Input `0.1.0-preview.4`。以下操作以 Windows x64、Unity `2021.3.45f1`、英文编辑器菜单为例；包声明最低 Unity `2021.3`。[文档首页](README.md)
+适用 SDK **0.4.1** / Input **0.1.1**，以下以 Unity 2021.3.45f1 和英文编辑器菜单为例。最低支持 Unity 2021.3。[文档首页](README.md)
 
 本页是可选的显示与构建教程。学习初始化和骨骼读取请先看[代码入门引导](FIRST_INSTALL.md)；该引导只需一个空物体和一份脚本。本页的Canvas、RawImage、Overlay、示例界面和打包步骤用于后续需要显示画面或构建程序时查阅。
 
@@ -26,29 +26,29 @@ Input 负责获取图像，SDK 负责人体识别。必须先装 Input，再装 
 3. 粘贴 Input 地址，点击 **Add**，等待安装和编译结束：
 
    ```text
-   https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.0-preview.6
+   https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision.input#v0.4.1
    ```
 
-4. 确认列表出现 **Human Vision Input**，版本为 `0.1.0-preview.4`。
+4. 确认列表出现 **Human Vision Input**，版本为 `0.1.1`。
 5. 再点击 **+ → Add package from git URL…**，安装 SDK：
 
    ```text
-   https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.0-preview.6
+   https://github.com/blaze-tc/Human-Vision-SDK.git?path=/upm/com.blazetc.humanvision#v0.4.1
    ```
 
-6. 确认列表出现 **Human Vision SDK**，版本为 `0.4.0-preview.6`，Console 无编译错误。
-7. 检查 `Packages/manifest.json`：应有两个包的 Git 地址。`Packages/packages-lock.json` 中两个包的 `hash` 应为 `a201e0f44aa68a3f831f248b67400bd5fd7358c9`。锁文件由 Unity 生成，不要用手改它来掩盖安装失败。
+6. 确认列表出现 **Human Vision SDK**，版本为 `0.4.1`，Console 无编译错误。
+7. 检查 `Packages/manifest.json` 中两个包均固定为 `v0.4.1`。Unity 生成的 `Packages/packages-lock.json` 里两条 Git `hash` 应与发布附件 `source-snapshot.json` 中的 `source_commit` 一致。
 
 地址中的 `?path=` 指向同一仓库里的不同包；不要只粘贴仓库首页地址。需要联网下载包，但运行本地相机识别不需要从互联网下载模型。
 
 ### 2.2 离线方式：只选其中一种
 
-从[版本发布页](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.0-preview.6)下载成对资产，然后选择一种方式：
+下载配套的 Input 和 SDK 附件并按 `SHA256SUMS.txt` 校验。选择一种安装方式。[版本发布页](https://github.com/blaze-tc/Human-Vision-SDK/releases/tag/v0.4.1)
 
 | 方式 | 第一步：Input | 第二步：SDK | Unity 操作 |
 | --- | --- | --- | --- |
-| UPM 压缩包 | `com.blazetc.humanvision.input-0.1.0-preview.4.tgz` | `com.blazetc.humanvision-0.4.0-preview.6.tgz` | Package Manager → **+ → Add package from tarball…**，依次选择两个文件 |
-| Assets 导入包 | `HumanVisionInput-0.1.0-preview.4.unitypackage` | `HumanVisionSDK-0.4.0-preview.6.unitypackage` | **Assets → Import Package → Custom Package…**，先导入 Input，等编译结束，再导入 SDK；保留包内文件 |
+| UPM 压缩包 | `com.blazetc.humanvision.input-0.1.1.tgz` | `com.blazetc.humanvision-0.4.1.tgz` | Package Manager → **+ → Add package from tarball…**，依次选择两个文件 |
+| Assets 导入包 | `HumanVisionInput-0.1.1.unitypackage` | `HumanVisionSDK-0.4.1.unitypackage` | **Assets → Import Package → Custom Package…**，先导入 Input，等编译结束，再导入 SDK |
 
 Assets 导入方式的文件显示在 Assets 下，不会像 UPM 一样列为两个已安装包。不要同时安装 Git、tgz 和 unitypackage 的重复副本；重复程序集/同名类错误先检查重复安装。安装用户无需自行编译 C++。
 
@@ -64,53 +64,21 @@ Assets 导入方式的文件显示在 Assets 下，不会像 UPM 一样列为两
 
 首次运行还会通过 `HumanVisionRuntimeData.Prepare` 校验并提取这些资源到可读缓存目录。后面初始化必须使用它回调的 `RuntimeRoot`；不要直接写死自己电脑上的路径。
 
-## 4. 先运行 SDK 自带摄像头示例
+## 4. 用 Runtime Prefab Acceptance 验证摄像头
 
-这是第一次验证安装的最快路径；此处无需手动写脚本。
+1. 在 Package Manager 选 **Human Vision SDK → Samples → Runtime Prefab Acceptance → Import**。打开 `RuntimePrefabAcceptance.unity`。离线安装后，场景在 `Assets/HumanVision/Samples/RuntimePrefab`。
+2. 进入 Play Mode，打开「输入连接」的「本地相机」标签。刷新并选择设备，允许相机权限，按需要请求 1280×720、30 FPS。
+3. 点击「应用并连接」。观察右侧实际预览、骨骼和左侧有效骨骼 FPS。在 Windows 可先选择 CPU，在 Android 公共包选择 GPU，实际后端和档位以运行日志为准。
+4. 点击「一键采集日志」生成 JSONL 并获取路径。需要复测时，停止并重连，核对下次打开能读取上一次成功的输入。[场景操作与骨骼查询](UNITY_RUNTIME_PREFAB.md)
 
-1. 保存当前场景。
-2. 点击 **HumanVision → Create unified demos in dedicated folder**。
-3. 查看 `Assets/HumanVisionUnifiedDemo`，应生成：
+## 5. 切换 RTSP 或测试本地视频
 
-   - `HumanVisionCameraDemo.unity`
-   - `HumanVisionVideoDemo.unity`
-   - `HumanVisionRtspDemo.unity`
-   - `SharedSettingsPanel.prefab`
-
-4. 双击 `HumanVisionCameraDemo.unity`。Hierarchy 中有识别根对象和 Presentation Camera。界面会在 Play 后创建，因此编辑状态没有完整 UI 是正常的。
-5. 点击 **Play**。等待资源准备和识别初始化；首次运行比后续慢。
-6. 允许相机权限。打开设置面板；如果隐藏，点击 **Settings: show / hide**。
-7. **Camera device (empty = default)** 首次留空；采集请求填写宽 `1280`、高 `720`、FPS `30`。
-8. 将 **People (1–8)** 填为 `1`，关闭 Regions。Windows 首次选择 **PC backend: CPU**；点击 **Apply shared settings** 使识别配置生效。
-9. 点击 **Start / reconnect source**，打开或重开摄像头。
-10. 站到镜头前，让头、肩、手臂、髋、膝和脚尽量完整进入画面，光照充足。查看预览中的检测框、ID、骨骼连线和关节点。
-11. 确认输入状态为 `Streaming`、识别状态包含 `Recognition active`，并有实际身体结果；仅有视频或 `Streaming` 不代表骨骼成功。
-12. 点击 **Save all settings** 保存下次启动的配置。点击 **Stop source** 可停止输入，最后退出 Play。
-
-检查：预览中有人时能看到人体框/骨骼；无红色错误。初始没有身体时先确认人物可见和源已打开。当前发布配置关闭真实 Hand/Handtip/Thumb 推理，普通身体骨骼显示不能作为手指识别成功的依据。
-
-可选：UPM 用户可以在 Input 包的 **Samples → InputPreview → Import** 导入独立输入示例，或使用 **HumanVision → Input → Create standalone preview**。独立预览只验证采集/解码，不验证人体模型。
-
-## 5. 自带示例的设置、Video 和 RTSP
-
-| 设置 | 怎样操作 | 检查方法 |
-| --- | --- | --- |
-| 人数 | People 输入 1～8，点 Apply shared settings | 实际容量更新；人数是容量上限，不是检测人数 |
-| 区域 | 切换 Regions，点 Edit / finish numbered regions；拖框移动，拖右下角缩放 | 框不重叠；修改后 Apply；当前区域用于推理后分配 |
-| 镜像/相机尺寸 | 修改当前模式的 Mirror、Requested capture 字段，点 Start / reconnect source | 看实际输出尺寸/方向；请求值不保证设备支持 |
-| 骨骼线和点 | 修改 Skeleton line width / Joint diameter，点 Start / reconnect source | 外观改变；不影响模型识别能力 |
-| 模型质量 | Android 合格 NCNN 模式选择 Low/Medium/High 后点 Apply | 看实际 Profile 和输入合同；PC 合同固定，质量按钮可能不可用 |
-| 保存 | 点 Save all settings | 保存草稿供下次启动；保存不自动替代 Apply |
-
-**Video：**退出 Play，打开 `HumanVisionVideoDemo.unity` 后再 Play（或运行中点击顶部 Video）。在 **Video path** 输入设备可读取的视频位置；Windows 首次用本地 MP4 的绝对路径，如 `D:/Videos/person.mp4`，点击 **Start / reconnect source**。用全身人物清晰可见的视频测试。Windows 文件路径不能直接搬到手机；Android 应使用该设备可访问的文件/资源位置，并检查播放和识别状态。
-
-**RTSP：**打开 `HumanVisionRtspDemo.unity` 后 Play，填写可访问的 H.264/TCP RTSP URL，点击 **Start / reconnect source**。先确认服务器已经提供流。界面里的 **Computer camera / Computer video** 只是生成预设地址，不会自动在电脑上开启推流服务。手机访问电脑应填写同网段电脑 LAN 地址；手机的 `127.0.0.1` 指手机自身。
-
-三个示例使用共同的识别设置，各自保留独立源设置。默认配置存于 `Application.persistentDataPath/HumanVisionUnifiedInput`：`shared.json` 和 `Video.json`、`WebCamera.json`、`Rtsp.json`。具体 API 见[设置说明](API_REFERENCE.md#8-sdk设置质量和实际合同api)。
+- **RTSP** 在同一个验收场景打开「输入连接」的 RTSP 标签，填写设备可访问的完整码流地址。手机访问电脑时填写电脑的局域网地址，手机上的 `127.0.0.1` 指手机自身。核对实际执行路径、原图尺寸、Texture 更新 FPS 和有效骨骼 FPS。
+- **本地视频** 用 **SDK Settings** Sample 的 Video 模式，或在业务代码中用 `InitializeFromPreset(configuration, InputKind.Video, address)`。填写目标设备可读的文件或资源位置。[设置场景](SETTINGS_DEMO.md) · [初始化参数](SDK_CONFIGURATION.md)
 
 ## 6. 从空场景手动搭建自己的预览
 
-本节开始使用自己创建的 `FirstVision` 场景。下面的手写例子针对 **Windows x64 CPU**；Android 首次接入使用第 4 节统一示例和第 13 节构建配置。
+本节至第 11 节保留直接组装 Manager 和兼容输入桥的 Windows x64 CPU 例子。新业务优先使用 `HumanVisionSdk` 总控。Android 首次接入使用第 4 节验收场景和第 13 节构建配置。[总控 API](SDK_CONFIGURATION.md)
 
 ### 6.1 创建 Canvas 和预览区域
 
@@ -170,7 +138,7 @@ Overlay 跟随已经保持宽高比的 Preview，骨骼才能和图像对齐。�
    | Camera Device | 留空使用默认相机，或填写设备真实名称 |
 
 5. HumanVisionManager 的 **Initialize On Start** 保持关闭；本示例统一负责初始化。
-6. 保存场景。不要在同一场景再放自动启动的统一 Demo 根对象，否则可能重复打开相机。
+6. 在复制到项目的 `SdkCameraQuickStart.cs` 中，将历史 `windows-pc-cpu` 改为本版随包的 `windows-yolo-cpu-low`。确认场景只有一个负责采集和初始化的根对象，再保存。
 
 完整文件已包括引用、组件、错误处理、预览绑定和停止方法。核心初始化顺序如下（这是完整文件的解释片段，不需要另外创建第三个脚本）：
 
@@ -184,7 +152,7 @@ if (string.IsNullOrEmpty(root)) {
 }
 if (!Manager.TryInitialize(new HumanVisionConfig {
     RuntimeRoot = root,
-    Profile = "windows-pc-cpu",
+    Profile = "windows-yolo-cpu-low",
     MaxBodies = 1
 })) {
     Debug.LogError(Manager.LastError);
@@ -195,7 +163,7 @@ if (!Manager.TryInitialize(new HumanVisionConfig {
 
 `Prepare` 成功只表示运行资源准备好；`TryInitialize=true` 表示会话创建好；相机的 `Open` 是异步开始，后续状态为 `Streaming` 才表示有源画面。`BindUnifiedSource` 让桥自动提交新帧，Manager 自动轮询完成结果。应用不用在 Update 中阻塞等待推理。
 
-Windows 想测试 GPU 时，可在这个例子中将 Profile 改为 `windows-pc-directml`，重新进入 Play，检查实际 Profile 与错误。首次推荐先验证 CPU 路线。
+要测试 Windows DirectML，可将此例子的 Profile 改为 `windows-yolo-directml-low`。重新进入 Play，检查实际 Profile 和错误。
 
 ## 8. 骨骼调用代码：人数、身份和关节点
 
@@ -203,7 +171,7 @@ Windows 想测试 GPU 时，可在这个例子中将 Profile 改为 `windows-pc-
 2. 等编译结束，把脚本拖到**同一个 VisionRoot**。它会找到已有 Manager/Bridge，不需要手动绑定。
 3. Minimum Confidence 首次保持 `0.35`。
 4. 保存场景，点击 Play；站到镜头前。
-5. Console 应先出现 `SDK initialized: windows-pc-cpu`，然后输入状态与约每秒一次的骨骼日志，内容包括 sequence、frame、track、左腕有效性/置信度/位置、左膝有效性和观察时间。
+5. Console 应先出现 `SDK initialized: windows-yolo-cpu-low`，然后输出输入状态和骨骼日志，包含人物身份、左腕与左膝有效性和观察时间。
 6. 没有人时 `BodyCount=0` 是正常结果。左腕被遮挡时有效性可能为 false；不能把默认 `(0,0)` 当作观测坐标。
 
 关节点读取的核心如下，完整示例通过 `ResultUpdated` 回调执行，并去掉重复身体序号：
@@ -306,27 +274,27 @@ source.Close();
 1. 退出 Play，保存场景。
 2. 打开 **File → Build Settings**，选择 **PC, Mac & Linux Standalone**，Target Platform 为 Windows，Architecture 为 **x86_64**，必要时点 Switch Platform。
 3. 选择实际要运行的场景，点 **Add Open Scenes**。
-4. 构建自己的最小例子时只勾选 `FirstVision`，放在第 0 项。构建带模式切换的统一示例时勾选三个 `HumanVision*Demo` 场景，Camera 放在第 0 项；生成器已加入它们，但仍应检查顺序。
+4. 将首个运行场景放在第 0 项。构建本教程的最小例子时选择 `FirstVision`，构建验收样例时选择 `RuntimePrefabAcceptance`。
 5. 确认 StreamingAssets 的 Runtime 资源存在。保留包提供的原生 DLL 及依赖，不只复制单个 humanvision.dll。
 6. 点击 **Build**，输出到单独目录，如 `Builds/Windows`。
 7. 从输出目录启动 EXE，允许相机访问，重新检查画面、人体骨骼、人数与错误；Editor 成功不自动等于独立程序成功。
 
 ## 13. 新项目构建 Android
 
-Android 使用第 4 节的统一示例，不使用 Windows CPU QuickStart。
+Android 使用第 4 节的 Runtime Prefab Acceptance。
 
 1. 准备 Android ARM64 设备；系统 API 至少 26，GPU/驱动支持所选 Vulkan 路线。安装 Hub 的 Android 模块。
 2. 打开 **Build Settings → Android → Switch Platform**，等重新导入完成。
 3. 打开 **Player Settings → Other Settings**：Scripting Backend 选 **IL2CPP**；Target Architectures 勾选 **ARM64**、取消 ARMv7；Minimum API Level 设为 **Android 8.0 / API 26** 或更高。
 4. 在 Graphics APIs 中关闭 **Auto Graphics API**，将 **Vulkan** 设为首选；首次验证可仅保留 Vulkan。
 5. 打开 **Edit → Project Settings → Human Vision → Android Runtime**，选 **NCNN Vulkan**。构建元数据会限定运行 Profile；不要只在代码里改字符串假装安装了另一后端。
-6. 确认已执行 Install Packaged Models，并且三个统一 Demo 场景加入构建；Camera 放在第 0 项。
+6. 确认已执行 **Install Packaged Models**，添加 `RuntimePrefabAcceptance.unity` 为构建首场景。使用 RTSP 时将 Player Settings 的 Internet Access 设为 Require。
 7. 填写自己的 Package Name，连接设备后 **Build And Run**。
-8. 手机上允许相机权限；等初始化，检查 `Streaming`、实际 `android-ncnn-vulkan` Profile、真实人物骨骼。当前GPU提交要求**定向后的源图像是横向16:9**，首次按1280×720请求并调整设备/相机方向，检查实际输出满足该比例。竖向或其他比例可能只有预览、推理报合同错误；Video/RTSP也需满足这个输入条件。支持时设置质量为 Medium 并 Apply。
-9. 再逐项测试 Video 和 RTSP，使用设备实际可访问的位置和网络。没有 GPU 能力或初始化失败时查看错误，不将其当作已自动回退 CPU。
+8. 手机上打开「输入连接」，允许相机权限或填写设备可访问的 RTSP 地址。检查 `Streaming`、实际 `backend.ncnn.vulkan`、原图尺寸和有效骨骼。相机兼容 GPU 路径优先测试横向 16:9 的实际源输出。输入图像合同不满足时查看日志。
+9. 测试所需的本地相机和 RTSP 路线。视频用 SDK Settings 或自己的视频接入场景验证。
 10. 分别测试拒绝权限后重开、前后台、停止/重连、重新启动读取保存配置。实际持续人数、吞吐和温度需要真机测量，参见[平台文档](PLATFORM_TEST_RESULTS.md)。
 
-Android 质量合同：Low `512×288`、Medium `640×384`、High `960×576`；采集尺寸与模型尺寸是两件事。其他 ORT CPU/XNNPACK 模式有接口，不能视为与本发布 NCNN Vulkan 路线具有同等验证覆盖。
+Android Vulkan 模型输入分别是低 `512×288`、中 `640×384`、高 `960×576`。实际源尺寸与模型输入分开记录。Android CPU 和 RK3588 NPU 部署需使用匹配的本地 SDK 和资源。[本地 Android 部署](LOCAL_ANDROID_CPU_YOLO.md)
 
 ## 14. 常见问题与第一次完成检查
 
@@ -337,7 +305,7 @@ Android 质量合同：Low `512×288`、Medium `640×384`、High `960×576`；�
 | Prepare/初始化失败 | Runtime/index.json、索引文件完整性、LastError | 重新执行 Install Packaged Models；使用Prepare成功回调的根目录 |
 | DLL/入口加载失败 | 目标是否x64，依赖是否保留，混装旧包 | 检查插件与依赖，移除重复旧副本后重新导入 |
 | 相机一直Opening/报错 | 权限、设备名称、其他软件占用 | 允许系统权限、关闭占用软件、留空默认设备再重开 |
-| 有画面无骨骼 | IsInitialized、BodyCount、桥绑定、模型错误 | 确认Recognition active/初始化日志，人物完整入镜，检查新结果 |
+| 有画面无骨骼 | 实际后端、模型档位、输入状态和有效骨骼 FPS | 让人物完整入镜，分别查看 SDK 初始化、输入和识别诊断 |
 | 有结果无可见骨骼 | Overlay/CanvasRenderer、引用、位置、启用状态 | 按第6～7节复查，确认Overlay在Preview子层且铺满 |
 | 骨骼与画面错位 | RawImage比例、重复镜像/旋转 | 同一预览下绘制；使用Input已定向图像，不额外反转坐标 |
 | 手端点无效 | 当前Profile是否开启真实手任务 | 当前随包配置关闭真实手任务；不要用腕点偏移补造观察 |

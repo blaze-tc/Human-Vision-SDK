@@ -1,4 +1,4 @@
-> 当前分支新增 ScriptableObject 默认配置、代码指定输入源及统一查询 API，请先阅读 [当前接入说明](SDK_CONFIGURATION.md)。下文含已发布版本和兼容 API 的历史说明。
+> SDK 0.4.1 的总控配置、输入与统一查询 API 见 [当前接入说明](SDK_CONFIGURATION.md)。普通场景可在 `Update` 直接查询有效关节。Android 原图桥故障通过 `PreviewError` 读取。[Runtime Prefab 与取点](UNITY_RUNTIME_PREFAB.md)
 
 # 推荐入口 HumanVisionSdk
 

@@ -1,23 +1,34 @@
-# 0.4.0 正式版的本地 Android 配套
+# 0.4.1 正式版的本地 Android 配套
 
-先安装同一标签v0.4.0的Input 0.1.0。公共SDK 0.4.0为RKNN-OFF构建；完整CPU/GPU/NPU资料使用本次配套的完整私有替代SDK，版本与package id仍为0.4.0/com.blazetc.humanvision。
-UPM用该完整SDK的tgz替换Git SDK依赖；离线使用配套SDK unitypackage。两种安装方式选一种，不在仍生效的UPM SDK旁叠加Assets SDK/native。对应manifest必须核对Input、SDK、ORT、vendor和模型索引哈希。
-普通RTSP颜色Texture保持当前URL的实际可见原图，不再使用旧1920上限或自动切低码流。明确Analysis图仍按模型准备。原生RTSP独立执行使用ExecutionPolicy，实际取点每Update读取SDK坐标。
-本次本地资源仅本地交付，不上传公共Release；RK3588/RGA/持续帧率与完整手部资格不因正式版本号而视为通过。下文均为旧版本部署历史，不把preview.17补充包混入0.4.0。
+先安装 Git 标签 `v0.4.1` 的 Input **0.1.1**。公共 SDK **0.4.1** 采用 RKNN-OFF 构建，完整 Android CPU 或 RK3588 NPU 使用配套的私有替代 SDK。该替代包同为 `com.blazetc.humanvision` 0.4.1。
 
-# 本地 Android CPU / GPU / NPU 部署
+UPM 项目用完整 SDK 的 tgz 替换原 SDK 依赖，离线项目使用对应的完整 SDK unitypackage。保持 SDK 和 Input 各一份。根据本地交付清单核对 Input、SDK、ORT、vendor、模型及索引 SHA-256。需重新构建 AAR 和宿主 APK 的项目，还应核对最终 APK 内生效的 ARM64 库与 StreamingAssets。旧版本部署历史保留在下方，使用当前版本时应选匹配的 0.4.1 / 0.1.1 资源。
 
-## preview.17 RK3588 NPU 三档本地资源
+普通 RTSP 颜色 Texture 保持当前地址的可见原尺寸，分析图按模型准备。原生 RTSP 的执行方式使用 `ExecutionPolicy` 配置，业务在 `Update` 读取 SDK 有效关节。
 
-先使用 Git 标签 `v0.4.0-preview.17` 安装 Input `0.1.0-preview.10` 和 SDK `0.4.0-preview.17`。导入与 preview.17 及 Input preview.10 匹配的本地 RK3588 NPU 三档资源包 后，运行 **HumanVision → Enable Local Android NPU Qualities**，核对实际加载的原生库和模型。
+## RK3588 启动排查
 
-## preview.14 RK3588 NPU 三档本地资源
+1. 在目标设备先跑只包含 SDK 验收场景的包。确认请求 Neural 和实际 `backend.rknn`，记录设备、图形 API、模型档位以及 SDK/Input/厂商库的 SHA-256 和 ELF BuildId。
+2. 同一台设备、同一 RTSP 地址、相同模型与传输配置冷启动三组。A 为独立输入且启用预览，B 为独立输入且关闭预览，C 为兼容输入且启用预览。程序启动即退出时，从启动前采集 logcat，保存 crash buffer 和可读取的 tombstone。
+3. A/C 核对持续原图、有效骨骼与重启。B 核对分析和骨骼持续，预览关闭时没有画面。若只有 B 正常，优先保留预览链路证据，从 `PreviewError` 和设备代次继续排查。用对照定位范围，根因仍看失败设备的 native backtrace。
+
+仓库自带启动参数、命令模板、日志字段与证据清单。测试包和私有模型通过本地交付。一加 9 Pro 的 Vulkan GPU 数据对应独立 Demo 的 RTSP 路线，RK3588 启动和长时运行需在 RK3588 复测。[A/B/C 启动诊断](../../tools/test/NPU_STARTUP_DIAGNOSTICS.md) · [启动保护验证](../reports/2026-11-24-rk3588-npu-startup-regression.md)
+
+## 历史版本部署记录
+
+以下操作仅适用于各节列出的旧版 SDK/Input 及其原配套资源。0.4.1 项目使用上方的替代 SDK 安装步骤。
+
+### preview.17 RK3588 NPU 三档本地资源
+
+该版本使用 Git 标签 `v0.4.0-preview.17`，对应 Input `0.1.0-preview.10` 和 SDK `0.4.0-preview.17`。导入相应本地 RK3588 NPU 三档资源包后，运行 **HumanVision → Enable Local Android NPU Qualities**，核对实际加载的原生库和模型。
+
+### preview.14 RK3588 NPU 三档本地资源
 
 先安装 Git 标签 `v0.4.0-preview.14` 对应的 Input `0.1.0-preview.7` 与 SDK `0.4.0-preview.14`。导入匹配新版 Input 原生库的 `RK3588-NPU-Three-Qualities-Resources-preview.14.unitypackage`，运行 **HumanVision → Enable Local Android NPU Qualities**。保留项目的预设、运行配置和已校验的模型资源。确认工程只有一份有效的 Input、SDK 和 `librknnrt.so`。
 
 在 `HumanVisionSdkOptions` 启用 `AutoSelectRtspStream` 和 `UseModelSizedAnalysisInput`，以 `1920×1080` 预览上限配合 RKNN 低档 `512×288`。完整参数见[配置与 API](SDK_CONFIGURATION.md)。
 
-## preview.13 RK3588 NPU 三档本地包
+### preview.13 RK3588 NPU 三档本地包
 
 从 preview.13 安装两个 Git UPM 子目录后，导入匹配的本地 `RK3588-NPU-Three-Qualities-Resources.unitypackage`，
 执行 **HumanVision → Enable Local Android NPU Qualities**。已有三档安装可保留项目中的本地资源和运行库。
@@ -27,13 +38,11 @@ UPM用该完整SDK的tgz替换Git SDK依赖；离线使用配套SDK unitypackage
 代码使用 `HumanVisionAccelerationMode.Neural` 与相应的 `ModelInputQuality`。
 三档使用非量化 RKNN，独立手部模型关闭，持续识别性能和动作响应由 RK3588 设备验收。
 
-## Preview.12 原本地资源包
+### preview.12 本地资源包
 
-preview.8 在恢复的 preview.7 上接入 YOLOv8n-pose CPU，并修复初始化回调的配置提交顺序。
-公共 API 不变，Input 仍为 0.1.0-preview.5。完整资源补充包保存在本地，与公共 SDK 主包配套使用。
-CPU 界面“固定模型”表示只提供 512×288 模型输入档位，人数仍可设置 1–8；多档 CPU 需要另外匹配并验证模型资源。
+preview.8 首次接入 YOLOv8n-pose CPU，当时配套 Input 0.1.0-preview.5。下表记录后续 preview.12 本地包，配套 Input 0.1.0-preview.6。CPU 提供固定 512×288 档位，人数可设置 1–8。
 
-| 平台/模式 | 当前模型和输入 | 部署 |
+| 平台/模式 | 该版模型和输入 | 部署 |
 | --- | --- | --- |
 | Android CPU | YOLOv8n-pose，ORT FP32，512×288，1–8 人 | 本次完整本地补充包 |
 | Android Vulkan | 原 YOLOv8n-pose，低 512×288、中 640×384、高 960×576 | SDK 加完整本地补充包 |
@@ -61,4 +70,4 @@ GPU 的低/中/高可选，NPU 仅低档。相机/RTSP 图像尺寸与模型尺�
 
 本地补充包包含模型和 RKNN 库，仅作为本地评估资料；未上传公共 Release，分发资格标记保持 false。
 新版 Android Input 的解码顺序、释放节奏和纹理读取保护由 Vulkan 与 NPU 共用。RK3588 实测时检查实际后端为 backend.rknn，并分段记录图像发布、异步读回、新识别与区域配对。
-实际本轮构建、测试和设备结果见 [验证报告](../reports/2026-10-14-main-cpu-yolo-api.md)。
+历史 CPU 路线的构建及实测见[验证报告](../reports/2026-10-14-main-cpu-yolo-api.md)。

@@ -1,3 +1,23 @@
+# v0.4.1 正式版
+
+SDK 0.4.1 和 Input 0.1.1 同用 `v0.4.1`。Android 原图桥修复随 Input 新库交付，Runtime Prefab Acceptance 的 UGUI 与场景点线随 SDK Samples 交付。公共 Android SDK 为 RKNN-OFF，匹配的完整 RKNN-ON SDK 与私有模型和厂商库走本地交付。[变更与验证范围](../reports/2026-11-24-v041-release.md)
+
+先验证原生 SDK、Input、Unity 编辑器和 Sample。覆盖 Android Vulkan loader 入口保护、设备代次、停用预览时的资源所有权，保持发布过的 C ABI 和 Windows 导出序号。用 Input-first 的干净项目验证 UPM 和离线包，加载实际公共库与模型，检查 Sample 能导入并通过场景引用启动。
+
+```powershell
+py -3 tools/package/package_release_snapshot.py --authority tools/package/release-041-authority.json --verify-only
+py -3 tools/package/check_input_package.py --root upm/com.blazetc.humanvision.input
+py -3 tools/maintenance/check_architecture_boundaries.py
+py -3 tools/maintenance/generate_component_catalog.py --check
+py -3 tools/test/verify_upm_git_newlines.py
+py -3 -m unittest discover -s tools/package -p test_package_release_snapshot.py
+py -3 tools/package/package_release_snapshot.py --authority tools/package/release-041-authority.json --output out/releases/v0.4.1-final
+```
+
+若审计机使用其他 NDK 安装位置，将 `HV_ANDROID_NDK` 设为含 Windows LLVM 工具和 ARM64/API 26 sysroot 的 NDK 根目录。
+
+以最终 main 及注释标签生成公开附件。上传 GitHub 草稿后重新下载，按 `SHA256SUMS.txt` 核对全部附件和仓库上的提交，再发布为正式版。区分公共 APK/包检查、一加 Vulkan 实测、RK3588 现场验收。以下为以前版本的流程。
+
 # v0.4.0 正式版
 
 SDK0.4.0 / Input0.1.0统一使用v0.4.0，用户已授权合并main、上传并发布正式版。原生/managed/API保持兼容。公开Android SDK为RKNN-OFF，完整RKNN-ON SDK和私有模型/vendor仍本地交付，不能上传GitHub。

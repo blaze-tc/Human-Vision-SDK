@@ -2,7 +2,7 @@
 
 # Unity 总控使用（preview.11）
 
-先安装 Input **0.1.0**，等待编译，再安装 SDK **0.4.0**。两包使用同一个 Git 标签 `v0.4.0`。旧 API 保留。
+先安装 Input **0.1.1**，等待编译，再安装 SDK **0.4.1**。两包使用同一个 Git 标签 `v0.4.1`。旧 API 保留。
 
 2026-10-09 私有双模式测试版本另见 [双模式实测说明](../reports/2026-10-09-dual-acceleration-integration.md)。该版本增加 Android NPU 实验路径；正式 preview.6 安装内容没有被标为已经通过 RK3588 硬件验收。
 
@@ -40,7 +40,7 @@ private IEnumerator Stop()
 }
 ```
 
-可直接复制的完整脚本见 [HumanVisionGameplayExample.cs](examples/HumanVisionGameplayExample.cs.txt)。只需要空物体和这个脚本；无需先创建 Canvas。
+可直接复制的完整脚本见 [HumanVisionGameplayExample.cs](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/docs/user-guide/examples/HumanVisionGameplayExample.cs)。只需要空物体和这个脚本；无需先创建 Canvas。
 
 ## 人数、区域和输入调整
 

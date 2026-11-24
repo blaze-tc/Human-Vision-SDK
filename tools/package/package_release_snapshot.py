@@ -100,7 +100,7 @@ def validate_guids(packages, external):
 def audit_native_dependencies(root):
     """Fresh actual ELF imports/API notes and PE sibling/platform owners."""
     from tools.test.verify_android_native import parse_dynamic_symbols, validate_dynamic_closure
-    ndk = Path('D:/Developer/2022.3.61t4/Editor/Data/PlaybackEngines/AndroidPlayer/NDK')
+    ndk = Path(os.environ.get('HV_ANDROID_NDK', 'D:/Developer/2022.3.61t4/Editor/Data/PlaybackEngines/AndroidPlayer/NDK'))
     tools = ndk / 'toolchains/llvm/prebuilt/windows-x86_64/bin'
     if not (tools / 'llvm-readelf.exe').is_file():
         raise FileNotFoundError('Pinned native dependency auditor unavailable: ' + str(tools))

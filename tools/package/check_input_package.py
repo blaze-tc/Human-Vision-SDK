@@ -1,6 +1,7 @@
 """Audit the independently installable input package and its runtime payload."""
 import argparse
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -43,7 +44,8 @@ def check(root):
             path = root / relative
             if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
                 errors.append('Native payload hash mismatch: ' + relative)
-    reader = Path('D:/Developer/2022.3.61t4/Editor/Data/PlaybackEngines/AndroidPlayer/NDK/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-readobj.exe')
+    ndk = Path(os.environ.get('HV_ANDROID_NDK', 'D:/Developer/2022.3.61t4/Editor/Data/PlaybackEngines/AndroidPlayer/NDK'))
+    reader = ndk / 'toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-readobj.exe'
     for relative in ('Runtime/Plugins/x86_64/humanvision_input.dll', 'Runtime/Plugins/Android/arm64-v8a/libhumanvision_input.so'):
         path = root / relative
         if not path.is_file():

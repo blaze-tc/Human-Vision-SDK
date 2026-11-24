@@ -1,5 +1,7 @@
 # HumanVisionSettingsDemo 实机性能日志
 
+SDK 0.4.1 的 Runtime Prefab Acceptance 另有「一键采集日志」，用于生成当前状态和近期采样的 JSONL 快照。按该 Demo 的提示读取路径，设备温度缺测显示「不可读」。启动阶段退出时，先在 Android 设备外启动 logcat。以下是 Settings 场景的持续会话采集说明。[Runtime Prefab 日志操作](UNITY_RUNTIME_PREFAB.md#连接输入和观察场景)
+
 此功能用于 `Human-Vision-SDK-Test` 的 `HumanVisionSettingsDemo`。它是测试项目的诊断组件，SDK 的业务接入 API 与初始化方法保持原有用法。
 
 ## 获取日志
@@ -93,7 +95,7 @@ RK3588构建自动发现 `/sys/class/devfreq/*gpu*`/`*mali*`，支持Rockchip
 
 ## 视频复测与分析
 
-在设置场景选择 **Video → video-1.mp4 → 模型等级低（512×288）→ 应用**。人数和区域按需要选择；人数减少不会减小此全图模型的图计算量。当前连接 OnePlus 9 Pro 的正常 Fix2 基线：相同 25 FPS 视频，中等级约 15.93 次完成/s，低等级约 23.09 次完成/s，低等级预热后的窗口约 21.67–24.74 次/s。这是已有合格低等级 profile 的选择收益，伴随分辨率/精度取舍，不能外推 RK3588 或证明完整手部能力。新增日志构建的长测数据见 [性能复测报告](../reports/2026-10-09-device-performance-telemetry.md)。
+在设置场景选择 **Video → video-1.mp4 → 模型等级低（512×288）→ 应用**。人数和区域按需要选择；人数减少不会减小此全图模型的图计算量。当前连接 OnePlus 9 Pro 的正常 Fix2 基线：相同 25 FPS 视频，中等级约 15.93 次完成/s，低等级约 23.09 次完成/s，低等级预热后的窗口约 21.67–24.74 次/s。这是已有合格低等级 profile 的选择收益，伴随分辨率/精度取舍，不能外推 RK3588 或证明完整手部能力。新增日志构建的长测数据见 [性能复测报告](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/docs/reports/2026-10-09-device-performance-telemetry.md)。
 
 取得目录后可直接运行：
 
@@ -106,7 +108,7 @@ python tools/benchmark/analyze_settings_device_log.py "日志会话目录" "anal
 分析器按实际profile切换和输入代次分段；人物覆盖率单列，不把无人大段统计成
 有人时的骨骼帧率。强制退出可能留下最后一条未写完JSON，分析器只忽略未换行的
 坏尾条并记录 `dataQualityWarnings`；完整行或中间损坏仍报错。
-RK3588实测结论与NPU当前状态见[现场分析报告](../reports/2026-10-09-rk3588-field-analysis.md)。
+RK3588实测结论与NPU当前状态见[现场分析报告](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/docs/reports/2026-10-09-rk3588-field-analysis.md)。
 
 ## 2026-10-10 CPU/NPU 输入与分辨率修复
 
@@ -125,7 +127,7 @@ RKNN 后端的 input_set_ms、execute_ms、output_get_ms、output_release_ms
 SettingsDemo 2D overlay 已修复 HD/4K 预览与 bounded readback 的尺寸混用，
 切换尺寸时不呈现旧几何。新输入桥允许两次回读重叠但不累积长队列；
 新 30 FPS credit 限流容许渲染抖动，模型与 source copy 的所有权保持原合同。
-[本轮现场分析与验证](../reports/2026-10-10-rk3588-field-repair.md) 记录完整依据。
+[本轮现场分析与验证](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/docs/reports/2026-10-10-rk3588-field-repair.md) 记录完整依据。
 
 分析器 `tools/benchmark/analyze_settings_device_log.py SESSION_FOLDER OUTPUT_JSON --warmup 15`
 新增 `rknnStagesMs`，只采纳明确 `Actual backend=backend.rknn` 的周期诊断，按当前

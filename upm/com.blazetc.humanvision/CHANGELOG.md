@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 — 2026-11-24
+
+- Harden Android Vulkan live preview initialization and device-reset retirement. Disabled preview skips the optional bridge.
+- Ship Runtime Prefab Acceptance with a scene-authored UGUI, RTSP/local camera tabs and selectable scene skeletons driven by SDK points in `Update`.
+- Add one-click diagnostic snapshots and temperatures where the device exposes them. RK3588 startup A/B/C instructions and the short OnePlus test are in the [release report](Documentation/reports/2026-11-24-v041-release.md).
+
 ## 0.4.0 — 2026-11-24
 
 - Add opt-in native independent RTSP execution shared by CPU, GPU and NPU backends, while retaining Unity input compatibility and the existing C ABI.

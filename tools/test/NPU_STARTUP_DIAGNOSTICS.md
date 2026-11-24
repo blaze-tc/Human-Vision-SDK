@@ -1,6 +1,6 @@
 # SDK 自有 NPU 启动 A/B/C 诊断
 
-本工具对应业务故障说明：`E:/UnityProject/YS-Sensory game project/Sensory-Game-2021.3.45/Logs/HumanVisionAarStartup-20261124/给SDK工程的回归定位与修改说明.md`。只定位 SDK 自有验收程序的启动路径，不改业务工程、不替换正式 tarball、不自动发布。Windows 参数/编译检查和非 RK3588 设备上的拒绝结果不能算 RK3588 通过。
+该探针用于比较 SDK 自有验收程序的 Android 启动路径。准备 SDK 0.4.1、Input 0.1.1 与匹配的本地资源后，在目标 RK3588 上运行三组。Windows 参数/编译检查和其他 Android 设备的测试结果覆盖各自的启动路径。[变更与验证范围](../../docs/reports/2026-11-24-v041-release.md)
 
 ## 从 Demo 界面采集
 

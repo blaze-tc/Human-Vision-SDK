@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.IO;
 using HumanVision;
 using HumanVision.Demo;
@@ -22,81 +21,63 @@ namespace HumanVisionAcceptance
         [SerializeField] private HumanVisionSdkPreset startupPreset;
         [SerializeField] private RuntimePrefabRedrawRig redrawRig;
 
-        private static readonly Color Highlight = new Color(.22f,.91f,1);
-        private static readonly Color Background = new Color(.048f,.071f,.105f);
-        private static readonly Color Panel = new Color(.088f,.123f,.173f);
-        private static readonly Color Inset = new Color(.025f,.042f,.063f);
-        private static readonly Color Dim = new Color(.67f,.75f,.85f);
         private const int MaxCapacity = 8;
-        private const float CapacityRowHeight = 32;
-        private static readonly Rect CapacityButton = new Rect(181, 674, 205, 33);
-        private static readonly Rect CapacityMenu = new Rect(CapacityButton.x, CapacityButton.y - MaxCapacity * CapacityRowHeight - 10,
-            CapacityButton.width, MaxCapacity * CapacityRowHeight + 6);
-        private static readonly Rect LiveCard = new Rect(28, 86, 480, 752);
-        private static readonly Rect PoseCard = new Rect(528, 86, 884, 752);
 
         private HumanVisionRuntimeView view;
         private HumanVisionSdkOptions startup;
         private HumanVisionSdkConfiguration recognition;
-        private HumanVisionPresentedFrame pair;
         private HumanVisionTextureFrame input;
         private Texture live;
-        private Font uiFont;
-        private GUIStyle heading, title, body, small, field, button, selected, badge;
-        private bool paired, hasInput, operating, capacityMenuOpen;
-        private readonly Dictionary<HumanVisionAccelerationMode, ModelInputQualityChoice[]> androidQualities =
-            new Dictionary<HumanVisionAccelerationMode, ModelInputQualityChoice[]>();
+        private bool hasInput, operating;
         private bool showSkeleton = true;
         private int visibleJoints, visibleBones;
-        private string status = "填入设备可访问的 RTSP 地址，然后点击连接";
+        private string status = "打开输入连接，选择 RTSP 或本地相机";
         private string sdkLine = "SDK 未创建";
-        private string poseLine = "等待识别结果";
         private string inputLine = "等待实机图像";
         private float nextStatusAt;
         private float nextBackendAt;
         private string diagnosticProfile = "";
         private string actualBackend = "—";
         private readonly RuntimeAcceptanceTelemetry telemetry = new RuntimeAcceptanceTelemetry();
+
+        private const int MeasurementSeconds = 180;
         private readonly RuntimePrefabAcceptanceDiagnostics diagnostics = new RuntimePrefabAcceptanceDiagnostics();
-        private string diagnosticsPhase = "manual";
-        private long loggedInputFrame = -1;
-        private ulong loggedSource, loggedGeneration;
-        private bool measuring, cancelMeasurement, inputOpened;
-        private bool previousAnalysisPreview;
-        private HumanVisionRuntimePresentationMode previousPresentationMode;
+        private Vector2Int displayedDecodedSize;
+        private Vector2Int lastLoggedDecoderSize, lastLoggedPreviewSize;
+        private ulong lastLoggedSource, lastLoggedGeneration, lastLoggedNativeGeneration;
+        private bool campaignRunning, campaignCancelled;
+        private string diagnosticPhase = "idle";
+        private bool inputOpened;
 
         private void Start()
         {
+            if (sceneRuntimeView == null || sceneRuntimeView.Sdk == null || HumanVisionRuntimeView.Instance != sceneRuntimeView)
+            {
+                Debug.LogError("RuntimePrefabAcceptance 需要在 Inspector 引用此场景唯一且已启用的 HumanVisionRuntime。", this);
+                enabled = false;
+                return;
+            }
+            if (!BindAcceptanceUi())
+            {
+                enabled = false;
+                return;
+            }
+
+            ApplySceneFont();
             Application.targetFrameRate = 60;
             telemetry.Reset();
             if (redrawRig != null) redrawRig.gameObject.SetActive(false);
             LoadStartup();
-            if (IsAndroid) {
-                Run(PrepareAndroidChoices());
-                return;
-            }
-#if UNITY_EDITOR
-            if (!string.IsNullOrWhiteSpace(editorVideoPath)) {
-                startup.SourceKind = InputKind.Video;
-                startup.Input.VideoPath = editorVideoPath.Trim();
-                rtspUrl = startup.Input.VideoPath;
-                Run(Connect());
-                return;
-            }
-#endif
-            if (autoConnect) Run(Connect());
+            Run(PrepareManualChoices());
         }
 
         private void OnDestroy()
         {
+            DisposeAcceptanceUi();
             if (previewColorMaterial != null) Destroy(previewColorMaterial);
-            if (view != null) {
-                view.FramePresented -= CountPresented;
-                view.UseAnalysisFrameForMatchedPreview = previousAnalysisPreview;
-                view.PresentationMode = previousPresentationMode;
-            }
+            if (view != null) view.FramePresented -= CountPresented;
+            DisposeSceneFont();
             diagnostics.Dispose();
-            if (uiFont != null) Destroy(uiFont);
         }
 
         private void LoadStartup()
@@ -118,7 +99,8 @@ namespace HumanVisionAcceptance
                 SourceKind = InputKind.Rtsp,
                 AccelerationMode = IsAndroid ? HumanVisionAccelerationMode.Graphics : HumanVisionAccelerationMode.Cpu,
                 UseWindowsCpu = !IsAndroid,
-                InputQuality = ModelInputQuality.Low
+                InputQuality = ModelInputQuality.Low,
+                UseModelSizedAnalysisInput = true
             };
             recognition = new HumanVisionSdkConfiguration {
                 MaxBodies = maxBodies, UseRegions = true, Regions = HumanVisionSdkConfiguration.CreateEqualRegions(maxBodies)
@@ -137,44 +119,35 @@ namespace HumanVisionAcceptance
             }
         }
 
-        private void CountPresented(HumanVisionPresentedFrame frame)
-        {
+        private void CountPresented(HumanVisionPresentedFrame frame) =>
             telemetry.ObservePresented(in frame, diagnostics.ObservePresented(in frame));
-        }
 
-        private IEnumerator Connect()
+        private void EnsureRuntimeView()
         {
-            var options = startup.Clone();
-            string address = rtspUrl.Trim();
-            switch (options.SourceKind) {
-                case InputKind.WebCamera: options.Input.CameraDevice = address; break;
-                case InputKind.Video: options.Input.VideoPath = address; break;
-                case InputKind.Rtsp:
-                    options.Input.RtspUrl = address;
-                    options.Input.RequestedWidth = 1920;
-                    options.Input.RequestedHeight = 1080;
-                    options.AutoSelectRtspStream = true;
-                    options.UseModelSizedAnalysisInput = true;
-                    break;
+            if (view == null)
+            {
+                view = sceneRuntimeView;
+                view.FramePresented += CountPresented;
             }
-            options.Recognition = recognition.Clone();
-            options.OpenInputOnInitialize = true;
-            yield return Initialize(options);
+            view.RetainLastOverlayDuringPairGaps = true;
+            view.UseAnalysisFrameForMatchedPreview = false;
+            RefreshPresentationMode();
         }
 
         private IEnumerator Initialize(HumanVisionSdkOptions options)
         {
+            bool saveInput = rememberConnectedInput;
+            rememberConnectedInput = false;
             inputOpened = false;
-            try { options.Validate(); }
-            catch (ArgumentException error) { status = error.Message; yield break; }
-            EnsureView();
-            view.UseAnalysisFrameForMatchedPreview = false;
-            view.PresentationMode = HumanVisionRuntimePresentationMode.Disabled;
-            diagnostics.BindSdk(view.Sdk);
-            loggedInputFrame = -1;
             diagnostics.SetInputAddress(options.SourceKind == InputKind.Rtsp ? options.Input.RtspUrl : null);
-            var bounds = new Vector2Int(options.Input.RequestedWidth, options.Input.RequestedHeight);
-            diagnostics.Mark(diagnosticsPhase, "request", bounds);
+            try {
+                ConfigureInteractiveOptions(options);
+                options.Validate();
+            }
+            catch (ArgumentException error) { status = error.Message; yield break; }
+            EnsureRuntimeView();
+            diagnostics.BindSdk(view.Sdk);
+
             if (string.IsNullOrWhiteSpace(options.RuntimeRoot) &&
                 (Application.platform == RuntimePlatform.WindowsEditor || Application.platform == RuntimePlatform.WindowsPlayer)) {
                 string staged = Path.Combine(Application.streamingAssetsPath, "HumanVision", "Runtime");
@@ -183,125 +156,95 @@ namespace HumanVisionAcceptance
             status = "正在启动 SDK…";
             yield return view.Sdk.Initialize(options);
             if (!view.Sdk.IsRunning || !string.IsNullOrEmpty(view.Sdk.LastError)) {
-                status = diagnostics.Redact(view.Sdk.LastError);
-                diagnostics.Mark(diagnosticsPhase, "failed", bounds, status, view.Sdk);
+                status = view.Sdk.LastError;
+                status = diagnostics.Redact(status);
+                if (saveInput && options.SourceKind == InputKind.Rtsp &&
+                    Uri.TryCreate(options.Input.RtspUrl, UriKind.Absolute, out var address) && address.IsLoopback)
+                {
+                    int port = address.Port > 0 ? address.Port : 554;
+                    status += " · 本机 RTSP 端口 " + port + "，请检查样本流是否运行。";
+                }
                 yield break;
             }
             startup = view.Sdk.Configuration;
             recognition = startup.Recognition.Clone();
             maxBodies = recognition.MaxBodies;
+            RememberInteractiveConfiguration();
             nextBackendAt = 0;
             telemetry.Reset();
             status = "输入已连接";
             inputOpened = true;
-            if (options.SourceKind == InputKind.Rtsp) {
-                diagnostics.RecordStreamSelection(diagnosticsPhase, view.Sdk.SelectedRtspStreamLabel,
-                    view.Sdk.SelectedRtspStreamSize, options.AutoSelectRtspStream ? "automatic" : "specified", bounds);
-                loggedInputFrame = -1;
-            }
+            displayedDecodedSize = default;
+            lastLoggedDecoderSize = lastLoggedPreviewSize = default;
+            lastLoggedSource = lastLoggedGeneration = lastLoggedNativeGeneration = 0;
+            if (startup.SourceKind == InputKind.Rtsp)
+                diagnostics.RecordStreamSelection(diagnosticPhase, view.Sdk.SelectedRtspStreamLabel, view.Sdk.SelectedRtspStreamSize,
+                    startup.AutoSelectRtspStream ? "automatic" : "specified", RequestedInputSize);
+            if (saveInput)
+                SaveConnectedInput();
         }
+
+        private static bool IsAndroid => Application.platform == RuntimePlatform.Android;
+
+        private Vector2Int RequestedInputSize =>
+            new Vector2Int(startup.Input.RequestedWidth, startup.Input.RequestedHeight);
 
         private IEnumerator MeasureAcceptance()
         {
-            measuring = true;
-            cancelMeasurement = false;
-            diagnosticsPhase = "stage_1_native";
-            var bounds = new Vector2Int(1920, 1080);
+            campaignRunning = true;
+            campaignCancelled = false;
+            var bounds = RequestedInputSize;
+            string outcome = "failed";
             try {
-                yield return Connect();
-                var sdk = view == null ? null : view.Sdk;
-                double readyBy = Time.realtimeSinceStartupAsDouble + 20;
-                while (!cancelMeasurement && inputOpened && sdk != null && sdk.IsRunning && !sdk.HasFreshResult &&
-                    Time.realtimeSinceStartupAsDouble < readyBy) yield return null;
-                if (cancelMeasurement) {
-                    diagnostics.Mark("campaign", "cancelled", bounds);
-                    status = "已取消测试";
-                    yield break;
-                }
+                yield return ConnectInteractive();
+                diagnosticPhase = "measurement";
+                var sdk = view?.Sdk;
+                double deadline = Time.realtimeSinceStartupAsDouble + 20;
+                while (!campaignCancelled && inputOpened && sdk != null && sdk.IsRunning && !sdk.HasFreshResult &&
+                    Time.realtimeSinceStartupAsDouble < deadline) yield return null;
+                if (campaignCancelled) yield break;
                 if (!inputOpened || sdk == null || !sdk.IsRunning || !sdk.HasFreshResult) {
-                    diagnostics.Mark("campaign", "failed", bounds, "no_fresh_result", sdk);
-                    status = "测试未取得新结果";
+                    status = "测试未取得新结果，" + status;
                     yield break;
                 }
-                const double duration = 180;
-                double until = Time.realtimeSinceStartupAsDouble + duration;
-                double lastResultAt = Time.realtimeSinceStartupAsDouble;
-                long latest = diagnostics.AcceptedResults;
-                long initial = latest, valid = diagnostics.ValidSkeletonResults;
-                diagnostics.Mark(diagnosticsPhase, "ready", bounds, sdk: sdk);
-                while (!cancelMeasurement && sdk.IsRunning && Time.realtimeSinceStartupAsDouble < until) {
-                    double now = Time.realtimeSinceStartupAsDouble;
-                    if (latest != diagnostics.AcceptedResults) {
+
+                long firstResult = diagnostics.AcceptedResults;
+                long firstSkeleton = diagnostics.ValidSkeletonResults;
+                long latest = firstResult;
+                double now = Time.realtimeSinceStartupAsDouble;
+                double finish = now + MeasurementSeconds;
+                double lastResultAt = now;
+                diagnostics.Mark(diagnosticPhase, "ready", bounds, sdk: sdk);
+                while (!campaignCancelled && sdk.IsRunning && now < finish) {
+                    if (diagnostics.AcceptedResults != latest) {
                         latest = diagnostics.AcceptedResults;
                         lastResultAt = now;
                     }
                     if (now - lastResultAt >= 5) break;
-                    status = $"验收剩余 {Mathf.CeilToInt((float)(until - now))} 秒";
+                    status = $"测试剩余 {Mathf.CeilToInt((float)(finish - now))} 秒";
                     yield return null;
+                    now = Time.realtimeSinceStartupAsDouble;
                 }
-                bool complete = !cancelMeasurement && sdk.IsRunning && Time.realtimeSinceStartupAsDouble >= until;
-                bool hasSkeleton = diagnostics.ValidSkeletonResults > valid;
-                string outcome = cancelMeasurement ? "cancelled" : complete ? hasSkeleton ? "complete" : "partial" : "failed";
-                diagnostics.Mark("campaign", outcome, bounds, $"accepted={latest-initial} valid={diagnostics.ValidSkeletonResults-valid}", sdk);
-                status = cancelMeasurement ? "已取消测试" : complete
-                    ? hasSkeleton ? "测试已完成，可以导出 JSONL" : "测试已结束，有效骨骼证据不足"
-                    : "测试已结束，结果更新中断";
+
+                long skeletons = diagnostics.ValidSkeletonResults - firstSkeleton;
+                if (!campaignCancelled && sdk.IsRunning && now >= finish)
+                    outcome = skeletons > 0 ? "complete" : "partial";
+                diagnostics.Mark(diagnosticPhase, "result", bounds,
+                    $"accepted_results={diagnostics.AcceptedResults - firstResult} valid_skeleton_results={skeletons}", sdk);
+                status = outcome == "complete" ? "测试已完成，继续显示当前输入" :
+                    outcome == "partial" ? "测试已结束，有效骨骼证据不足" : "测试中止，结果停止更新";
             } finally {
-                measuring = false;
-                diagnosticsPhase = "manual";
+                if (campaignCancelled) status = "已取消一键测试";
+                diagnostics.Mark("measurement", campaignCancelled ? "cancelled" : outcome, bounds, sdk: view?.Sdk);
+                diagnostics.Export();
+                status += " · " + diagnostics.Status;
+                diagnosticPhase = "idle";
+                campaignRunning = false;
             }
         }
 
-        private static bool IsAndroid => Application.platform == RuntimePlatform.Android;
-        private bool FixedQuality => IsAndroid && (!androidQualities.TryGetValue(startup.AccelerationMode, out var choices) || choices.Length <= 1);
-
-        private void EnsureView()
-        {
-            if (view != null) return;
-            view = HumanVisionRuntimeView.Create();
-            view.FramePresented += CountPresented;
-            previousAnalysisPreview = view.UseAnalysisFrameForMatchedPreview;
-            previousPresentationMode = view.PresentationMode;
-        }
-
-        private IEnumerator PrepareAndroidChoices()
-        {
-            string root = startup.RuntimeRoot;
-            string error = null;
-            if (string.IsNullOrWhiteSpace(root)) {
-                status = "正在准备模型资源…";
-                yield return HumanVisionRuntimeData.Prepare(value => root = value, failure => error = failure);
-            }
-            if (string.IsNullOrWhiteSpace(root)) {
-                status = diagnostics.Redact(error ?? "模型资源目录不可用");
-                yield break;
-            }
-            startup.RuntimeRoot = root;
-            EnsureView();
-            var candidate = startup.Clone();
-            candidate.InputQuality = ModelInputQuality.Low;
-            candidate.Recognition = recognition.Clone();
-            foreach (var mode in new[] { HumanVisionAccelerationMode.Cpu, HumanVisionAccelerationMode.Graphics,
-                                        HumanVisionAccelerationMode.Neural }) {
-                if (mode == HumanVisionAccelerationMode.Graphics &&
-                    SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Vulkan) continue;
-                candidate.AccelerationMode = mode;
-                candidate.UseWindowsCpu = mode == HumanVisionAccelerationMode.Cpu;
-                var capability = view.Sdk.GetInputQualityCapabilities(candidate);
-                if (string.IsNullOrEmpty(capability.Error)) androidQualities.Add(mode, capability.Choices);
-            }
-            status = "选择分析设备与模型等级，再连接输入";
-            if (autoConnect) yield return Connect();
-        }
-
-        private bool HasQuality(HumanVisionAccelerationMode mode, ModelInputQuality quality)
-        {
-            if (!IsAndroid) return true;
-            if (!androidQualities.TryGetValue(mode, out var choices)) return false;
-            foreach (var choice in choices)
-                if (choice.Quality == quality) return true;
-            return choices.Length == 0 && quality == ModelInputQuality.Low;
-        }
+        internal static string NormalizeBackend(string value, string profile) =>
+            value == "CPU" && (profile == "windows-yolo-cpu-low" || profile == "android-cpu-nohands") ? "backend.ort.cpu" : value;
 
         private static string ReadActualBackend(string diagnostics)
         {
@@ -313,10 +256,6 @@ namespace HumanVisionAcceptance
             string value = diagnostics.Substring(start, (end < 0 ? diagnostics.Length : end) - start).Trim();
             return value.Length == 0 ? "—" : value;
         }
-
-        internal static string NormalizeBackend(string value, string profile) =>
-            value == "CPU" && (profile == "windows-yolo-cpu-low" || profile == "android-cpu-nohands" ||
-                               profile == "android-cpu-nohands-384x224-experimental") ? "backend.ort.cpu" : value;
 
         private void UpdateActualBackend(HumanVisionSdk sdk)
         {
@@ -338,34 +277,21 @@ namespace HumanVisionAcceptance
 
         private void SelectCompute(HumanVisionAccelerationMode mode, ModelInputQuality quality)
         {
+            if (!HasManualQuality(mode, quality) ||
+                startup.AccelerationMode == mode && startup.InputQuality == quality) return;
             bool running = view != null && view.Sdk.IsRunning;
             var options = running ? view.Sdk.Configuration : startup.Clone();
             options.AccelerationMode = mode;
             options.UseWindowsCpu = mode == HumanVisionAccelerationMode.Cpu;
-            options.InputQuality = HasQuality(mode, quality) ? quality : ModelInputQuality.Low;
+            options.InputQuality = quality;
+            options.UseModelSizedAnalysisInput = true;
             if (running) Run(Initialize(options));
             else startup = options;
         }
 
-        private void DrawModelButton(Rect rect, ModelInputQuality quality, string label)
-        {
-            GUI.enabled = !operating && !FixedQuality && HasQuality(startup.AccelerationMode, quality);
-            if (GUI.Button(rect, label, startup.InputQuality == quality ? selected : button))
-                SelectCompute(startup.AccelerationMode, quality);
-        }
-
-        private void DrawBackendButton(Rect rect, HumanVisionAccelerationMode mode, string label)
-        {
-            GUI.enabled = !operating && (IsAndroid ? androidQualities.ContainsKey(mode) : mode != HumanVisionAccelerationMode.Neural);
-            if (GUI.Button(rect, label, startup.AccelerationMode == mode ? selected : button))
-                SelectCompute(mode, startup.InputQuality);
-        }
-
         private IEnumerator Restart()
         {
-            status = "正在重启 SDK…";
-            yield return view.Sdk.RestartSdk();
-            status = view.Sdk.IsRunning ? "SDK 已重启" : view.Sdk.LastError;
+            yield return ConnectInteractive();
         }
 
         private IEnumerator StopRuntime()
@@ -378,11 +304,10 @@ namespace HumanVisionAcceptance
         private IEnumerator Unload()
         {
             status = "正在卸载 SDK…";
-            var previous = view;
-            previous.FramePresented -= CountPresented;
-            yield return previous.Unload();
+            view.FramePresented -= CountPresented;
+            yield return view.Sdk.Shutdown();
             view = null;
-            status = "已卸载；点击连接重新创建";
+            status = "SDK 已卸载，场景对象保留。";
         }
 
         private void Run(IEnumerator action)
@@ -404,14 +329,8 @@ namespace HumanVisionAcceptance
             var requestedRecognition = recognition.Clone();
             requestedRecognition.MaxBodies = requested;
             requestedRecognition.Regions = HumanVisionSdkConfiguration.CreateEqualRegions(requested);
-            if (view != null && view.Sdk.IsRunning && view.Sdk.ActiveAccelerationMode == HumanVisionAccelerationMode.Neural) {
-                var options = view.Sdk.Configuration;
-                options.Recognition = requestedRecognition;
-                Run(Initialize(options));
-                return;
-            }
-            if (view != null && view.Sdk.IsInitialized && !view.Sdk.TryApplyConfiguration(requestedRecognition)) {
-                status = view.Sdk.LastError;
+            if (view != null && view.Sdk.IsInitialized) {
+                Run(ConnectInteractive(requestedRecognition));
                 return;
             }
             recognition = requestedRecognition;
@@ -425,27 +344,18 @@ namespace HumanVisionAcceptance
             long updateStart = System.Diagnostics.Stopwatch.GetTimestamp();
             var activeSdk = view != null ? view.Sdk : null;
             RefreshLivePreview(activeSdk);
-            pair = default;
-            paired = view != null && view.PresentationMode == HumanVisionRuntimePresentationMode.MatchedColor &&
-                view.TryGetFrame(out pair);
+            TrackVisiblePreview();
             int capacity = activeSdk != null ? activeSdk.GetMaxBodies() : maxBodies;
             visibleJoints = liveSkeleton.VisibleJoints;
             visibleBones = liveSkeleton.VisibleBones;
             UpdateActualBackend(activeSdk);
-            if (hasInput) {
-                diagnostics.ObservePreview(in input);
-                if (startup.SourceKind == InputKind.Rtsp &&
-                    (loggedInputFrame < 0 || loggedSource != input.SourceId || loggedGeneration != input.Generation) &&
-                    activeSdk.TryGetInputDecodedGeometry(in input, out var decodedSize, out ulong nativeGeneration)) {
-                    loggedInputFrame = input.FrameId;
-                    loggedSource = input.SourceId;
-                    loggedGeneration = input.Generation;
-                    diagnostics.RecordDisplayedStream(diagnosticsPhase, in input, decodedSize, nativeGeneration);
-                }
-            }
-            if (activeSdk != null) diagnostics.Sample(activeSdk, diagnosticsPhase);
-            telemetry.Observe(updateStart, activeSdk, actualBackend, hasInput, paired, pair,
-                visibleJoints, visibleBones, diagnostics.ValidSkeletonFps, diagnostics.PreviewFps);
+            if (hasInput) diagnostics.ObservePreview(in input);
+            diagnostics.Sample(activeSdk, diagnosticPhase);
+            HumanVisionPresentedFrame matched = default;
+            bool paired = photoCaptureActive && view != null && view.TryGetFrame(out matched);
+            telemetry.Observe(updateStart, activeSdk, actualBackend, paired, matched, visibleJoints, visibleBones,
+                diagnostics.ValidSkeletonFps, previewFps);
+            ObserveDisplayedStream(activeSdk);
             if (Time.unscaledTime < nextStatusAt) return;
             nextStatusAt = Time.unscaledTime + .15f;
             if (view == null) {
@@ -459,164 +369,35 @@ namespace HumanVisionAcceptance
                 sdkLine = $"{sdk.State}  |  实际送入 {analysisSize} / {modelSize}  |  SDK取帧观察 {sdk.AnalysisInputPublicationFps:F1} FPS  |  {actualBackend}  |  区域 {capacity}";
                 if (!view.SupportsMatchedFrames) sdkLine += "  |  当前图形设备不支持同帧纹理";
             }
-            string previewRate = diagnostics.PreviewFps >= 0 ? diagnostics.PreviewFps.ToString("F1") : "未知";
             inputLine = hasInput && live != null
-                ? $"{live.width} × {live.height}  ·  画面 #{input.FrameId}  ·  预览观察 {previewRate} FPS"
-                : "等待实机图像";
-            if (hasInput && live != null && startup.SourceKind == InputKind.Rtsp &&
-                !string.IsNullOrEmpty(view.Sdk.SelectedRtspStreamLabel)) {
-                var decoded = view.Sdk.RtspDecodedInputSize;
-                var probed = view.Sdk.SelectedRtspStreamSize;
-                string detected = decoded.x > 0 ? $" 解码 {decoded.x}×{decoded.y}" :
-                    probed.x > 0 ? $" 探测 {probed.x}×{probed.y}" : "";
-                inputLine = $"{view.Sdk.SelectedRtspStreamLabel}{detected}  ·  预览 {live.width}×{live.height}";
-            }
-            poseLine = !showSkeleton ? "骨骼关闭"
-                : activeSdk != null && activeSdk.HasFreshResult
-                    ? $"采样骨骼 · 结果 #{activeSdk.ResultSequence} · 年龄 {activeSdk.ResultAgeMilliseconds:F0} ms"
-                    : "等待新识别";
+                ? $"{startup.SourceKind} · 预览 {input.Width}×{input.Height} · 输入 #{input.FrameId} · 解码 {FormatResolution(displayedDecodedSize)}"
+                : startup.PreviewEnabled ? "等待当前输入" : "预览已关闭，识别可继续";
         }
 
-        partial void DrawSidebarAdditionalModels(float width, ref float y)
+        private void ObserveDisplayedStream(HumanVisionSdk sdk)
         {
-            if (!IsAndroid || !HasQuality(startup.AccelerationMode, ModelInputQuality.UltraLow)) return;
-            DrawModelButton(new Rect(0, y, width, 36), ModelInputQuality.UltraLow, "超低");
-            GUI.enabled = true; y += 44;
-        }
-
-        partial void DrawSidebarMeasurement(float width, ref float y)
-        {
-            GUI.enabled = measuring || !operating;
-            if (GUI.Button(new Rect(0, y, width, 36), measuring ? "取消一键测试" : "一键测试", button)) {
-                if (measuring) cancelMeasurement = true; else Run(MeasureAcceptance());
-            }
-            GUI.enabled = true; y += 44;
-        }
-
-        private void OnGUI()
-        {
-            if (startup == null) return;
-            InitStyles();
-            if (fullscreenPreview) { DrawFullscreenPreview(); return; }
-            var previousMatrix = GUI.matrix;
-            var safe = Screen.safeArea;
-            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);
-            float scale = Mathf.Min(safe.width / 1440f, safe.height / 866f);
-            if (scale <= 0) return;
-            GUI.matrix = Matrix4x4.identity;
-            Box(new Rect(0, 0, Screen.width, Screen.height), Background);
-            GUI.matrix = Matrix4x4.TRS(new Vector3(safe.x + (safe.width - 1440f * scale) / 2f,
-                Screen.height - safe.yMax + (safe.height - 866f * scale) / 2f, 0),
-                Quaternion.identity, Vector3.one * scale);
-            try {
-                GetExpandedCards(scale, out var sidebar, out var preview, out _);
-                GUI.Label(new Rect(28, 12, 1050, 52), "Human Vision  /  实时识别", heading);
-                GUI.Label(new Rect(1160, 24, 252, 34), $"SDK  {HumanVisionSdk.Version}", badge);
-                DrawControlSidebar(sidebar);
-                DrawUnifiedPreviewCard(sidebar, preview);
-                ObserveSidebarPreview();
-                DrawSidebarModal();
-            } finally { GUI.matrix = previousMatrix; GUI.enabled = true; }
-        }
-
-        private void DismissCapacityMenu()
-        {
-            if (!capacityMenuOpen) return;
-            if (operating) {
-                capacityMenuOpen = false;
+            if (!hasInput || live == null) {
+                displayedDecodedSize = default;
                 return;
             }
-
-            Event current = Event.current;
-            bool outsideClick = current.type == EventType.MouseDown &&
-                !CapacityButton.Contains(current.mousePosition) && !CapacityMenu.Contains(current.mousePosition);
-            if (outsideClick || (current.type == EventType.KeyDown && current.keyCode == KeyCode.Escape)) {
-                capacityMenuOpen = false;
-                current.Use();
-            }
+            bool hasDecoded = sdk.TryGetInputDecodedGeometry(in input, out var decoded, out ulong nativeGeneration);
+            displayedDecodedSize = decoded;
+            // Android reports decoder geometry separately from the published texture size.
+            if (IsAndroid && !hasDecoded) return;
+            var preview = new Vector2Int(input.Width, input.Height);
+            if (decoded == lastLoggedDecoderSize && preview == lastLoggedPreviewSize && input.SourceId == lastLoggedSource &&
+                input.Generation == lastLoggedGeneration && nativeGeneration == lastLoggedNativeGeneration) return;
+            lastLoggedDecoderSize = decoded;
+            lastLoggedPreviewSize = preview;
+            lastLoggedSource = input.SourceId;
+            lastLoggedGeneration = input.Generation;
+            lastLoggedNativeGeneration = nativeGeneration;
+            diagnostics.RecordDisplayedStream(diagnosticPhase, in input, decoded, nativeGeneration);
+            nextStatusAt = 0;
         }
 
-        private void DrawCapacityMenu()
-        {
-            Box(CapacityMenu, Inset);
-            for (int count = 1; count <= MaxCapacity; count++) {
-                var row = new Rect(CapacityMenu.x + 3, CapacityMenu.y + 3 + (count - 1) * CapacityRowHeight,
-                    CapacityMenu.width - 6, CapacityRowHeight);
-                if (GUI.Button(row, $"{count} 人", count == maxBodies ? selected : button)) {
-                    capacityMenuOpen = false;
-                    SetCapacity(count);
-                }
-            }
-        }
+        private static string FormatResolution(Vector2Int size) => size.x > 0 && size.y > 0 ? $"{size.x}×{size.y}" : "未报告";
 
-        private void DrawCard(Rect card, string label, Texture texture, string detail, bool showRegions = false,
-            bool drawSkeleton = false)
-        {
-            Box(card, Panel);
-            GUI.Label(new Rect(card.x + 17, card.y + 4, card.width - 34, 44), label, title);
-            Rect window = CardImageWindow(card);
-            Box(window, Inset);
-            bool hasTexture = texture != null && texture.width > 0 && texture.height > 0;
-            if (hasTexture || showRegions || drawSkeleton) {
-                int width = hasTexture ? texture.width : 1280;
-                int height = hasTexture ? texture.height : 720;
-                var image = RuntimePrefabLiveSkeleton.Fit(window, width, height);
-                DrawPreviewImage(image, texture, showRegions, drawSkeleton);
-            }
-            if (!hasTexture && (!drawSkeleton || liveSkeleton.VisibleJoints == 0)) GUI.Label(window, "等待输入 / 结果", badge);
-            GUI.Label(new Rect(card.x + 16, card.yMax - 42, card.width - 32, 34), detail, small);
-        }
-
-        private void DrawRegions(Rect image)
-        {
-            for (int i = 0; i < recognition.Regions.Length; i++) {
-                Rect region = recognition.Regions[i];
-                var bounds = new Rect(image.x + region.x * image.width, image.y + region.y * image.height,
-                    region.width * image.width, region.height * image.height);
-                var border = RuntimePrefabRedrawRig.GetSlotColor(i);
-                Box(new Rect(bounds.x, bounds.y, bounds.width, 1), border);
-                Box(new Rect(bounds.x, bounds.yMax - 1, bounds.width, 1), border);
-                Box(new Rect(bounds.x, bounds.y, 1, bounds.height), border);
-                Box(new Rect(bounds.xMax - 1, bounds.y, 1, bounds.height), border);
-                var label = new Rect(bounds.x + 3, bounds.y + 3, Mathf.Min(bounds.width, 86), 23);
-                Box(label, Inset);
-                GUI.Label(label, $"区域 {i}", badge);
-            }
-        }
-
-        private static void Box(Rect rect, Color color)
-        {
-            if (Event.current.type != EventType.Repaint) return;
-            Color previous = GUI.color;
-            GUI.color = color;
-            GUI.DrawTexture(rect, Texture2D.whiteTexture);
-            GUI.color = previous;
-        }
-
-        private void InitStyles()
-        {
-            if (heading != null) return;
-            uiFont = Font.CreateDynamicFontFromOSFont(new[] {"Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Droid Sans Fallback", "Arial"}, 22);
-            heading = Text(34, Color.white, true);
-            title = Text(25, Color.white, true);
-            body = Text(20, Color.white, false);
-            small = Text(17, Dim, false);
-            badge = Text(17, Color.white, true);
-            badge.alignment = TextAnchor.MiddleCenter;
-            field = new GUIStyle(GUI.skin.textField) { font = uiFont, fontSize = 20 };
-            button = new GUIStyle(GUI.skin.button) { font = uiFont, fontSize = 19 };
-            selected = new GUIStyle(button) { fontStyle = FontStyle.Bold };
-            selected.normal.textColor = Highlight;
-        }
-
-        private GUIStyle Text(int size, Color color, bool bold)
-        {
-            var style = new GUIStyle(GUI.skin.label) {
-                font = uiFont, fontSize = size, alignment = TextAnchor.MiddleLeft,
-                fontStyle = bold ? FontStyle.Bold : FontStyle.Normal, clipping = TextClipping.Clip, wordWrap = false
-            };
-            style.normal.textColor = color;
-            return style;
-        }
+        private void LateUpdate() => RenderAcceptanceUi();
     }
 }

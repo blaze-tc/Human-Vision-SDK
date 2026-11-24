@@ -1,5 +1,23 @@
 # Symptom-first debugging
 
+## Android startup and preview
+
+For SDK 0.4.1 / Input 0.1.1, check `PreviewError`, input state and SDK `LastError`
+separately. Confirm installed native library identity against the APK and verify
+actual backend in the running session. A cold-start fault requires startup logcat,
+the crash buffer, any accessible tombstone and the matching ELF BuildIds.
+
+For RK3588, compare three cold starts using the same RTSP stream, Neural/Low and
+matching local resources. Run independent input with preview on, independent
+input with preview off, then compatible input with preview on. The preview-off
+case skips Unity's Android Vulkan live bridge. Capture source progress, first
+texture where enabled, valid skeleton results and restart behavior. [Startup probe instructions](../../tools/test/NPU_STARTUP_DIAGNOSTICS.md)
+
+The Runtime Prefab Acceptance Demo can capture a JSONL snapshot while waiting
+for input, on error or during recognition. Record native decode, live publication,
+Unity texture updates, completed inference and valid skeleton delivery separately.
+Device sensor availability is reported with each reading. [Demo instructions](../user-guide/UNITY_RUNTIME_PREFAB.md)
+
 ## OnePlus performance follow-up
 
 See [the measured CPU/Vulkan report](../reports/2026-10-09-oneplus-performance.md).

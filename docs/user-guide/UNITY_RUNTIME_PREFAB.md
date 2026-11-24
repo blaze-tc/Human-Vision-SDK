@@ -1,11 +1,24 @@
 # 常驻 SDK Prefab 实时预览与 Update 取点
 
-在 Unity Package Manager 中打开 **Human Vision SDK → Samples**，导入 **Runtime Prefab Acceptance** 并打开
-`RuntimePrefabAcceptance.unity`。进入 Play Mode，输入可访问的 RTSP 地址并连接。也可在 Inspector 绑定 Startup Preset，或通过项目默认资产配置摄像头、RTSP 或视频。左侧集中放置选项、控制按钮和诊断日志，右侧保留一个实时预览：最新 Texture、识别区域框和编号、骨骼点线叠加在同一画面。骨骼在每次 `Update` 直接查询 SDK 当前有效坐标，不等待纹理配对，也不检查帧率或结果序号。新结果到来前可以重复读取仍有效的坐标；失效、无人或停止时查询返回 false，样例清除对应点线。点击「全屏预览」可选择等比显示或填满裁切。
-「拍照（精确同帧）」等待当前输入的一组新鲜精确配对，并将原色帧保存到应用的 `runtime-photos` 目录。离线包的样例位于 `Assets/HumanVision/Samples/RuntimePrefab`。
-可在该场景的 Inspector 填写 RTSP URL 作为启动时预填地址。绑定 Startup Preset 时使用预设输入。
-Android 使用 Vulkan、ARM64、IL2CPP，Player Settings 的 Internet Access 设为 Require。
-RTSP 样例保持填写的当前码流地址，只在识别内部按模型尺寸分路。预览下方显示当前码流、解码或探测尺寸和实际预览尺寸；[配置文档](SDK_CONFIGURATION.md#android-rtsp-低档)中的自动选流说明属于旧路径，当前原图模式不启用它。
+适用 SDK **0.4.1** / Input **0.1.1**。在 Unity Package Manager 的 **Human Vision SDK → Samples** 导入 **Runtime Prefab Acceptance**，打开 `RuntimePrefabAcceptance.unity`。离线安装后的场景位于 `Assets/HumanVision/Samples/RuntimePrefab`。
+
+## 连接输入和观察场景
+
+1. 进入 Play Mode，点击左栏「输入连接」。
+2. 在 **RTSP** 标签填完整的 RTSP 地址，按现场选择传输方式和兼容或独立执行。地址必须从运行 Unity 的电脑或 Android 设备可达。Android 的 `localhost` 指设备本身。查看当前连接状态、实际源尺寸和预览尺寸。
+3. 在 **本地相机** 标签用「刷新设备」重新枚举，选择设备并设置请求宽高、帧率和镜像。Android 需要允许相机权限。相机使用 Unity 兼容输入，实际采集尺寸以设备返回为准。
+4. 点击「应用并连接」。连接成功才保存本次输入，下次打开可读取。取消弹窗保留当前会话，连接失败保留上次成功配置供重试。
+5. 左侧选择可用后端、模型和人数，详细控制在「识别与显示设置」。Android CPU 固定一个模型档位。需要 NPU 时，先准备[匹配的本地资源](LOCAL_ANDROID_CPU_YOLO.md)，并在诊断中核对实际后端。
+
+UGUI、输入和设置弹窗、EventSystem、骨骼相机及 `Live Skeleton Scene/Body N` 下的点线已在场景中。可以在 Hierarchy 中选中点和 `LineRenderer` 检查，在 Inspector 调整场景引用。Demo 复用一个 `HumanVisionRuntime`。游戏接入可以复用 Runtime 与坐标查询，自行决定渲染方式。
+
+右侧预览叠加区域和有效骨骼。每次 `Update` 直接查询 SDK 坐标，新结果到来前可复用仍有效的坐标，失效时收起对应点线。可选择等比显示或填满裁切。「拍照（精确同帧）」会等待当前输入的一组新鲜精确配对并保存原色帧。普通预览持续显示最新颜色帧。
+
+点击左栏「一键采集日志」生成 JSONL 快照，状态区显示实际路径并复制到剪贴板。Android 优先写入「下载 / HumanVisionLogs」，公共目录不可用时使用应用目录。记录中的 RTSP 地址已脱敏。CPU、GPU、NPU 或电池温度无法从系统读取时显示「不可读」。
+
+Android 构建使用 Vulkan、ARM64、IL2CPP，远程 RTSP 需要启用 Internet Access。RTSP 保持填写的码流地址，识别内部按模型尺寸分路。
+
+## 在游戏中使用常驻 Prefab
 
 普通 RTSP 颜色接口 `Sdk.GetColorImageTex()`、`Sdk.TryGetInputFrame()` 和 `view.GetLiveTexture()` 使用当前地址实际解码后的可见原尺寸。模型档位只决定 SDK 内部的识别图像尺寸，不能把小模型输入放大后当预览。原图模式保持填写的 RTSP 地址，不自动改成低码流；如需使用子码流，请直接填写该码流地址。请求宽高仍可作为采集配置保存，但不再作为普通 RTSP 颜色预览的缩放上限。明确命名的 Analysis 接口仍是识别输入，不用于普通视频显示。
 
@@ -104,6 +117,4 @@ if (view != null && view.Sdk.TryGetJointNormalizedPosition(
 对照 HUD 的源解码、Texture 和识别完成 FPS。预览持续取最新输入，Update 读取最近的有效骨骼；骨骼延迟不会要求视频等待。
 相机、模型和 Unity 可以有不同更新速率。Unity 多次读取同一份有效骨骼是正常行为，不能把读取次数当成模型推理次数。模型帧率统计不参与业务取点条件。
 
-历史 preview.9 的 OnePlus 9 Pro Exercise2 RTSP 短测中，输入发布和新识别平均均为 14.49 FPS，游戏更新平均 54.33 FPS；这是旧发布路径的口径，不是当前源解码帧率。
-33 个采样窗口内，游戏 1,826 次 Update 均取得纹理与有效关节，得到 486 组不同配对。
-这组数据对应本地验收 APK 和约 33 秒的设备观察。详见[发布验证](../reports/2026-11-06-runtime-prefab-preview9.md)。
+本版一加 9 Pro 的 1080p RTSP 对照分别记录原生解码、原生预览发布、Unity Texture、推理完成和有效骨骼 FPS。原生发布约 30 FPS 时，当前版 Unity 纹理平均更新 23.81 FPS，有效骨骼为 26.56 FPS。[测量方法和验证范围](../reports/2026-11-24-v041-release.md)

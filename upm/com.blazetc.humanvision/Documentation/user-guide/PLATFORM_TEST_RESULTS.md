@@ -1,6 +1,6 @@
 # 平台测试效果文档
 
-适用SDK `0.4.0-preview.4` / Input `0.1.0-preview.2`。本文只汇总SDK发布验证、SDK历史真机测量与新项目复测方法。[文档首页](README.md)
+[0.4.1 / Input 0.1.1 最新验证记录](../reports/2026-11-24-v041-release.md)覆盖一加 9 Pro 1080p30 RTSP 的 Vulkan GPU 低档测试，并说明 RK3588 上仍待验收的项目。以下保留 SDK `0.4.0-preview.4` / Input `0.1.0-preview.2` 的历史测量与复测方法。[文档首页](README.md)
 
 ## 1. 怎样理解测试结果
 
@@ -21,10 +21,10 @@
 
 | 2026-10-04历史场景 | 容量与实际负载 | 新完整结果率 | 源发布率 | 本地发布至结果接收年龄P50/P95 | 判定与来源 |
 | --- | --- | --- | --- | --- | --- |
-| Camera固定设置 | MaxBodies4；窗口身体数1:36帧、2:622、3:15 | 673/40 = **16.825FPS** | 29.525FPS | 99.374/100.7746ms | Manager测量VALID，原生覆盖INCONCLUSIVE，30FPS FAIL；[原报告](../reports/2026-10-04-formal-demo-camera-observation.md) |
-| Video原视频 | MaxBodies8、无区域；零/单/多人混合 | 627/40 = **15.675FPS** | 25.0FPS | 100.106/133.6298ms | Manager测量VALID，原生覆盖INCONCLUSIVE，30FPS FAIL；[原报告](../reports/2026-10-04-formal-demo-observation-recorder.md) |
-| Video HD七人素材 | MaxBodies8；实际1920×1080；7人583帧、6人52、0人1 | 636/40 = **15.9FPS** | 29.8FPS | 100.6115/134.0155ms | Manager测量VALID，原生覆盖INCONCLUSIVE，30FPS FAIL；[原报告](../reports/2026-10-04-formal-demo-hd-video-observation.md) |
-| 真H.264/TCP RTSP | MaxBodies8、无区域；0人71帧、1人169、7人350、8人1 | 591/40 = **14.775FPS** | 18.075FPS | 99.899/133.676ms | Manager测量VALID，原生覆盖INCONCLUSIVE，30FPS FAIL；[原报告](../reports/2026-10-04-formal-demo-rtsp-observation.md) |
+| Camera固定设置 | MaxBodies4；窗口身体数1:36帧、2:622、3:15 | 673/40 = **16.825FPS** | 29.525FPS | 99.374/100.7746ms | Manager测量VALID，原生覆盖INCONCLUSIVE，30FPS FAIL；[原报告](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/docs/reports/2026-10-04-formal-demo-camera-observation.md) |
+| Video原视频 | MaxBodies8、无区域；零/单/多人混合 | 627/40 = **15.675FPS** | 25.0FPS | 100.106/133.6298ms | Manager测量VALID，原生覆盖INCONCLUSIVE，30FPS FAIL；[原报告](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/docs/reports/2026-10-04-formal-demo-observation-recorder.md) |
+| Video HD七人素材 | MaxBodies8；实际1920×1080；7人583帧、6人52、0人1 | 636/40 = **15.9FPS** | 29.8FPS | 100.6115/134.0155ms | Manager测量VALID，原生覆盖INCONCLUSIVE，30FPS FAIL；[原报告](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/docs/reports/2026-10-04-formal-demo-hd-video-observation.md) |
+| 真H.264/TCP RTSP | MaxBodies8、无区域；0人71帧、1人169、7人350、8人1 | 591/40 = **14.775FPS** | 18.075FPS | 99.899/133.676ms | Manager测量VALID，原生覆盖INCONCLUSIVE，30FPS FAIL；[原报告](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/docs/reports/2026-10-04-formal-demo-rtsp-observation.md) |
 
 限制：
 
@@ -38,7 +38,7 @@
 
 ## 3. 自动化与发布验证
 
-preview.4发布报告已记录以下结果，本次未重新运行这些原生/Unity/设备测试；[完整报告](../reports/2026-10-05-preview4-release-verification.md)保留失败与修复过程。
+preview.4发布报告已记录以下结果，本次未重新运行这些原生/Unity/设备测试；[完整报告](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/docs/reports/2026-10-05-preview4-release-verification.md)保留失败与修复过程。
 
 | 验证范围 | 报告结果 | 边界 |
 | --- | --- | --- |
@@ -59,7 +59,7 @@ preview.4发布报告已记录以下结果，本次未重新运行这些原生/U
 | RK3588 Android | 本页没有建立该设备闭包 | 无该设备实测效果 | 部署、驱动、能力和全部设备验收；不能作为RKNN证书 |
 | iOS/macOS/Linux | 本发布资料不覆盖 | 不覆盖 | 无对应发布与验收 |
 
-当前身体RGB识别提供图像平面骨骼；不承诺米制3D。当前随包配置关闭真实Hand/Handtip/Thumb推理，真实手端点验收仍未完成。模型评估/分发标记见[第三方说明](../../upm/com.blazetc.humanvision/THIRD_PARTY_NOTICES.md)。
+当前身体RGB识别提供图像平面骨骼；不承诺米制3D。当前随包配置关闭真实Hand/Handtip/Thumb推理，真实手端点验收仍未完成。模型评估/分发标记见[第三方说明](../../THIRD_PARTY_NOTICES.md)。
 
 ## 5. 新项目怎样复测
 
@@ -72,7 +72,7 @@ preview.4发布报告已记录以下结果，本次未重新运行这些原生/U
 7. Android测试权限拒绝、前后台、Vulkan失败、停止/重连；RTSP测试网络断开重连。Windows测试相机占用、文件缺失、目标机器上的独立构建。验证保存与重启。
 8. 将同窗口录屏/截图、构建/配置hash、日志绑定。结论写通过/不通过/证据不足，并明确时钟与采集边界。
 
-[Reader示例](examples/SdkSkeletonReader.cs.txt)为约1Hz日志演示，不能直接充当无损全速性能采集器。严格性能采集应在回调复制每个新观察并记录溢出，避免逐帧Debug.Log干扰性能。
+[Reader示例](https://github.com/blaze-tc/Human-Vision-SDK/blob/v0.4.1/docs/user-guide/examples/SdkSkeletonReader.cs)为约1Hz日志演示，不能直接充当无损全速性能采集器。严格性能采集应在回调复制每个新观察并记录溢出，避免逐帧Debug.Log干扰性能。
 
 | 平台/设备 | 模式/Profile/质量 | 实际人数/容量 | 源FPS | 新结果FPS | 每人有效完整FPS | 年龄P50/P95 | ID/掉点/稳定性 | 证据与判定 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

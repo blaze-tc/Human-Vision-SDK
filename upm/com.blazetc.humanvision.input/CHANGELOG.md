@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 — 2026-11-24
+
+- Validate the Unity Vulkan context, function resolver and imported live-preview target before issuing live commands.
+- Keep delayed queue callbacks and GPU fences bound to the current device generation. Surface live errors without routing the analysis path through preview.
+- Preserve existing Input ABI exports and all non-Android-Input native payloads.
+
 ## 0.1.0 — 2026-11-24
 
 - Add a native-owned RTSP decode and image-service path with independent live and analysis output pools, GPU synchronization and explicit lease retirement.

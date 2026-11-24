@@ -1,12 +1,12 @@
 {
   ".gitattributes": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da",
-  "CHANGELOG.md": "099f803ffa8f58319bcefd451de4f7e68cb3f80f7c66530cf2ac06b5f6073630",
+  "CHANGELOG.md": "d15a1af59598afabd4f13a43fad1e239a06b6f5646dec3b50bdcbb044a41d216",
   "Documentation~/INPUT_GUIDE.md": "1e3cdec03a6d5cc7105b5482c8c3a31926b192d1e0a85d0a5214c9989d556f2f",
   "Editor/HumanVision.Input.Editor.asmdef": "36827e8109b3eeb45ea9f32061ed16e4e9f6f39cea623735830695b50fb46989",
   "Editor/InputPreviewSceneBuilder.cs": "aca08e31878b22edc376fa19e155aa5ddd94937433d399345fe13f53eecc4dbf",
   "Licenses/FFmpeg-LGPL-2.1.txt": "b634ab5640e258563c536e658cad87080553df6f34f62269a21d554844e58bfe",
   "Licenses/Unity-Plugin-API-LICENSE.md": "dc34d09c3c3a5057244ba4e6cbb871105ec42cd1130617aceeddb9219da922d1",
-  "README.md": "139bae31b6d299243e52e8bd42fa1deeb9776f6f5b62458d0a993512c9b98eba",
+  "README.md": "192f365bf803bd20764f925156b9879556268d6493b87104d50ce65d5847bde8",
   "Runtime/AndroidRtspGpuSource.cs": "201e329aad341fadbdff5dcda79e1cbc672545dca114a13934d40f24e6e14156",
   "Runtime/ArchiveVideoCache.cs": "1e07f4b999319ed6f893fe1f60f7a7c242b72ebe89bfa0f91ad359c7bd3c1ca6",
   "Runtime/FramePreview.cs": "124aa1c8cefedfaeba9da7446eec15b7ba1bb29558ab163741685d3b125c2ce8",
@@ -29,7 +29,7 @@
   "Runtime/Plugins/Android/arm64-v8a/libavcodec.so": "6808f8e77223680a1e2ac195178032300e55d950dede4aa2fa91009987d96296",
   "Runtime/Plugins/Android/arm64-v8a/libavformat.so": "cb9b15ab4c136d40d67b32fbf31f4c155c150e7d43c37174307503595905abd7",
   "Runtime/Plugins/Android/arm64-v8a/libavutil.so": "92136c3c0535b9817f6f72d45d272476ac83d5211785c7e1f06f7ec65954d9ef",
-  "Runtime/Plugins/Android/arm64-v8a/libhumanvision_input.so": "d53c66fb39cdcbd2f50972f86c38f7095e6851096810e1d11f5706b12118fc86",
+  "Runtime/Plugins/Android/arm64-v8a/libhumanvision_input.so": "51d29247505d1e73f8d7d53a053bbcb424249968a9baaaeb6b800172f7180062",
   "Runtime/Plugins/Android/arm64-v8a/libswresample.so": "8cadca3419da79d3919a9498bee8619696b15faba03cf43bbcfda0a1aec7b5a3",
   "Runtime/Plugins/Android/arm64-v8a/libswscale.so": "aaae7e3a11b68c0306056fa3d463d94069d250f9a1f83dd1f67a5e9074d17aff",
   "Runtime/Plugins/x86_64/avcodec-61.dll": "f0c5373f00734d0090471c75a49caf282912e6b085c4c29976ec36df3c9c586e",
@@ -65,6 +65,6 @@
   "Tests/PlayMode/NativeLiveDefaultSamplingFenceTests.cs": "152c4f56388f1a4eb1e4e7100d5705a9497172caceedec24bd79126fbaddf19e",
   "Tests/PlayMode/RtspPreviewTests.cs": "3b2ad2dd7335bb6b0b6c33980d74e249d1ce7e2b3c0f921d1c65202ec06a3b20",
   "Tests/PlayMode/UnitySourceLifecycleTests.cs": "5873a81d89726f4828e63c76608068dd64249860056ec7dda0267147683b5ca7",
-  "native-payload.json": "8f0202218dc79f87df7c560b66570a9717412b1e2d9312a0c899a5bca83fb6c5",
-  "package.json": "01f93cd2d968f1c736265628f2b41c08515ae6223e9774077dd990f018cc4070"
+  "native-payload.json": "14bcf354f8eba210306d55ea66e7851bf44aedf503476b3421266a391c7d45b5",
+  "package.json": "2a48dc2a48005b79fe04aa06226b3f586b78b4c53de7210a46cbbf4d9f194d52"
 }

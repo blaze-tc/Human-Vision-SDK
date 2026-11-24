@@ -1,6 +1,6 @@
 # 平台测试效果文档
 
-适用SDK `0.4.0-preview.4` / Input `0.1.0-preview.2`。本文只汇总SDK发布验证、SDK历史真机测量与新项目复测方法。[文档首页](README.md)
+[0.4.1 / Input 0.1.1 最新验证记录](../reports/2026-11-24-v041-release.md)覆盖一加 9 Pro 1080p30 RTSP 的 Vulkan GPU 低档测试，并说明 RK3588 上仍待验收的项目。以下保留 SDK `0.4.0-preview.4` / Input `0.1.0-preview.2` 的历史测量与复测方法。[文档首页](README.md)
 
 ## 1. 怎样理解测试结果
 

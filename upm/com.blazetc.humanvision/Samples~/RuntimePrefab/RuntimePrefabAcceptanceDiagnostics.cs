@@ -26,6 +26,7 @@ namespace HumanVisionAcceptance
         private readonly Queue<Message> messages = new Queue<Message>();
         private readonly List<Message> drain = new List<Message>(32);
         private DeviceHardwareSampler hardware;
+        private HardwareSample displayedTemperatureSample;
         private AndroidNativeStageCapture nativeCapture;
         private StreamWriter writer;
         private VideoPlayerFrameSource bridge;
@@ -42,7 +43,7 @@ namespace HumanVisionAcceptance
         private int lifecycleAttempt;
         private HumanVisionSdkState? lastSdkState;
         private InputSourceState? lastInputState;
-        private int previousUnityFrame, droppedMessages;
+        private int previousUnityFrame, droppedMessages, exportSequence;
         private long previousResult = -1, acceptedResults;
         private double lastAcceptedAt = -1, maxAcceptedGapMs, maxUnityFrameMs;
         private ulong previousGeneration, previousSource;
@@ -52,6 +53,7 @@ namespace HumanVisionAcceptance
         private readonly ResultIdentity[] validResults = new ResultIdentity[128];
         private readonly List<double> resultAgesMs = new List<double>(32);
         private readonly List<double> presentedAgesMs = new List<double>(32);
+        private int pairIdentityMismatchesInWindow, pairInputIdVerifiedInWindow, pairPreviewSizeMismatchesInWindow;
         private ResultIdentity lastAccepted, lastPresented;
         private ulong lastPreviewSource, lastPreviewGeneration;
         private long lastPreviewFrame = -1;
@@ -61,12 +63,12 @@ namespace HumanVisionAcceptance
 
         public string Status { get; private set; } = "诊断尚未开始";
         public string SessionPath { get; private set; } = "";
+        internal string TemperatureLine { get; private set; } = RuntimePrefabTemperatureLine.Unavailable;
         public string ExportPath { get; private set; } = "";
         internal long AcceptedResults => acceptedResults;
         internal long ValidSkeletonResults { get; private set; }
         internal long ValidSkeletonPresented { get; private set; }
         internal double ValidSkeletonFps { get; private set; } = -1;
-        internal double PreviewFps { get; private set; } = -1;
 
         private readonly struct ResultIdentity
         {
@@ -127,7 +129,10 @@ namespace HumanVisionAcceptance
             public Vector2Int requested, decoded, published, model;
             // Geometry of an accepted inference submission. The model field above is the configured contract.
             public Vector2Int analysis_input, analysis_submitted;
-            public Vector2Int paired_preview;
+            public Vector2Int paired_preview, paired_color;
+            public string pair_source_id, pair_source_generation;
+            public long pair_preview_frame = -1, pair_result_frame = -1, pair_result_sequence = -1, pair_source_us = -1;
+            public int pair_identity_mismatches_window, pair_input_id_verified_window, pair_preview_size_mismatches_window;
             public double input_fps = -1, analysis_input_fps = -1, fresh_fps = -1, unity_fps = -1, frame_age_ms = -1;
             public double window_s = -1;
             public int accepted_results_window, valid_skeleton_results_window, preview_frames_window, presented_results_window, valid_skeleton_presented_window;
@@ -269,6 +274,10 @@ namespace HumanVisionAcceptance
                 stream_probed = probedSize,
                 hardware = hardware?.Read()
             }, "sample", phase);
+            if (!ReferenceEquals(sample.hardware, displayedTemperatureSample)) {
+                displayedTemperatureSample = sample.hardware;
+                TemperatureLine = RuntimePrefabTemperatureLine.Format(displayedTemperatureSample);
+            }
             SampleWindows(sample, previousSample > 0 ? now - previousSample : -1, now);
             maxUnityFrameMs = maxAcceptedGapMs = 0;
             previousUnityFrame = unityFrame;
@@ -379,12 +388,28 @@ namespace HumanVisionAcceptance
             lastPresentedAt = now;
             presentedInWindow++;
 
+            if (boundSdk != null && boundSdk.TryGetInputFrame(-1, out var live)) {
+                if (frame.SourceId != live.SourceId || frame.SourceGeneration != live.Generation ||
+                    frame.SourceFrameId != boundSdk.SourceFrameId || frame.ResultSequence != boundSdk.ResultSequence ||
+                    frame.SourceTimestampUs != boundSdk.SourceTimestampUs) pairIdentityMismatchesInWindow++;
+                if (frame.ColorTexture == null || frame.ColorTexture.width != live.Width || frame.ColorTexture.height != live.Height ||
+                    frame.OverlayTexture == null || frame.OverlayTexture.width != live.Width || frame.OverlayTexture.height != live.Height)
+                    pairPreviewSizeMismatchesInWindow++;
+            }
+            long inputFrameId = -1;
+            double ageMs = -1;
+            bool hasDecodeAge = boundSdk != null && boundSdk.TryGetResultDecodeAgeMs(
+                frame.SourceFrameId, out inputFrameId, out ageMs);
+            if (hasDecodeAge) {
+                pairInputIdVerifiedInWindow++;
+                if (inputFrameId != frame.InputFrameId) pairIdentityMismatchesInWindow++;
+            }
+
             if (!validResults[(int)(frame.ResultSequence % validResults.Length)].Matches(frame.ResultSequence, frame.SourceFrameId))
                 return false;
             ValidSkeletonPresented++;
             validPresentedInWindow++;
-            if (boundSdk != null && boundSdk.TryGetResultDecodeAgeMs(frame.SourceFrameId, out long inputFrameId, out double ageMs) &&
-                inputFrameId == frame.InputFrameId) presentedAgesMs.Add(ageMs);
+            if (hasDecodeAge && inputFrameId == frame.InputFrameId) presentedAgesMs.Add(ageMs);
             return true;
         }
 
@@ -396,10 +421,14 @@ namespace HumanVisionAcceptance
             sample.preview_frames_window = previewInWindow;
             sample.presented_results_window = presentedInWindow;
             sample.valid_skeleton_presented_window = validPresentedInWindow;
+            sample.pair_identity_mismatches_window = pairIdentityMismatchesInWindow;
+            sample.pair_input_id_verified_window = pairInputIdVerifiedInWindow;
+            sample.pair_preview_size_mismatches_window = pairPreviewSizeMismatchesInWindow;
+            pairIdentityMismatchesInWindow = pairInputIdVerifiedInWindow = pairPreviewSizeMismatchesInWindow = 0;
             if (windowSeconds > 0) {
                 sample.accepted_result_fps = acceptedInWindow / windowSeconds;
                 sample.valid_skeleton_fps = ValidSkeletonFps = validInWindow / windowSeconds;
-                sample.preview_fps = PreviewFps = previewInWindow / windowSeconds;
+                sample.preview_fps = previewInWindow / windowSeconds;
                 sample.presented_fps = presentedInWindow / windowSeconds;
                 sample.valid_skeleton_presented_fps = validPresentedInWindow / windowSeconds;
             }
@@ -481,6 +510,13 @@ namespace HumanVisionAcceptance
                 }
                 if (view != null && view.Sdk == sdk && view.TryGetFrame(out var paired) && paired.OverlayTexture != null) {
                     result.paired_preview = new Vector2Int(paired.OverlayTexture.width, paired.OverlayTexture.height);
+                    if (paired.ColorTexture != null) result.paired_color = new Vector2Int(paired.ColorTexture.width, paired.ColorTexture.height);
+                    result.pair_source_id = paired.SourceId.ToString(CultureInfo.InvariantCulture);
+                    result.pair_source_generation = paired.SourceGeneration.ToString(CultureInfo.InvariantCulture);
+                    result.pair_preview_frame = paired.InputFrameId;
+                    result.pair_result_frame = paired.SourceFrameId;
+                    result.pair_result_sequence = paired.ResultSequence;
+                    result.pair_source_us = paired.SourceTimestampUs;
                 }
                 if (previousGeneration != frame.Generation || previousSource != frame.SourceId) {
                     previousGeneration = frame.Generation;
@@ -681,19 +717,19 @@ namespace HumanVisionAcceptance
             catch (IOException) { Status = "诊断日志写入失败"; }
         }
 
-        private void Flush()
+        private bool Flush()
         {
             nextFlush = clock.Elapsed.TotalSeconds + 5;
-            try { writer?.Flush(); }
-            catch (IOException) { Status = "诊断日志保存失败"; }
+            try { writer?.Flush(); return true; }
+            catch (IOException) { Status = "诊断日志保存失败"; return false; }
         }
 
         internal bool Export()
         {
+            ExportPath = "";
             if (!EnsureStarted()) return false;
             DrainMessages();
-            Flush();
-            ExportPath = SessionPath;
+            if (!Flush()) return false;
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (TryExportToDownloads(SessionPath, out string path)) {
                 ExportPath = path;
@@ -701,13 +737,40 @@ namespace HumanVisionAcceptance
                 Debug.Log("HV_RT_DIAGNOSTICS export=" + ExportPath);
                 return true;
             }
-            Status = "公共导出不可用 · 日志已保存在应用目录";
-            Debug.LogWarning("HV_RT_DIAGNOSTICS " + Status + " path=" + SessionPath);
-            return false;
-#else
-            Status = "诊断日志已保存在应用目录";
-            return File.Exists(ExportPath);
 #endif
+            if (!TryExportToAppDirectory()) return false;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            Status = "公共导出不可用 · 日志快照已保存在应用目录";
+#else
+            Status = "日志快照已保存在应用目录";
+#endif
+            Debug.Log("HV_RT_DIAGNOSTICS export=" + ExportPath);
+            return true;
+        }
+
+        private bool TryExportToAppDirectory()
+        {
+            string name = Path.GetFileNameWithoutExtension(SessionPath) + "-export-" +
+                (++exportSequence).ToString(CultureInfo.InvariantCulture) + ".jsonl";
+            string path = Path.Combine(Path.GetDirectoryName(SessionPath), name);
+            bool created = false;
+            try {
+                using (var source = new FileStream(SessionPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var destination = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
+                    created = true;
+                    source.CopyTo(destination);
+                }
+                ExportPath = path;
+                return true;
+            } catch (Exception error) when (error is IOException || error is UnauthorizedAccessException) {
+                if (created) {
+                    try { File.Delete(path); }
+                    catch (Exception cleanup) when (cleanup is IOException || cleanup is UnauthorizedAccessException) { }
+                }
+                Status = "诊断快照导出失败 · " + error.GetType().Name;
+                Debug.LogWarning("HV_RT_DIAGNOSTICS " + Status);
+                return false;
+            }
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR

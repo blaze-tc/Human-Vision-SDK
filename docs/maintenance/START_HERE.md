@@ -4,13 +4,18 @@ Application integration documentation: [Chinese user guide](../user-guide/README
 contains a code-first walkthrough for a new Unity project, Start initialization,
 skeleton result examples, API semantics and SDK platform evidence. Start with
 [configuration and API](../user-guide/SDK_CONFIGURATION.md). The public Release
-is SDK 0.4.0 / Input 0.1.0. The matching local Android CPU/NPU resources have their own
+is SDK 0.4.1 / Input 0.1.1. The matching local Android CPU/NPU resources have their own
 [deployment guide](../user-guide/LOCAL_ANDROID_CPU_YOLO.md) and verification report.
 Historical measurements do not establish acceptance of a later build.
 
 0.4 keeps the V1 API and adds a semantic runtime API. Device performance remains
 manual acceptance. The current implementation evidence is in
 [DEVELOPMENT_STATUS](../DEVELOPMENT_STATUS.md).
+
+For Android Vulkan startup or preview failures, start with
+[Android startup and preview](DEBUGGING_GUIDE.md#android-startup-and-preview).
+The [0.4.1 release report](../reports/2026-11-24-v041-release.md) records the device test
+conditions and the scope of RK3588 validation.
 
 1. Read this file.
 2. Use [CHANGE_MAP](CHANGE_MAP.md) to identify the component.
